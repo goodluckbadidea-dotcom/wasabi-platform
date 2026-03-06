@@ -8,8 +8,7 @@ import { S } from "../design/styles.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { queryAll } from "../notion/pagination.js";
 import { detectSchema } from "../notion/schema.js";
-import { updatePage } from "../notion/client.js";
-import { buildProp } from "../notion/properties.js";
+import { updatePage, createPage } from "../notion/client.js";
 import ViewRenderer from "../views/ViewRenderer.jsx";
 import ChatPanel from "../views/ChatPanel.jsx";
 import { IconWarning, IconRefresh } from "../design/icons.jsx";
@@ -67,13 +66,14 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
   }, [fetchData]);
 
   // Handle inline edits from views
+  // Views call: onUpdate(pageId, fieldName, builtPropObject)
+  // where builtPropObject is already constructed via buildProp()
   const handleUpdate = useCallback(
-    async (pageId, propertyName, value, propertyType) => {
+    async (pageId, propertyName, propPayload) => {
       try {
-        const prop = buildProp(propertyType, value);
-        if (prop) {
+        if (propPayload) {
           await updatePage(user.workerUrl, user.notionKey, pageId, {
-            [propertyName]: prop,
+            [propertyName]: propPayload,
           });
           // Optimistic: update local data
           setData((prev) =>
@@ -85,7 +85,7 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
                   ...page.properties,
                   [propertyName]: {
                     ...page.properties[propertyName],
-                    _localValue: value,
+                    ...propPayload,
                   },
                 },
               };
@@ -96,6 +96,21 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
         }
       } catch (err) {
         console.error("Update failed:", err);
+      }
+    },
+    [user, fetchData]
+  );
+
+  // Handle new record creation from Form view
+  const handleCreate = useCallback(
+    async (databaseId, properties) => {
+      try {
+        await createPage(user.workerUrl, user.notionKey, databaseId, properties);
+        // Refresh to show the new record
+        await fetchData();
+      } catch (err) {
+        console.error("Create failed:", err);
+        throw err; // Let the Form view handle the error
       }
     },
     [user, fetchData]
@@ -239,6 +254,8 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
           schema={schema}
           onUpdate={handleUpdate}
           onRefresh={fetchData}
+          onCreate={handleCreate}
+          pageConfig={pageConfig}
         />
       </div>
     </div>

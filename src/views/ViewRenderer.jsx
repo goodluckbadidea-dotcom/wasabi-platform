@@ -4,35 +4,33 @@
 import React, { Suspense } from "react";
 import { C, RADIUS } from "../design/tokens.js";
 import Table from "./Table.jsx";
-// Phase 2 views will be imported here as they're built:
-// import Gantt from "./Gantt.jsx";
-// import CardGrid from "./CardGrid.jsx";
-// import Kanban from "./Kanban.jsx";
-// import Charts from "./Charts.jsx";
-// import Form from "./Form.jsx";
-// import SummaryTiles from "./SummaryTiles.jsx";
-// import ActivityFeed from "./ActivityFeed.jsx";
-// import Document from "./Document.jsx";
-// import NotificationFeed from "./NotificationFeed.jsx";
+import Gantt from "./Gantt.jsx";
+import CardGrid from "./CardGrid.jsx";
+import Kanban from "./Kanban.jsx";
+import Charts from "./Charts.jsx";
+import Form from "./Form.jsx";
+import SummaryTiles from "./SummaryTiles.jsx";
+import ActivityFeed from "./ActivityFeed.jsx";
+import Document from "./Document.jsx";
+import NotificationFeed from "./NotificationFeed.jsx";
 
 const VIEW_REGISTRY = {
   table: Table,
-  // Phase 2:
-  // gantt: Gantt,
-  // cardGrid: CardGrid,
-  // kanban: Kanban,
-  // charts: Charts,
-  // form: Form,
-  // summaryTiles: SummaryTiles,
-  // activityFeed: ActivityFeed,
-  // document: Document,
-  // notificationFeed: NotificationFeed,
+  gantt: Gantt,
+  cardGrid: CardGrid,
+  kanban: Kanban,
+  charts: Charts,
+  form: Form,
+  summaryTiles: SummaryTiles,
+  activityFeed: ActivityFeed,
+  document: Document,
+  notificationFeed: NotificationFeed,
 };
 
 /**
  * Render a single view from a view config.
  */
-function ViewBlock({ viewConfig, data, schema, onUpdate, onRefresh }) {
+function ViewBlock({ viewConfig, data, schema, onUpdate, onRefresh, onCreate, pageConfig }) {
   const Component = VIEW_REGISTRY[viewConfig.type];
 
   if (!Component) {
@@ -46,9 +44,7 @@ function ViewBlock({ viewConfig, data, schema, onUpdate, onRefresh }) {
         fontSize: 13,
         textAlign: "center",
       }}>
-        View type "{viewConfig.type}" is not yet available.
-        <br />
-        <span style={{ fontSize: 11, opacity: 0.6 }}>Coming in Phase 2</span>
+        View type "{viewConfig.type}" is not recognized.
       </div>
     );
   }
@@ -60,6 +56,8 @@ function ViewBlock({ viewConfig, data, schema, onUpdate, onRefresh }) {
       config={viewConfig.config || {}}
       onUpdate={onUpdate}
       onRefresh={onRefresh}
+      onCreate={onCreate}
+      pageConfig={pageConfig}
     />
   );
 }
@@ -67,7 +65,7 @@ function ViewBlock({ viewConfig, data, schema, onUpdate, onRefresh }) {
 /**
  * Render all views for a page in a layout.
  */
-export default function ViewRenderer({ views = [], data, schema, onUpdate, onRefresh }) {
+export default function ViewRenderer({ views = [], data, schema, onUpdate, onRefresh, onCreate, pageConfig }) {
   const mainViews = views.filter((v) => v.position !== "sidebar" && v.position !== "bottom");
   const sideViews = views.filter((v) => v.position === "sidebar");
   const bottomViews = views.filter((v) => v.position === "bottom");
@@ -93,6 +91,8 @@ export default function ViewRenderer({ views = [], data, schema, onUpdate, onRef
               schema={schema}
               onUpdate={onUpdate}
               onRefresh={onRefresh}
+              onCreate={onCreate}
+              pageConfig={pageConfig}
             />
           ))}
 
