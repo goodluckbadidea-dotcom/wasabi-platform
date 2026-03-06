@@ -109,7 +109,7 @@ function AppContent() {
       handler: () => setSidebarCollapsed((c) => !c),
     },
     {
-      shortcut: "mod+j",
+      shortcut: "mod+w",
       description: "Toggle Wasabi panel",
       handler: () => setWasabiPanelOpen((o) => !o),
     },

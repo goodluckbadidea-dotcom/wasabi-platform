@@ -126,7 +126,7 @@ export const SHORTCUT_MAP = {
   newPage: { shortcut: "mod+n", description: "New page (open builder)" },
   refresh: { shortcut: "mod+r", description: "Refresh current view" },
   toggleSidebar: { shortcut: "mod+b", description: "Toggle sidebar" },
-  toggleWasabi: { shortcut: "mod+j", description: "Toggle Wasabi panel" },
+  toggleWasabi: { shortcut: "mod+w", description: "Toggle Wasabi panel" },
   escape: { shortcut: "escape", description: "Close panel / cancel" },
   prevPage: { shortcut: "mod+up", description: "Previous page" },
   nextPage: { shortcut: "mod+down", description: "Next page" },
