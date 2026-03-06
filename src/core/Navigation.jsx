@@ -7,7 +7,7 @@
 import React, { useState } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { IconDiamond } from "../design/icons.jsx";
+import { IconDiamond, IconBolt, IconGear } from "../design/icons.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
 
 // ── View type → human-readable label ──
@@ -38,7 +38,7 @@ export default function Navigation({
   onSetActiveView,
   isThinking,
 }) {
-  const { pages, activePage } = usePlatform();
+  const { pages, activePage, setActivePage } = usePlatform();
   const [hoveredItem, setHoveredItem] = useState(null);
 
   const SIDEBAR_W = collapsed ? 48 : 220;
@@ -56,6 +56,8 @@ export default function Navigation({
     ? currentPage.name
     : activePage === "system"
     ? "System Manager"
+    : activePage === "automations"
+    ? "Automations"
     : activePage === "wasabi"
     ? "New Page"
     : "Home";
@@ -198,20 +200,92 @@ export default function Navigation({
         })}
       </div>
 
-      {/* Flame character at bottom */}
+      {/* Bottom action buttons */}
       <div
         style={{
           flexShrink: 0,
           borderTop: `1px solid ${C.darkBorder}`,
-          padding: collapsed ? "12px 0" : "10px 16px",
+          padding: collapsed ? "8px 0" : "8px 12px",
           display: "flex",
-          alignItems: "center",
-          justifyContent: collapsed ? "center" : "flex-start",
+          flexDirection: "column",
+          gap: 2,
           overflow: "hidden",
           transition: "padding 0.25s",
-          minHeight: 52,
         }}
       >
+        {/* Automations button */}
+        <button
+          onClick={() => setActivePage("automations")}
+          title="Automations"
+          style={{
+            background: activePage === "automations" ? C.accent : "none",
+            border: "none",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: collapsed ? 0 : 10,
+            padding: collapsed ? "8px 0" : "7px 10px",
+            borderRadius: RADIUS.lg,
+            transition: "background 0.15s",
+            outline: "none",
+            width: "100%",
+            justifyContent: collapsed ? "center" : "flex-start",
+          }}
+          onMouseEnter={(e) => {
+            if (activePage !== "automations") e.currentTarget.style.background = C.darkSurf2;
+          }}
+          onMouseLeave={(e) => {
+            if (activePage !== "automations") e.currentTarget.style.background = "transparent";
+          }}
+        >
+          <IconBolt size={collapsed ? 16 : 14} color={activePage === "automations" ? "#fff" : C.darkMuted} />
+          {!collapsed && (
+            <span style={{
+              fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: activePage === "automations" ? 600 : 400,
+              color: activePage === "automations" ? "#fff" : C.darkMuted, letterSpacing: "0.02em",
+            }}>
+              Automations
+            </span>
+          )}
+        </button>
+
+        {/* System button */}
+        <button
+          onClick={() => setActivePage("system")}
+          title="System"
+          style={{
+            background: activePage === "system" ? C.accent : "none",
+            border: "none",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: collapsed ? 0 : 10,
+            padding: collapsed ? "8px 0" : "7px 10px",
+            borderRadius: RADIUS.lg,
+            transition: "background 0.15s",
+            outline: "none",
+            width: "100%",
+            justifyContent: collapsed ? "center" : "flex-start",
+          }}
+          onMouseEnter={(e) => {
+            if (activePage !== "system") e.currentTarget.style.background = C.darkSurf2;
+          }}
+          onMouseLeave={(e) => {
+            if (activePage !== "system") e.currentTarget.style.background = "transparent";
+          }}
+        >
+          <IconGear size={collapsed ? 16 : 14} color={activePage === "system" ? "#fff" : C.darkMuted} />
+          {!collapsed && (
+            <span style={{
+              fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: activePage === "system" ? 600 : 400,
+              color: activePage === "system" ? "#fff" : C.darkMuted, letterSpacing: "0.02em",
+            }}>
+              System
+            </span>
+          )}
+        </button>
+
+        {/* Wasabi flame */}
         {!wasabiPanelOpen && (
           <button
             onClick={onToggleWasabiPanel}
@@ -222,11 +296,13 @@ export default function Navigation({
               display: "flex",
               alignItems: "center",
               gap: collapsed ? 0 : 10,
-              padding: collapsed ? "4px" : "4px 8px",
+              padding: collapsed ? "6px 0" : "6px 8px",
               borderRadius: RADIUS.lg,
               transition: "background 0.15s",
               outline: "none",
-              width: collapsed ? "auto" : "100%",
+              width: "100%",
+              justifyContent: collapsed ? "center" : "flex-start",
+              marginTop: 2,
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = C.darkSurf2;
@@ -236,7 +312,7 @@ export default function Navigation({
             }}
             title="Open Wasabi"
           >
-            <WasabiFlame size={collapsed ? 24 : 28} isThinking={isThinking} />
+            <WasabiFlame size={collapsed ? 22 : 24} isThinking={isThinking} />
             {!collapsed && (
               <span
                 style={{

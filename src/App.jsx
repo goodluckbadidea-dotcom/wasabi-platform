@@ -4,7 +4,7 @@
 // Matches original app: top header with page dropdown, left sidebar with sub-nav,
 // collapsible Wasabi panel (Log/Chat/Notifications), flame at sidebar bottom.
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { PlatformProvider, usePlatform } from "./context/PlatformContext.jsx";
 import { injectAnimations } from "./design/animations.js";
 import { S } from "./design/styles.js";
@@ -18,6 +18,9 @@ import Onboarding from "./core/Onboarding.jsx";
 import PageBuilder from "./core/PageBuilder.jsx";
 import PageShell from "./core/PageShell.jsx";
 import WasabiFlame from "./core/WasabiFlame.jsx";
+import SystemManager from "./core/SystemManager.jsx";
+import AutomationBuilder from "./core/AutomationBuilder.jsx";
+import { createAutomationEngine } from "./agent/automations.js";
 import { IconGear } from "./design/icons.jsx";
 
 // Inject CSS animations on app load
@@ -27,6 +30,8 @@ function AppContent() {
   const {
     isAuthenticated,
     isSetup,
+    user,
+    platformIds,
     pages,
     activePage,
     setActivePage,
@@ -37,6 +42,38 @@ function AppContent() {
   const [wasabiPanelOpen, setWasabiPanelOpen] = useState(false);
   const [viewStates, setViewStates] = useState({}); // { [pageId]: activeViewIndex }
   const [builderTemplate, setBuilderTemplate] = useState(null);
+
+  // ── Automation Engine ──
+  const engineRef = useRef(null);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isSetup || !user || !platformIds?.rulesDbId) return;
+
+    // Create and start the automation engine
+    const engine = createAutomationEngine({
+      workerUrl: user.workerUrl,
+      notionKey: user.notionKey,
+      claudeKey: user.claudeKey,
+      rulesDbId: platformIds.rulesDbId,
+      notifDbId: platformIds.notifDbId,
+      kbDbId: platformIds.kbDbId,
+      tickIntervalMs: 60_000,
+      onRuleFired: (rule, result) => {
+        console.log(`[Automation] Rule "${rule.name}" fired (${result.path})`);
+      },
+      onError: (err, rule) => {
+        console.error(`[Automation] Error${rule ? ` on "${rule.name}"` : ""}:`, err.message);
+      },
+    });
+
+    engine.start();
+    engineRef.current = engine;
+
+    return () => {
+      engine.stop();
+      engineRef.current = null;
+    };
+  }, [isAuthenticated, isSetup, user, platformIds]);
 
   // Template selection handler — hooks MUST be called before any early returns
   const handleStartTemplate = useCallback(
@@ -101,7 +138,8 @@ function AppContent() {
     if (
       pages.length === 0 &&
       activePage !== "wasabi" &&
-      activePage !== "system"
+      activePage !== "system" &&
+      activePage !== "automations"
     ) {
       return (
         <Onboarding
@@ -142,28 +180,14 @@ function AppContent() {
       );
     }
 
-    // System manager (stub for Phase 4)
+    // Automations
+    if (activePage === "automations") {
+      return <AutomationBuilder automationEngine={engineRef.current} />;
+    }
+
+    // System manager
     if (activePage === "system") {
-      return (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            height: "100%",
-            flexDirection: "column",
-            gap: 12,
-            color: C.darkMuted,
-            fontSize: 14,
-          }}
-        >
-          <IconGear size={32} color={C.darkMuted} />
-          System Manager
-          <span style={{ fontSize: 12, opacity: 0.6 }}>
-            Coming in Phase 4
-          </span>
-        </div>
-      );
+      return <SystemManager />;
     }
 
     // User page

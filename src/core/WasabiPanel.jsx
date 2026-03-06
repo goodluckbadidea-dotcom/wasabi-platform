@@ -13,7 +13,8 @@ import ChatUI from "./ChatUI.jsx";
 import { runAgent, extractChoices } from "../agent/runAgent.js";
 import { WASABI_TOOLS } from "../agent/tools.js";
 import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
-import { createToolExecutor } from "../agent/toolExecutor.js";
+import { createToolExecutor, createDelegateFunction } from "../agent/toolExecutor.js";
+import BatchQueue from "./BatchQueue.jsx";
 
 // ── Tab button style ──
 const tabBtn = (active) => ({
@@ -42,7 +43,7 @@ const STATUS_COL = {
 };
 
 export default function WasabiPanel({ onClose, isThinking }) {
-  const { user, platformIds, batchQueue, addToQueue, removeQueueItem, addPage } =
+  const { user, platformIds, batchQueue, addToQueue, updateQueueItem, removeQueueItem, addPage } =
     usePlatform();
   const [tab, setTab] = useState("log");
 
@@ -52,6 +53,10 @@ export default function WasabiPanel({ onClose, isThinking }) {
   const [editText, setEditText] = useState("");
   const logTextRef = useRef(null);
   const logEndRef = useRef(null);
+
+  // ── Batch processing state ──
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processProgress, setProcessProgress] = useState(null);
 
   // ── Chat state ──
   const [chatMessages, setChatMessages] = useState([]);
@@ -85,10 +90,73 @@ export default function WasabiPanel({ onClose, isThinking }) {
     if (logTextRef.current) logTextRef.current.style.height = "auto";
   }, [logInput, addToQueue]);
 
+  // ── Batch processing ──
+  const handleProcessAll = useCallback(async () => {
+    const pending = batchQueue.filter((i) => i.status === "pending");
+    if (pending.length === 0 || isProcessing) return;
+
+    setIsProcessing(true);
+    setProcessProgress({ current: 0, total: pending.length });
+
+    for (let i = 0; i < pending.length; i++) {
+      const item = pending[i];
+      setProcessProgress({ current: i, total: pending.length });
+      updateQueueItem(item.id, { status: "processing" });
+
+      try {
+        const systemPrompt = buildWasabiPrompt({
+          platformDbIds: platformIds
+            ? Object.entries(platformIds).map(([k, v]) => `${k}: ${v}`).join("\n")
+            : "",
+        });
+
+        const delegate = createDelegateFunction({
+          workerUrl: user.workerUrl, notionKey: user.notionKey, claudeKey: user.claudeKey,
+          kbDbId: platformIds?.kbDbId, notifDbId: platformIds?.notifDbId, configDbId: platformIds?.configDbId,
+        });
+        const executor = createToolExecutor({
+          workerUrl: user.workerUrl, notionKey: user.notionKey,
+          parentPageId: platformIds?.rootPageId, kbDbId: platformIds?.kbDbId,
+          notifDbId: platformIds?.notifDbId, configDbId: platformIds?.configDbId,
+          rulesDbId: platformIds?.rulesDbId, onPageCreated: addPage,
+          delegateToPageAgent: delegate,
+        });
+
+        const { text: reply } = await runAgent({
+          messages: [{ role: "user", content: item.text }],
+          systemPrompt,
+          tools: WASABI_TOOLS,
+          model: "claude-sonnet-4-20250514",
+          workerUrl: user.workerUrl,
+          claudeKey: user.claudeKey,
+          executeTool: (name, input) => executor(name, input),
+          maxTokens: 1024,
+          maxIterations: 6,
+        });
+
+        updateQueueItem(item.id, { status: "actioned", result: reply });
+      } catch (err) {
+        console.error("[BatchQueue] Processing failed:", err);
+        updateQueueItem(item.id, { status: "actioned", result: `Error: ${err.message}` });
+      }
+    }
+
+    setProcessProgress({ current: pending.length, total: pending.length });
+    setIsProcessing(false);
+  }, [batchQueue, isProcessing, user, platformIds, addPage, updateQueueItem]);
+
   // ── Chat: send message to Wasabi ──
   const toolExecutor = useCallback(
     (toolName, toolInput) => {
       if (!user?.workerUrl || !user?.notionKey) return Promise.resolve("{}");
+      const delegate = createDelegateFunction({
+        workerUrl: user.workerUrl,
+        notionKey: user.notionKey,
+        claudeKey: user.claudeKey,
+        kbDbId: platformIds?.kbDbId,
+        notifDbId: platformIds?.notifDbId,
+        configDbId: platformIds?.configDbId,
+      });
       const executor = createToolExecutor({
         workerUrl: user.workerUrl,
         notionKey: user.notionKey,
@@ -96,7 +164,9 @@ export default function WasabiPanel({ onClose, isThinking }) {
         kbDbId: platformIds?.kbDbId,
         notifDbId: platformIds?.notifDbId,
         configDbId: platformIds?.configDbId,
+        rulesDbId: platformIds?.rulesDbId,
         onPageCreated: addPage,
+        delegateToPageAgent: delegate,
       });
       return executor(toolName, toolInput);
     },
@@ -275,189 +345,15 @@ export default function WasabiPanel({ onClose, isThinking }) {
             overflow: "hidden",
           }}
         >
-          {/* Entry list */}
-          <div
-            style={{
-              flex: 1,
-              overflowY: "auto",
-              padding: "12px 12px 6px",
-            }}
-          >
-            {batchQueue.length === 0 && (
-              <div
-                style={{
-                  textAlign: "center",
-                  color: "#888",
-                  fontSize: 10,
-                  marginTop: 40,
-                  lineHeight: 2,
-                  letterSpacing: "0.1em",
-                  textTransform: "uppercase",
-                }}
-              >
-                <IconLog size={22} color="#888" style={{ marginBottom: 8 }} />
-                <br />
-                No entries yet
-                <br />
-                <span style={{ fontSize: 9, opacity: 0.6 }}>
-                  Add notes or to-dos below
-                </span>
-              </div>
-            )}
-
-            {batchQueue.map((entry, idx) => {
-              const sc = STATUS_COL[entry.status] || STATUS_COL.pending;
-              const isEditing = editingId === entry.id;
-              return (
-                <div
-                  key={entry.id}
-                  style={{
-                    marginBottom: 8,
-                    borderRadius: 8,
-                    border: sc.border,
-                    background: sc.bg,
-                    padding: "9px 10px",
-                    opacity: entry.status === "actioned" ? 0.45 : 1,
-                    transition: "opacity 0.3s",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 7,
-                    }}
-                  >
-                    {/* Index */}
-                    <span
-                      style={{
-                        fontSize: 8,
-                        color: "#666",
-                        flexShrink: 0,
-                        marginTop: 3,
-                        letterSpacing: "0.06em",
-                        fontFamily: MONO,
-                      }}
-                    >
-                      {String(idx + 1).padStart(2, "0")}
-                    </span>
-
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      {isEditing ? (
-                        <textarea
-                          autoFocus
-                          value={editText}
-                          onChange={(e) => setEditText(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && !e.shiftKey) {
-                              e.preventDefault();
-                              setEditingId(null);
-                              // Save would go here
-                            }
-                            if (e.key === "Escape") setEditingId(null);
-                          }}
-                          style={{
-                            width: "100%",
-                            boxSizing: "border-box",
-                            background: "#2A2A2A",
-                            border: `1px solid ${C.accent}`,
-                            borderRadius: 4,
-                            fontFamily: FONT,
-                            fontSize: 12,
-                            color: "#E8E8E8",
-                            resize: "none",
-                            minHeight: 52,
-                            padding: "4px 6px",
-                            outline: "none",
-                          }}
-                        />
-                      ) : (
-                        <div
-                          style={{
-                            fontSize: 12,
-                            color: "#E8E8E8",
-                            lineHeight: 1.55,
-                            whiteSpace: "pre-wrap",
-                            wordBreak: "break-word",
-                            fontFamily: FONT,
-                          }}
-                        >
-                          {entry.text || entry.action || "Log entry"}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Action buttons */}
-                    {entry.status === "pending" && !isEditing && (
-                      <div
-                        style={{ display: "flex", gap: 2, flexShrink: 0 }}
-                      >
-                        <button
-                          title="Edit"
-                          onClick={() => {
-                            setEditingId(entry.id);
-                            setEditText(entry.text || "");
-                          }}
-                          style={{
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                            color: C.accent,
-                            padding: 2,
-                            display: "flex",
-                            alignItems: "center",
-                          }}
-                        >
-                          <svg
-                            width="12"
-                            height="12"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                          </svg>
-                        </button>
-                        <button
-                          title="Delete"
-                          onClick={() => removeQueueItem(entry.id)}
-                          style={{
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                            color: C.orange,
-                            padding: 2,
-                            display: "flex",
-                            alignItems: "center",
-                          }}
-                        >
-                          <IconClose size={10} color="currentColor" />
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Status dot */}
-                    <span
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: "50%",
-                        background: sc.dot,
-                        flexShrink: 0,
-                        marginTop: 5,
-                      }}
-                      title={entry.status}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-            <div ref={logEndRef} />
-          </div>
+          {/* BatchQueue handles the item list + process button */}
+          <BatchQueue
+            items={batchQueue}
+            onProcess={handleProcessAll}
+            onUpdateItem={updateQueueItem}
+            onRemoveItem={removeQueueItem}
+            isProcessing={isProcessing}
+            processProgress={processProgress}
+          />
 
           {/* Log input */}
           <div style={{ padding: "10px 12px 14px", flexShrink: 0 }}>

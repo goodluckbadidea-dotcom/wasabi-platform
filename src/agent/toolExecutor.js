@@ -18,7 +18,9 @@ import { extractProperties, getPageTitle } from "../notion/properties.js";
  * @param {string} opts.kbDbId - Knowledge Base database ID
  * @param {string} opts.notifDbId - Notifications database ID
  * @param {string} opts.configDbId - Page Config database ID
+ * @param {string} opts.rulesDbId - Automation Rules database ID
  * @param {Function} opts.onPageCreated - Callback when a new page config is created
+ * @param {Function} opts.delegateToPageAgent - Callback for page agent delegation
  * @returns {Function} executeTool(toolName, toolInput) => string
  */
 export function createToolExecutor({
@@ -28,7 +30,9 @@ export function createToolExecutor({
   kbDbId,
   notifDbId,
   configDbId,
+  rulesDbId,
   onPageCreated,
+  delegateToPageAgent,
 }) {
   return async function executeTool(toolName, toolInput) {
     switch (toolName) {
@@ -164,6 +168,45 @@ export function createToolExecutor({
         return JSON.stringify({ success: true });
       }
 
+      // ─── Automation Rule Creation ───
+      case "create_automation_rule": {
+        if (!rulesDbId) {
+          return JSON.stringify({ error: "Automation Rules database not configured." });
+        }
+        const ruleProps = {
+          Name: { title: [{ type: "text", text: { content: toolInput.name || "Untitled Rule" } }] },
+          Trigger: { select: { name: toolInput.trigger } },
+          Instruction: { rich_text: [{ type: "text", text: { content: toolInput.instruction || "" } }] },
+          "Database ID": { rich_text: [{ type: "text", text: { content: toolInput.database_id || "" } }] },
+          Enabled: { checkbox: true },
+          "Fire Count": { number: 0 },
+        };
+        if (toolInput.description) {
+          ruleProps.Description = { rich_text: [{ type: "text", text: { content: toolInput.description } }] };
+        }
+        if (toolInput.trigger_config) {
+          ruleProps["Trigger Config"] = { rich_text: [{ type: "text", text: { content: JSON.stringify(toolInput.trigger_config) } }] };
+        }
+        if (toolInput.owner_page) {
+          ruleProps["Owner Page"] = { rich_text: [{ type: "text", text: { content: toolInput.owner_page } }] };
+        }
+        const rulePage = await client.createPage(workerUrl, notionKey, rulesDbId, ruleProps);
+        return JSON.stringify({ success: true, rule_id: rulePage.id, name: toolInput.name });
+      }
+
+      // ─── Delegation to Page Agent ───
+      case "delegate_to_page_agent": {
+        if (!delegateToPageAgent) {
+          return JSON.stringify({ error: "Page agent delegation not available in this context." });
+        }
+        try {
+          const result = await delegateToPageAgent(toolInput.page_config_id, toolInput.task);
+          return JSON.stringify({ success: true, result });
+        } catch (err) {
+          return JSON.stringify({ error: `Delegation failed: ${err.message}` });
+        }
+      }
+
       // ─── Escalation ───
       case "escalate_to_wasabi": {
         // This is handled by the ChatPanel component, not executed here.
@@ -213,5 +256,80 @@ export function createPageToolExecutor({
     }
 
     return fullExecutor(toolName, toolInput);
+  };
+}
+
+/**
+ * Create a delegate function that runs a page agent as a sub-agent.
+ * Used by Wasabi to delegate tasks to page agents (runs on Haiku).
+ *
+ * @param {object} opts
+ * @param {string} opts.workerUrl
+ * @param {string} opts.notionKey
+ * @param {string} opts.claudeKey
+ * @param {string} opts.kbDbId
+ * @param {string} opts.notifDbId
+ * @param {string} opts.configDbId
+ * @returns {Function} (pageConfigId, task) => Promise<string>
+ */
+export function createDelegateFunction({ workerUrl, notionKey, claudeKey, kbDbId, notifDbId, configDbId }) {
+  return async function delegateToPageAgent(pageConfigId, task) {
+    // 1. Load page config from Notion
+    const configPage = await client.getPage(workerUrl, notionKey, pageConfigId);
+    const configRaw = extractProperties(configPage);
+    let pageConfig;
+    try {
+      pageConfig = JSON.parse(configRaw.Config || "{}");
+    } catch {
+      throw new Error(`Failed to parse config for page ${pageConfigId}`);
+    }
+
+    const pageName = configRaw.Name || pageConfig.name || "Page Agent";
+    const databaseIds = pageConfig.databaseIds || pageConfig.agentConfig?.databases || [];
+
+    // 2. Detect schema for the page's databases
+    const { detectSchema, schemaToText } = await import("../notion/schema.js");
+    let schemaText = "";
+    for (const dbId of databaseIds.slice(0, 3)) {
+      try {
+        const schema = await detectSchema(workerUrl, notionKey, dbId);
+        schemaText += `Database ${dbId}:\n${schemaToText(schema)}\n\n`;
+      } catch (err) {
+        schemaText += `Database ${dbId}: (failed to detect schema)\n\n`;
+      }
+    }
+
+    // 3. Build page agent prompt
+    const { buildPageAgentPrompt } = await import("./wasabiPrompt.js");
+    const systemPrompt = buildPageAgentPrompt({
+      pageName,
+      agentPrompt: pageConfig.agentConfig?.prompt,
+      databaseIds,
+      schemaText,
+    });
+
+    // 4. Create scoped executor
+    const executeTool = createPageToolExecutor({
+      workerUrl, notionKey, notifDbId, kbDbId,
+      scopedDatabaseIds: databaseIds,
+    });
+
+    // 5. Run mini agent loop
+    const { runAgent } = await import("./runAgent.js");
+    const { PAGE_TOOLS } = await import("./tools.js");
+
+    const { text } = await runAgent({
+      messages: [{ role: "user", content: task }],
+      systemPrompt,
+      tools: PAGE_TOOLS,
+      model: "claude-haiku-4-5-20251001",
+      workerUrl,
+      claudeKey,
+      executeTool,
+      maxIterations: 8,
+      maxTokens: 1024,
+    });
+
+    return text;
   };
 }

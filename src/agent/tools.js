@@ -216,9 +216,54 @@ const ESCALATE_TO_WASABI = {
   },
 };
 
-// ─── AUTOMATION TOOLS ───
+// ─── DELEGATION + AUTOMATION TOOLS ───
 
-// AUTO_TOOLS uses only: query_database + post_notification (defined above)
+const DELEGATE_TO_PAGE_AGENT = {
+  name: "delegate_to_page_agent",
+  description: "Delegate a task to a specific page agent. The page agent will execute the task within its scoped databases and return the result. Use this to avoid doing work that a page agent can handle.",
+  input_schema: {
+    type: "object",
+    properties: {
+      page_config_id: {
+        type: "string",
+        description: "The page config ID (Notion page ID) of the target page agent.",
+      },
+      task: {
+        type: "string",
+        description: "Description of the task to delegate. Be specific about what data to query/create/update.",
+      },
+    },
+    required: ["page_config_id", "task"],
+  },
+};
+
+const CREATE_AUTOMATION_RULE = {
+  name: "create_automation_rule",
+  description: "Create an automation rule in the Automation Rules database. Rules can trigger on schedule, status_change, field_change, page_created, or manual.",
+  input_schema: {
+    type: "object",
+    properties: {
+      name: { type: "string", description: "Rule name." },
+      description: { type: "string", description: "What this rule does." },
+      trigger: {
+        type: "string",
+        enum: ["schedule", "status_change", "field_change", "page_created", "manual"],
+        description: "Trigger type.",
+      },
+      trigger_config: {
+        type: "object",
+        description: "Trigger-specific configuration. For schedule: {interval_minutes}. For status_change: {database_id, field, from, to}. For field_change: {database_id, field}. For page_created: {database_id}.",
+      },
+      instruction: {
+        type: "string",
+        description: "The instruction to execute when triggered. Can include {{field_name}} template variables for fast-path execution.",
+      },
+      database_id: { type: "string", description: "The database this rule operates on." },
+      owner_page: { type: "string", description: "The page config ID that owns this rule." },
+    },
+    required: ["name", "trigger", "instruction", "database_id"],
+  },
+};
 
 // ─── TOOL SETS ───
 
@@ -233,6 +278,8 @@ export const WASABI_TOOLS = [
   UPDATE_KNOWLEDGE_BASE,
   SEARCH_KNOWLEDGE_BASE,
   POST_NOTIFICATION,
+  DELEGATE_TO_PAGE_AGENT,
+  CREATE_AUTOMATION_RULE,
 ];
 
 export const PAGE_TOOLS = [
@@ -246,6 +293,8 @@ export const PAGE_TOOLS = [
 
 export const AUTO_TOOLS = [
   QUERY_DATABASE,
+  CREATE_PAGE,
+  UPDATE_PAGE,
   POST_NOTIFICATION,
 ];
 
