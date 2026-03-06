@@ -7,13 +7,14 @@
 import React, { useState } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { IconDiamond, IconBolt, IconGear } from "../design/icons.jsx";
+import { IconDiamond, IconBolt, IconGear, IconStar } from "../design/icons.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
 
 // ── View type → human-readable label ──
 const VIEW_LABELS = {
   table: "Table",
   gantt: "Timeline",
+  calendar: "Calendar",
   cardGrid: "Cards",
   kanban: "Board",
   charts: "Charts",
@@ -213,6 +214,42 @@ export default function Navigation({
           transition: "padding 0.25s",
         }}
       >
+        {/* Home button */}
+        <button
+          onClick={() => setActivePage(null)}
+          title="Home"
+          style={{
+            background: activePage === null ? C.accent : "none",
+            border: "none",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: collapsed ? 0 : 10,
+            padding: collapsed ? "8px 0" : "7px 10px",
+            borderRadius: RADIUS.lg,
+            transition: "background 0.15s",
+            outline: "none",
+            width: "100%",
+            justifyContent: collapsed ? "center" : "flex-start",
+          }}
+          onMouseEnter={(e) => {
+            if (activePage !== null) e.currentTarget.style.background = C.darkSurf2;
+          }}
+          onMouseLeave={(e) => {
+            if (activePage !== null) e.currentTarget.style.background = "transparent";
+          }}
+        >
+          <IconStar size={collapsed ? 16 : 14} color={activePage === null ? "#fff" : C.darkMuted} />
+          {!collapsed && (
+            <span style={{
+              fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: activePage === null ? 600 : 400,
+              color: activePage === null ? "#fff" : C.darkMuted, letterSpacing: "0.02em",
+            }}>
+              Home
+            </span>
+          )}
+        </button>
+
         {/* Automations button */}
         <button
           onClick={() => setActivePage("automations")}

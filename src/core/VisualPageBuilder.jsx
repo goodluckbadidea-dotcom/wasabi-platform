@@ -1,33 +1,55 @@
 // ─── Visual Page Builder ───
 // A drag-less visual editor for assembling page configs.
-// Complementary to the chat-based PageBuilder.
+// Phase 6: Now uses DatabaseBrowser for connecting pre-existing Notion databases.
 
 import React, { useState, useCallback, useMemo } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { savePageConfig } from "../config/pageConfig.js";
-import { getDatabase } from "../notion/client.js";
-import { detectSchema } from "../notion/schema.js";
+import { autoDetectViews } from "../notion/schema.js";
+import DatabaseBrowser from "./DatabaseBrowser.jsx";
+import {
+  IconPage, IconTable, IconKanban, IconChart, IconForm,
+  IconCalendar, IconFolder, IconStar, IconBolt, IconUsers,
+  IconInbox, IconBell, IconGear, IconCards, IconTimeline,
+  IconDatabase, IconClose,
+} from "../design/icons.jsx";
 
 // ── Available view types ──
 const VIEW_TYPES = [
-  { type: "table", label: "Table", desc: "Sortable, filterable data grid" },
-  { type: "kanban", label: "Kanban", desc: "Drag-and-drop board by status" },
-  { type: "cardGrid", label: "Card Grid", desc: "Visual cards with images" },
-  { type: "gantt", label: "Gantt", desc: "Timeline / date-range chart" },
-  { type: "charts", label: "Charts", desc: "Bar, pie, and line charts" },
-  { type: "form", label: "Form", desc: "Create new records" },
-  { type: "summaryTiles", label: "Summary Tiles", desc: "KPI metric tiles" },
-  { type: "activityFeed", label: "Activity Feed", desc: "Recent changes stream" },
-  { type: "document", label: "Document", desc: "Rich text page content" },
-  { type: "chat", label: "Chat", desc: "AI chat with data context" },
+  { type: "table", label: "Table", desc: "Sortable, filterable data grid", Icon: IconTable },
+  { type: "kanban", label: "Kanban", desc: "Drag-and-drop board by status", Icon: IconKanban },
+  { type: "cardGrid", label: "Card Grid", desc: "Visual cards with images", Icon: IconCards },
+  { type: "gantt", label: "Gantt", desc: "Timeline / date-range chart", Icon: IconTimeline },
+  { type: "calendar", label: "Calendar", desc: "Month/week date calendar", Icon: IconCalendar },
+  { type: "charts", label: "Charts", desc: "Bar, pie, and line charts", Icon: IconChart },
+  { type: "form", label: "Form", desc: "Create new records", Icon: IconForm },
+  { type: "summaryTiles", label: "Summary Tiles", desc: "KPI metric tiles", Icon: IconBolt },
+  { type: "activityFeed", label: "Activity Feed", desc: "Recent changes stream", Icon: IconInbox },
+  { type: "document", label: "Document", desc: "Rich text page content", Icon: IconPage },
+  { type: "chat", label: "Chat", desc: "AI chat with data context", Icon: IconBell },
 ];
 
-const ICONS = [
-  "page", "table", "kanban", "chart", "form", "list", "calendar",
-  "folder", "star", "bolt", "users", "inbox", "bell", "gear",
-];
+// ── Icon map for page icon picker ──
+const ICON_MAP = {
+  page: IconPage,
+  table: IconTable,
+  kanban: IconKanban,
+  chart: IconChart,
+  form: IconForm,
+  list: IconForm,
+  calendar: IconCalendar,
+  folder: IconFolder,
+  star: IconStar,
+  bolt: IconBolt,
+  users: IconUsers,
+  inbox: IconInbox,
+  bell: IconBell,
+  gear: IconGear,
+};
+
+const ICONS = Object.keys(ICON_MAP);
 
 // ── Styles ──
 const vs = {
@@ -89,11 +111,6 @@ const vs = {
     boxSizing: "border-box",
     transition: "border-color 0.15s",
   },
-  row: {
-    display: "flex",
-    gap: 12,
-    alignItems: "center",
-  },
   label: {
     fontSize: 12,
     color: C.darkMuted,
@@ -123,6 +140,9 @@ const vs = {
     borderRadius: RADIUS.lg,
     cursor: "pointer",
     transition: "all 0.15s",
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
   }),
   footer: {
     padding: "16px 24px",
@@ -143,8 +163,6 @@ const vs = {
     border: `1px solid ${active ? C.accent : C.darkBorder}`,
     background: active ? `${C.accent}18` : "transparent",
     cursor: "pointer",
-    fontSize: 14,
-    color: active ? C.accent : C.darkMuted,
     transition: "all 0.15s",
   }),
   error: {
@@ -163,18 +181,32 @@ const vs = {
     color: C.accent,
     fontSize: 13,
   },
+  connectedDbChip: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "8px 12px",
+    background: C.darkSurf2,
+    border: `1px solid ${C.darkBorder}`,
+    borderRadius: RADIUS.lg,
+    fontSize: 12,
+    color: C.darkText,
+    fontFamily: FONT,
+  },
+  suggestBanner: {
+    padding: "10px 14px",
+    background: `${C.accent}10`,
+    border: `1px solid ${C.accent}30`,
+    borderRadius: RADIUS.md,
+    color: C.accent,
+    fontSize: 12,
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    cursor: "pointer",
+    transition: "background 0.15s",
+  },
 };
-
-// ── Helper: icon lookup ──
-function iconGlyph(icon) {
-  const map = {
-    page: "\u{1F4C4}", table: "\u{1F4CA}", kanban: "\u{1F4CB}", chart: "\u{1F4C8}",
-    form: "\u{1F4DD}", list: "\u{1F4CB}", calendar: "\u{1F4C5}", folder: "\u{1F4C1}",
-    star: "\u2B50", bolt: "\u26A1", users: "\u{1F465}", inbox: "\u{1F4E5}",
-    bell: "\u{1F514}", gear: "\u2699",
-  };
-  return map[icon] || "\u{1F4C4}";
-}
 
 // ── Main Component ──
 export default function VisualPageBuilder({ onCancel }) {
@@ -183,7 +215,7 @@ export default function VisualPageBuilder({ onCancel }) {
   // ── Page Config State ──
   const [pageName, setPageName] = useState("");
   const [pageIcon, setPageIcon] = useState("page");
-  const [databaseId, setDatabaseId] = useState("");
+  const [connectedDbs, setConnectedDbs] = useState([]); // [{ id, title, schema }]
   const [views, setViews] = useState([
     { type: "table", label: "Table", position: "main", config: {} },
   ]);
@@ -191,27 +223,52 @@ export default function VisualPageBuilder({ onCancel }) {
 
   // ── UI State ──
   const [addingView, setAddingView] = useState(false);
-  const [validatingDb, setValidatingDb] = useState(false);
-  const [dbValid, setDbValid] = useState(null); // null | true | "error msg"
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
-  // ── Database validation ──
-  const validateDatabase = useCallback(async () => {
-    if (!databaseId.trim()) return;
-    setValidatingDb(true);
-    setDbValid(null);
-    try {
-      const cleanId = databaseId.trim().replace(/-/g, "");
-      await getDatabase(user.workerUrl, user.notionKey, cleanId);
-      setDbValid(true);
-    } catch (err) {
-      setDbValid(err.message || "Could not access database");
-    } finally {
-      setValidatingDb(false);
-    }
-  }, [databaseId, user]);
+  // Get IDs of connected databases
+  const connectedIds = useMemo(() => connectedDbs.map((db) => db.id), [connectedDbs]);
+
+  // ── Handle database connection from DatabaseBrowser ──
+  const handleDbConnect = useCallback(
+    ({ id, title, schema }) => {
+      // Avoid duplicate
+      if (connectedDbs.some((db) => db.id === id)) return;
+
+      const newDbs = [...connectedDbs, { id, title, schema }];
+      setConnectedDbs(newDbs);
+
+      // Auto-detect suggested views from the first connected database
+      if (newDbs.length === 1 && schema) {
+        setShowSuggestions(true);
+      }
+    },
+    [connectedDbs]
+  );
+
+  // Remove a connected database
+  const handleDbRemove = useCallback((dbId) => {
+    setConnectedDbs((prev) => prev.filter((db) => db.id !== dbId));
+  }, []);
+
+  // Apply auto-detected views
+  const applySuggestedViews = useCallback(() => {
+    if (connectedDbs.length === 0) return;
+    const schema = connectedDbs[0].schema;
+    if (!schema) return;
+
+    const suggested = autoDetectViews(schema);
+    const newViews = suggested.slice(0, 4).map((s) => ({
+      type: s.type,
+      label: VIEW_TYPES.find((vt) => vt.type === s.type)?.label || s.type,
+      position: "main",
+      config: {},
+    }));
+    setViews(newViews);
+    setShowSuggestions(false);
+  }, [connectedDbs]);
 
   // ── View management ──
   const addView = useCallback((type) => {
@@ -248,8 +305,8 @@ export default function VisualPageBuilder({ onCancel }) {
       setError("Page name is required");
       return;
     }
-    if (!databaseId.trim()) {
-      setError("Database ID is required");
+    if (connectedDbs.length === 0) {
+      setError("Connect at least one database");
       return;
     }
     if (views.length === 0) {
@@ -259,11 +316,10 @@ export default function VisualPageBuilder({ onCancel }) {
 
     setSaving(true);
     try {
-      const cleanDbId = databaseId.trim().replace(/-/g, "");
       const pageConfig = {
         name: pageName.trim(),
         icon: pageIcon,
-        databaseIds: [cleanDbId],
+        databaseIds: connectedDbs.map((db) => db.id),
         views,
         refreshInterval: refreshInterval * 1000,
       };
@@ -284,14 +340,14 @@ export default function VisualPageBuilder({ onCancel }) {
     } finally {
       setSaving(false);
     }
-  }, [pageName, pageIcon, databaseId, views, refreshInterval, user, platformIds, addPage]);
+  }, [pageName, pageIcon, connectedDbs, views, refreshInterval, user, platformIds, addPage]);
 
   return (
     <div style={vs.container}>
       {/* Header */}
       <div style={vs.header}>
         <div style={vs.headerTitle}>Visual Page Builder</div>
-        <div style={vs.headerSub}>Design your page layout without code</div>
+        <div style={vs.headerSub}>Design your page layout — connect databases, choose views</div>
       </div>
 
       {/* Body */}
@@ -300,20 +356,26 @@ export default function VisualPageBuilder({ onCancel }) {
         <div style={vs.section}>
           <div style={vs.sectionTitle}>Page Identity</div>
           <div style={{ display: "flex", gap: 12, marginBottom: 14 }}>
-            {/* Icon picker */}
+            {/* Icon picker — now SVG */}
             <div>
               <label style={vs.label}>Icon</label>
               <div style={{ display: "flex", gap: 4, flexWrap: "wrap", maxWidth: 200 }}>
-                {ICONS.map((ic) => (
-                  <span
-                    key={ic}
-                    style={vs.iconBtn(pageIcon === ic)}
-                    onClick={() => setPageIcon(ic)}
-                    title={ic}
-                  >
-                    {iconGlyph(ic)}
-                  </span>
-                ))}
+                {ICONS.map((ic) => {
+                  const Ic = ICON_MAP[ic];
+                  return (
+                    <span
+                      key={ic}
+                      style={vs.iconBtn(pageIcon === ic)}
+                      onClick={() => setPageIcon(ic)}
+                      title={ic}
+                    >
+                      <Ic
+                        size={16}
+                        color={pageIcon === ic ? C.accent : C.darkMuted}
+                      />
+                    </span>
+                  );
+                })}
               </div>
             </div>
 
@@ -332,36 +394,50 @@ export default function VisualPageBuilder({ onCancel }) {
 
         {/* ── Database Connection ── */}
         <div style={vs.section}>
-          <div style={vs.sectionTitle}>Database Connection</div>
-          <label style={vs.label}>Notion Database ID</label>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              style={{ ...vs.input, flex: 1 }}
-              value={databaseId}
-              onChange={(e) => { setDatabaseId(e.target.value); setDbValid(null); }}
-              placeholder="Paste database ID or URL"
-            />
-            <button
-              style={{ ...S.btnSecondary, whiteSpace: "nowrap", padding: "8px 16px" }}
-              onClick={validateDatabase}
-              disabled={validatingDb || !databaseId.trim()}
+          <div style={vs.sectionTitle}>
+            Database Connection{connectedDbs.length > 0 ? ` (${connectedDbs.length})` : ""}
+          </div>
+
+          {/* Connected databases list */}
+          {connectedDbs.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+              {connectedDbs.map((db) => (
+                <div key={db.id} style={vs.connectedDbChip}>
+                  <IconDatabase size={14} color={C.accent} />
+                  <span style={{ fontWeight: 500 }}>{db.title}</span>
+                  <span
+                    style={{ cursor: "pointer", padding: "0 2px", display: "flex" }}
+                    onClick={() => handleDbRemove(db.id)}
+                    title="Remove database"
+                  >
+                    <IconClose size={10} color={C.darkMuted} />
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Auto-detect views suggestion */}
+          {showSuggestions && connectedDbs.length > 0 && (
+            <div
+              style={vs.suggestBanner}
+              onClick={applySuggestedViews}
+              onMouseEnter={(e) => { e.currentTarget.style.background = `${C.accent}18`; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = `${C.accent}10`; }}
             >
-              {validatingDb ? "Checking..." : "Validate"}
-            </button>
-          </div>
-          {dbValid === true && (
-            <div style={{ fontSize: 12, color: C.accent, marginTop: 6 }}>
-              Database connected successfully
+              <IconBolt size={14} color={C.accent} />
+              <span>
+                Database detected! Click here to auto-configure recommended views for <strong>{connectedDbs[0]?.title}</strong>
+              </span>
             </div>
           )}
-          {dbValid && dbValid !== true && (
-            <div style={{ fontSize: 12, color: "#E05252", marginTop: 6 }}>
-              {dbValid}
-            </div>
-          )}
-          <div style={{ fontSize: 11, color: C.darkMuted, marginTop: 6 }}>
-            Tip: Open your Notion database, copy the URL, and paste the ID portion here.
-          </div>
+
+          {/* Database browser */}
+          <DatabaseBrowser
+            onConnect={handleDbConnect}
+            connectedIds={connectedIds}
+            multi={true}
+          />
         </div>
 
         {/* ── Views ── */}
@@ -379,87 +455,98 @@ export default function VisualPageBuilder({ onCancel }) {
           {/* Add view grid */}
           {addingView && (
             <div style={{ ...vs.viewTypeGrid, marginBottom: 16 }}>
-              {VIEW_TYPES.map((vt) => (
-                <div
-                  key={vt.type}
-                  style={vs.viewTypeCard(false)}
-                  onClick={() => addView(vt.type)}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
-                >
-                  <div style={{ fontSize: 13, fontWeight: 600, color: C.darkText, marginBottom: 2 }}>
-                    {vt.label}
+              {VIEW_TYPES.map((vt) => {
+                const VtIcon = vt.Icon;
+                return (
+                  <div
+                    key={vt.type}
+                    style={vs.viewTypeCard(false)}
+                    onClick={() => addView(vt.type)}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
+                  >
+                    <VtIcon size={16} color={C.darkMuted} />
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.darkText }}>
+                      {vt.label}
+                    </div>
+                    <div style={{ fontSize: 11, color: C.darkMuted, lineHeight: 1.4 }}>
+                      {vt.desc}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 11, color: C.darkMuted, lineHeight: 1.4 }}>
-                    {vt.desc}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
           {/* Existing views */}
-          {views.map((v, idx) => (
-            <div key={idx} style={vs.viewCard}>
-              {/* Reorder arrows */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                <span
-                  style={{ cursor: idx > 0 ? "pointer" : "not-allowed", opacity: idx > 0 ? 1 : 0.3, fontSize: 10, color: C.darkMuted }}
-                  onClick={() => moveView(idx, -1)}
-                >
-                  &#x25B2;
+          {views.map((v, idx) => {
+            const vtMeta = VIEW_TYPES.find((vt) => vt.type === v.type);
+            const VtIcon = vtMeta?.Icon || IconPage;
+            return (
+              <div key={idx} style={vs.viewCard}>
+                {/* Reorder arrows */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span
+                    style={{ cursor: idx > 0 ? "pointer" : "not-allowed", opacity: idx > 0 ? 1 : 0.3, fontSize: 10, color: C.darkMuted }}
+                    onClick={() => moveView(idx, -1)}
+                  >
+                    &#x25B2;
+                  </span>
+                  <span
+                    style={{ cursor: idx < views.length - 1 ? "pointer" : "not-allowed", opacity: idx < views.length - 1 ? 1 : 0.3, fontSize: 10, color: C.darkMuted }}
+                    onClick={() => moveView(idx, 1)}
+                  >
+                    &#x25BC;
+                  </span>
+                </div>
+
+                {/* View type badge — solid pill */}
+                <span style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                  color: "#fff",
+                  background: C.accent,
+                  borderRadius: RADIUS.pill,
+                  padding: "3px 10px",
+                  whiteSpace: "nowrap",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}>
+                  <VtIcon size={11} color="#fff" />
+                  {v.type}
                 </span>
+
+                {/* Editable label */}
+                <input
+                  style={{
+                    flex: 1,
+                    background: "transparent",
+                    border: "none",
+                    outline: "none",
+                    fontSize: 13,
+                    fontFamily: FONT,
+                    color: C.darkText,
+                    padding: "4px 0",
+                  }}
+                  value={v.label}
+                  onChange={(e) => updateViewLabel(idx, e.target.value)}
+                  placeholder="View label"
+                />
+
+                {/* Remove button */}
                 <span
-                  style={{ cursor: idx < views.length - 1 ? "pointer" : "not-allowed", opacity: idx < views.length - 1 ? 1 : 0.3, fontSize: 10, color: C.darkMuted }}
-                  onClick={() => moveView(idx, 1)}
+                  style={{ cursor: "pointer", display: "flex", padding: "4px 8px" }}
+                  onClick={() => removeView(idx)}
+                  title="Remove view"
                 >
-                  &#x25BC;
+                  <IconClose size={10} color={C.darkMuted} />
                 </span>
               </div>
-
-              {/* View type badge */}
-              <span style={{
-                fontSize: 10,
-                fontWeight: 600,
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-                color: C.accent,
-                background: `${C.accent}18`,
-                border: `1px solid ${C.accent}40`,
-                borderRadius: RADIUS.pill,
-                padding: "2px 10px",
-                whiteSpace: "nowrap",
-              }}>
-                {v.type}
-              </span>
-
-              {/* Editable label */}
-              <input
-                style={{
-                  flex: 1,
-                  background: "transparent",
-                  border: "none",
-                  outline: "none",
-                  fontSize: 13,
-                  fontFamily: FONT,
-                  color: C.darkText,
-                  padding: "4px 0",
-                }}
-                value={v.label}
-                onChange={(e) => updateViewLabel(idx, e.target.value)}
-                placeholder="View label"
-              />
-
-              {/* Remove button */}
-              <span
-                style={{ cursor: "pointer", color: C.darkMuted, fontSize: 14, padding: "4px 8px" }}
-                onClick={() => removeView(idx)}
-                title="Remove view"
-              >
-                &#x2715;
-              </span>
-            </div>
-          ))}
+            );
+          })}
 
           {views.length === 0 && (
             <div style={{ textAlign: "center", color: C.darkMuted, fontSize: 13, padding: 20 }}>

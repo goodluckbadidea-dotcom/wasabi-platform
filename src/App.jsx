@@ -20,6 +20,7 @@ import PageShell from "./core/PageShell.jsx";
 import WasabiFlame from "./core/WasabiFlame.jsx";
 import SystemManager from "./core/SystemManager.jsx";
 import AutomationBuilder from "./core/AutomationBuilder.jsx";
+import HomePage from "./core/HomePage.jsx";
 import { ErrorBoundary } from "./core/ErrorBoundary.jsx";
 import { createAutomationEngine } from "./agent/automations.js";
 import { useKeyboardShortcuts } from "./utils/useKeyboardShortcuts.js";
@@ -129,6 +130,11 @@ function AppContent() {
       when: () => wasabiPanelOpen,
     },
     {
+      shortcut: "mod+h",
+      description: "Home",
+      handler: () => setActivePage(null),
+    },
+    {
       shortcut: "mod+up",
       description: "Previous page",
       handler: () => {
@@ -186,48 +192,12 @@ function AppContent() {
 
   // Determine main content
   const renderContent = () => {
-    // Onboarding: no pages yet and not in builder mode
-    if (
-      pages.length === 0 &&
-      activePage !== "wasabi" &&
-      activePage !== "system" &&
-      activePage !== "automations"
-    ) {
-      return (
-        <Onboarding
-          WasabiFlame={WasabiFlame}
-          onStartBlank={handleStartBlank}
-          onStartTemplate={handleStartTemplate}
-        />
-      );
-    }
-
     // Wasabi page builder
     if (activePage === "wasabi") {
       return (
         <PageBuilder
           initialTemplate={builderTemplate}
           WasabiFlameIcon={WasabiFlameIcon}
-        />
-      );
-    }
-
-    // Default to first page or onboarding
-    if (activePage === null) {
-      if (pages.length > 0) {
-        return (
-          <Onboarding
-            WasabiFlame={WasabiFlame}
-            onStartBlank={handleStartBlank}
-            onStartTemplate={handleStartTemplate}
-          />
-        );
-      }
-      return (
-        <Onboarding
-          WasabiFlame={WasabiFlame}
-          onStartBlank={handleStartBlank}
-          onStartTemplate={handleStartTemplate}
         />
       );
     }
@@ -252,12 +222,14 @@ function AppContent() {
       );
     }
 
-    // Fallback
+    // Home page (default for all other cases, including null/home)
+    // Shows onboarding-style quick start when no pages exist,
+    // and full dashboard when pages are present.
     return (
-      <Onboarding
-        WasabiFlame={WasabiFlame}
+      <HomePage
         onStartBlank={handleStartBlank}
         onStartTemplate={handleStartTemplate}
+        onNavigate={setActivePage}
       />
     );
   };

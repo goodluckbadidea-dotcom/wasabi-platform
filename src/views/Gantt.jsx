@@ -3,7 +3,7 @@
 // Schema-agnostic — works with any database that has date fields.
 
 import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { C, FONT, RADIUS, TIMELINE_PALETTE, getStatusColor } from "../design/tokens.js";
+import { C, FONT, RADIUS, TIMELINE_PALETTE, getStatusColor, getSolidPillColor } from "../design/tokens.js";
 import { readField, getFieldType, getOptionNames, resolveField } from "./_viewHelpers.js";
 import { buildProp } from "../notion/properties.js";
 
@@ -11,9 +11,11 @@ import { buildProp } from "../notion/properties.js";
 
 const ZOOM_LEVELS = [
   { key: "1w",  label: "7 days",   days: 7,   pxPerDay: 80  },
+  { key: "2w",  label: "14 days",  days: 14,  pxPerDay: 50  },
   { key: "1m",  label: "30 days",  days: 30,  pxPerDay: 28  },
   { key: "3m",  label: "90 days",  days: 90,  pxPerDay: 11  },
   { key: "6m",  label: "6 months", days: 180, pxPerDay: 5   },
+  { key: "1y",  label: "1 year",   days: 365, pxPerDay: 2.5 },
 ];
 
 const ROW_HEIGHT = 40;
@@ -112,13 +114,16 @@ function buildHeaders(origin, days, pxPerDay) {
 // ─── Main Component ───
 
 export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefresh }) {
-  const [zoomIndex, setZoomIndex] = useState(1); // Default 30-day
+  const [zoomIndex, setZoomIndex] = useState(2); // Default 30-day
   const [search, setSearch] = useState("");
   const [scrollLeft, setScrollLeft] = useState(0);
   const [tooltip, setTooltip] = useState(null);
   const [dragState, setDragState] = useState(null);
+  const [selectedRowIdx, setSelectedRowIdx] = useState(-1);
+  const [isZooming, setIsZooming] = useState(false);
   const svgContainerRef = useRef(null);
   const scrollRef = useRef(null);
+  const wrapperRef = useRef(null);
 
   const zoom = ZOOM_LEVELS[zoomIndex];
 
@@ -175,11 +180,23 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
 
       if (bars.length === 0) continue;
 
+      // Resolve pill color using Wasabi solid palette
+      let pillFill = C.darkMuted;
+      let pillText = "#fff";
+      if (colorVal && colorField) {
+        const schemaField = (schema.statuses || []).concat(schema.selects || []).find((f) => f.name === colorField);
+        const schemaOpts = schemaField?.options || [];
+        const resolved = getSolidPillColor(colorVal, colorOptionNames, schemaOpts);
+        pillFill = resolved.fill;
+        pillText = resolved.text;
+      }
+
       result.push({
         pageId: page.id,
         label: label || "Untitled",
         colorVal,
-        statusColor: colorVal ? getStatusColor(colorVal, colorOptionNames) : C.darkMuted,
+        statusColor: pillFill,
+        pillText,
         bars,
       });
     }
@@ -231,6 +248,101 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
     if (off < 0 || off > totalDays) return null;
     return off * zoom.pxPerDay;
   }, [origin, totalDays, zoom.pxPerDay]);
+
+  // ─── Keyboard navigation ───
+
+  const handleZoomChange = useCallback((newIndex) => {
+    const clamped = Math.max(0, Math.min(ZOOM_LEVELS.length - 1, newIndex));
+    if (clamped === zoomIndex) return;
+
+    // Smooth zoom transition
+    setIsZooming(true);
+    const centerX = scrollRef.current
+      ? scrollRef.current.scrollLeft + scrollRef.current.clientWidth / 2
+      : 0;
+    const centerDay = centerX / zoom.pxPerDay;
+
+    setZoomIndex(clamped);
+
+    // Re-center after zoom
+    requestAnimationFrame(() => {
+      if (scrollRef.current) {
+        const newZoom = ZOOM_LEVELS[clamped];
+        const newCenterX = centerDay * newZoom.pxPerDay;
+        scrollRef.current.scrollLeft = newCenterX - scrollRef.current.clientWidth / 2;
+      }
+      setTimeout(() => setIsZooming(false), 200);
+    });
+  }, [zoomIndex, zoom.pxPerDay]);
+
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+
+    const handleKeyDown = (e) => {
+      // Don't capture when typing in search input
+      if (e.target.tagName === "INPUT") return;
+
+      switch (e.key) {
+        case "ArrowUp":
+          e.preventDefault();
+          setSelectedRowIdx((prev) => Math.max(0, prev - 1));
+          break;
+        case "ArrowDown":
+          e.preventDefault();
+          setSelectedRowIdx((prev) => Math.min(rows.length - 1, prev + 1));
+          break;
+        case "ArrowLeft":
+          e.preventDefault();
+          if (scrollRef.current) scrollRef.current.scrollLeft -= zoom.pxPerDay * 3;
+          break;
+        case "ArrowRight":
+          e.preventDefault();
+          if (scrollRef.current) scrollRef.current.scrollLeft += zoom.pxPerDay * 3;
+          break;
+        case "+":
+        case "=":
+          e.preventDefault();
+          handleZoomChange(zoomIndex - 1); // zoom in = fewer days
+          break;
+        case "-":
+        case "_":
+          e.preventDefault();
+          handleZoomChange(zoomIndex + 1); // zoom out = more days
+          break;
+        case "t":
+        case "T":
+          e.preventDefault();
+          // Jump to today
+          if (todayOffset !== null && scrollRef.current) {
+            scrollRef.current.scrollLeft = todayOffset - scrollRef.current.clientWidth / 3;
+          }
+          break;
+        case "Escape":
+          setSelectedRowIdx(-1);
+          break;
+        default:
+          break;
+      }
+    };
+
+    el.addEventListener("keydown", handleKeyDown);
+    return () => el.removeEventListener("keydown", handleKeyDown);
+  }, [rows.length, zoomIndex, zoom.pxPerDay, todayOffset, handleZoomChange]);
+
+  // Scroll selected row into view
+  useEffect(() => {
+    if (selectedRowIdx < 0) return;
+    const sidebar = wrapperRef.current?.querySelector(".gantt-sidebar-scroll");
+    if (!sidebar) return;
+    const rowTop = selectedRowIdx * ROW_HEIGHT;
+    const rowBottom = rowTop + ROW_HEIGHT;
+    if (rowTop < sidebar.scrollTop) {
+      sidebar.scrollTop = rowTop;
+    } else if (rowBottom > sidebar.scrollTop + sidebar.clientHeight) {
+      sidebar.scrollTop = rowBottom - sidebar.clientHeight;
+    }
+  }, [selectedRowIdx]);
 
   // ─── Bar dimensions ───
 
@@ -373,13 +485,18 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
   const contentHeight = rows.length * ROW_HEIGHT;
 
   return (
-    <div style={{
-      display: "flex",
-      flexDirection: "column",
-      height: "100%",
-      fontFamily: FONT,
-      overflow: "hidden",
-    }}>
+    <div
+      ref={wrapperRef}
+      tabIndex={0}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        fontFamily: FONT,
+        overflow: "hidden",
+        outline: "none",
+      }}
+    >
       {/* ─── Toolbar ─── */}
       <div style={{
         display: "flex",
@@ -394,7 +511,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
           {ZOOM_LEVELS.map((z, i) => (
             <button
               key={z.key}
-              onClick={() => setZoomIndex(i)}
+              onClick={() => handleZoomChange(i)}
               style={{
                 border: "none",
                 background: i === zoomIndex ? C.accent : "transparent",
@@ -412,6 +529,11 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
             </button>
           ))}
         </div>
+
+        {/* Keyboard hint */}
+        <span style={{ fontSize: 10, color: C.darkMuted + "88", letterSpacing: "0.02em" }} title="Arrow keys navigate, +/- zoom, T = today, Esc = deselect">
+          ⌨
+        </span>
 
         {/* Search */}
         <input
@@ -481,6 +603,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
             {rows.map((row, i) => (
               <div
                 key={row.pageId}
+                onClick={() => setSelectedRowIdx(i)}
                 style={{
                   height: ROW_HEIGHT,
                   display: "flex",
@@ -489,6 +612,9 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                   gap: 8,
                   borderBottom: `1px solid ${C.edgeLine}`,
                   overflow: "hidden",
+                  background: i === selectedRowIdx ? `${C.accent}14` : "transparent",
+                  cursor: "pointer",
+                  transition: "background 0.12s",
                 }}
               >
                 {/* Status dot */}
@@ -512,18 +638,17 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                   {row.label}
                 </span>
 
-                {/* Status pill */}
+                {/* Status pill — solid fill */}
                 {row.colorVal && (
                   <span style={{
                     fontSize: 9,
                     fontWeight: 600,
                     textTransform: "uppercase",
                     letterSpacing: "0.06em",
-                    color: row.statusColor,
-                    background: row.statusColor + "18",
-                    border: `1px solid ${row.statusColor}40`,
+                    color: row.pillText || "#fff",
+                    background: row.statusColor,
                     borderRadius: RADIUS.pill,
-                    padding: "1px 6px",
+                    padding: "2px 8px",
                     whiteSpace: "nowrap",
                     flexShrink: 0,
                   }}>
@@ -547,7 +672,11 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
           style={{ flex: 1, overflow: "auto", position: "relative" }}
           onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}
         >
-          <div style={{ width: totalWidth, minHeight: "100%" }}>
+          <div style={{
+            width: totalWidth,
+            minHeight: "100%",
+            transition: isZooming ? "width 0.2s ease-out" : "none",
+          }}>
             {/* ─── Header ─── */}
             <div style={{
               position: "sticky",
@@ -626,17 +755,28 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                   />
                 ))}
 
-                {/* Row lines */}
+                {/* Row lines + selected row highlight */}
                 {rows.map((_, i) => (
-                  <line
-                    key={`rl-${i}`}
-                    x1={0}
-                    y1={(i + 1) * ROW_HEIGHT}
-                    x2={totalWidth}
-                    y2={(i + 1) * ROW_HEIGHT}
-                    stroke={C.edgeLine}
-                    strokeWidth={1}
-                  />
+                  <g key={`rl-${i}`}>
+                    {i === selectedRowIdx && (
+                      <rect
+                        x={0}
+                        y={i * ROW_HEIGHT}
+                        width={totalWidth}
+                        height={ROW_HEIGHT}
+                        fill={C.accent}
+                        opacity={0.06}
+                      />
+                    )}
+                    <line
+                      x1={0}
+                      y1={(i + 1) * ROW_HEIGHT}
+                      x2={totalWidth}
+                      y2={(i + 1) * ROW_HEIGHT}
+                      stroke={C.edgeLine}
+                      strokeWidth={1}
+                    />
+                  </g>
                 ))}
 
                 {/* Today marker */}

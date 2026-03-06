@@ -3,12 +3,14 @@
 // The primary view for any Notion database.
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { C, FONT, RADIUS, SHADOW, getStatusColor } from "../design/tokens.js";
+import { C, FONT, RADIUS, SHADOW, getStatusColor, getSolidPillColor } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { ANIM, injectAnimations } from "../design/animations.js";
 import { readProp, buildProp, extractProperties, getPageTitle } from "../notion/properties.js";
 import { debounce, formatDate, truncate } from "../utils/helpers.js";
-import { IconTrash, IconExport, IconEyeOff } from "../design/icons.jsx";
+import { IconTrash, IconExport, IconEyeOff, IconExpand } from "../design/icons.jsx";
+import FilterChips, { applyChipFilters } from "./FilterChips.jsx";
+import RecordDetail from "./RecordDetail.jsx";
 
 // ─── Constants ───
 
@@ -226,13 +228,13 @@ const styles = {
   }),
 
   // Pills
-  pill: (color) => ({
+  pill: (fillColor, textColor = "#fff") => ({
     display: "inline-block",
-    color: color,
-    background: color + "18",
-    border: `1px solid ${color}40`,
+    color: textColor,
+    background: fillColor,
+    border: "none",
     borderRadius: RADIUS.pill,
-    padding: "2px 10px",
+    padding: "3px 10px",
     fontSize: 10,
     fontWeight: 600,
     textTransform: "uppercase",
@@ -525,25 +527,27 @@ function CellDisplay({ value, type, fieldName, schema, onClick }) {
     );
   }
 
-  // Select / Status pill
+  // Select / Status pill — solid fill with Wasabi colors
   if (type === "select" || type === "status") {
     const optionNames = getOptionNames(schema, fieldName);
-    const color = getStatusColor(value, optionNames);
+    const schemaOptions = getFieldOptions(schema, fieldName);
+    const { fill, text } = getSolidPillColor(value, optionNames, schemaOptions);
     return (
-      <span style={styles.pill(color)} onClick={onClick}>
+      <span style={styles.pill(fill, text)} onClick={onClick}>
         {value}
       </span>
     );
   }
 
-  // Multi-select pills
+  // Multi-select pills — solid fill
   if (type === "multi_select" && Array.isArray(value)) {
     const optionNames = getOptionNames(schema, fieldName);
+    const schemaOptions = getFieldOptions(schema, fieldName);
     return (
       <span style={styles.multiPillWrap}>
         {value.map((v, i) => {
-          const color = getStatusColor(v, optionNames);
-          return <span key={i} style={styles.pill(color)}>{v}</span>;
+          const { fill, text } = getSolidPillColor(v, optionNames, schemaOptions);
+          return <span key={i} style={styles.pill(fill, text)}>{v}</span>;
         })}
       </span>
     );
@@ -630,11 +634,16 @@ function CellDisplay({ value, type, fieldName, schema, onClick }) {
 
 // ─── Main Table Component ───
 
-export default function Table({ data = [], schema, config = {}, onUpdate, onRefresh, onDelete }) {
+export default function Table({ data = [], schema, config = {}, onUpdate, onRefresh, onDelete, pageConfig, onSaveFilters }) {
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState(config.sort?.field || null);
   const [sortDir, setSortDir] = useState(config.sort?.direction || null); // "asc" | "desc" | null
   const [filters, setFilters] = useState(config.filters || {}); // { fieldName: value }
+
+  // ── Chip Filters (multi-select, persisted) ──
+  const [chipFilters, setChipFilters] = useState(
+    () => config.activeFilters || pageConfig?.activeFilters || {}
+  ); // { fieldName: ["val1", "val2"] }
   const [editCell, setEditCell] = useState(null); // { pageId, field }
   const [savingCells, setSavingCells] = useState({}); // { "pageId:field": true }
   const [failedCells, setFailedCells] = useState({}); // { "pageId:field": "error message" }
@@ -648,6 +657,9 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const [hiddenColumns, setHiddenColumns] = useState(new Set());
   const [colMenuOpen, setColMenuOpen] = useState(false);
   const colMenuRef = useRef(null);
+
+  // ── Record Detail Panel ──
+  const [detailPage, setDetailPage] = useState(null);
 
   // Inject animations on mount
   useEffect(() => {
@@ -696,11 +708,20 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     debouncedSetSearch(search);
   }, [search, debouncedSetSearch]);
 
+  // Chip filter change handler (persists)
+  const handleChipFilterChange = useCallback((newFilters) => {
+    setChipFilters(newFilters);
+    if (onSaveFilters) onSaveFilters(newFilters);
+  }, [onSaveFilters]);
+
   // Filter + search + sort pipeline
   const processedData = useMemo(() => {
     let rows = [...data];
 
-    // Apply filters
+    // Apply chip filters (multi-select OR within field, AND across fields)
+    rows = applyChipFilters(rows, chipFilters, schema);
+
+    // Apply dropdown filters (legacy, still used for column-header selects)
     for (const [field, filterVal] of Object.entries(filters)) {
       if (!filterVal) continue;
       rows = rows.filter((page) => {
@@ -756,7 +777,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     }
 
     return rows;
-  }, [data, filters, debouncedSearch, sortField, sortDir, columns, schema]);
+  }, [data, filters, chipFilters, debouncedSearch, sortField, sortDir, columns, schema]);
 
   // Column sort handler — cycles asc -> desc -> none
   const handleSort = useCallback((field) => {
@@ -945,6 +966,14 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
 
   return (
     <div style={styles.wrapper}>
+      {/* Dynamic filter chips */}
+      <FilterChips
+        schema={schema}
+        data={data}
+        activeFilters={chipFilters}
+        onFilterChange={handleChipFilterChange}
+      />
+
       {/* Bulk actions bar */}
       {selectedRows.size > 0 && (
         <div
@@ -1210,15 +1239,29 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                     }}
                     onMouseEnter={() => setHoveredRow(pageId)}
                     onMouseLeave={() => setHoveredRow(null)}
+                    onDoubleClick={() => setDetailPage(page)}
                   >
-                    {/* Row checkbox */}
-                    <td style={{ ...styles.td, width: 36, minWidth: 36, padding: "8px 8px", textAlign: "center" }}>
-                      <span
-                        style={styles.toggle(isSelected)}
-                        onClick={() => toggleRow(pageId)}
-                      >
-                        {isSelected ? "\u2713" : ""}
-                      </span>
+                    {/* Row checkbox + expand */}
+                    <td style={{ ...styles.td, width: 52, minWidth: 52, padding: "8px 4px", textAlign: "center" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, justifyContent: "center" }}>
+                        <span
+                          style={styles.toggle(isSelected)}
+                          onClick={() => toggleRow(pageId)}
+                        >
+                          {isSelected ? "\u2713" : ""}
+                        </span>
+                        {isHovered && (
+                          <span
+                            style={{ cursor: "pointer", opacity: 0.5, display: "flex", alignItems: "center", transition: "opacity 0.1s" }}
+                            onClick={(e) => { e.stopPropagation(); setDetailPage(page); }}
+                            onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
+                            title="Open record detail"
+                          >
+                            <IconExpand size={11} color={C.darkMuted} />
+                          </span>
+                        )}
+                      </div>
                     </td>
                     {columns.map((col) => {
                       const type = getFieldType(schema, col);
@@ -1324,6 +1367,22 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           </table>
         )}
       </div>
+
+      {/* Record Detail Panel */}
+      {detailPage && (
+        <RecordDetail
+          page={detailPage}
+          schema={schema}
+          onClose={() => setDetailPage(null)}
+          onUpdate={async (pageId, properties) => {
+            if (!onUpdate) throw new Error("Updates not available");
+            // Call onUpdate for each property
+            for (const [fieldName, payload] of Object.entries(properties)) {
+              await onUpdate(pageId, fieldName, payload);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

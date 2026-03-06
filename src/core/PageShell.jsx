@@ -50,15 +50,29 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
   const views = pageConfig.views || [];
   const activeView = views[activeViewIndex] || views[0];
 
+  // Multi-database schema map: { dbId → schema }
+  const [schemas, setSchemas] = useState({});
+
   // Fetch data from all connected databases
   const fetchData = useCallback(async () => {
     if (!user?.workerUrl || !user?.notionKey || !pageConfig.databaseIds?.length) return;
 
     try {
-      // Fetch schema for primary database
+      // Fetch schemas for ALL connected databases
+      const schemaMap = {};
+      for (const dbId of pageConfig.databaseIds) {
+        try {
+          const dbSchema = await detectSchema(user.workerUrl, user.notionKey, dbId);
+          schemaMap[dbId] = dbSchema;
+        } catch (err) {
+          console.warn(`Schema fetch failed for ${dbId}:`, err.message);
+        }
+      }
+      setSchemas(schemaMap);
+
+      // Use primary database schema as the main schema (backward compat)
       const primaryDbId = pageConfig.databaseIds[0];
-      const dbSchema = await detectSchema(user.workerUrl, user.notionKey, primaryDbId);
-      setSchema(dbSchema);
+      setSchema(schemaMap[primaryDbId] || null);
 
       // Fetch data from all databases
       const allData = [];
@@ -322,6 +336,7 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
           views={viewsToRender}
           data={data}
           schema={schema}
+          schemas={schemas}
           onUpdate={handleUpdate}
           onRefresh={fetchData}
           onCreate={handleCreate}

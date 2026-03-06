@@ -263,6 +263,29 @@ export async function createSubpage(workerUrl, notionKey, parentPageId, title, c
 }
 
 /**
+ * Search for databases accessible to the integration.
+ * @param {string} query - Optional search query
+ * @returns {Array} Array of database objects
+ */
+export async function searchDatabases(workerUrl, notionKey, query = "") {
+  const res = await fetch(`${workerUrl}/search`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${notionKey}`,
+    },
+    body: JSON.stringify({
+      query,
+      filter: { value: "database", property: "object" },
+      page_size: 50,
+    }),
+  });
+  if (!res.ok) throw new Error(`Search failed (${res.status})`);
+  const data = await res.json();
+  return (data.results || []).filter((r) => r.object === "database" && !r.archived);
+}
+
+/**
  * Post a notification to the Notifications database.
  */
 export async function postNotification(workerUrl, notionKey, notifDbId, { message, type = "notification", source = "wasabi" }) {

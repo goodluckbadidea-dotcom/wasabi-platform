@@ -99,10 +99,36 @@ export const PHASE_COLORS = {
   shipping:   { color: "#2A6B38", bg: "#E6F4E9" },
 };
 
+// ── Wasabi Color Palette ──
+// 10 solid-fill colors reinterpreting Notion's palette.
+export const WASABI_COLORS = {
+  default:  { fill: "#6B7280", text: "#fff" },
+  gray:     { fill: "#9CA3AF", text: "#fff" },
+  brown:    { fill: "#92704F", text: "#fff" },
+  orange:   { fill: "#FF6B35", text: "#fff" },
+  yellow:   { fill: "#F5B724", text: "#1A1812" },
+  green:    { fill: "#7DC143", text: "#fff" },
+  blue:     { fill: "#3B82F6", text: "#fff" },
+  purple:   { fill: "#8B6FBE", text: "#fff" },
+  pink:     { fill: "#E87CA0", text: "#fff" },
+  red:      { fill: "#E05252", text: "#fff" },
+};
+
+/** Map a Notion color name → Wasabi fill color */
+export function notionColorToWasabi(notionColor) {
+  const entry = WASABI_COLORS[notionColor];
+  return entry ? entry.fill : WASABI_COLORS.default.fill;
+}
+
+/** Get the full Wasabi color entry (fill + text) for a Notion color */
+export function getWasabiColor(notionColor) {
+  return WASABI_COLORS[notionColor] || WASABI_COLORS.default;
+}
+
 // Generic select option colors (for auto-coloring select fields)
 export const SELECT_PALETTE = [
-  "#7DC143", "#5B9CF6", "#FF8C42", "#E87CA0", "#A78BFA",
-  "#FBBF24", "#2A6B38", "#FF4800", "#8B6FBE", "#2A7A7A",
+  "#7DC143", "#3B82F6", "#FF6B35", "#E87CA0", "#8B6FBE",
+  "#F5B724", "#2A6B38", "#E05252", "#92704F", "#9CA3AF",
 ];
 
 // Generate a color for a select option by index
@@ -121,4 +147,19 @@ export function getStatusColor(value, options = []) {
     hash = value.charCodeAt(i) + ((hash << 5) - hash);
   }
   return FALLBACK_COLORS[Math.abs(hash) % FALLBACK_COLORS.length];
+}
+
+/**
+ * Get a solid-fill pill style for a select/status value.
+ * Uses the Notion color from schema, falling back to palette.
+ */
+export function getSolidPillColor(value, options = [], schemaOptions = []) {
+  const opt = schemaOptions.find((o) => o.name === value);
+  if (opt?.color) {
+    const wasabi = WASABI_COLORS[opt.color];
+    if (wasabi) return wasabi;
+  }
+  const idx = options.indexOf(value);
+  const fill = idx >= 0 ? SELECT_PALETTE[idx % SELECT_PALETTE.length] : getStatusColor(value, options);
+  return { fill, text: "#fff" };
 }

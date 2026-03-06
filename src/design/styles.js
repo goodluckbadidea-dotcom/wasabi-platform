@@ -217,13 +217,13 @@ export const S = {
   },
 
   btnSecondary: {
-    background: "transparent",
-    color: C.darkMuted,
+    background: C.darkSurf2,
+    color: C.darkText,
     border: `1px solid ${C.darkBorder}`,
     borderRadius: RADIUS.pill,
     padding: "7px 18px",
     fontSize: 13,
-    fontWeight: 500,
+    fontWeight: 600,
     fontFamily: FONT,
     cursor: "pointer",
     transition: "background 0.15s, border-color 0.15s, color 0.15s",

@@ -14,10 +14,12 @@ import SummaryTiles from "./SummaryTiles.jsx";
 import ActivityFeed from "./ActivityFeed.jsx";
 import Document from "./Document.jsx";
 import NotificationFeed from "./NotificationFeed.jsx";
+import Calendar from "./Calendar.jsx";
 
 const VIEW_REGISTRY = {
   table: Table,
   gantt: Gantt,
+  calendar: Calendar,
   cardGrid: CardGrid,
   kanban: Kanban,
   charts: Charts,
