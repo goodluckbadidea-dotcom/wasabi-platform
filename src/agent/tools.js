@@ -1,0 +1,257 @@
+// ─── Wasabi Tool Definitions ───
+// Tool schemas for Claude's tool_use. Organized by agent type.
+
+// ─── SHARED TOOLS (used by multiple agents) ───
+
+const QUERY_DATABASE = {
+  name: "query_database",
+  description: "Query a Notion database with optional filters and sorts. Returns matching pages with all properties.",
+  input_schema: {
+    type: "object",
+    properties: {
+      database_id: {
+        type: "string",
+        description: "The Notion database ID to query.",
+      },
+      filter: {
+        type: "object",
+        description: "Optional Notion filter object. See Notion API docs for filter syntax.",
+      },
+      sorts: {
+        type: "array",
+        description: "Optional array of sort objects. E.g. [{property: 'Name', direction: 'ascending'}]",
+      },
+    },
+    required: ["database_id"],
+  },
+};
+
+const GET_PAGE = {
+  name: "get_page",
+  description: "Get a single Notion page by ID. Returns all properties.",
+  input_schema: {
+    type: "object",
+    properties: {
+      page_id: { type: "string", description: "The Notion page ID." },
+    },
+    required: ["page_id"],
+  },
+};
+
+const CREATE_PAGE = {
+  name: "create_page",
+  description: "Create a new page in a Notion database. Provide the database_id and a properties object.",
+  input_schema: {
+    type: "object",
+    properties: {
+      database_id: { type: "string", description: "Target database ID." },
+      properties: {
+        type: "object",
+        description: "Page properties in Notion API format. Use title, rich_text, select, number, date, checkbox, url, email, phone_number, multi_select, or relation types.",
+      },
+    },
+    required: ["database_id", "properties"],
+  },
+};
+
+const UPDATE_PAGE = {
+  name: "update_page",
+  description: "Update properties of an existing Notion page.",
+  input_schema: {
+    type: "object",
+    properties: {
+      page_id: { type: "string", description: "The page ID to update." },
+      properties: {
+        type: "object",
+        description: "Properties to update in Notion API format.",
+      },
+    },
+    required: ["page_id", "properties"],
+  },
+};
+
+const POST_NOTIFICATION = {
+  name: "post_notification",
+  description: "Post a notification to the user's notification feed. Use for alerts, summaries, or status updates.",
+  input_schema: {
+    type: "object",
+    properties: {
+      message: { type: "string", description: "The notification message." },
+      type: {
+        type: "string",
+        enum: ["notification", "alert", "summary"],
+        description: "Notification type. 'alert' for urgent, 'summary' for reports.",
+      },
+      source: { type: "string", description: "Source label (e.g. page name or automation name)." },
+    },
+    required: ["message"],
+  },
+};
+
+// ─── WASABI-ONLY TOOLS ───
+
+const CREATE_DATABASE = {
+  name: "create_database",
+  description: "Create a new Notion database. Define the schema with property names, types, and options.",
+  input_schema: {
+    type: "object",
+    properties: {
+      title: { type: "string", description: "Database title." },
+      schema: {
+        type: "array",
+        description: "Array of field definitions. Each has: name (string), type (title|rich_text|number|select|status|multi_select|date|checkbox|url|email|phone_number|relation), and optional 'options' (for select/multi_select/status) or 'format' (for number).",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            type: { type: "string" },
+            options: { type: "array", items: { type: "string" } },
+            format: { type: "string" },
+          },
+          required: ["name", "type"],
+        },
+      },
+    },
+    required: ["title", "schema"],
+  },
+};
+
+const DETECT_SCHEMA = {
+  name: "detect_schema",
+  description: "Analyze a Notion database's schema. Returns all property names, types, options, and suggests which views would work well.",
+  input_schema: {
+    type: "object",
+    properties: {
+      database_id: { type: "string", description: "The database ID to analyze." },
+    },
+    required: ["database_id"],
+  },
+};
+
+const CREATE_PAGE_CONFIG = {
+  name: "create_page_config",
+  description: "Create a new page in the Wasabi platform. Defines the page name, icon, connected databases, views layout, and agent configuration.",
+  input_schema: {
+    type: "object",
+    properties: {
+      name: { type: "string", description: "Page display name." },
+      icon: { type: "string", description: "Page icon emoji." },
+      databaseIds: {
+        type: "array",
+        items: { type: "string" },
+        description: "Connected Notion database IDs.",
+      },
+      views: {
+        type: "array",
+        description: "Views to display. Each has: type (table|gantt|cardGrid|kanban|charts|form|summaryTiles|activityFeed|document|notificationFeed|chat), position (main|sidebar|bottom), and config (view-specific settings).",
+        items: {
+          type: "object",
+          properties: {
+            type: { type: "string" },
+            position: { type: "string" },
+            config: { type: "object" },
+          },
+          required: ["type"],
+        },
+      },
+      agentPrompt: {
+        type: "string",
+        description: "Custom system prompt for this page's agent. Describe its role and knowledge.",
+      },
+    },
+    required: ["name", "databaseIds", "views"],
+  },
+};
+
+const UPDATE_KNOWLEDGE_BASE = {
+  name: "update_knowledge_base",
+  description: "Write an entry to Wasabi's knowledge base for persistent memory. Always ask the user for permission first.",
+  input_schema: {
+    type: "object",
+    properties: {
+      key: { type: "string", description: "Unique key for this knowledge entry." },
+      category: {
+        type: "string",
+        enum: ["page_config", "user_preference", "business_context", "learned_pattern", "database_schema"],
+        description: "Category of knowledge.",
+      },
+      content: { type: "string", description: "The knowledge content to store." },
+    },
+    required: ["key", "category", "content"],
+  },
+};
+
+const SEARCH_KNOWLEDGE_BASE = {
+  name: "search_knowledge_base",
+  description: "Search Wasabi's knowledge base for relevant context. Use before answering questions to check for stored preferences or patterns.",
+  input_schema: {
+    type: "object",
+    properties: {
+      query: { type: "string", description: "Search query text." },
+      category: {
+        type: "string",
+        enum: ["page_config", "user_preference", "business_context", "learned_pattern", "database_schema"],
+        description: "Optional category filter.",
+      },
+    },
+    required: ["query"],
+  },
+};
+
+// ─── PAGE AGENT TOOLS ───
+
+const ESCALATE_TO_WASABI = {
+  name: "escalate_to_wasabi",
+  description: "Escalate to the Wasabi global agent when the task is outside your scope (e.g. creating new databases, modifying page config, cross-database operations).",
+  input_schema: {
+    type: "object",
+    properties: {
+      reason: { type: "string", description: "Why you need to escalate." },
+      context_summary: {
+        type: "string",
+        description: "Summary of the conversation so far so Wasabi has context.",
+      },
+    },
+    required: ["reason", "context_summary"],
+  },
+};
+
+// ─── AUTOMATION TOOLS ───
+
+// AUTO_TOOLS uses only: query_database + post_notification (defined above)
+
+// ─── TOOL SETS ───
+
+export const WASABI_TOOLS = [
+  QUERY_DATABASE,
+  GET_PAGE,
+  CREATE_PAGE,
+  UPDATE_PAGE,
+  CREATE_DATABASE,
+  DETECT_SCHEMA,
+  CREATE_PAGE_CONFIG,
+  UPDATE_KNOWLEDGE_BASE,
+  SEARCH_KNOWLEDGE_BASE,
+  POST_NOTIFICATION,
+];
+
+export const PAGE_TOOLS = [
+  QUERY_DATABASE,
+  GET_PAGE,
+  CREATE_PAGE,
+  UPDATE_PAGE,
+  POST_NOTIFICATION,
+  ESCALATE_TO_WASABI,
+];
+
+export const AUTO_TOOLS = [
+  QUERY_DATABASE,
+  POST_NOTIFICATION,
+];
+
+export const SYSTEM_TOOLS = [
+  QUERY_DATABASE,
+  GET_PAGE,
+  SEARCH_KNOWLEDGE_BASE,
+  UPDATE_KNOWLEDGE_BASE,
+];
