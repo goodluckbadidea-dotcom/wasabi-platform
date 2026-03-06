@@ -1,5 +1,5 @@
 // ─── Reusable Side Drawer ───
-// Slide-in panel from left or right. Used for detail views, settings, batch queue.
+// Slide-in panel from left or right. Used for detail views, settings, log.
 
 import React, { useEffect } from "react";
 import { C, RADIUS } from "../design/tokens.js";
@@ -41,8 +41,8 @@ export default function Drawer({
         style={{
           ...S.drawer,
           width,
-          borderLeft: side === "right" ? `1px solid ${C.border}` : "none",
-          borderRight: side === "left" ? `1px solid ${C.border}` : "none",
+          borderLeft: side === "right" ? `1px solid ${C.edgeLine}` : "none",
+          borderRight: side === "left" ? `1px solid ${C.edgeLine}` : "none",
           animation: side === "right" ? ANIM.drawerSlide : ANIM.drawerSlideLeft,
         }}
       >
@@ -52,7 +52,7 @@ export default function Drawer({
           alignItems: "center",
           justifyContent: "space-between",
           padding: "16px 20px",
-          borderBottom: `1px solid ${C.border}`,
+          borderBottom: `1px solid ${C.edgeLine}`,
           flexShrink: 0,
         }}>
           <h2 style={S.h2}>{title}</h2>
@@ -62,7 +62,7 @@ export default function Drawer({
               background: "transparent",
               border: "none",
               cursor: "pointer",
-              color: C.muted,
+              color: C.darkMuted,
               fontSize: 20,
               width: 32,
               height: 32,
@@ -72,7 +72,7 @@ export default function Drawer({
               borderRadius: RADIUS.md,
               transition: "background 0.15s",
             }}
-            onMouseEnter={(e) => { e.target.style.background = C.surface; }}
+            onMouseEnter={(e) => { e.target.style.background = C.darkSurf2; }}
             onMouseLeave={(e) => { e.target.style.background = "transparent"; }}
           >
             ×

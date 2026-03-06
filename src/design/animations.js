@@ -78,6 +78,16 @@ const KEYFRAMES = `
   0%   { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
+
+@keyframes navDrop {
+  from { opacity: 0; transform: translateX(-50%) translateY(-6px) scale(0.96); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+}
+
+@keyframes panelSlideIn {
+  from { width: 0; opacity: 0; }
+  to   { opacity: 1; }
+}
 `;
 
 let injected = false;
@@ -111,4 +121,6 @@ export const ANIM = {
   coordPulse:  "coordPulse 3s ease-in-out infinite",
   slideUp:     (delay = 0) => `slideUp 0.3s ease ${delay}s both`,
   scaleIn:     (delay = 0) => `scaleIn 0.2s ease ${delay}s both`,
+  navDrop:     "navDrop 0.18s cubic-bezier(0.16,1,0.3,1)",
+  panelSlideIn: "panelSlideIn 0.25s cubic-bezier(0.4,0,0.2,1)",
 };

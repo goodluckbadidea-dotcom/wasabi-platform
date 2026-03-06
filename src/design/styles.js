@@ -1,5 +1,5 @@
 // ─── Wasabi Platform Shared Styles ───
-// Dark chrome + warm content areas. Ported from production-pm-agent.jsx S object.
+// Full dark theme throughout. Matches original Wasabi production app.
 
 import { C, FONT, MONO, RADIUS, SHADOW } from "./tokens.js";
 
@@ -10,7 +10,7 @@ export const S = {
     height: "100vh",
     width: "100vw",
     fontFamily: FONT,
-    color: C.text,
+    color: C.darkText,
     background: C.dark,
     overflow: "hidden",
   },
@@ -69,7 +69,7 @@ export const S = {
     flex: 1,
     display: "flex",
     flexDirection: "column",
-    background: C.bg,
+    background: C.dark,
     overflow: "hidden",
     position: "relative",
   },
@@ -81,15 +81,15 @@ export const S = {
     display: "flex",
     alignItems: "center",
     padding: "0 20px",
-    borderBottom: `1px solid ${C.border}`,
-    background: C.white,
+    borderBottom: `1px solid ${C.edgeLine}`,
+    background: C.dark,
     gap: 12,
   },
 
   headerTitle: {
     fontSize: 15,
     fontWeight: 600,
-    color: C.text,
+    color: C.darkText,
     letterSpacing: "-0.01em",
   },
 
@@ -129,12 +129,12 @@ export const S = {
   },
 
   bubbleUser: {
-    background: C.surface,
+    background: C.darkSurf2,
     borderRadius: 18,
     padding: "10px 16px",
     fontSize: 14,
     lineHeight: 1.55,
-    color: C.text,
+    color: C.darkText,
     maxWidth: "85%",
     marginLeft: "auto",
   },
@@ -143,7 +143,7 @@ export const S = {
     background: "transparent",
     fontSize: 14,
     lineHeight: 1.65,
-    color: C.text,
+    color: C.darkText,
     flex: 1,
   },
 
@@ -153,18 +153,18 @@ export const S = {
     alignItems: "flex-end",
     gap: 8,
     padding: "12px 20px 16px",
-    borderTop: `1px solid ${C.border}`,
-    background: C.white,
+    borderTop: `1px solid ${C.edgeLine}`,
+    background: C.dark,
   },
 
   inputWrap: {
     flex: 1,
     display: "flex",
     alignItems: "flex-end",
-    background: C.surface,
+    background: C.darkSurf,
     borderRadius: 22,
     padding: "8px 16px",
-    border: `1px solid ${C.border}`,
+    border: `1px solid ${C.darkBorder}`,
     transition: "border-color 0.15s, box-shadow 0.15s",
     minHeight: 44,
   },
@@ -182,7 +182,7 @@ export const S = {
     fontFamily: FONT,
     fontSize: 14,
     lineHeight: 1.5,
-    color: C.text,
+    color: C.darkText,
     resize: "none",
     minHeight: 24,
     maxHeight: 140,
@@ -218,8 +218,8 @@ export const S = {
 
   btnSecondary: {
     background: "transparent",
-    color: C.textMid,
-    border: `1px solid ${C.border}`,
+    color: C.darkMuted,
+    border: `1px solid ${C.darkBorder}`,
     borderRadius: RADIUS.pill,
     padding: "7px 18px",
     fontSize: 13,
@@ -231,7 +231,7 @@ export const S = {
 
   btnGhost: {
     background: "transparent",
-    color: C.textMid,
+    color: C.darkMuted,
     border: "none",
     borderRadius: RADIUS.md,
     padding: "6px 12px",
@@ -258,17 +258,15 @@ export const S = {
 
   // ─── Cards ───
   card: {
-    background: C.white,
+    background: C.darkSurf,
     borderRadius: RADIUS.xl,
-    border: `1px solid ${C.border}`,
+    border: `1px solid ${C.darkBorder}`,
     padding: 16,
-    boxShadow: SHADOW.card,
-    transition: "box-shadow 0.15s, border-color 0.15s",
+    transition: "border-color 0.15s",
   },
 
   cardHover: {
-    boxShadow: SHADOW.cardHover,
-    borderColor: C.border2,
+    borderColor: C.accent + "66",
   },
 
   // ─── Tables ───
@@ -285,8 +283,8 @@ export const S = {
     fontWeight: 600,
     textTransform: "uppercase",
     letterSpacing: "0.06em",
-    color: C.muted,
-    borderBottom: `1px solid ${C.border}`,
+    color: C.darkMuted,
+    borderBottom: `1px solid ${C.darkBorder}`,
     whiteSpace: "nowrap",
     cursor: "pointer",
     userSelect: "none",
@@ -294,40 +292,41 @@ export const S = {
 
   td: {
     padding: "10px 12px",
-    borderBottom: `1px solid ${C.border}`,
-    color: C.text,
+    borderBottom: `1px solid ${C.edgeLine}`,
+    color: C.darkText,
     verticalAlign: "middle",
   },
 
   trHover: {
-    background: C.surface + "88",
+    background: C.darkSurf + "88",
   },
 
   // ─── Status Pill ───
   pill: (color) => ({
-    display: "inline-block",
-    color: color,
-    background: color + "18",
-    border: `1px solid ${color}40`,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    color: "#fff",
+    background: color,
     borderRadius: RADIUS.pill,
-    padding: "2px 10px",
+    padding: "3px 10px",
     fontSize: 10,
     fontWeight: 600,
     textTransform: "uppercase",
-    letterSpacing: "0.08em",
+    letterSpacing: "0.04em",
     lineHeight: 1.6,
     whiteSpace: "nowrap",
   }),
 
   // ─── Inputs ───
   input: {
-    background: C.surface,
-    border: `1px solid ${C.border}`,
+    background: C.darkSurf,
+    border: `1px solid ${C.darkBorder}`,
     borderRadius: RADIUS.md,
     padding: "8px 12px",
     fontSize: 13,
     fontFamily: FONT,
-    color: C.text,
+    color: C.darkText,
     outline: "none",
     transition: "border-color 0.15s, box-shadow 0.15s",
     width: "100%",
@@ -351,13 +350,13 @@ export const S = {
   },
 
   select: {
-    background: C.surface,
-    border: `1px solid ${C.border}`,
+    background: C.darkSurf,
+    border: `1px solid ${C.darkBorder}`,
     borderRadius: RADIUS.md,
     padding: "8px 12px",
     fontSize: 13,
     fontFamily: FONT,
-    color: C.text,
+    color: C.darkText,
     outline: "none",
     cursor: "pointer",
     appearance: "none",
@@ -368,7 +367,7 @@ export const S = {
   overlay: {
     position: "fixed",
     inset: 0,
-    background: "rgba(0,0,0,0.45)",
+    background: "rgba(0,0,0,0.55)",
     zIndex: 100,
     display: "flex",
     alignItems: "stretch",
@@ -378,8 +377,8 @@ export const S = {
   drawer: {
     width: 480,
     maxWidth: "92vw",
-    background: C.white,
-    borderLeft: `1px solid ${C.border}`,
+    background: C.darkSurf,
+    borderLeft: `1px solid ${C.darkBorder}`,
     display: "flex",
     flexDirection: "column",
     boxShadow: SHADOW.dropdown,
@@ -407,7 +406,7 @@ export const S = {
     fontSize: 22,
     fontWeight: 700,
     letterSpacing: "-0.02em",
-    color: C.text,
+    color: C.darkText,
     lineHeight: 1.3,
   },
 
@@ -415,14 +414,14 @@ export const S = {
     fontSize: 17,
     fontWeight: 600,
     letterSpacing: "-0.01em",
-    color: C.text,
+    color: C.darkText,
     lineHeight: 1.35,
   },
 
   h3: {
     fontSize: 14,
     fontWeight: 600,
-    color: C.text,
+    color: C.darkText,
     lineHeight: 1.4,
   },
 
@@ -431,13 +430,13 @@ export const S = {
     fontWeight: 600,
     textTransform: "uppercase",
     letterSpacing: "0.06em",
-    color: C.muted,
+    color: C.darkMuted,
     marginBottom: 4,
   },
 
   caption: {
     fontSize: 12,
-    color: C.muted,
+    color: C.darkMuted,
     lineHeight: 1.4,
   },
 
@@ -445,16 +444,16 @@ export const S = {
   code: {
     fontFamily: MONO,
     fontSize: 12,
-    background: C.surfaceAlt,
+    background: C.darkSurf2,
     borderRadius: RADIUS.sm,
     padding: "2px 6px",
-    color: C.textMid,
+    color: C.darkMuted,
   },
 
   codeBlock: {
     fontFamily: MONO,
     fontSize: 12,
-    background: C.dark,
+    background: "#111111",
     color: C.darkText,
     borderRadius: RADIUS.lg,
     padding: "14px 18px",
@@ -466,7 +465,7 @@ export const S = {
   // ─── Divider ───
   divider: {
     height: 1,
-    background: C.border,
+    background: C.edgeLine,
     margin: "12px 0",
     border: "none",
   },
@@ -479,7 +478,7 @@ export const S = {
     justifyContent: "center",
     padding: 48,
     gap: 12,
-    color: C.muted,
+    color: C.darkMuted,
     fontSize: 14,
     textAlign: "center",
   },
@@ -489,13 +488,13 @@ export const S = {
     width: 4,
     height: 4,
     borderRadius: "50%",
-    background: C.muted,
+    background: C.darkMuted,
   }),
 
   // ─── Tooltip ───
   tooltip: {
     position: "absolute",
-    background: C.dark,
+    background: C.darkSurf2,
     color: C.darkText,
     fontSize: 11,
     padding: "4px 8px",
@@ -509,8 +508,8 @@ export const S = {
   // ─── Dropdown ───
   dropdown: {
     position: "absolute",
-    background: C.white,
-    border: `1px solid ${C.border}`,
+    background: C.darkSurf,
+    border: `1px solid ${C.darkBorder}`,
     borderRadius: RADIUS.lg,
     boxShadow: SHADOW.dropdown,
     zIndex: 150,
@@ -524,7 +523,7 @@ export const S = {
     fontSize: 13,
     cursor: "pointer",
     transition: "background 0.1s",
-    color: C.text,
+    color: C.darkText,
     border: "none",
     background: "transparent",
     width: "100%",
@@ -533,6 +532,6 @@ export const S = {
   },
 
   dropdownItemHover: {
-    background: C.surface,
+    background: C.darkSurf2,
   },
 };

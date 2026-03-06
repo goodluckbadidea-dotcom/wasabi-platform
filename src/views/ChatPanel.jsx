@@ -1,5 +1,6 @@
 // ─── Chat Panel (Page Agent) ───
 // Scoped chat for a page's agent. Handles escalation to Wasabi.
+// No emojis — all SVG icons.
 
 import React, { useState, useCallback, useRef } from "react";
 import ChatUI from "../core/ChatUI.jsx";
@@ -9,6 +10,8 @@ import { PAGE_TOOLS, WASABI_TOOLS } from "../agent/tools.js";
 import { buildPageAgentPrompt, buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createPageToolExecutor, createToolExecutor } from "../agent/toolExecutor.js";
 import { C } from "../design/tokens.js";
+import WasabiFlame from "../core/WasabiFlame.jsx";
+import { IconPage } from "../design/icons.jsx";
 
 export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
   const { user, platformIds, addPage } = usePlatform();
@@ -88,7 +91,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
                 setCurrentAgent("wasabi");
                 setDisplayMessages((prev) => [
                   ...prev,
-                  { role: "system", content: `🌿 Wasabi is stepping in to help. Reason: ${parsed.reason}` },
+                  { role: "system", content: `Wasabi is stepping in to help. Reason: ${parsed.reason}` },
                 ]);
               }
             } catch {}
@@ -127,9 +130,9 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
   }, [handleSend]);
 
   const agentIcon = currentAgent === "wasabi" ? (
-    <span style={{ fontSize: 14 }}>🌿</span>
+    <WasabiFlame size={16} />
   ) : (
-    <span style={{ fontSize: 14 }}>{pageConfig.icon || "📄"}</span>
+    <IconPage size={14} color={C.darkMuted} />
   );
 
   return (
@@ -137,27 +140,31 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
       {/* Agent indicator */}
       <div style={{
         padding: "8px 16px",
-        borderBottom: `1px solid ${C.border}`,
+        borderBottom: `1px solid ${C.darkBorder}`,
         fontSize: 11,
-        color: C.muted,
+        color: C.darkMuted,
         display: "flex",
         alignItems: "center",
         gap: 6,
-        background: C.white,
+        background: C.darkSurf,
       }}>
-        {currentAgent === "wasabi" ? "🌿 Wasabi" : `${pageConfig.icon || "📄"} ${pageConfig.name}`}
+        {currentAgent === "wasabi" ? (
+          <><WasabiFlame size={14} /> <span>Wasabi</span></>
+        ) : (
+          <><IconPage size={12} color={C.darkMuted} /> <span>{pageConfig.name}</span></>
+        )}
         {currentAgent === "wasabi" && (
           <button
             onClick={() => setCurrentAgent("page")}
             style={{
               marginLeft: "auto",
               background: "transparent",
-              border: `1px solid ${C.border}`,
+              border: `1px solid ${C.darkBorder}`,
               borderRadius: 999,
               padding: "2px 10px",
               fontSize: 10,
               cursor: "pointer",
-              color: C.muted,
+              color: C.darkMuted,
               fontFamily: "inherit",
             }}
           >

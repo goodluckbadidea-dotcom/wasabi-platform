@@ -34,7 +34,7 @@ export async function loadPageConfigs(workerUrl, notionKey, configDbId) {
 
   const configs = results.map((page) => {
     const name = page.properties?.Name?.title?.map((t) => t.plain_text).join("") || "Untitled";
-    const icon = page.properties?.Icon?.rich_text?.map((t) => t.plain_text).join("") || "📄";
+    const icon = page.properties?.Icon?.rich_text?.map((t) => t.plain_text).join("") || "page";
     const configStr = page.properties?.Config?.rich_text?.map((t) => t.plain_text).join("") || "{}";
     const parentId = page.properties?.ParentPage?.rich_text?.map((t) => t.plain_text).join("") || null;
 
@@ -79,7 +79,7 @@ export async function savePageConfig(workerUrl, notionKey, configDbId, pageConfi
     // Update existing
     await updatePage(workerUrl, notionKey, id, {
       Name: { title: [{ type: "text", text: { content: name } }] },
-      Icon: { rich_text: [{ type: "text", text: { content: icon || "📄" } }] },
+      Icon: { rich_text: [{ type: "text", text: { content: icon || "page" } }] },
       Config: { rich_text: [{ type: "text", text: { content: configStr } }] },
       ParentPage: { rich_text: [{ type: "text", text: { content: parentId || "" } }] },
       Active: { checkbox: true },
@@ -90,7 +90,7 @@ export async function savePageConfig(workerUrl, notionKey, configDbId, pageConfi
   // Create new
   const page = await createPage(workerUrl, notionKey, configDbId, {
     Name: { title: [{ type: "text", text: { content: name } }] },
-    Icon: { rich_text: [{ type: "text", text: { content: icon || "📄" } }] },
+    Icon: { rich_text: [{ type: "text", text: { content: icon || "page" } }] },
     Config: { rich_text: [{ type: "text", text: { content: configStr } }] },
     ParentPage: { rich_text: [{ type: "text", text: { content: parentId || "" } }] },
     Active: { checkbox: true },

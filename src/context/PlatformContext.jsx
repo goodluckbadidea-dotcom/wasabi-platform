@@ -35,7 +35,7 @@ export function PlatformProvider({ children }) {
   const [pages, setPages] = useState(() => loadCachedConfigs());
   const [activePage, setActivePage] = useState(null); // page id, "wasabi", "system", or null (onboarding)
 
-  // ─── Global batch queue ───
+  // ─── Global log (formerly batch queue) ───
   const [batchQueue, setBatchQueue] = useState([]);
 
   // ─── Loading states ───
@@ -144,7 +144,7 @@ export function PlatformProvider({ children }) {
     updatePageConfig,
     removePage,
 
-    // Batch queue
+    // Log (batch queue)
     batchQueue,
     addToQueue,
     updateQueueItem,

@@ -6,7 +6,29 @@ import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { testConnection } from "../notion/client.js";
+import WasabiFlame from "./WasabiFlame.jsx";
 import { runFirstTimeSetup, isSetupComplete } from "../config/setup.js";
+
+/**
+ * Extract a Notion page ID from a URL or raw ID string.
+ * Supports: full URLs, UUIDs with/without dashes, or short hex IDs at the end of a URL.
+ */
+function extractPageId(input) {
+  const s = (input || "").trim();
+  // Already a UUID with dashes
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)) return s;
+  // UUID without dashes
+  if (/^[0-9a-f]{32}$/i.test(s)) {
+    return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+  }
+  // URL — grab the last 32-hex-char block (with or without dashes)
+  const match = s.match(/([0-9a-f]{32})/i) || s.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+  if (match) {
+    const raw = match[1].replace(/-/g, "");
+    return `${raw.slice(0,8)}-${raw.slice(8,12)}-${raw.slice(12,16)}-${raw.slice(16,20)}-${raw.slice(20)}`;
+  }
+  return null;
+}
 
 export default function SetupWizard() {
   const { setUserKeys, setPlatformIds, setIsLoading } = usePlatform();
@@ -14,6 +36,7 @@ export default function SetupWizard() {
   const [workerUrl, setWorkerUrl] = useState("");
   const [notionKey, setNotionKey] = useState("");
   const [claudeKey, setClaudeKey] = useState("");
+  const [parentPage, setParentPage] = useState("");
   const [step, setStep] = useState("keys"); // "keys" | "connecting" | "setting-up" | "error"
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
@@ -22,9 +45,15 @@ export default function SetupWizard() {
     const url = workerUrl.trim().replace(/\/$/, "");
     const notion = notionKey.trim();
     const claude = claudeKey.trim();
+    const parentId = extractPageId(parentPage);
 
     if (!url || !notion || !claude) {
-      setError("All three fields are required.");
+      setError("Worker URL, Notion key, and Claude key are required.");
+      return;
+    }
+
+    if (!parentId) {
+      setError("Please paste a valid Notion page URL or ID. This page will contain Wasabi's workspace.");
       return;
     }
 
@@ -48,8 +77,8 @@ export default function SetupWizard() {
       const keys = { workerUrl: url, notionKey: notion, claudeKey: claude };
       setUserKeys(keys);
 
-      // Run first-time setup (creates Notion databases)
-      const ids = await runFirstTimeSetup(url, notion);
+      // Run first-time setup under the user's chosen parent page
+      const ids = await runFirstTimeSetup(url, notion, parentId);
       setPlatformIds(ids);
 
       setStatus("Done!");
@@ -58,7 +87,7 @@ export default function SetupWizard() {
       setError(`Setup failed: ${err.message}`);
       setStep("keys");
     }
-  }, [workerUrl, notionKey, claudeKey, setUserKeys, setPlatformIds]);
+  }, [workerUrl, notionKey, claudeKey, parentPage, setUserKeys, setPlatformIds]);
 
   const inputStyle = {
     ...S.input,
@@ -93,7 +122,7 @@ export default function SetupWizard() {
       }}>
         {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🌿</div>
+          <div style={{ marginBottom: 12 }}><WasabiFlame size={48} /></div>
           <h1 style={{ fontSize: 24, fontWeight: 700, color: C.darkText, letterSpacing: "-0.02em" }}>
             Wasabi
           </h1>
@@ -144,6 +173,24 @@ export default function SetupWizard() {
               style={inputStyle}
               disabled={isConnecting}
             />
+          </div>
+
+          <div>
+            <label style={{ ...S.label, color: C.darkMuted, display: "block", marginBottom: 6 }}>
+              Notion Parent Page
+            </label>
+            <input
+              type="text"
+              value={parentPage}
+              onChange={(e) => setParentPage(e.target.value)}
+              placeholder="Paste any Notion page URL"
+              style={inputStyle}
+              disabled={isConnecting}
+            />
+            <p style={{ fontSize: 11, color: C.darkMuted, marginTop: 4, lineHeight: 1.4 }}>
+              Wasabi creates its workspace under this page.
+              Share it with your Notion integration first.
+            </p>
           </div>
 
           {error && (

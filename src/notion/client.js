@@ -213,8 +213,11 @@ export async function testConnection(workerUrl, notionKey) {
  * Create a page as a child of another page (not in a database).
  */
 export async function createSubpage(workerUrl, notionKey, parentPageId, title, children) {
+  const parent = parentPageId
+    ? { type: "page_id", page_id: parentPageId }
+    : { type: "workspace", workspace: true };
   const body = {
-    parent: { type: "page_id", page_id: parentPageId },
+    parent,
     properties: {
       title: { title: [{ type: "text", text: { content: title } }] },
     },

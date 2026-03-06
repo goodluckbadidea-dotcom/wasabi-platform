@@ -73,7 +73,7 @@ export function renderMarkdown(text) {
             fontSize: sizes[level],
             fontWeight: level === 1 ? 700 : 600,
             letterSpacing: "-0.01em",
-            color: C.text,
+            color: C.darkText,
             margin: `${level === 1 ? 16 : 12}px 0 6px`,
             lineHeight: 1.35,
           },
@@ -97,7 +97,7 @@ export function renderMarkdown(text) {
             borderLeft: `3px solid ${C.accent}`,
             paddingLeft: 14,
             margin: "8px 0",
-            color: C.textMid,
+            color: C.darkMuted,
             fontSize: 13,
             lineHeight: 1.6,
           },
@@ -120,7 +120,7 @@ export function renderMarkdown(text) {
         }, listItems.map((item, j) =>
           React.createElement("li", {
             key: j,
-            style: { marginBottom: 3, color: C.text },
+            style: { marginBottom: 3, color: C.darkText },
           }, renderInline(item))
         ))
       );
@@ -141,7 +141,7 @@ export function renderMarkdown(text) {
         }, listItems.map((item, j) =>
           React.createElement("li", {
             key: j,
-            style: { marginBottom: 3, color: C.text },
+            style: { marginBottom: 3, color: C.darkText },
           }, renderInline(item))
         ))
       );
@@ -153,7 +153,7 @@ export function renderMarkdown(text) {
       elements.push(
         React.createElement("hr", {
           key: elements.length,
-          style: { border: "none", height: 1, background: C.border, margin: "14px 0" },
+          style: { border: "none", height: 1, background: C.darkBorder, margin: "14px 0" },
         })
       );
       i++;
@@ -170,7 +170,7 @@ export function renderMarkdown(text) {
     elements.push(
       React.createElement("p", {
         key: elements.length,
-        style: { margin: "4px 0", fontSize: 14, lineHeight: 1.65, color: C.text },
+        style: { margin: "4px 0", fontSize: 14, lineHeight: 1.65, color: C.darkText },
       }, renderInline(line))
     );
     i++;
@@ -214,10 +214,10 @@ function renderInline(text) {
           style: {
             fontFamily: MONO,
             fontSize: 12,
-            background: C.surfaceAlt,
+            background: C.darkSurf2,
             borderRadius: RADIUS.sm,
             padding: "2px 6px",
-            color: C.textMid,
+            color: C.darkMuted,
           },
         }, match[4])
       );
@@ -272,7 +272,7 @@ function renderTable(lines, key) {
       overflowX: "auto",
       margin: "8px 0",
       borderRadius: RADIUS.lg,
-      border: `1px solid ${C.border}`,
+      border: `1px solid ${C.darkBorder}`,
     },
   },
     React.createElement("table", {
@@ -290,9 +290,9 @@ function renderTable(lines, key) {
                 fontWeight: 600,
                 textTransform: "uppercase",
                 letterSpacing: "0.06em",
-                color: C.muted,
-                borderBottom: `1px solid ${C.border}`,
-                background: C.surface,
+                color: C.darkMuted,
+                borderBottom: `1px solid ${C.darkBorder}`,
+                background: C.darkSurf,
                 whiteSpace: "nowrap",
               },
             }, h)
@@ -307,8 +307,8 @@ function renderTable(lines, key) {
                 key: j,
                 style: {
                   padding: "8px 12px",
-                  borderBottom: `1px solid ${C.border}`,
-                  color: C.text,
+                  borderBottom: `1px solid ${C.darkBorder}`,
+                  color: C.darkText,
                 },
               }, renderInline(cell))
             )

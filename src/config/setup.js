@@ -38,9 +38,9 @@ const CONFIG_SCHEMA = [
  * Run first-time setup: create all platform databases in user's Notion.
  * Returns the platform DB IDs.
  */
-export async function runFirstTimeSetup(workerUrl, notionKey) {
-  // 1. Create root page
-  const rootPage = await createSubpage(workerUrl, notionKey, null, "Wasabi Platform");
+export async function runFirstTimeSetup(workerUrl, notionKey, parentPageId) {
+  // 1. Create root page under user's chosen parent
+  const rootPage = await createSubpage(workerUrl, notionKey, parentPageId, "Wasabi Platform");
   const rootId = rootPage.id;
 
   // 2. Create Knowledge Base DB

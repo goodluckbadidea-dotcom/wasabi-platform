@@ -1,5 +1,6 @@
 // ─── Page Shell ───
-// Loads a page config, fetches data, renders views + chat panel.
+// Loads a page config, fetches data, renders the active view based on sidebar sub-nav.
+// The page header is now in TopHeader. This component focuses on data + view rendering.
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
@@ -11,10 +12,11 @@ import { updatePage } from "../notion/client.js";
 import { buildProp } from "../notion/properties.js";
 import ViewRenderer from "../views/ViewRenderer.jsx";
 import ChatPanel from "../views/ChatPanel.jsx";
+import { IconWarning, IconRefresh } from "../design/icons.jsx";
 
 const REFRESH_INTERVAL = 30000; // 30 seconds
 
-export default function PageShell({ pageConfig }) {
+export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
   const { user } = usePlatform();
   const [data, setData] = useState([]);
   const [schema, setSchema] = useState(null);
@@ -22,9 +24,9 @@ export default function PageShell({ pageConfig }) {
   const [error, setError] = useState(null);
   const refreshTimer = useRef(null);
 
-  // Determine if chat panel should show in sidebar
-  const hasChatView = pageConfig.views?.some((v) => v.type === "chat");
-  const nonChatViews = (pageConfig.views || []).filter((v) => v.type !== "chat");
+  // Get the active view config based on sidebar selection
+  const views = pageConfig.views || [];
+  const activeView = views[activeViewIndex] || views[0];
 
   // Fetch data from all connected databases
   const fetchData = useCallback(async () => {
@@ -65,50 +67,61 @@ export default function PageShell({ pageConfig }) {
   }, [fetchData]);
 
   // Handle inline edits from views
-  const handleUpdate = useCallback(async (pageId, propertyName, value, propertyType) => {
-    try {
-      const prop = buildProp(propertyType, value);
-      if (prop) {
-        await updatePage(user.workerUrl, user.notionKey, pageId, {
-          [propertyName]: prop,
-        });
-        // Optimistic: update local data
-        setData((prev) =>
-          prev.map((page) => {
-            if (page.id !== pageId) return page;
-            return {
-              ...page,
-              properties: {
-                ...page.properties,
-                [propertyName]: {
-                  ...page.properties[propertyName],
-                  // This is a simplified optimistic update
-                  _localValue: value,
+  const handleUpdate = useCallback(
+    async (pageId, propertyName, value, propertyType) => {
+      try {
+        const prop = buildProp(propertyType, value);
+        if (prop) {
+          await updatePage(user.workerUrl, user.notionKey, pageId, {
+            [propertyName]: prop,
+          });
+          // Optimistic: update local data
+          setData((prev) =>
+            prev.map((page) => {
+              if (page.id !== pageId) return page;
+              return {
+                ...page,
+                properties: {
+                  ...page.properties,
+                  [propertyName]: {
+                    ...page.properties[propertyName],
+                    _localValue: value,
+                  },
                 },
-              },
-            };
-          })
-        );
-        // Full refresh after write
-        setTimeout(fetchData, 500);
+              };
+            })
+          );
+          // Full refresh after write
+          setTimeout(fetchData, 500);
+        }
+      } catch (err) {
+        console.error("Update failed:", err);
       }
-    } catch (err) {
-      console.error("Update failed:", err);
-    }
-  }, [user, fetchData]);
+    },
+    [user, fetchData]
+  );
 
   if (loading && data.length === 0) {
     return (
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        height: "100%",
-        color: C.muted,
-        fontSize: 14,
-        gap: 8,
-      }}>
-        <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⟳</span>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          height: "100%",
+          color: C.darkMuted,
+          fontSize: 14,
+          gap: 8,
+        }}
+      >
+        <span
+          style={{
+            animation: "spin 1s linear infinite",
+            display: "inline-block",
+          }}
+        >
+          &#x27F3;
+        </span>
         Loading {pageConfig.name}...
       </div>
     );
@@ -116,34 +129,95 @@ export default function PageShell({ pageConfig }) {
 
   if (error && data.length === 0) {
     return (
-      <div style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        height: "100%",
-        color: C.muted,
-        fontSize: 14,
-        gap: 12,
-        padding: 40,
-      }}>
-        <span style={{ fontSize: 24 }}>⚠️</span>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          height: "100%",
+          color: C.darkMuted,
+          fontSize: 14,
+          gap: 12,
+          padding: 40,
+        }}
+      >
+        <IconWarning size={24} />
         <span>Failed to load data: {error}</span>
-        <button onClick={fetchData} style={S.btnSecondary}>Retry</button>
+        <button onClick={fetchData} style={S.btnSecondary}>
+          Retry
+        </button>
       </div>
     );
   }
 
+  // If the active view is a chat view, render ChatPanel full-screen
+  if (activeView?.type === "chat") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+        {/* Minimal header with record count + refresh */}
+        <div
+          style={{
+            height: 40,
+            minHeight: 40,
+            display: "flex",
+            alignItems: "center",
+            padding: "0 20px",
+            borderBottom: `1px solid ${C.edgeLine}`,
+            background: C.dark,
+            gap: 12,
+          }}
+        >
+          <span style={{ fontSize: 11, color: C.darkMuted }}>
+            {data.length} record{data.length !== 1 ? "s" : ""}
+          </span>
+          <div style={{ flex: 1 }} />
+          <button
+            onClick={fetchData}
+            style={{
+              ...S.btnGhost,
+              fontSize: 12,
+              padding: "4px 8px",
+            }}
+            title="Refresh"
+          >
+            <IconRefresh size={14} color={C.darkMuted} />
+          </button>
+        </div>
+
+        <ChatPanel
+          pageConfig={pageConfig}
+          schema={schema}
+          data={data}
+          onRefresh={fetchData}
+        />
+      </div>
+    );
+  }
+
+  // For non-chat views: render through ViewRenderer
+  // We pass only the active view (single view at a time, per original design)
+  const viewsToRender = activeView ? [activeView] : [];
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      {/* Page header */}
-      <div style={S.header}>
-        <span style={{ fontSize: 18 }}>{pageConfig.icon || "📄"}</span>
-        <span style={S.headerTitle}>{pageConfig.name}</span>
-        <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 11, color: C.muted }}>
+      {/* Compact header: record count + refresh */}
+      <div
+        style={{
+          height: 40,
+          minHeight: 40,
+          display: "flex",
+          alignItems: "center",
+          padding: "0 20px",
+          borderBottom: `1px solid ${C.edgeLine}`,
+          background: C.dark,
+          gap: 12,
+        }}
+      >
+        <span style={{ fontSize: 11, color: C.darkMuted }}>
           {data.length} record{data.length !== 1 ? "s" : ""}
         </span>
+        <div style={{ flex: 1 }} />
         <button
           onClick={fetchData}
           style={{
@@ -153,40 +227,19 @@ export default function PageShell({ pageConfig }) {
           }}
           title="Refresh"
         >
-          ↻
+          <IconRefresh size={14} color={C.darkMuted} />
         </button>
       </div>
 
-      {/* Content */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        {/* Views */}
-        <div style={{ flex: 1, overflow: "hidden" }}>
-          <ViewRenderer
-            views={nonChatViews}
-            data={data}
-            schema={schema}
-            onUpdate={handleUpdate}
-            onRefresh={fetchData}
-          />
-        </div>
-
-        {/* Chat sidebar */}
-        {hasChatView && (
-          <div style={{
-            width: 360,
-            minWidth: 360,
-            borderLeft: `1px solid ${C.border}`,
-            display: "flex",
-            flexDirection: "column",
-          }}>
-            <ChatPanel
-              pageConfig={pageConfig}
-              schema={schema}
-              data={data}
-              onRefresh={fetchData}
-            />
-          </div>
-        )}
+      {/* Active view */}
+      <div style={{ flex: 1, overflow: "hidden" }}>
+        <ViewRenderer
+          views={viewsToRender}
+          data={data}
+          schema={schema}
+          onUpdate={handleUpdate}
+          onRefresh={fetchData}
+        />
       </div>
     </div>
   );

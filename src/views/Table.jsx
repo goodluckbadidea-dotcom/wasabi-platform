@@ -37,8 +37,8 @@ const styles = {
     alignItems: "center",
     gap: 10,
     padding: "12px 16px",
-    borderBottom: `1px solid ${C.border}`,
-    background: C.white,
+    borderBottom: `1px solid ${C.edgeLine}`,
+    background: C.darkSurf,
     flexShrink: 0,
     flexWrap: "wrap",
   },
@@ -46,8 +46,8 @@ const styles = {
   searchWrap: {
     display: "flex",
     alignItems: "center",
-    background: C.surface,
-    border: `1px solid ${C.border}`,
+    background: C.darkSurf2,
+    border: `1px solid ${C.darkBorder}`,
     borderRadius: RADIUS.md,
     padding: "0 10px",
     flex: "1 1 200px",
@@ -64,31 +64,31 @@ const styles = {
     background: "transparent",
     fontFamily: FONT,
     fontSize: 13,
-    color: C.text,
+    color: C.darkText,
     padding: "0 6px",
     height: "100%",
   },
 
   searchIcon: {
     fontSize: 13,
-    color: C.muted,
+    color: C.darkMuted,
     flexShrink: 0,
   },
 
   filterSelect: {
-    background: C.surface,
-    border: `1px solid ${C.border}`,
+    background: C.darkSurf2,
+    border: `1px solid ${C.darkBorder}`,
     borderRadius: RADIUS.md,
     padding: "6px 10px",
     fontSize: 12,
     fontFamily: FONT,
-    color: C.textMid,
+    color: C.darkMuted,
     cursor: "pointer",
     appearance: "none",
     outline: "none",
     minWidth: 110,
     height: 34,
-    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%239A8E82'/%3E%3C/svg%3E")`,
+    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888888'/%3E%3C/svg%3E")`,
     backgroundRepeat: "no-repeat",
     backgroundPosition: "right 10px center",
     paddingRight: 28,
@@ -101,10 +101,10 @@ const styles = {
     width: 34,
     height: 34,
     borderRadius: RADIUS.md,
-    border: `1px solid ${C.border}`,
-    background: C.surface,
+    border: `1px solid ${C.darkBorder}`,
+    background: C.darkSurf2,
     cursor: "pointer",
-    color: C.muted,
+    color: C.darkMuted,
     fontSize: 14,
     transition: "background 0.15s, color 0.15s",
     flexShrink: 0,
@@ -113,7 +113,7 @@ const styles = {
 
   countLabel: {
     fontSize: 12,
-    color: C.muted,
+    color: C.darkMuted,
     marginLeft: "auto",
     whiteSpace: "nowrap",
     flexShrink: 0,
@@ -123,7 +123,7 @@ const styles = {
     flex: 1,
     overflowY: "auto",
     overflowX: "auto",
-    background: C.white,
+    background: C.darkSurf,
   },
 
   table: {
@@ -140,26 +140,26 @@ const styles = {
     fontWeight: 600,
     textTransform: "uppercase",
     letterSpacing: "0.06em",
-    color: C.muted,
-    borderBottom: `2px solid ${C.border}`,
+    color: C.darkMuted,
+    borderBottom: `2px solid ${C.darkBorder}`,
     whiteSpace: "nowrap",
     cursor: "pointer",
     userSelect: "none",
     position: "sticky",
     top: 0,
-    background: C.white,
+    background: C.darkSurf,
     zIndex: 2,
     transition: "color 0.15s",
   },
 
   thActive: {
-    color: C.text,
+    color: C.darkText,
   },
 
   td: {
     padding: "8px 12px",
-    borderBottom: `1px solid ${C.border}`,
-    color: C.text,
+    borderBottom: `1px solid ${C.edgeLine}`,
+    color: C.darkText,
     verticalAlign: "middle",
     fontSize: 13,
     lineHeight: 1.45,
@@ -172,7 +172,7 @@ const styles = {
   },
 
   rowHover: {
-    background: `${C.surface}88`,
+    background: `${C.darkSurf2}88`,
   },
 
   // Inline editing
@@ -183,8 +183,8 @@ const styles = {
     padding: "4px 8px",
     fontSize: 13,
     fontFamily: FONT,
-    color: C.text,
-    background: C.white,
+    color: C.darkText,
+    background: C.darkSurf,
     outline: "none",
     boxShadow: `0 0 0 2px ${C.accent}33`,
     boxSizing: "border-box",
@@ -197,8 +197,8 @@ const styles = {
     padding: "4px 8px",
     fontSize: 13,
     fontFamily: FONT,
-    color: C.text,
-    background: C.white,
+    color: C.darkText,
+    background: C.darkSurf,
     outline: "none",
     cursor: "pointer",
     appearance: "none",
@@ -214,7 +214,7 @@ const styles = {
     width: 18,
     height: 18,
     borderRadius: RADIUS.sm,
-    border: `2px solid ${checked ? C.accent : C.border2}`,
+    border: `2px solid ${checked ? C.accent : C.darkBorder}`,
     background: checked ? C.accent : "transparent",
     cursor: "pointer",
     transition: "all 0.15s",
@@ -254,7 +254,7 @@ const styles = {
     justifyContent: "center",
     padding: 64,
     gap: 12,
-    color: C.muted,
+    color: C.darkMuted,
     fontSize: 14,
     textAlign: "center",
     fontFamily: FONT,
@@ -269,12 +269,12 @@ const styles = {
   emptyTitle: {
     fontSize: 15,
     fontWeight: 600,
-    color: C.textMid,
+    color: C.darkMuted,
   },
 
   emptySub: {
     fontSize: 13,
-    color: C.muted,
+    color: C.darkMuted,
     maxWidth: 300,
     lineHeight: 1.5,
   },
@@ -516,7 +516,7 @@ function CellDisplay({ value, type, fieldName, schema, onClick }) {
   if (value === null || value === undefined || value === "") {
     return (
       <span
-        style={{ color: C.muted, fontSize: 12, fontStyle: "italic", cursor: onClick ? "pointer" : "default" }}
+        style={{ color: C.darkMuted, fontSize: 12, fontStyle: "italic", cursor: onClick ? "pointer" : "default" }}
         onClick={onClick}
       >
         --
@@ -594,7 +594,7 @@ function CellDisplay({ value, type, fieldName, schema, onClick }) {
   // Files
   if (type === "files" && Array.isArray(value)) {
     return (
-      <span style={{ fontSize: 13, color: C.textMid }}>
+      <span style={{ fontSize: 13, color: C.darkMuted }}>
         {value.map((f) => f.name).join(", ") || "--"}
       </span>
     );
@@ -603,7 +603,7 @@ function CellDisplay({ value, type, fieldName, schema, onClick }) {
   // Relation
   if (type === "relation" && Array.isArray(value)) {
     return (
-      <span style={{ fontSize: 12, color: C.muted }}>
+      <span style={{ fontSize: 12, color: C.darkMuted }}>
         {value.length} linked
       </span>
     );
@@ -782,8 +782,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
               style={styles.refreshBtn}
               onClick={onRefresh}
               title="Refresh data"
-              onMouseEnter={(e) => { e.currentTarget.style.background = C.surfaceAlt; e.currentTarget.style.color = C.text; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = C.surface; e.currentTarget.style.color = C.muted; }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; e.currentTarget.style.color = C.darkText; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = C.darkSurf2; e.currentTarget.style.color = C.darkMuted; }}
             >
               &#x21bb;
             </button>
@@ -799,7 +799,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
             <button
               style={{ ...S.btnSecondary, marginTop: 8 }}
               onClick={onRefresh}
-              onMouseEnter={(e) => { e.currentTarget.style.background = C.surface; }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
             >
               Refresh
@@ -835,7 +835,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           />
           {search && (
             <span
-              style={{ fontSize: 14, color: C.muted, cursor: "pointer", padding: "0 2px" }}
+              style={{ fontSize: 14, color: C.darkMuted, cursor: "pointer", padding: "0 2px" }}
               onClick={() => setSearch("")}
             >
               &#x2715;
@@ -862,8 +862,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
             style={styles.refreshBtn}
             onClick={onRefresh}
             title="Refresh data"
-            onMouseEnter={(e) => { e.currentTarget.style.background = C.surfaceAlt; e.currentTarget.style.color = C.text; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = C.surface; e.currentTarget.style.color = C.muted; }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; e.currentTarget.style.color = C.darkText; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = C.darkSurf2; e.currentTarget.style.color = C.darkMuted; }}
           >
             &#x21bb;
           </button>

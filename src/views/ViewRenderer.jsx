@@ -39,10 +39,10 @@ function ViewBlock({ viewConfig, data, schema, onUpdate, onRefresh }) {
     return (
       <div style={{
         padding: 24,
-        background: C.white,
+        background: C.darkSurf,
         borderRadius: RADIUS.xl,
-        border: `1px solid ${C.border}`,
-        color: C.muted,
+        border: `1px solid ${C.darkBorder}`,
+        color: C.darkMuted,
         fontSize: 13,
         textAlign: "center",
       }}>
@@ -102,7 +102,7 @@ export default function ViewRenderer({ views = [], data, schema, onUpdate, onRef
               alignItems: "center",
               justifyContent: "center",
               flex: 1,
-              color: C.muted,
+              color: C.darkMuted,
               fontSize: 14,
             }}>
               No views configured for this page.
@@ -115,7 +115,7 @@ export default function ViewRenderer({ views = [], data, schema, onUpdate, onRef
           <div style={{
             width: 360,
             minWidth: 360,
-            borderLeft: `1px solid ${C.border}`,
+            borderLeft: `1px solid ${C.edgeLine}`,
             overflowY: "auto",
             display: "flex",
             flexDirection: "column",
@@ -137,7 +137,7 @@ export default function ViewRenderer({ views = [], data, schema, onUpdate, onRef
       {/* Bottom views */}
       {bottomViews.length > 0 && (
         <div style={{
-          borderTop: `1px solid ${C.border}`,
+          borderTop: `1px solid ${C.edgeLine}`,
           padding: 16,
           display: "flex",
           gap: 16,

@@ -1,6 +1,7 @@
 // ─── Reusable Chat UI Component ───
 // Used by Wasabi, page agents, system manager, automation builder.
-// Claude-style centered layout with choices, file upload, and markdown rendering.
+// Centered layout with choices, file upload, and markdown rendering.
+// Full dark mode. No emojis.
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
@@ -8,6 +9,7 @@ import { S } from "../design/styles.js";
 import { ANIM, injectAnimations } from "../design/animations.js";
 import { renderMarkdown } from "../utils/markdown.js";
 import { parseFile } from "../utils/files.js";
+import { IconPaperclip } from "../design/icons.jsx";
 
 export default function ChatUI({
   messages = [],
@@ -20,6 +22,7 @@ export default function ChatUI({
   agentIcon = null, // React element (e.g. WasabiFlame)
   placeholder = "Type a message...",
   emptyState = null,
+  compact = false, // Narrow mode for panels
 }) {
   const [input, setInput] = useState("");
   const [focused, setFocused] = useState(false);
@@ -85,28 +88,44 @@ export default function ChatUI({
   }, []);
 
   const hasContent = input.trim().length > 0 || files.length > 0;
+  const maxMsgW = compact ? "100%" : 680;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: C.bg }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: C.dark }}>
       {/* Messages area */}
-      <div style={S.messages}>
+      <div style={{ ...S.messages, padding: compact ? "12px 0 8px" : "24px 0" }}>
         {messages.length === 0 && !isLoading && emptyState}
 
         {messages.map((msg, i) => (
           <div key={i} style={{
             ...S.msgOuter,
+            padding: compact ? "4px 12px" : "4px 20px",
             justifyContent: msg.role === "user" ? "flex-end" : "center",
             animation: ANIM.fadeUp(0.05),
           }}>
             {msg.role === "user" ? (
-              <div style={{ maxWidth: 680, width: "100%", display: "flex", justifyContent: "flex-end" }}>
+              <div style={{ maxWidth: maxMsgW, width: "100%", display: "flex", justifyContent: "flex-end" }}>
                 <div style={S.bubbleUser}>{msg.content}</div>
               </div>
+            ) : msg.role === "system" ? (
+              <div style={{
+                maxWidth: maxMsgW,
+                width: "100%",
+                fontSize: 12,
+                color: C.darkMuted,
+                fontStyle: "italic",
+                padding: "8px 0",
+                textAlign: "center",
+              }}>
+                {msg.content}
+              </div>
             ) : (
-              <div style={S.msgInner}>
-                <div style={S.avatarWrap}>
-                  {agentIcon || agentName.charAt(0)}
-                </div>
+              <div style={{ ...S.msgInner, maxWidth: maxMsgW }}>
+                {!compact && (
+                  <div style={S.avatarWrap}>
+                    {agentIcon || agentName.charAt(0)}
+                  </div>
+                )}
                 <div style={S.bubbleAssistant}>
                   {renderMarkdown(msg.content)}
                 </div>
@@ -117,11 +136,13 @@ export default function ChatUI({
 
         {/* Thinking indicator */}
         {isLoading && (
-          <div style={{ ...S.msgOuter, animation: ANIM.fadeUp() }}>
-            <div style={S.msgInner}>
-              <div style={S.avatarWrap}>
-                {agentIcon || agentName.charAt(0)}
-              </div>
+          <div style={{ ...S.msgOuter, animation: ANIM.fadeUp(), padding: compact ? "4px 12px" : "4px 20px" }}>
+            <div style={{ ...S.msgInner, maxWidth: maxMsgW }}>
+              {!compact && (
+                <div style={S.avatarWrap}>
+                  {agentIcon || agentName.charAt(0)}
+                </div>
+              )}
               <div style={{ display: "flex", gap: 4, padding: "12px 0", alignItems: "center" }}>
                 {[0, 1, 2].map((i) => (
                   <div key={i} style={{
@@ -138,9 +159,17 @@ export default function ChatUI({
         {choices.length > 0 && !isLoading && (
           <div style={{
             ...S.msgOuter,
+            padding: compact ? "4px 12px" : "4px 20px",
             animation: ANIM.fadeUp(0.1),
           }}>
-            <div style={{ maxWidth: 680, width: "100%", display: "flex", flexWrap: "wrap", gap: 8, padding: "4px 44px" }}>
+            <div style={{
+              maxWidth: maxMsgW,
+              width: "100%",
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              padding: compact ? "4px 0" : "4px 44px",
+            }}>
               {choices.map((choice, i) => (
                 <button
                   key={i}
@@ -171,31 +200,31 @@ export default function ChatUI({
       {/* File attachments preview */}
       {files.length > 0 && (
         <div style={{
-          padding: "8px 20px 0",
+          padding: compact ? "8px 12px 0" : "8px 20px 0",
           display: "flex",
           gap: 8,
           flexWrap: "wrap",
         }}>
           {files.map((f, i) => (
             <div key={i} style={{
-              background: C.surface,
+              background: C.darkSurf,
               borderRadius: RADIUS.md,
               padding: "4px 10px",
               fontSize: 12,
-              color: C.textMid,
+              color: C.darkMuted,
               display: "flex",
               alignItems: "center",
               gap: 6,
-              border: `1px solid ${C.border}`,
+              border: `1px solid ${C.darkBorder}`,
             }}>
-              <span>📎 {f.name}</span>
+              <span>{f.name}</span>
               <button
                 onClick={() => removeFile(i)}
                 style={{
                   background: "transparent",
                   border: "none",
                   cursor: "pointer",
-                  color: C.muted,
+                  color: C.darkMuted,
                   fontSize: 14,
                   padding: 0,
                   lineHeight: 1,
@@ -212,7 +241,8 @@ export default function ChatUI({
       <div
         style={{
           ...S.inputBox,
-          ...(dragOver ? { background: C.accentPale } : {}),
+          padding: compact ? "10px 12px 14px" : "12px 20px 16px",
+          ...(dragOver ? { background: C.darkSurf2 } : {}),
         }}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
@@ -230,7 +260,7 @@ export default function ChatUI({
                   background: "transparent",
                   border: "none",
                   cursor: "pointer",
-                  color: C.muted,
+                  color: C.darkMuted,
                   fontSize: 18,
                   padding: "0 8px 0 0",
                   display: "flex",
@@ -269,8 +299,8 @@ export default function ChatUI({
           disabled={!hasContent || isLoading}
           style={{
             ...S.sendBtn,
-            background: hasContent && !isLoading ? C.accent : C.surface,
-            color: hasContent && !isLoading ? "#fff" : C.muted,
+            background: hasContent && !isLoading ? C.accent : C.darkSurf2,
+            color: hasContent && !isLoading ? "#fff" : C.darkMuted,
             cursor: hasContent && !isLoading ? "pointer" : "default",
           }}
           title="Send"

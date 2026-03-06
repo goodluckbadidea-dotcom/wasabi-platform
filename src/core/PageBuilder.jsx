@@ -55,7 +55,7 @@ export default function PageBuilder({ initialTemplate = null, WasabiFlameIcon = 
     // Build display message
     let displayText = text;
     if (files?.length) {
-      displayText += `\n\n📎 ${files.map((f) => f.name).join(", ")}`;
+      displayText += `\n\nAttached: ${files.map((f) => f.name).join(", ")}`;
     }
 
     // Add user message to display

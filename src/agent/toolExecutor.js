@@ -105,7 +105,7 @@ export function createToolExecutor({
         const { name, icon, databaseIds, views, agentPrompt } = toolInput;
         const pageConfig = {
           name,
-          icon: icon || "📄",
+          icon: icon || "page",
           databaseIds: databaseIds || [],
           agentConfig: {
             model: "claude-haiku-4-5-20251001",
@@ -124,7 +124,7 @@ export function createToolExecutor({
         // Store config in Notion Page Config DB
         const configPage = await client.createPage(workerUrl, notionKey, configDbId, {
           Name: { title: [{ type: "text", text: { content: name } }] },
-          Icon: { rich_text: [{ type: "text", text: { content: icon || "📄" } }] },
+          Icon: { rich_text: [{ type: "text", text: { content: icon || "page" } }] },
           Config: { rich_text: [{ type: "text", text: { content: JSON.stringify(pageConfig) } }] },
         });
 
