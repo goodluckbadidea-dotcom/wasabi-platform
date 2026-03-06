@@ -7,6 +7,10 @@ export default defineConfig({
     host: true,
     port: 5173,
     strictPort: false,
+    // CodeSandbox compatibility — route HMR through their HTTPS proxy
+    hmr: {
+      clientPort: 443,
+    },
   },
   build: {
     outDir: "dist",
