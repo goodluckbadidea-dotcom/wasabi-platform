@@ -312,7 +312,7 @@ export default function Navigation({
             }}
             title="Open Wasabi"
           >
-            <WasabiFlame size={collapsed ? 22 : 24} isThinking={isThinking} />
+            <WasabiFlame size={collapsed ? 26 : 30} isThinking={isThinking} />
             {!collapsed && (
               <span
                 style={{

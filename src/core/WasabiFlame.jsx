@@ -1,9 +1,9 @@
 // ─── WasabiFlame ─────────────────────────────────────────────────────────────
 // Animated green flame character — the Wasabi platform mascot.
-// Ported from production-pm-agent.jsx (lines 11222–11531, 11636–11664).
+// Uses a fixed 56×56 viewBox (original design space). SVG scales to any `size`.
 //
 // Props:
-//   size        — SVG canvas size in px (default 80)
+//   size        — rendered SVG size in px (default 80)
 //   isThinking  — boolean, spikes energy to 0.75+
 //   energy      — optional 0–1 override for flame energy
 // ─────────────────────────────────────────────────────────────────────────────
@@ -11,19 +11,23 @@
 import React, { useRef, useEffect, useState, useMemo } from "react";
 import { C } from "../design/tokens.js";
 
+// ── Design constants (original 56×56 coordinate space) ─
+const VS = 56;
+const VH = 28;
+
 // ── Unique gradient ID factory (avoids collisions when multiple flames mount) ─
 let _flameIdCounter = 0;
 
 export default function WasabiFlame({ size = 80, isThinking = false, energy: energyOverride }) {
   const S = size;
-  const H = S / 2;
+  const scale = S / VS;
 
   // ── Refs for direct DOM manipulation (no React re-renders in RAF loop) ─────
   const svgRef          = useRef(null);
   const pathRef         = useRef(null);
   const eyeContainerRef = useRef(null);
-  const eyePosRef       = useRef({ x: 0, y: 0 });   // wander target
-  const eyeSmoothed     = useRef({ x: 0, y: 0 });   // lerped toward target
+  const eyePosRef       = useRef({ x: 0, y: 0 });
+  const eyeSmoothed     = useRef({ x: 0, y: 0 });
   const mouthRef        = useRef(null);
   const mouthSmoothed   = useRef({ x: 0, y: 0, open: 0 });
   const tongue0Ref      = useRef(null);
@@ -86,10 +90,9 @@ export default function WasabiFlame({ size = 80, isThinking = false, energy: ene
   // ── Main animation loop ────────────────────────────────────────────────────
   useEffect(() => {
     let raf;
+    const sc = scale; // capture for closure
 
-    // ── Organic multi-peak flame path ──────────────────────────────────────
-    // peaks: [{x, y, lean}]  lean in (-1,+1) — negative = leans left
-    // Asymmetric bezier handles make each peak tilt like a real flame tongue.
+    // ── Organic multi-peak flame path (56-unit coordinate space) ──────────
     const buildFlamePath = (peaks, by, flatW, cp) => {
       const lx = peaks[0].x - flatW;
       const rx = peaks[peaks.length - 1].x + flatW;
@@ -112,7 +115,6 @@ export default function WasabiFlame({ size = 80, isThinking = false, energy: ene
 
       let d = 'M ' + lx + ',' + by + ' L ' + rx + ',' + by;
 
-      // Right base corner -> rightmost peak
       const pr   = peaks[n - 1];
       const hr   = handles(pr);
       const vy_r = valleyY(pr, peaks[n - 2] || pr);
@@ -120,7 +122,6 @@ export default function WasabiFlame({ size = 80, isThinking = false, energy: ene
          + ' ' + (pr.x + hr.rh) + ',' + vy_r
          + ' ' + pr.x + ',' + pr.y;
 
-      // Traverse peaks right -> left through valleys
       for (let i = n - 2; i >= 0; i--) {
         const cur = peaks[i];
         const prv = peaks[i + 1];
@@ -132,7 +133,6 @@ export default function WasabiFlame({ size = 80, isThinking = false, energy: ene
            + ' ' + cur.x + ',' + cur.y;
       }
 
-      // Leftmost peak -> left base corner
       const pl   = peaks[0];
       const hl   = handles(pl);
       const vy_l = valleyY(pl, peaks[1] || pl);
@@ -171,27 +171,26 @@ export default function WasabiFlame({ size = 80, isThinking = false, energy: ene
         if (isThinking) flameEnergy.current = Math.max(flameEnergy.current, 0.75);
         flameEnergy.current = Math.max(0, flameEnergy.current - 0.004);
       }
-      const E = baseEnergy + flameEnergy.current; // 0.15 - 1.15
+      const E = baseEnergy + flameEnergy.current;
 
-      // ── Leader peak (dominant, centre-ish) ─────────────────────────────
+      // ── Leader peak (dominant, centre-ish) — all in 56-unit space ──────
       const leaderSway  = n(0.9, 0.0, 3.5 + E * 4) + n(2.3, 1.2, 1.8 + E * 2);
       const leaderFlick = n(1.4, 0.7, 3.0 + E * 5) + n(3.5, 2.1, 1.2 + E * 2);
-      const leaderX = H + leaderSway;
+      const leaderX = VH + leaderSway;
       const leaderY = 6 + Math.max(0, 8 - E * 10) + leaderFlick;
       const leaderLean = leaderSway / (3.5 + E * 4 + 1.8 + E * 2 + 0.01) * 0.6;
 
       // ── Right follower ─────────────────────────────────────────────────
-      const rightX    = H + 12 + leaderSway * 0.4 + n(1.8, 0.5, 2.2 + E * 1.5);
+      const rightX    = VH + 12 + leaderSway * 0.4 + n(1.8, 0.5, 2.2 + E * 1.5);
       const rightY    = leaderY + 5 + n(2.1, 1.8, 3.5 + E * 4) + n(3.8, 0.9, 1.5);
       const rightLean = 0.3 + n(1.5, 0.8, 0.25);
 
       // ── Left follower — organically merges in/out (~38s period) ────────
       const mergeRaw = 0.5 + 0.5 * Math.sin(t * 0.165 + 2.1);
       const mergeW   = Math.max(0, Math.min(1, (mergeRaw - 0.15) / 0.55));
-      const leftXFull    = H - 11 + leaderSway * 0.3 + n(1.5, 2.4, 1.8 + E * 1.2);
+      const leftXFull    = VH - 11 + leaderSway * 0.3 + n(1.5, 2.4, 1.8 + E * 1.2);
       const leftYFull    = leaderY + 7 + n(1.7, 3.1, 4.0 + E * 4.5) + n(4.2, 1.3, 1.2);
       const leftLeanFull = -0.35 + n(1.2, 1.9, 0.2);
-      // Lerp toward leader when mergeW is low
       const leftX    = leftXFull  * mergeW + leaderX * (1 - mergeW);
       const leftY    = leftYFull  * mergeW + leaderY * (1 - mergeW);
       const leftLean = leftLeanFull * mergeW;
@@ -202,38 +201,38 @@ export default function WasabiFlame({ size = 80, isThinking = false, energy: ene
         { x: rightX,  y: rightY,  lean: rightLean  },
       ];
 
-      // Clamp within viewport
+      // Clamp within 56-unit viewport
       const peaks = rawPeaks.map(p => ({
-        x:    Math.max(4, Math.min(S - 4, p.x)),
-        y:    Math.max(2, Math.min(H,     p.y)),
+        x:    Math.max(4, Math.min(VS - 4, p.x)),
+        y:    Math.max(2, Math.min(VH,     p.y)),
         lean: p.lean,
       }));
 
-      const baseY = S - 2, flatW = 5, cp = 8;
+      const baseY = VS - 2, flatW = 5, cp = 8;
       pathRef.current.setAttribute('d', buildFlamePath(peaks, baseY, flatW, cp));
 
-      // ── Eyes follow leader — lerp wander toward target for smooth glide ──
+      // ── Eyes: compute in viewBox space, scale to rendered px ────────────
       if (eyeContainerRef.current) {
-        const eyeBodyY = leaderY + (baseY - leaderY) * 0.72 - H;
-        const eyeBodyX = leaderX - H;
+        const eyeBodyY = leaderY + (baseY - leaderY) * 0.72 - VH;
+        const eyeBodyX = leaderX - VH;
         const lerpK = 0.055;
         const es = eyeSmoothed.current;
         const et = eyePosRef.current;
         es.x += (et.x - es.x) * lerpK;
         es.y += (et.y - es.y) * lerpK;
         eyeContainerRef.current.style.transform =
-          'translate(' + (eyeBodyX + es.x) + 'px, ' + (eyeBodyY + es.y) + 'px)';
+          'translate(' + ((eyeBodyX + es.x) * sc) + 'px, ' + ((eyeBodyY + es.y) * sc) + 'px)';
       }
 
-      // ── Expressive mouth — lazily follows eyes, morphs smile <-> O ────
+      // ── Expressive mouth (SVG path — stays in viewBox space) ───────────
       if (mouthRef.current) {
-        const eyeBodyY = leaderY + (baseY - leaderY) * 0.72 - H;
-        const eyeBodyX = leaderX - H;
+        const eyeBodyY = leaderY + (baseY - leaderY) * 0.72 - VH;
+        const eyeBodyX = leaderX - VH;
         const mouthTargetX = eyeBodyX;
         const mouthTargetY = eyeBodyY + 7.5;
 
         const eyeDistFromBase = baseY - (leaderY + (baseY - leaderY) * 0.72);
-        const maxDist = S * 0.55;
+        const maxDist = VS * 0.55;
         const rawOpen = Math.max(0, Math.min(1, eyeDistFromBase / maxDist));
         const openTarget = Math.min(1, rawOpen + E * 0.15);
 
@@ -249,11 +248,10 @@ export default function WasabiFlame({ size = 80, isThinking = false, energy: ene
         const smileCurve = Math.max(0, (1 - mOpen * 1.8)) * 1.5;
         const breathe = Math.sin(t * 1.8 + 0.5) * 0.15 * (1 + E);
 
-        const mx = H + ms.x;
-        const my = H + ms.y + breathe;
+        const mx = VH + ms.x;
+        const my = VH + ms.y + breathe;
 
         if (mOpen < 0.12) {
-          // Smile line
           const sw = mw * 0.9;
           mouthRef.current.setAttribute('d',
             'M ' + (mx - sw) + ',' + my +
@@ -266,7 +264,6 @@ export default function WasabiFlame({ size = 80, isThinking = false, energy: ene
           mouthRef.current.setAttribute('stroke-linecap', 'round');
           mouthRef.current.setAttribute('opacity', '0.6');
         } else {
-          // Open mouth ellipse
           const rx = mw * 0.5;
           const ry = mh * 0.5;
           mouthRef.current.setAttribute('d',
@@ -281,7 +278,7 @@ export default function WasabiFlame({ size = 80, isThinking = false, energy: ene
         }
       }
 
-      // ── Per-peak raindrop lick particles ─────────────────────────────────
+      // ── Per-peak raindrop lick particles (viewBox space) ───────────────
       const tRefs  = [tongue0Ref.current, tongue1Ref.current, tongue2Ref.current];
       const parts  = tongueState.current;
       const spawns = nextSpawn.current;
@@ -308,9 +305,9 @@ export default function WasabiFlame({ size = 80, isThinking = false, energy: ene
         if (!part.active) { el.setAttribute('opacity', '0'); return; }
         part.age++;
         part.x  += part.vx;
-        part.y  -= part.vy;   // rises upward
+        part.y  -= part.vy;
         part.vy *= 0.983;
-        part.r  *= 0.977;     // shrinks
+        part.r  *= 0.977;
         part.op  = part.op * (1 - part.age / (part.maxAge * 2.6));
         if (part.age >= part.maxAge || part.r < 0.3 || part.op < 0.03) {
           part.active = false; el.setAttribute('opacity', '0'); return;
@@ -324,17 +321,24 @@ export default function WasabiFlame({ size = 80, isThinking = false, energy: ene
 
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [S, H, isThinking, energyOverride]);
+  }, [scale, isThinking, energyOverride]);
+
+  // ── Eye sizing (scales with rendered size, with minimums for small sizes) ──
+  const eyeSize     = Math.max(2.5, 5.5 * scale);
+  const eyeBlinkW   = Math.max(3, 7 * scale);
+  const eyeBlinkH   = Math.max(1, 2 * scale);
+  const eyeGap      = Math.max(2, 5 * scale);
+  const eyeBlinkRad = Math.max(1, 2 * scale);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-      {/* SVG flame body */}
+      {/* SVG flame body — fixed 56×56 viewBox, rendered at `size` px */}
       <svg
         ref={svgRef}
         width={S}
         height={S}
-        viewBox={`0 0 ${S} ${S}`}
+        viewBox={`0 0 ${VS} ${VS}`}
         style={{ overflow: 'visible', display: 'block', flexShrink: 0 }}
       >
         <defs>
@@ -364,7 +368,7 @@ export default function WasabiFlame({ size = 80, isThinking = false, energy: ene
           pointerEvents: 'none',
           display: 'flex',
           alignItems: 'center',
-          gap: 5,
+          gap: eyeGap,
           zIndex: 2,
         }}
       >
@@ -373,11 +377,11 @@ export default function WasabiFlame({ size = 80, isThinking = false, energy: ene
             key={i}
             style={{
               position: 'relative',
-              width:  isBlinking ? 7 : 5.5,
-              height: isBlinking ? 2 : 5.5,
-              borderRadius: isBlinking ? '2px' : '50%',
+              width:  isBlinking ? eyeBlinkW : eyeSize,
+              height: isBlinking ? eyeBlinkH : eyeSize,
+              borderRadius: isBlinking ? `${eyeBlinkRad}px` : '50%',
               background: '#0d1f06',
-              boxShadow: '0 1.5px 3px rgba(0,0,0,0.45), 0 0.5px 1px rgba(0,0,0,0.3)',
+              boxShadow: `0 ${1.5 * scale}px ${3 * scale}px rgba(0,0,0,0.45), 0 ${0.5 * scale}px ${scale}px rgba(0,0,0,0.3)`,
               transition: 'width 0.07s ease, height 0.07s ease, border-radius 0.07s ease',
               flexShrink: 0,
               overflow: 'hidden',
