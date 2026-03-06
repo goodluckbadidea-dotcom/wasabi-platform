@@ -39,8 +39,9 @@ export async function createPage(workerUrl, notionKey, databaseId, properties, c
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    const err = await res.text().catch(() => "");
-    throw new Error(`Failed to create page (${res.status}): ${err}`);
+    const errData = await res.json().catch(() => ({}));
+    const detail = errData._error || errData.message || "";
+    throw new Error(`Failed to create page (${res.status})${detail ? ": " + detail : ""}`);
   }
   return res.json();
 }
@@ -179,8 +180,9 @@ export async function createDatabase(workerUrl, notionKey, parentPageId, title, 
   });
 
   if (!res.ok) {
-    const err = await res.text().catch(() => "");
-    throw new Error(`Failed to create database (${res.status}): ${err}`);
+    const errData = await res.json().catch(() => ({}));
+    const detail = errData._error || errData.message || "";
+    throw new Error(`Failed to create database (${res.status})${detail ? ": " + detail : ""}`);
   }
   return res.json();
 }
@@ -252,7 +254,11 @@ export async function createSubpage(workerUrl, notionKey, parentPageId, title, c
     },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`Failed to create subpage (${res.status})`);
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    const detail = errData._error || errData.message || "";
+    throw new Error(`Failed to create subpage (${res.status})${detail ? ": " + detail : ""}`);
+  }
   return res.json();
 }
 

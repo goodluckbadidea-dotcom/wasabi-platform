@@ -5,7 +5,7 @@ import React, { useState, useCallback } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { testConnection } from "../notion/client.js";
+import { testConnection, getPage } from "../notion/client.js";
 import WasabiFlame from "./WasabiFlame.jsx";
 import { runFirstTimeSetup, isSetupComplete } from "../config/setup.js";
 
@@ -70,7 +70,29 @@ export default function SetupWizard() {
         return;
       }
 
-      setStatus("Connection verified. Setting up platform...");
+      // Verify we can access the parent page before setup
+      setStatus("Verifying page access...");
+      try {
+        await getPage(url, notion, parentId);
+      } catch (pageErr) {
+        const msg = pageErr.message || "";
+        if (msg.includes("404") || msg.includes("not find")) {
+          setError(
+            "Cannot access that Notion page. Make sure you've shared it with your integration " +
+            "(open the page in Notion → ··· menu → Connections → Add your integration)."
+          );
+        } else if (msg.includes("401")) {
+          setError("Invalid Notion API key — double-check it and try again.");
+        } else if (msg.includes("403")) {
+          setError("Insufficient permissions on this page. Your integration needs full access.");
+        } else {
+          setError(`Cannot access page: ${msg}`);
+        }
+        setStep("keys");
+        return;
+      }
+
+      setStatus("Page verified. Setting up platform...");
       setStep("setting-up");
 
       // Save keys first
@@ -84,7 +106,18 @@ export default function SetupWizard() {
       setStatus("Done!");
       // PlatformContext will now show the app
     } catch (err) {
-      setError(`Setup failed: ${err.message}`);
+      const msg = err.message || "";
+      let userError;
+      if (msg.includes("404")) {
+        userError = "Page not found — check the page ID and make sure it's shared with your integration.";
+      } else if (msg.includes("401")) {
+        userError = "Invalid Notion API key.";
+      } else if (msg.includes("403")) {
+        userError = "Insufficient permissions on this page.";
+      } else {
+        userError = `Setup failed: ${msg}`;
+      }
+      setError(userError);
       setStep("keys");
     }
   }, [workerUrl, notionKey, claudeKey, parentPage, setUserKeys, setPlatformIds]);

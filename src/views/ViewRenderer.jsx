@@ -31,7 +31,7 @@ const VIEW_REGISTRY = {
 /**
  * Render a single view from a view config.
  */
-function ViewBlock({ viewConfig, data, schema, onUpdate, onRefresh, onCreate, pageConfig }) {
+function ViewBlock({ viewConfig, data, schema, onUpdate, onRefresh, onCreate, onDelete, pageConfig }) {
   const Component = VIEW_REGISTRY[viewConfig.type];
 
   if (!Component) {
@@ -58,6 +58,7 @@ function ViewBlock({ viewConfig, data, schema, onUpdate, onRefresh, onCreate, pa
       onUpdate={onUpdate}
       onRefresh={onRefresh}
       onCreate={onCreate}
+      onDelete={onDelete}
       pageConfig={pageConfig}
     />
   );
@@ -66,7 +67,7 @@ function ViewBlock({ viewConfig, data, schema, onUpdate, onRefresh, onCreate, pa
 /**
  * Render all views for a page in a layout.
  */
-export default function ViewRenderer({ views = [], data, schema, onUpdate, onRefresh, onCreate, pageConfig }) {
+export default function ViewRenderer({ views = [], data, schema, onUpdate, onRefresh, onCreate, onDelete, pageConfig }) {
   const mainViews = views.filter((v) => v.position !== "sidebar" && v.position !== "bottom");
   const sideViews = views.filter((v) => v.position === "sidebar");
   const bottomViews = views.filter((v) => v.position === "bottom");
@@ -93,6 +94,7 @@ export default function ViewRenderer({ views = [], data, schema, onUpdate, onRef
                 onUpdate={onUpdate}
                 onRefresh={onRefresh}
                 onCreate={onCreate}
+                onDelete={onDelete}
                 pageConfig={pageConfig}
               />
             </ErrorBoundary>

@@ -23,6 +23,7 @@ import AutomationBuilder from "./core/AutomationBuilder.jsx";
 import { ErrorBoundary } from "./core/ErrorBoundary.jsx";
 import { createAutomationEngine } from "./agent/automations.js";
 import { useKeyboardShortcuts } from "./utils/useKeyboardShortcuts.js";
+import CommandPalette from "./core/CommandPalette.jsx";
 import { IconGear } from "./design/icons.jsx";
 
 // Inject CSS animations on app load
@@ -42,6 +43,7 @@ function AppContent() {
   // ── UI State ──
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [wasabiPanelOpen, setWasabiPanelOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [viewStates, setViewStates] = useState({}); // { [pageId]: activeViewIndex }
   const [builderTemplate, setBuilderTemplate] = useState(null);
 
@@ -98,6 +100,11 @@ function AppContent() {
 
   // ── Keyboard Shortcuts ──
   useKeyboardShortcuts([
+    {
+      shortcut: "mod+k",
+      description: "Command palette",
+      handler: () => setCommandPaletteOpen((o) => !o),
+    },
     {
       shortcut: "mod+n",
       description: "New page",
@@ -268,6 +275,18 @@ function AppContent() {
         overflow: "hidden",
       }}
     >
+      {/* ── Command Palette ── */}
+      {commandPaletteOpen && (
+        <CommandPalette
+          open={commandPaletteOpen}
+          onClose={() => setCommandPaletteOpen(false)}
+          pages={pages}
+          activePage={activePage}
+          setActivePage={(id) => { setActivePage(id); setCommandPaletteOpen(false); }}
+          onAddPage={() => { handleAddPage(); setCommandPaletteOpen(false); }}
+        />
+      )}
+
       {/* ── Top Header Bar ── */}
       <TopHeader onAddPage={handleAddPage} />
 

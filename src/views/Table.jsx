@@ -8,6 +8,7 @@ import { S } from "../design/styles.js";
 import { ANIM, injectAnimations } from "../design/animations.js";
 import { readProp, buildProp, extractProperties, getPageTitle } from "../notion/properties.js";
 import { debounce, formatDate, truncate } from "../utils/helpers.js";
+import { IconTrash, IconExport, IconEyeOff } from "../design/icons.jsx";
 
 // ─── Constants ───
 
@@ -629,7 +630,7 @@ function CellDisplay({ value, type, fieldName, schema, onClick }) {
 
 // ─── Main Table Component ───
 
-export default function Table({ data = [], schema, config = {}, onUpdate, onRefresh }) {
+export default function Table({ data = [], schema, config = {}, onUpdate, onRefresh, onDelete }) {
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState(config.sort?.field || null);
   const [sortDir, setSortDir] = useState(config.sort?.direction || null); // "asc" | "desc" | null
@@ -640,15 +641,41 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const [hoveredRow, setHoveredRow] = useState(null);
   const [searchFocused, setSearchFocused] = useState(false);
 
+  // ── Row Selection ──
+  const [selectedRows, setSelectedRows] = useState(new Set());
+
+  // ── Column Visibility ──
+  const [hiddenColumns, setHiddenColumns] = useState(new Set());
+  const [colMenuOpen, setColMenuOpen] = useState(false);
+  const colMenuRef = useRef(null);
+
   // Inject animations on mount
   useEffect(() => {
     injectAnimations();
   }, []);
 
-  // Resolve visible columns
-  const columns = useMemo(
+  // Outside-click to close column visibility menu
+  useEffect(() => {
+    if (!colMenuOpen) return;
+    const handler = (e) => {
+      if (colMenuRef.current && !colMenuRef.current.contains(e.target)) {
+        setColMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [colMenuOpen]);
+
+  // Resolve all columns from schema
+  const allColumns = useMemo(
     () => resolveColumns(schema, config.columns, config.fieldMappings),
     [schema, config.columns, config.fieldMappings]
+  );
+
+  // Visible columns (filtered by hiddenColumns)
+  const columns = useMemo(
+    () => allColumns.filter((c) => !hiddenColumns.has(c)),
+    [allColumns, hiddenColumns]
   );
 
   // Identify filterable fields (select / status)
@@ -803,6 +830,76 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     }));
   }, []);
 
+  // ── Row Selection ──
+  const toggleRow = useCallback((pageId) => {
+    setSelectedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(pageId)) next.delete(pageId);
+      else next.add(pageId);
+      return next;
+    });
+  }, []);
+
+  const toggleAllRows = useCallback(() => {
+    setSelectedRows((prev) => {
+      if (prev.size === processedData.length && prev.size > 0) return new Set();
+      return new Set(processedData.map((p) => p.id));
+    });
+  }, [processedData]);
+
+  // ── Bulk Delete ──
+  const handleBulkDelete = useCallback(() => {
+    if (!onDelete || selectedRows.size === 0) return;
+    const confirmed = window.confirm(`Archive ${selectedRows.size} selected record${selectedRows.size !== 1 ? "s" : ""}?`);
+    if (!confirmed) return;
+    onDelete([...selectedRows]);
+    setSelectedRows(new Set());
+  }, [onDelete, selectedRows]);
+
+  // ── CSV Export ──
+  const handleExport = useCallback(() => {
+    if (!processedData.length || !columns.length) return;
+
+    const escape = (val) => {
+      const s = val === null || val === undefined ? "" : String(val);
+      if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    };
+
+    const header = columns.map(escape).join(",");
+    const rows = processedData.map((page) =>
+      columns.map((col) => {
+        const type = getFieldType(schema, col);
+        const value = readField(page, col);
+        return escape(displayValue(value, type));
+      }).join(",")
+    );
+
+    const csv = [header, ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `${config.exportName || "table-export"}-${date}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [processedData, columns, schema, config.exportName]);
+
+  // ── Column Visibility Toggle ──
+  const toggleColumn = useCallback((col) => {
+    setHiddenColumns((prev) => {
+      const next = new Set(prev);
+      if (next.has(col)) next.delete(col);
+      else next.add(col);
+      return next;
+    });
+  }, []);
+
   // ─── Render ───
 
   // Empty state
@@ -848,6 +945,54 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
 
   return (
     <div style={styles.wrapper}>
+      {/* Bulk actions bar */}
+      {selectedRows.size > 0 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "8px 16px",
+            background: C.accent + "18",
+            borderBottom: `1px solid ${C.accent}44`,
+            flexShrink: 0,
+            animation: "fadeUp 0.2s ease",
+          }}
+        >
+          <span style={{ fontSize: 12, color: C.accent, fontFamily: FONT, fontWeight: 600 }}>
+            {selectedRows.size} selected
+          </span>
+          <button
+            onClick={() => setSelectedRows(new Set())}
+            style={{
+              ...S.btnGhost,
+              fontSize: 11,
+              padding: "3px 10px",
+              color: C.darkMuted,
+            }}
+          >
+            Clear
+          </button>
+          {onDelete && (
+            <button
+              onClick={handleBulkDelete}
+              style={{
+                ...S.btnGhost,
+                fontSize: 11,
+                padding: "3px 10px",
+                color: "#E05252",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <IconTrash size={12} color="#E05252" />
+              Delete
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Toolbar: search, filters, refresh, count */}
       <div style={styles.toolbar}>
         <div
@@ -890,6 +1035,89 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           </select>
         ))}
 
+        {/* Column visibility toggle */}
+        <div ref={colMenuRef} style={{ position: "relative" }}>
+          <button
+            style={{
+              ...styles.refreshBtn,
+              ...(hiddenColumns.size > 0 ? { borderColor: C.accent, color: C.accent } : {}),
+            }}
+            onClick={() => setColMenuOpen((o) => !o)}
+            title="Toggle columns"
+          >
+            <IconEyeOff size={14} color={hiddenColumns.size > 0 ? C.accent : C.darkMuted} />
+          </button>
+          {colMenuOpen && (
+            <div
+              style={{
+                position: "absolute",
+                top: "100%",
+                right: 0,
+                marginTop: 4,
+                background: C.darkSurf,
+                border: `1px solid ${C.darkBorder}`,
+                borderRadius: RADIUS.lg,
+                boxShadow: SHADOW.dropdown,
+                padding: "6px 0",
+                zIndex: 20,
+                minWidth: 180,
+                maxHeight: 280,
+                overflowY: "auto",
+              }}
+            >
+              {allColumns.map((col) => {
+                const visible = !hiddenColumns.has(col);
+                return (
+                  <div
+                    key={col}
+                    onClick={() => toggleColumn(col)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "6px 12px",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontFamily: FONT,
+                      color: visible ? C.darkText : C.darkMuted,
+                      transition: "background 0.12s",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <span style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: RADIUS.sm,
+                      border: `2px solid ${visible ? C.accent : C.darkBorder}`,
+                      background: visible ? C.accent : "transparent",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 9,
+                      color: "#fff",
+                      fontWeight: 700,
+                      flexShrink: 0,
+                    }}>
+                      {visible ? "\u2713" : ""}
+                    </span>
+                    {col}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* CSV Export */}
+        <button
+          style={styles.refreshBtn}
+          onClick={handleExport}
+          title="Export CSV"
+        >
+          <IconExport size={14} color={C.darkMuted} />
+        </button>
+
         {onRefresh && (
           <button
             style={styles.refreshBtn}
@@ -928,6 +1156,21 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           <table style={styles.table}>
             <thead>
               <tr>
+                {/* Select-all checkbox */}
+                <th
+                  style={{
+                    ...styles.th,
+                    width: 36,
+                    minWidth: 36,
+                    padding: "10px 8px",
+                    textAlign: "center",
+                  }}
+                  onClick={toggleAllRows}
+                >
+                  <span style={styles.toggle(selectedRows.size === processedData.length && processedData.length > 0)}>
+                    {selectedRows.size === processedData.length && processedData.length > 0 ? "\u2713" : ""}
+                  </span>
+                </th>
                 {columns.map((col) => {
                   const isActive = sortField === col;
                   return (
@@ -954,6 +1197,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
               {processedData.map((page, rowIdx) => {
                 const pageId = page.id;
                 const isHovered = hoveredRow === pageId;
+                const isSelected = selectedRows.has(pageId);
 
                 return (
                   <tr
@@ -961,11 +1205,21 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                     style={{
                       ...styles.row,
                       ...(isHovered ? styles.rowHover : {}),
+                      ...(isSelected ? { background: C.accent + "10" } : {}),
                       animation: ANIM.rowReveal(rowIdx),
                     }}
                     onMouseEnter={() => setHoveredRow(pageId)}
                     onMouseLeave={() => setHoveredRow(null)}
                   >
+                    {/* Row checkbox */}
+                    <td style={{ ...styles.td, width: 36, minWidth: 36, padding: "8px 8px", textAlign: "center" }}>
+                      <span
+                        style={styles.toggle(isSelected)}
+                        onClick={() => toggleRow(pageId)}
+                      >
+                        {isSelected ? "\u2713" : ""}
+                      </span>
+                    </td>
                     {columns.map((col) => {
                       const type = getFieldType(schema, col);
                       const value = readField(page, col);
@@ -1023,6 +1277,50 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                 );
               })}
             </tbody>
+            {/* Totals row */}
+            <tfoot>
+              <tr>
+                <td style={{
+                  ...styles.td,
+                  position: "sticky",
+                  bottom: 0,
+                  background: C.darkSurf,
+                  borderTop: `2px solid ${C.darkBorder}`,
+                  padding: "8px 8px",
+                }}></td>
+                {columns.map((col) => {
+                  const type = getFieldType(schema, col);
+                  let total = null;
+
+                  if (type === "number") {
+                    total = 0;
+                    for (const page of processedData) {
+                      const v = readField(page, col);
+                      if (typeof v === "number") total += v;
+                    }
+                  }
+
+                  return (
+                    <td
+                      key={col}
+                      style={{
+                        ...styles.td,
+                        position: "sticky",
+                        bottom: 0,
+                        background: C.darkSurf,
+                        borderTop: `2px solid ${C.darkBorder}`,
+                        fontWeight: 600,
+                        fontSize: 12,
+                        fontVariantNumeric: "tabular-nums",
+                        color: total !== null ? C.darkText : "transparent",
+                      }}
+                    >
+                      {total !== null ? total.toLocaleString() : ""}
+                    </td>
+                  );
+                })}
+              </tr>
+            </tfoot>
           </table>
         )}
       </div>

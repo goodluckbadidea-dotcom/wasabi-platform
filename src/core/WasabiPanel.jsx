@@ -15,6 +15,10 @@ import { WASABI_TOOLS } from "../agent/tools.js";
 import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createToolExecutor, createDelegateFunction } from "../agent/toolExecutor.js";
 import BatchQueue from "./BatchQueue.jsx";
+import { queryAll } from "../notion/pagination.js";
+import { updatePage } from "../notion/client.js";
+import { readProp } from "../notion/properties.js";
+import { timeAgo } from "../utils/helpers.js";
 
 // ── Tab button style ──
 const tabBtn = (active) => ({
@@ -65,8 +69,61 @@ export default function WasabiPanel({ onClose, isThinking }) {
   const chatHistoryRef = useRef([]);
   const chatAbortRef = useRef(false);
 
-  // ── Notifications state (stub for Phase 4) ──
-  const [notifications] = useState([]);
+  // ── Notifications state ──
+  const [notifications, setNotifications] = useState([]);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const notifFetched = useRef(false);
+
+  const fetchNotifications = useCallback(async () => {
+    const notifDbId = platformIds?.notifDbId;
+    if (!user?.workerUrl || !user?.notionKey || !notifDbId) return;
+    setNotifLoading(true);
+    try {
+      const results = await queryAll(user.workerUrl, user.notionKey, notifDbId, null, [
+        { property: "Created", direction: "descending" },
+      ]);
+      const parsed = results.map((page) => {
+        const props = page.properties || {};
+        let message = "", readStatus = "unread", source = "", createdTime = page.created_time || "";
+        for (const [key, prop] of Object.entries(props)) {
+          const val = readProp(prop);
+          const lk = key.toLowerCase();
+          if (prop.type === "title") message = val || "";
+          else if (lk === "status" || lk === "read") {
+            if (prop.type === "checkbox") readStatus = val ? "read" : "unread";
+            else readStatus = (val || "unread").toLowerCase();
+          }
+          else if (lk === "source" || lk === "from") source = val || "";
+        }
+        return { id: page.id, text: message, read: readStatus === "read", timestamp: createdTime, source };
+      });
+      setNotifications(parsed);
+    } catch (err) {
+      console.error("Failed to fetch notifications:", err);
+    } finally {
+      setNotifLoading(false);
+    }
+  }, [user, platformIds]);
+
+  // Fetch notifications when tab is first opened
+  useEffect(() => {
+    if (tab === "notifications" && !notifFetched.current) {
+      notifFetched.current = true;
+      fetchNotifications();
+    }
+  }, [tab, fetchNotifications]);
+
+  const markNotifRead = useCallback(async (notifId) => {
+    if (!user?.workerUrl || !user?.notionKey) return;
+    setNotifications((prev) => prev.map((n) => (n.id === notifId ? { ...n, read: true } : n)));
+    try {
+      await updatePage(user.workerUrl, user.notionKey, notifId, { Status: { select: { name: "read" } } });
+    } catch {
+      try {
+        await updatePage(user.workerUrl, user.notionKey, notifId, { Read: { checkbox: true } });
+      } catch {}
+    }
+  }, [user]);
 
   // Auto-resize log textarea
   const autoResize = () => {
@@ -472,7 +529,23 @@ export default function WasabiPanel({ onClose, isThinking }) {
               padding: "12px 12px 6px",
             }}
           >
-            {notifications.length === 0 && (
+            {/* Refresh button */}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+              <button
+                onClick={() => { notifFetched.current = false; fetchNotifications(); }}
+                style={{ background: "none", border: "none", color: C.accent, fontSize: 10, cursor: "pointer", fontFamily: FONT, padding: "2px 6px" }}
+              >
+                Refresh
+              </button>
+            </div>
+
+            {notifLoading && (
+              <div style={{ textAlign: "center", color: "#888", fontSize: 10, marginTop: 20 }}>
+                Loading notifications...
+              </div>
+            )}
+
+            {!notifLoading && notifications.length === 0 && (
               <div
                 style={{
                   textAlign: "center",
@@ -499,32 +572,51 @@ export default function WasabiPanel({ onClose, isThinking }) {
                 style={{
                   marginBottom: 8,
                   borderRadius: 8,
-                  border: "1px solid #333",
+                  border: `1px solid ${notif.read ? "#333" : C.accent + "44"}`,
                   background: notif.read ? "#1A1A1A" : "#2A2A2A",
                   padding: "9px 10px",
                 }}
               >
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "#E8E8E8",
-                    lineHeight: 1.55,
-                  }}
-                >
-                  {notif.text || notif.content}
-                </div>
-                {notif.timestamp && (
-                  <div
-                    style={{
-                      fontSize: 9,
-                      color: "#666",
-                      marginTop: 4,
-                      fontFamily: MONO,
-                    }}
-                  >
-                    {new Date(notif.timestamp).toLocaleString()}
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+                  {!notif.read && (
+                    <div style={{ width: 6, height: 6, borderRadius: 3, background: C.accent, marginTop: 5, flexShrink: 0 }} />
+                  )}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, color: "#E8E8E8", lineHeight: 1.55 }}>
+                      {notif.text || notif.content}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                      {notif.source && (
+                        <span style={{ fontSize: 9, color: C.accent, background: C.accent + "18", padding: "1px 5px", borderRadius: 3 }}>
+                          {notif.source}
+                        </span>
+                      )}
+                      {notif.timestamp && (
+                        <span style={{ fontSize: 9, color: "#666", fontFamily: MONO }}>
+                          {timeAgo(notif.timestamp)}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                )}
+                  {!notif.read && (
+                    <button
+                      onClick={() => markNotifRead(notif.id)}
+                      style={{
+                        background: "none",
+                        border: `1px solid #444`,
+                        borderRadius: 4,
+                        color: "#888",
+                        fontSize: 9,
+                        cursor: "pointer",
+                        padding: "2px 6px",
+                        fontFamily: FONT,
+                        flexShrink: 0,
+                      }}
+                    >
+                      Read
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

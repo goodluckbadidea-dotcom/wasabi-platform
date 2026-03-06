@@ -8,7 +8,7 @@ import { S } from "../design/styles.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { queryAll } from "../notion/pagination.js";
 import { detectSchema } from "../notion/schema.js";
-import { updatePage, createPage } from "../notion/client.js";
+import { updatePage, createPage, archivePage } from "../notion/client.js";
 import ViewRenderer from "../views/ViewRenderer.jsx";
 import ChatPanel from "../views/ChatPanel.jsx";
 import { ViewSkeleton } from "./ErrorBoundary.jsx";
@@ -16,8 +16,30 @@ import { IconWarning, IconRefresh } from "../design/icons.jsx";
 
 const DEFAULT_REFRESH_MS = 30000; // 30 seconds
 
+const REFRESH_OPTIONS = [
+  { label: "15s", value: 15000 },
+  { label: "30s", value: 30000 },
+  { label: "1m", value: 60000 },
+  { label: "2m", value: 120000 },
+  { label: "5m", value: 300000 },
+  { label: "Manual", value: 0 },
+];
+
+const refreshSelectStyle = {
+  background: C.darkSurf2,
+  border: `1px solid ${C.darkBorder}`,
+  borderRadius: RADIUS.md,
+  padding: "3px 8px",
+  fontSize: 11,
+  fontFamily: FONT,
+  color: C.darkMuted,
+  cursor: "pointer",
+  outline: "none",
+  height: 26,
+};
+
 export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
-  const { user } = usePlatform();
+  const { user, updatePageConfig } = usePlatform();
   const [data, setData] = useState([]);
   const [schema, setSchema] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -119,6 +141,32 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
     [user, fetchData]
   );
 
+  // Handle bulk delete (archive) from Table view
+  const handleDelete = useCallback(
+    async (pageIds) => {
+      if (!user?.workerUrl || !user?.notionKey || !pageIds?.length) return;
+      try {
+        for (const id of pageIds) {
+          await archivePage(user.workerUrl, user.notionKey, id);
+        }
+        await fetchData();
+      } catch (err) {
+        console.error("Bulk delete failed:", err);
+      }
+    },
+    [user, fetchData]
+  );
+
+  // Handle refresh interval change
+  const handleRefreshChange = useCallback(
+    (val) => {
+      if (pageConfig?.id) {
+        updatePageConfig(pageConfig.id, { refreshInterval: val });
+      }
+    },
+    [pageConfig, updatePageConfig]
+  );
+
   if (loading && data.length === 0) {
     const firstViewType = activeView?.type || "default";
     return (
@@ -191,6 +239,15 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
             {data.length} record{data.length !== 1 ? "s" : ""}
           </span>
           <div style={{ flex: 1 }} />
+          <select
+            style={refreshSelectStyle}
+            value={refreshMs}
+            onChange={(e) => handleRefreshChange(Number(e.target.value))}
+          >
+            {REFRESH_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
           <button
             onClick={fetchData}
             style={{
@@ -237,6 +294,15 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
           {data.length} record{data.length !== 1 ? "s" : ""}
         </span>
         <div style={{ flex: 1 }} />
+        <select
+          style={refreshSelectStyle}
+          value={refreshMs}
+          onChange={(e) => handleRefreshChange(Number(e.target.value))}
+        >
+          {REFRESH_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
         <button
           onClick={fetchData}
           style={{
@@ -259,6 +325,7 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
           onUpdate={handleUpdate}
           onRefresh={fetchData}
           onCreate={handleCreate}
+          onDelete={handleDelete}
           pageConfig={pageConfig}
         />
       </div>

@@ -283,3 +283,68 @@ export function IconHamburger({ size = 18, color = d, ...rest }) {
     </svg>
   );
 }
+
+// ─── Phase 5 Icons ───
+
+export function IconSearch({ size = 20, color = d, ...rest }) {
+  return (
+    <Icon size={size} {...rest}>
+      <circle cx="11" cy="11" r="8" stroke={color} strokeWidth="1.5" fill="none" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+    </Icon>
+  );
+}
+
+export function IconTrash({ size = 20, color = d, ...rest }) {
+  return (
+    <Icon size={size} {...rest}>
+      <polyline points="3 6 5 6 21 6" stroke={color} strokeWidth="1.5" strokeLinecap="round" fill="none" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke={color} strokeWidth="1.5" fill="none" />
+    </Icon>
+  );
+}
+
+export function IconExport({ size = 20, color = d, ...rest }) {
+  return (
+    <Icon size={size} {...rest}>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke={color} strokeWidth="1.5" fill="none" />
+      <polyline points="7 10 12 15 17 10" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <line x1="12" y1="15" x2="12" y2="3" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+    </Icon>
+  );
+}
+
+export function IconFilter({ size = 20, color = d, ...rest }) {
+  return (
+    <Icon size={size} {...rest}>
+      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" stroke={color} strokeWidth="1.5" strokeLinejoin="round" fill="none" />
+    </Icon>
+  );
+}
+
+export function IconEyeOff({ size = 20, color = d, ...rest }) {
+  return (
+    <Icon size={size} {...rest}>
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" stroke={color} strokeWidth="1.5" strokeLinecap="round" fill="none" />
+      <line x1="1" y1="1" x2="23" y2="23" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+    </Icon>
+  );
+}
+
+export function IconArrowUp({ size = 20, color = d, ...rest }) {
+  return (
+    <Icon size={size} {...rest}>
+      <line x1="12" y1="19" x2="12" y2="5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      <polyline points="5 12 12 5 19 12" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </Icon>
+  );
+}
+
+export function IconArrowDown({ size = 20, color = d, ...rest }) {
+  return (
+    <Icon size={size} {...rest}>
+      <line x1="12" y1="5" x2="12" y2="19" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      <polyline points="19 12 12 19 5 12" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </Icon>
+  );
+}

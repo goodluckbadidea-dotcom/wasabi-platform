@@ -14,6 +14,7 @@ import { createToolExecutor } from "../agent/toolExecutor.js";
 import { queryAll } from "../notion/pagination.js";
 import WasabiFlame from "./WasabiFlame.jsx";
 import { IconGear } from "../design/icons.jsx";
+import { getSessionUsage, getUsageHistory, formatCost, formatTokens } from "../utils/costTracker.js";
 
 // ── Tab button style (matches WasabiPanel) ──
 const tabBtn = (active) => ({
@@ -452,6 +453,17 @@ export default function SystemManager() {
   const [statsLoading, setStatsLoading] = useState(true);
   const statsFetched = useRef(false);
 
+  // ── Cost tracking ──
+  const [costData, setCostData] = useState(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  // Load cost data when overview tab is active
+  useEffect(() => {
+    if (tab === "overview") {
+      setCostData(getSessionUsage());
+    }
+  }, [tab]);
+
   useEffect(() => {
     if (
       statsFetched.current ||
@@ -763,6 +775,149 @@ export default function SystemManager() {
                 value={stats.rules ?? 0}
                 loading={statsLoading}
               />
+            </div>
+
+            {/* ── Session Usage (Cost Tracking) ── */}
+            <div style={{ marginTop: 24 }}>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: C.darkMuted,
+                  fontFamily: FONT,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                  marginBottom: 12,
+                }}
+              >
+                Session Usage
+              </div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <StatCard
+                  label="API Calls"
+                  value={costData ? costData.callCount : 0}
+                  loading={!costData}
+                />
+                <StatCard
+                  label="Input Tokens"
+                  value={costData ? formatTokens(costData.inputTokens) : "0"}
+                  loading={!costData}
+                />
+                <StatCard
+                  label="Output Tokens"
+                  value={costData ? formatTokens(costData.outputTokens) : "0"}
+                  loading={!costData}
+                />
+                <StatCard
+                  label="Est. Cost"
+                  value={costData ? formatCost(costData.estimatedCost) : "$0"}
+                  loading={!costData}
+                />
+              </div>
+
+              {/* Session History (collapsible) */}
+              <div style={{ marginTop: 14 }}>
+                <button
+                  onClick={() => setHistoryOpen((o) => !o)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    fontFamily: FONT,
+                    fontSize: 11,
+                    color: C.darkMuted,
+                    padding: "4px 0",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <svg
+                    width="8"
+                    height="5"
+                    viewBox="0 0 8 5"
+                    fill="none"
+                    style={{
+                      transition: "transform 0.15s",
+                      transform: historyOpen ? "rotate(180deg)" : "rotate(0deg)",
+                    }}
+                  >
+                    <path d="M0.5 0.5L4 4.5L7.5 0.5" stroke={C.darkMuted} strokeWidth="1.2" strokeLinecap="round" />
+                  </svg>
+                  Session History
+                </button>
+
+                {historyOpen && (() => {
+                  const history = getUsageHistory().sort((a, b) =>
+                    (b.startedAt || "").localeCompare(a.startedAt || "")
+                  ).slice(0, 5);
+
+                  if (history.length === 0) {
+                    return (
+                      <div style={{ fontSize: 11, color: C.darkMuted, padding: "8px 0", opacity: 0.6 }}>
+                        No session history yet.
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div
+                      style={{
+                        marginTop: 8,
+                        background: C.darkSurf,
+                        border: `1px solid ${C.darkBorder}`,
+                        borderRadius: RADIUS.lg,
+                        overflow: "hidden",
+                      }}
+                    >
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr>
+                            {["Started", "Calls", "Tokens In", "Tokens Out", "Cost"].map((h) => (
+                              <th
+                                key={h}
+                                style={{
+                                  textAlign: "left",
+                                  padding: "6px 10px",
+                                  fontSize: 9,
+                                  fontWeight: 600,
+                                  textTransform: "uppercase",
+                                  letterSpacing: "0.06em",
+                                  color: C.darkMuted,
+                                  borderBottom: `1px solid ${C.darkBorder}`,
+                                  fontFamily: FONT,
+                                }}
+                              >
+                                {h}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {history.map((s, i) => (
+                            <tr key={s.sessionId || i}>
+                              <td style={{ padding: "5px 10px", fontSize: 11, fontFamily: MONO, color: C.darkText, borderBottom: `1px solid ${C.edgeLine}` }}>
+                                {s.startedAt ? new Date(s.startedAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "--"}
+                              </td>
+                              <td style={{ padding: "5px 10px", fontSize: 11, fontFamily: MONO, color: C.darkText, borderBottom: `1px solid ${C.edgeLine}` }}>
+                                {s.callCount}
+                              </td>
+                              <td style={{ padding: "5px 10px", fontSize: 11, fontFamily: MONO, color: C.darkText, borderBottom: `1px solid ${C.edgeLine}` }}>
+                                {formatTokens(s.inputTokens)}
+                              </td>
+                              <td style={{ padding: "5px 10px", fontSize: 11, fontFamily: MONO, color: C.darkText, borderBottom: `1px solid ${C.edgeLine}` }}>
+                                {formatTokens(s.outputTokens)}
+                              </td>
+                              <td style={{ padding: "5px 10px", fontSize: 11, fontFamily: MONO, color: C.darkText, borderBottom: `1px solid ${C.edgeLine}` }}>
+                                {formatCost(s.estimatedCost)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
           </div>
         )}
