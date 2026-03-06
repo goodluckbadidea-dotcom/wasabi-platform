@@ -1,18 +1,39 @@
 // ─── Page Builder ───
-// Wasabi's page-building conversation flow.
-// Uses ChatUI with Wasabi agent to collaboratively create pages.
+// Wasabi's page-building flow with two modes:
+// 1. Chat mode: conversational builder with the Wasabi agent
+// 2. Visual mode: drag-less visual editor for quick page assembly
 
 import React, { useState, useCallback, useRef } from "react";
 import ChatUI from "./ChatUI.jsx";
+import VisualPageBuilder from "./VisualPageBuilder.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { runAgent, extractChoices } from "../agent/runAgent.js";
 import { WASABI_TOOLS } from "../agent/tools.js";
 import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createToolExecutor, createDelegateFunction } from "../agent/toolExecutor.js";
+import { C, FONT, RADIUS } from "../design/tokens.js";
+
+// ── Mode tab styles ──
+const tabStyle = (active) => ({
+  padding: "8px 20px",
+  fontSize: 12,
+  fontWeight: 600,
+  fontFamily: FONT,
+  color: active ? C.darkText : C.darkMuted,
+  background: active ? C.darkSurf2 : "transparent",
+  border: `1px solid ${active ? C.darkBorder : "transparent"}`,
+  borderBottom: active ? "none" : `1px solid ${C.darkBorder}`,
+  borderRadius: `${RADIUS.md}px ${RADIUS.md}px 0 0`,
+  cursor: "pointer",
+  transition: "all 0.15s",
+  letterSpacing: "0.02em",
+  position: "relative",
+  top: 1,
+});
 
 export default function PageBuilder({ initialTemplate = null, WasabiFlameIcon = null }) {
   const { user, platformIds, addPage } = usePlatform();
-  const [messages, setMessages] = useState([]);
+  const [mode, setMode] = useState(initialTemplate ? "chat" : "visual"); // "chat" | "visual"
   const [displayMessages, setDisplayMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [choices, setChoices] = useState([]);
@@ -26,7 +47,6 @@ export default function PageBuilder({ initialTemplate = null, WasabiFlameIcon = 
     hasInitialized.current = true;
 
     if (initialTemplate) {
-      // Send template selection as first message
       handleSend({
         text: `I'd like to create a ${initialTemplate.name} page. (Template: ${initialTemplate.id})`,
       });
@@ -61,18 +81,15 @@ export default function PageBuilder({ initialTemplate = null, WasabiFlameIcon = 
   const handleSend = useCallback(async ({ text, files }) => {
     if (isLoading) return;
 
-    // Build display message
     let displayText = text;
     if (files?.length) {
       displayText += `\n\nAttached: ${files.map((f) => f.name).join(", ")}`;
     }
 
-    // Add user message to display
     setDisplayMessages((prev) => [...prev, { role: "user", content: displayText }]);
     setChoices([]);
     setIsLoading(true);
 
-    // Build agent message (include file content for parsing)
     let agentText = text;
     if (files?.length) {
       const fileContents = files.map((f) => `[File: ${f.name} (${f.type})]\n${f.text || "[binary file]"}`).join("\n\n");
@@ -83,7 +100,6 @@ export default function PageBuilder({ initialTemplate = null, WasabiFlameIcon = 
     const newHistory = [...historyRef.current, userMsg];
 
     try {
-      // Build system prompt
       const platformDbStr = [
         `Root Page: ${platformIds.rootPageId}`,
         `Knowledge Base: ${platformIds.kbDbId}`,
@@ -92,9 +108,7 @@ export default function PageBuilder({ initialTemplate = null, WasabiFlameIcon = 
         `Automation Rules: ${platformIds.rulesDbId}`,
       ].join("\n");
 
-      const systemPrompt = buildWasabiPrompt({
-        platformDbIds: platformDbStr,
-      });
+      const systemPrompt = buildWasabiPrompt({ platformDbIds: platformDbStr });
 
       const { text: reply, history } = await runAgent({
         messages: newHistory,
@@ -105,7 +119,6 @@ export default function PageBuilder({ initialTemplate = null, WasabiFlameIcon = 
         claudeKey: user.claudeKey,
         executeTool,
         onToolCall: (name, input, result) => {
-          // Could show tool calls in UI if desired
           console.log(`[Wasabi Tool] ${name}`, input);
         },
         abortRef,
@@ -114,10 +127,7 @@ export default function PageBuilder({ initialTemplate = null, WasabiFlameIcon = 
 
       historyRef.current = history;
 
-      // Extract choices from response
       const extracted = extractChoices(reply);
-
-      // Clean choice markers from display text
       let cleanReply = reply;
       for (const c of extracted) {
         cleanReply = cleanReply.replace(c.raw, "").trim();
@@ -142,16 +152,41 @@ export default function PageBuilder({ initialTemplate = null, WasabiFlameIcon = 
   }, [handleSend]);
 
   return (
-    <ChatUI
-      messages={displayMessages}
-      onSend={handleSend}
-      isLoading={isLoading}
-      choices={choices}
-      onChoice={handleChoice}
-      allowFiles={true}
-      agentName="Wasabi"
-      agentIcon={WasabiFlameIcon}
-      placeholder="Describe what you want to build..."
-    />
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Mode tabs */}
+      <div style={{
+        display: "flex",
+        padding: "0 20px",
+        borderBottom: `1px solid ${C.darkBorder}`,
+        background: C.dark,
+        gap: 0,
+      }}>
+        <span style={tabStyle(mode === "visual")} onClick={() => setMode("visual")}>
+          Visual Builder
+        </span>
+        <span style={tabStyle(mode === "chat")} onClick={() => setMode("chat")}>
+          Chat Builder
+        </span>
+      </div>
+
+      {/* Content */}
+      <div style={{ flex: 1, overflow: "hidden" }}>
+        {mode === "chat" ? (
+          <ChatUI
+            messages={displayMessages}
+            onSend={handleSend}
+            isLoading={isLoading}
+            choices={choices}
+            onChoice={handleChoice}
+            allowFiles={true}
+            agentName="Wasabi"
+            agentIcon={WasabiFlameIcon}
+            placeholder="Describe what you want to build..."
+          />
+        ) : (
+          <VisualPageBuilder onCancel={() => setMode("chat")} />
+        )}
+      </div>
+    </div>
   );
 }

@@ -73,10 +73,50 @@ export default function Form({ data = [], schema, config = {}, onCreate, pageCon
   const handleSubmit = useCallback(async () => {
     if (!onCreate || !databaseId) return;
 
-    // Validate: title is required
-    const titleField = schema?.title;
-    if (titleField && !values[titleField.name]?.trim()) {
-      setErrors({ [titleField.name]: "Required" });
+    // ── Validate all fields ──
+    const newErrors = {};
+
+    for (const field of formFields) {
+      const val = values[field.name];
+      const { type } = field;
+
+      // Title is required
+      if (type === "title" && (!val || !String(val).trim())) {
+        newErrors[field.name] = "Required";
+        continue;
+      }
+
+      // Skip empty optional fields
+      if (val === undefined || val === null || val === "") continue;
+
+      // Email validation
+      if (type === "email" && val) {
+        const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailPattern.test(val)) {
+          newErrors[field.name] = "Invalid email address";
+        }
+      }
+
+      // URL validation
+      if (type === "url" && val) {
+        try {
+          new URL(val.startsWith("http") ? val : `https://${val}`);
+        } catch {
+          newErrors[field.name] = "Invalid URL";
+        }
+      }
+
+      // Number validation
+      if (type === "number" && val !== null) {
+        const num = typeof val === "number" ? val : parseFloat(val);
+        if (isNaN(num)) {
+          newErrors[field.name] = "Must be a number";
+        }
+      }
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
       return;
     }
 

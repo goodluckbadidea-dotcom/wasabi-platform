@@ -90,6 +90,67 @@ const POST_NOTIFICATION = {
 
 // ─── WASABI-ONLY TOOLS ───
 
+const UPDATE_DATABASE = {
+  name: "update_database",
+  description: "Update a Notion database's schema: add, rename, or remove properties. Can also update the database title.",
+  input_schema: {
+    type: "object",
+    properties: {
+      database_id: { type: "string", description: "The database ID to update." },
+      title: { type: "string", description: "Optional new title for the database." },
+      add_properties: {
+        type: "array",
+        description: "Properties to add. Each: {name, type, options?}.",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            type: { type: "string" },
+            options: { type: "array", items: { type: "string" } },
+            format: { type: "string" },
+          },
+          required: ["name", "type"],
+        },
+      },
+      rename_properties: {
+        type: "object",
+        description: "Map of old property name -> new name.",
+      },
+      remove_properties: {
+        type: "array",
+        items: { type: "string" },
+        description: "Property names to remove from the schema.",
+      },
+    },
+    required: ["database_id"],
+  },
+};
+
+const CROSS_DATABASE_QUERY = {
+  name: "cross_database_query",
+  description: "Query multiple Notion databases in one call. Returns combined results. Useful for dashboards and cross-referencing.",
+  input_schema: {
+    type: "object",
+    properties: {
+      queries: {
+        type: "array",
+        description: "Array of query objects. Each has: database_id, filter (optional), sorts (optional), label (optional, for identifying results).",
+        items: {
+          type: "object",
+          properties: {
+            database_id: { type: "string" },
+            filter: { type: "object" },
+            sorts: { type: "array" },
+            label: { type: "string" },
+          },
+          required: ["database_id"],
+        },
+      },
+    },
+    required: ["queries"],
+  },
+};
+
 const CREATE_DATABASE = {
   name: "create_database",
   description: "Create a new Notion database. Define the schema with property names, types, and options.",
@@ -269,10 +330,12 @@ const CREATE_AUTOMATION_RULE = {
 
 export const WASABI_TOOLS = [
   QUERY_DATABASE,
+  CROSS_DATABASE_QUERY,
   GET_PAGE,
   CREATE_PAGE,
   UPDATE_PAGE,
   CREATE_DATABASE,
+  UPDATE_DATABASE,
   DETECT_SCHEMA,
   CREATE_PAGE_CONFIG,
   UPDATE_KNOWLEDGE_BASE,

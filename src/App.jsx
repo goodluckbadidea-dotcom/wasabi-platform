@@ -20,7 +20,9 @@ import PageShell from "./core/PageShell.jsx";
 import WasabiFlame from "./core/WasabiFlame.jsx";
 import SystemManager from "./core/SystemManager.jsx";
 import AutomationBuilder from "./core/AutomationBuilder.jsx";
+import { ErrorBoundary } from "./core/ErrorBoundary.jsx";
 import { createAutomationEngine } from "./agent/automations.js";
+import { useKeyboardShortcuts } from "./utils/useKeyboardShortcuts.js";
 import { IconGear } from "./design/icons.jsx";
 
 // Inject CSS animations on app load
@@ -93,6 +95,49 @@ function AppContent() {
     setBuilderTemplate(null);
     setActivePage("wasabi");
   }, [setActivePage]);
+
+  // ── Keyboard Shortcuts ──
+  useKeyboardShortcuts([
+    {
+      shortcut: "mod+n",
+      description: "New page",
+      handler: () => handleAddPage(),
+    },
+    {
+      shortcut: "mod+b",
+      description: "Toggle sidebar",
+      handler: () => setSidebarCollapsed((c) => !c),
+    },
+    {
+      shortcut: "mod+j",
+      description: "Toggle Wasabi panel",
+      handler: () => setWasabiPanelOpen((o) => !o),
+    },
+    {
+      shortcut: "escape",
+      description: "Close Wasabi panel",
+      handler: () => {
+        if (wasabiPanelOpen) setWasabiPanelOpen(false);
+      },
+      when: () => wasabiPanelOpen,
+    },
+    {
+      shortcut: "mod+up",
+      description: "Previous page",
+      handler: () => {
+        const idx = pages.findIndex((p) => p.id === activePage);
+        if (idx > 0) setActivePage(pages[idx - 1].id);
+      },
+    },
+    {
+      shortcut: "mod+down",
+      description: "Next page",
+      handler: () => {
+        const idx = pages.findIndex((p) => p.id === activePage);
+        if (idx < pages.length - 1) setActivePage(pages[idx + 1].id);
+      },
+    },
+  ], [handleAddPage, wasabiPanelOpen, activePage, pages]);
 
   // Auth gate: show setup wizard if not connected
   if (!isAuthenticated || !isSetup) {
@@ -291,7 +336,9 @@ function AppContent() {
 export default function App() {
   return (
     <PlatformProvider>
-      <AppContent />
+      <ErrorBoundary fallbackLabel="Wasabi Platform">
+        <AppContent />
+      </ErrorBoundary>
     </PlatformProvider>
   );
 }

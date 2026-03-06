@@ -3,6 +3,7 @@
 
 import React, { Suspense } from "react";
 import { C, RADIUS } from "../design/tokens.js";
+import { ErrorBoundary, ViewSkeleton } from "../core/ErrorBoundary.jsx";
 import Table from "./Table.jsx";
 import Gantt from "./Gantt.jsx";
 import CardGrid from "./CardGrid.jsx";
@@ -84,16 +85,17 @@ export default function ViewRenderer({ views = [], data, schema, onUpdate, onRef
           gap: 16,
         }}>
           {mainViews.map((v, i) => (
-            <ViewBlock
-              key={`main-${i}`}
-              viewConfig={v}
-              data={data}
-              schema={schema}
-              onUpdate={onUpdate}
-              onRefresh={onRefresh}
-              onCreate={onCreate}
-              pageConfig={pageConfig}
-            />
+            <ErrorBoundary key={`main-${i}`} fallbackLabel={v.label || v.type}>
+              <ViewBlock
+                viewConfig={v}
+                data={data}
+                schema={schema}
+                onUpdate={onUpdate}
+                onRefresh={onRefresh}
+                onCreate={onCreate}
+                pageConfig={pageConfig}
+              />
+            </ErrorBoundary>
           ))}
 
           {mainViews.length === 0 && (
@@ -121,14 +123,15 @@ export default function ViewRenderer({ views = [], data, schema, onUpdate, onRef
             flexDirection: "column",
           }}>
             {sideViews.map((v, i) => (
-              <ViewBlock
-                key={`side-${i}`}
-                viewConfig={v}
-                data={data}
-                schema={schema}
-                onUpdate={onUpdate}
-                onRefresh={onRefresh}
-              />
+              <ErrorBoundary key={`side-${i}`} fallbackLabel={v.label || v.type}>
+                <ViewBlock
+                  viewConfig={v}
+                  data={data}
+                  schema={schema}
+                  onUpdate={onUpdate}
+                  onRefresh={onRefresh}
+                />
+              </ErrorBoundary>
             ))}
           </div>
         )}
@@ -144,13 +147,15 @@ export default function ViewRenderer({ views = [], data, schema, onUpdate, onRef
         }}>
           {bottomViews.map((v, i) => (
             <div key={`bottom-${i}`} style={{ flex: 1 }}>
-              <ViewBlock
-                viewConfig={v}
-                data={data}
-                schema={schema}
-                onUpdate={onUpdate}
-                onRefresh={onRefresh}
-              />
+              <ErrorBoundary fallbackLabel={v.label || v.type}>
+                <ViewBlock
+                  viewConfig={v}
+                  data={data}
+                  schema={schema}
+                  onUpdate={onUpdate}
+                  onRefresh={onRefresh}
+                />
+              </ErrorBoundary>
             </div>
           ))}
         </div>

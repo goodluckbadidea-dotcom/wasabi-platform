@@ -197,6 +197,26 @@ export async function getDatabase(workerUrl, notionKey, databaseId) {
 }
 
 /**
+ * Update a database's schema (add/rename/remove properties) or title.
+ * `payload` follows the Notion API: { title?, description?, properties? }
+ */
+export async function updateDatabase(workerUrl, notionKey, databaseId, payload) {
+  const res = await fetch(`${workerUrl}/database/${databaseId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${notionKey}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => "");
+    throw new Error(`Failed to update database (${res.status}): ${err}`);
+  }
+  return res.json();
+}
+
+/**
  * Test Notion connection by listing user info.
  */
 export async function testConnection(workerUrl, notionKey) {

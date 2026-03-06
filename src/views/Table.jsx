@@ -635,6 +635,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const [sortDir, setSortDir] = useState(config.sort?.direction || null); // "asc" | "desc" | null
   const [filters, setFilters] = useState(config.filters || {}); // { fieldName: value }
   const [editCell, setEditCell] = useState(null); // { pageId, field }
+  const [savingCells, setSavingCells] = useState({}); // { "pageId:field": true }
+  const [failedCells, setFailedCells] = useState({}); // { "pageId:field": "error message" }
   const [hoveredRow, setHoveredRow] = useState(null);
   const [searchFocused, setSearchFocused] = useState(false);
 
@@ -742,13 +744,44 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     }
   }, [sortField, sortDir]);
 
-  // Inline edit commit
-  const handleEditCommit = useCallback((pageId, field, value) => {
+  // Inline edit commit — with saving indicator + error handling
+  const handleEditCommit = useCallback(async (pageId, field, value) => {
     const type = getFieldType(schema, field);
     if (!type || !onUpdate) return;
+
+    // Validate before committing
+    if (type === "email" && value) {
+      const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailPattern.test(value)) {
+        setFailedCells((prev) => ({ ...prev, [`${pageId}:${field}`]: "Invalid email" }));
+        setEditCell(null);
+        setTimeout(() => setFailedCells((prev) => { const n = { ...prev }; delete n[`${pageId}:${field}`]; return n; }), 3000);
+        return;
+      }
+    }
+    if (type === "url" && value) {
+      try { new URL(value.startsWith("http") ? value : `https://${value}`); } catch {
+        setFailedCells((prev) => ({ ...prev, [`${pageId}:${field}`]: "Invalid URL" }));
+        setEditCell(null);
+        setTimeout(() => setFailedCells((prev) => { const n = { ...prev }; delete n[`${pageId}:${field}`]; return n; }), 3000);
+        return;
+      }
+    }
+
     const propPayload = buildProp(type, value);
     if (propPayload !== undefined) {
-      onUpdate(pageId, field, propPayload);
+      const cellKey = `${pageId}:${field}`;
+      setSavingCells((prev) => ({ ...prev, [cellKey]: true }));
+      setFailedCells((prev) => { const n = { ...prev }; delete n[cellKey]; return n; });
+      try {
+        await onUpdate(pageId, field, propPayload);
+      } catch (err) {
+        console.error("Inline edit failed:", err);
+        setFailedCells((prev) => ({ ...prev, [cellKey]: err.message || "Save failed" }));
+        setTimeout(() => setFailedCells((prev) => { const n = { ...prev }; delete n[cellKey]; return n; }), 4000);
+      } finally {
+        setSavingCells((prev) => { const n = { ...prev }; delete n[cellKey]; return n; });
+      }
     }
     setEditCell(null);
   }, [schema, onUpdate]);
@@ -938,9 +971,16 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                       const value = readField(page, col);
                       const isEditing = editCell?.pageId === pageId && editCell?.field === col;
                       const canEdit = EDITABLE_TYPES.has(type) && !!onUpdate;
+                      const cellKey = `${pageId}:${col}`;
+                      const isSaving = !!savingCells[cellKey];
+                      const failMsg = failedCells[cellKey];
 
                       return (
-                        <td key={col} style={styles.td}>
+                        <td key={col} style={{
+                          ...styles.td,
+                          ...(isSaving ? { opacity: 0.55 } : {}),
+                          ...(failMsg ? { background: "#E0525210" } : {}),
+                        }}>
                           {isEditing ? (
                             <CellEditor
                               value={value}
@@ -950,19 +990,31 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                               onCancel={() => setEditCell(null)}
                             />
                           ) : (
-                            <CellDisplay
-                              value={value}
-                              type={type}
-                              fieldName={col}
-                              schema={schema}
-                              onClick={
-                                type === "checkbox" && canEdit
-                                  ? () => handleCheckboxToggle(pageId, col, value)
-                                  : canEdit
-                                    ? () => setEditCell({ pageId, field: col })
-                                    : undefined
-                              }
-                            />
+                            <div style={{ position: "relative" }}>
+                              <CellDisplay
+                                value={value}
+                                type={type}
+                                fieldName={col}
+                                schema={schema}
+                                onClick={
+                                  type === "checkbox" && canEdit
+                                    ? () => handleCheckboxToggle(pageId, col, value)
+                                    : canEdit
+                                      ? () => setEditCell({ pageId, field: col })
+                                      : undefined
+                                }
+                              />
+                              {failMsg && (
+                                <div style={{
+                                  fontSize: 10,
+                                  color: "#E05252",
+                                  marginTop: 2,
+                                  animation: "fadeUp 0.2s ease",
+                                }}>
+                                  {failMsg}
+                                </div>
+                              )}
+                            </div>
                           )}
                         </td>
                       );

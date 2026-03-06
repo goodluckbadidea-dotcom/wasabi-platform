@@ -68,6 +68,13 @@ export default {
         return await notionFetch("/databases", "POST", notionKey, body);
       }
 
+      // Update database (schema / title)
+      if (path.startsWith("/database/") && request.method === "PATCH") {
+        const dbId = path.split("/database/")[1];
+        const body = await request.json();
+        return await notionFetch(`/databases/${dbId}`, "PATCH", notionKey, body);
+      }
+
       // Get blocks
       if (path.startsWith("/blocks/") && request.method === "GET") {
         const blockId = path.split("/blocks/")[1];

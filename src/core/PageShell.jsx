@@ -11,9 +11,10 @@ import { detectSchema } from "../notion/schema.js";
 import { updatePage, createPage } from "../notion/client.js";
 import ViewRenderer from "../views/ViewRenderer.jsx";
 import ChatPanel from "../views/ChatPanel.jsx";
+import { ViewSkeleton } from "./ErrorBoundary.jsx";
 import { IconWarning, IconRefresh } from "../design/icons.jsx";
 
-const REFRESH_INTERVAL = 30000; // 30 seconds
+const DEFAULT_REFRESH_MS = 30000; // 30 seconds
 
 export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
   const { user } = usePlatform();
@@ -59,11 +60,13 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
     fetchData();
   }, [fetchData]);
 
-  // Periodic refresh
+  // Periodic refresh — configurable per page via pageConfig.refreshInterval (ms)
+  const refreshMs = pageConfig.refreshInterval ?? DEFAULT_REFRESH_MS;
   useEffect(() => {
-    refreshTimer.current = setInterval(fetchData, REFRESH_INTERVAL);
+    if (refreshMs <= 0) return; // 0 or negative disables auto-refresh
+    refreshTimer.current = setInterval(fetchData, refreshMs);
     return () => clearInterval(refreshTimer.current);
-  }, [fetchData]);
+  }, [fetchData, refreshMs]);
 
   // Handle inline edits from views
   // Views call: onUpdate(pageId, fieldName, builtPropObject)
@@ -117,27 +120,28 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
   );
 
   if (loading && data.length === 0) {
+    const firstViewType = activeView?.type || "default";
     return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          height: "100%",
-          color: C.darkMuted,
-          fontSize: 14,
-          gap: 8,
-        }}
-      >
-        <span
+      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+        {/* Compact header skeleton */}
+        <div
           style={{
-            animation: "spin 1s linear infinite",
-            display: "inline-block",
+            height: 40,
+            minHeight: 40,
+            display: "flex",
+            alignItems: "center",
+            padding: "0 20px",
+            borderBottom: `1px solid ${C.edgeLine}`,
+            background: C.dark,
+            gap: 12,
           }}
         >
-          &#x27F3;
-        </span>
-        Loading {pageConfig.name}...
+          <span style={{ fontSize: 11, color: C.darkMuted }}>Loading...</span>
+        </div>
+        {/* View-type-aware skeleton */}
+        <div style={{ flex: 1, overflow: "hidden" }}>
+          <ViewSkeleton viewType={firstViewType} />
+        </div>
       </div>
     );
   }

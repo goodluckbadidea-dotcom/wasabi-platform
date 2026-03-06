@@ -80,6 +80,91 @@ export function createToolExecutor({
         return JSON.stringify({ success: true, page_id: toolInput.page_id });
       }
 
+      // ─── Cross-Database Query ───
+      case "cross_database_query": {
+        const queries = toolInput.queries || [];
+        const allResults = {};
+        for (const q of queries.slice(0, 5)) { // Max 5 databases per call
+          const label = q.label || q.database_id;
+          try {
+            const results = await queryAll(workerUrl, notionKey, q.database_id, q.filter, q.sorts);
+            const summary = results.map((page) => {
+              const props = extractProperties(page);
+              return { id: page.id, ...props };
+            });
+            allResults[label] = {
+              count: summary.length,
+              results: summary.slice(0, 30),
+              truncated: summary.length > 30,
+            };
+          } catch (err) {
+            allResults[label] = { error: err.message };
+          }
+        }
+        return JSON.stringify(allResults);
+      }
+
+      // ─── Database Schema Update ───
+      case "update_database": {
+        const payload = {};
+
+        // Title update
+        if (toolInput.title) {
+          payload.title = [{ type: "text", text: { content: toolInput.title } }];
+        }
+
+        // Build properties update
+        const propUpdates = {};
+
+        // Add new properties
+        if (toolInput.add_properties) {
+          for (const field of toolInput.add_properties) {
+            const propDef = {};
+            switch (field.type) {
+              case "rich_text": propDef.rich_text = {}; break;
+              case "number": propDef.number = { format: field.format || "number" }; break;
+              case "select":
+                propDef.select = { options: (field.options || []).map((o) => typeof o === "string" ? { name: o } : o) };
+                break;
+              case "status":
+                propDef.status = { options: (field.options || []).map((o) => typeof o === "string" ? { name: o } : o) };
+                break;
+              case "multi_select":
+                propDef.multi_select = { options: (field.options || []).map((o) => typeof o === "string" ? { name: o } : o) };
+                break;
+              case "date": propDef.date = {}; break;
+              case "checkbox": propDef.checkbox = {}; break;
+              case "url": propDef.url = {}; break;
+              case "email": propDef.email = {}; break;
+              case "phone_number": propDef.phone_number = {}; break;
+              default: propDef.rich_text = {};
+            }
+            propUpdates[field.name] = propDef;
+          }
+        }
+
+        // Rename properties
+        if (toolInput.rename_properties) {
+          for (const [oldName, newName] of Object.entries(toolInput.rename_properties)) {
+            propUpdates[oldName] = { name: newName };
+          }
+        }
+
+        // Remove properties (set to null in Notion API)
+        if (toolInput.remove_properties) {
+          for (const name of toolInput.remove_properties) {
+            propUpdates[name] = null;
+          }
+        }
+
+        if (Object.keys(propUpdates).length > 0) {
+          payload.properties = propUpdates;
+        }
+
+        const result = await client.updateDatabase(workerUrl, notionKey, toolInput.database_id, payload);
+        return JSON.stringify({ success: true, database_id: toolInput.database_id, title: toolInput.title || result.title?.[0]?.plain_text });
+      }
+
       // ─── Database Creation ───
       case "create_database": {
         const db = await client.createDatabase(

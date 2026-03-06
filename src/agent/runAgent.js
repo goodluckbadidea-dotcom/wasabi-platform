@@ -3,6 +3,7 @@
 // Used by Wasabi, page agents, and automation agents.
 
 import { sleep } from "../utils/helpers.js";
+import { recordUsage } from "../utils/costTracker.js";
 
 const MAX_BACKOFF = 60000;
 
@@ -159,7 +160,21 @@ async function callClaude({
         throw new Error(`Claude API error (${res.status}): ${errText}`);
       }
 
-      return await res.json();
+      const data = await res.json();
+
+      // Track token usage for cost estimation
+      if (data.usage) {
+        try {
+          recordUsage({
+            model,
+            inputTokens: data.usage.input_tokens || 0,
+            outputTokens: data.usage.output_tokens || 0,
+            source: "agent",
+          });
+        } catch {}
+      }
+
+      return data;
     } catch (err) {
       lastError = err;
       if (err.message === "Aborted") throw err;
