@@ -1,0 +1,2 @@
+name = "wasabi-platform"
+pages_build_output_dir = "./dist"
