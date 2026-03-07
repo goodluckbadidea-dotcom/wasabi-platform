@@ -163,6 +163,51 @@ export async function queryTable(tableId, { filters, sorts, limit, offset } = {}
   });
 }
 
+// ─── Sheets ───
+
+export async function getSheet(id) {
+  return apiFetch(`/sheets/${id}`, { method: "GET" });
+}
+
+export async function updateSheet(id, updates) {
+  return apiFetch(`/sheets/${id}`, { method: "PATCH", body: updates });
+}
+
+export async function sheetFormula(id, fn, range, target) {
+  return apiFetch(`/sheets/${id}/formula`, {
+    method: "POST",
+    body: { fn, range, target },
+  });
+}
+
+export async function resizeSheet(id, dimensions) {
+  return apiFetch(`/sheets/${id}/resize`, {
+    method: "POST",
+    body: dimensions,
+  });
+}
+
+// ─── Documents (R2) ───
+
+export async function getDocument(id) {
+  return apiFetch(`/docs/${id}`, { method: "GET" });
+}
+
+export async function saveDocument(id, content) {
+  return apiFetch(`/docs/${id}`, { method: "PUT", body: { content } });
+}
+
+export async function updateDocBlocks(id, updates) {
+  return apiFetch(`/docs/${id}/blocks`, {
+    method: "PATCH",
+    body: { updates },
+  });
+}
+
+export async function exportDocNotion(id) {
+  return apiFetch(`/docs/${id}/export/notion`, { method: "GET" });
+}
+
 // ─── Notion Proxy (backward compat) ───
 // These maintain the existing API surface so current code keeps working.
 

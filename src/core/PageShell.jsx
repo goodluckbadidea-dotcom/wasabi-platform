@@ -70,6 +70,7 @@ export default function PageShell({
   const sourceType = resolveSourceType(effectiveConfig);
   const isDocumentPage = effectiveConfig.pageType === "document" || effectiveConfig.page_type === "document";
   const isLinkedSheetPage = effectiveConfig.pageType === "linked_sheet" || effectiveConfig.page_type === "linked_sheet";
+  const isSheetPage = effectiveConfig.pageType === "sheet" || effectiveConfig.page_type === "sheet";
   const isStandaloneTable = sourceType === "d1";
 
   // Get the active view config based on effective config (sub-page or parent)
@@ -89,8 +90,8 @@ export default function PageShell({
 
   // Fetch data via data source abstraction (handles D1 + Notion + Sheets)
   const fetchData = useCallback(async () => {
-    // Document and linked-sheet-only pages have no databases to fetch
-    if (isDocumentPage || isLinkedSheetPage) {
+    // Document, sheet, and linked-sheet-only pages have no databases to fetch
+    if (isDocumentPage || isLinkedSheetPage || isSheetPage) {
       setLoading(false);
       return;
     }
@@ -401,8 +402,8 @@ export default function PageShell({
         onAddView={() => setShowAddDb(true)}
       />
 
-      {/* Header bar — simplified for document and linked-sheet-only pages */}
-      {(isDocumentPage || isLinkedSheetPage) ? (
+      {/* Header bar — simplified for document, sheet, and linked-sheet-only pages */}
+      {(isDocumentPage || isLinkedSheetPage || isSheetPage) ? (
         <div
           style={{
             height: 40,
@@ -416,7 +417,7 @@ export default function PageShell({
           }}
         >
           <span style={{ fontSize: 11, color: C.darkMuted }}>
-            {isDocumentPage ? "Document" : "Linked Sheet"}
+            {isSheetPage ? "Sheet" : isDocumentPage ? "Document" : "Linked Sheet"}
           </span>
           <div style={{ flex: 1 }} />
         </div>

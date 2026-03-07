@@ -6,7 +6,7 @@ import React, { useState, useCallback, useMemo } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { savePageConfig, createDocumentPageConfig, createFolderConfig, createTableConfig, createLinkedNotionConfig } from "../config/pageConfig.js";
+import { savePageConfig, createDocumentPageConfig, createFolderConfig, createTableConfig, createLinkedNotionConfig, createStandaloneDocConfig, createSheetConfig } from "../config/pageConfig.js";
 import { autoDetectViews } from "../notion/schema.js";
 import { createSubpage, ensurePageActive } from "../notion/client.js";
 import DatabaseBrowser from "./DatabaseBrowser.jsx";
@@ -504,10 +504,68 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
     ? "New Page"
     : "+ Create New";
 
+  // ── Save Sheet ──
+  const handleSaveSheet = useCallback(async () => {
+    setError(null);
+    if (!pageName.trim()) {
+      setError("Sheet name is required");
+      return;
+    }
+    setSaving(true);
+    try {
+      const config = {
+        ...createSheetConfig(pageName.trim(), pageIcon),
+        type: subPageParent ? "sub_page" : "page",
+        parentId: subPageParent || folderId || null,
+      };
+      const pageId = await savePageConfig(config);
+      addPage({ ...config, id: pageId });
+      setSuccess(true);
+    } catch (err) {
+      setError(err.message || "Failed to create sheet");
+    } finally {
+      setSaving(false);
+    }
+  }, [pageName, pageIcon, addPage, subPageParent, folderId]);
+
+  // ── Save Standalone Document ──
+  const handleSaveStandaloneDoc = useCallback(async () => {
+    setError(null);
+    if (!pageName.trim()) {
+      setError("Document name is required");
+      return;
+    }
+    setSaving(true);
+    try {
+      const config = {
+        ...createStandaloneDocConfig(pageName.trim(), pageIcon),
+        type: subPageParent ? "sub_page" : "page",
+        parentId: subPageParent || folderId || null,
+      };
+      const pageId = await savePageConfig(config);
+      addPage({ ...config, id: pageId });
+      setSuccess(true);
+    } catch (err) {
+      setError(err.message || "Failed to create document");
+    } finally {
+      setSaving(false);
+    }
+  }, [pageName, pageIcon, addPage, subPageParent, folderId]);
+
   // ── Page Type Selection Screen ──
   if (!pageType) {
     // If creating a sub-page, skip folder option
     const showFolderOption = !subPageParent && !folderId;
+    const typeCards = [];
+
+    if (showFolderOption) {
+      typeCards.push({ key: "folder", label: "Folder", desc: "Organize your pages into groups. No database required.", icon: IconFolder, type: "folder" });
+    }
+    typeCards.push({ key: "createTable", label: "Create Table", desc: "Build a standalone database with typed columns. No Notion required.", icon: IconTable, type: "createTable" });
+    typeCards.push({ key: "createSheet", label: "Create Sheet", desc: "Spreadsheet grid with formulas. Like Excel, powered by Cloudflare D1.", icon: IconSheet, type: "createSheet" });
+    typeCards.push({ key: "database", label: "Link a Database", desc: "Connect a Notion database or Google Sheet. Add views like tables, kanban, and charts.", icon: IconDatabase, type: "database" });
+    typeCards.push({ key: "document", label: "Document", desc: "Create a rich text document for notes, SOPs, and reference content.", icon: IconPage, type: "document" });
+
     return (
       <div style={vs.container}>
         <div style={vs.header}>
@@ -515,116 +573,37 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
           <div style={vs.headerSub}>Choose what kind of page to create</div>
         </div>
         <div style={{ ...vs.body, alignItems: "center", justifyContent: "center" }}>
-          <div style={{ display: "flex", gap: 16, maxWidth: showFolderOption ? 960 : 740, width: "100%", flexWrap: "wrap" }}>
-            {/* Folder card (only at top level, not when creating inside a folder or as a sub-page) */}
-            {showFolderOption && (
-              <div
-                style={{
-                  flex: 1,
-                  padding: 28,
-                  background: C.darkSurf,
-                  border: `1px solid ${C.darkBorder}`,
-                  borderRadius: RADIUS.xl,
-                  cursor: "pointer",
-                  transition: "all 0.15s",
-                  textAlign: "center",
-                }}
-                onClick={() => setPageType("folder")}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.background = `${C.accent}08`; }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; e.currentTarget.style.background = C.darkSurf; }}
-              >
-                <div style={{ marginBottom: 14 }}>
-                  <IconFolder size={32} color={C.accent} />
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fill, minmax(180px, 1fr))`, gap: 16, maxWidth: 960, width: "100%" }}>
+            {typeCards.map((card) => {
+              const CardIcon = card.icon;
+              return (
+                <div
+                  key={card.key}
+                  style={{
+                    padding: 28,
+                    background: C.darkSurf,
+                    border: `1px solid ${C.darkBorder}`,
+                    borderRadius: RADIUS.xl,
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                    textAlign: "center",
+                  }}
+                  onClick={() => setPageType(card.type)}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.background = `${C.accent}08`; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; e.currentTarget.style.background = C.darkSurf; }}
+                >
+                  <div style={{ marginBottom: 14 }}>
+                    <CardIcon size={32} color={C.accent} />
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: C.darkText, marginBottom: 8 }}>
+                    {card.label}
+                  </div>
+                  <div style={{ fontSize: 13, color: C.darkMuted, lineHeight: 1.5 }}>
+                    {card.desc}
+                  </div>
                 </div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: C.darkText, marginBottom: 8 }}>
-                  Folder
-                </div>
-                <div style={{ fontSize: 13, color: C.darkMuted, lineHeight: 1.5 }}>
-                  Organize your pages into groups. No database required.
-                </div>
-              </div>
-            )}
-
-            {/* Create Table card */}
-            <div
-              style={{
-                flex: 1,
-                padding: 28,
-                background: C.darkSurf,
-                border: `1px solid ${C.darkBorder}`,
-                borderRadius: RADIUS.xl,
-                cursor: "pointer",
-                transition: "all 0.15s",
-                textAlign: "center",
-              }}
-              onClick={() => setPageType("createTable")}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.background = `${C.accent}08`; }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; e.currentTarget.style.background = C.darkSurf; }}
-            >
-              <div style={{ marginBottom: 14 }}>
-                <IconTable size={32} color={C.accent} />
-              </div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: C.darkText, marginBottom: 8 }}>
-                Create Table
-              </div>
-              <div style={{ fontSize: 13, color: C.darkMuted, lineHeight: 1.5 }}>
-                Build a standalone database with typed columns. No Notion required.
-              </div>
-            </div>
-
-            {/* Link a Database card */}
-            <div
-              style={{
-                flex: 1,
-                padding: 28,
-                background: C.darkSurf,
-                border: `1px solid ${C.darkBorder}`,
-                borderRadius: RADIUS.xl,
-                cursor: "pointer",
-                transition: "all 0.15s",
-                textAlign: "center",
-              }}
-              onClick={() => setPageType("database")}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.background = `${C.accent}08`; }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; e.currentTarget.style.background = C.darkSurf; }}
-            >
-              <div style={{ marginBottom: 14 }}>
-                <IconDatabase size={32} color={C.accent} />
-              </div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: C.darkText, marginBottom: 8 }}>
-                Link a Database
-              </div>
-              <div style={{ fontSize: 13, color: C.darkMuted, lineHeight: 1.5 }}>
-                Connect a Notion database or Google Sheet. Add views like tables, kanban, and charts.
-              </div>
-            </div>
-
-            {/* Document Page card */}
-            <div
-              style={{
-                flex: 1,
-                padding: 28,
-                background: C.darkSurf,
-                border: `1px solid ${C.darkBorder}`,
-                borderRadius: RADIUS.xl,
-                cursor: "pointer",
-                transition: "all 0.15s",
-                textAlign: "center",
-              }}
-              onClick={() => setPageType("document")}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.background = `${C.accent}08`; }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; e.currentTarget.style.background = C.darkSurf; }}
-            >
-              <div style={{ marginBottom: 14 }}>
-                <IconPage size={32} color={C.accent} />
-              </div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: C.darkText, marginBottom: 8 }}>
-                Document Page
-              </div>
-              <div style={{ fontSize: 13, color: C.darkMuted, lineHeight: 1.5 }}>
-                Create a rich text document for notes, SOPs, and reference content.
-              </div>
-            </div>
+              );
+            })}
           </div>
         </div>
         {/* Footer */}
@@ -720,8 +699,9 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
     );
   }
 
-  // ── Document Page Flow (simplified) ──
+  // ── Document Page Flow — standalone by default, optional Notion-backed ──
   if (pageType === "document") {
+    const hasNotion = !!(user?.notionKey && platformIds?.rootPageId);
     return (
       <div style={vs.container}>
         <div style={vs.header}>
@@ -771,11 +751,118 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
           </div>
 
           <div style={{ padding: "12px 16px", background: `${C.accent}10`, border: `1px solid ${C.accent}30`, borderRadius: RADIUS.md, fontSize: 13, color: C.darkMuted, lineHeight: 1.5 }}>
-            A new Notion page will be created and linked to Wasabi. You can edit it using the built-in rich text editor.
+            Your document is stored in Cloudflare R2 — no Notion connection required.
+            You can edit it with the built-in rich text editor.
           </div>
 
           {error && <div style={vs.error}>{error}</div>}
           {success && <div style={vs.success}>Document created successfully!</div>}
+        </div>
+        <div style={vs.footer}>
+          <button style={S.btnGhost} onClick={() => setPageType(null)}>Back</button>
+          <div style={{ flex: 1 }} />
+          {hasNotion && (
+            <button
+              style={{
+                ...S.btnSecondary,
+                padding: "10px 20px",
+                fontSize: 13,
+                fontWeight: 600,
+                opacity: saving ? 0.6 : 1,
+                cursor: saving ? "not-allowed" : "pointer",
+                marginRight: 8,
+              }}
+              onClick={handleSaveDocument}
+              disabled={saving}
+              title="Create as a Notion-linked page instead"
+            >
+              {saving ? "Creating..." : "Create in Notion"}
+            </button>
+          )}
+          <button
+            style={{
+              ...S.btnPrimary,
+              padding: "10px 28px",
+              fontSize: 14,
+              fontWeight: 600,
+              opacity: saving ? 0.6 : 1,
+              cursor: saving ? "not-allowed" : "pointer",
+            }}
+            onClick={handleSaveStandaloneDoc}
+            disabled={saving}
+          >
+            {saving ? "Creating..." : "Create Document"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Create Sheet Flow ──
+  if (pageType === "createSheet") {
+    return (
+      <div style={vs.container}>
+        <div style={vs.header}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span
+              style={{ cursor: "pointer", display: "flex", alignItems: "center" }}
+              onClick={() => setPageType(null)}
+              title="Back to type selection"
+            >
+              <IconChevronLeft size={16} color={C.darkMuted} />
+            </span>
+            <div>
+              <div style={vs.headerTitle}>New Sheet</div>
+              <div style={vs.headerSub}>Create a spreadsheet grid with formulas</div>
+            </div>
+          </div>
+        </div>
+        <div style={vs.body}>
+          {/* Sheet Identity */}
+          <div style={vs.section}>
+            <div style={vs.sectionTitle}>Sheet Identity</div>
+            <div style={{ display: "flex", gap: 12, marginBottom: 14 }}>
+              <div>
+                <label style={vs.label}>Icon</label>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", maxWidth: 200 }}>
+                  {ICONS.map((ic) => {
+                    const Ic = ICON_MAP[ic];
+                    return (
+                      <span key={ic} style={vs.iconBtn(pageIcon === ic)} onClick={() => setPageIcon(ic)} title={ic}>
+                        <Ic size={16} color={pageIcon === ic ? C.accent : C.darkMuted} />
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={vs.label}>Sheet Name</label>
+                <input
+                  style={vs.input}
+                  value={pageName}
+                  onChange={(e) => setPageName(e.target.value)}
+                  placeholder="e.g. Budget, Revenue, Inventory"
+                  autoFocus
+                />
+              </div>
+            </div>
+          </div>
+
+          <div style={{
+            padding: "12px 16px",
+            background: `${C.accent}10`,
+            border: `1px solid ${C.accent}30`,
+            borderRadius: RADIUS.md,
+            fontSize: 13,
+            color: C.darkMuted,
+            lineHeight: 1.5,
+          }}>
+            A spreadsheet grid (26 columns × 100 rows) with SUM, AVG, COUNT, MIN, MAX formulas.
+            Data is stored in Cloudflare D1.
+          </div>
+
+          {error && <div style={vs.error}>{error}</div>}
+          {success && <div style={vs.success}>Sheet created successfully!</div>}
         </div>
         <div style={vs.footer}>
           <button style={S.btnGhost} onClick={() => setPageType(null)}>Back</button>
@@ -789,10 +876,10 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
               opacity: saving ? 0.6 : 1,
               cursor: saving ? "not-allowed" : "pointer",
             }}
-            onClick={handleSaveDocument}
+            onClick={handleSaveSheet}
             disabled={saving}
           >
-            {saving ? "Creating..." : "Create Document"}
+            {saving ? "Creating..." : "Create Sheet"}
           </button>
         </div>
       </div>

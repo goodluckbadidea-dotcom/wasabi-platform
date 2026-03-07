@@ -17,6 +17,7 @@ import Document from "./Document.jsx";
 import NotificationFeed from "./NotificationFeed.jsx";
 import Calendar from "./Calendar.jsx";
 import LinkedSheet from "./LinkedSheet.jsx";
+import Sheet from "./Sheet.jsx";
 
 const VIEW_REGISTRY = {
   table: Table,
@@ -31,6 +32,7 @@ const VIEW_REGISTRY = {
   document: Document,
   notificationFeed: NotificationFeed,
   linked_sheet: LinkedSheet,
+  sheet: Sheet,
 };
 
 /**

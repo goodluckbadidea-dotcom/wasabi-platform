@@ -272,6 +272,55 @@ export default {
         return await handleQueryTable(env, tableId, body);
       }
 
+      // ─── Sheet Routes ───
+      const sheetFormulaMatch = path.match(/^\/sheets\/([^/]+)\/formula$/);
+      if (sheetFormulaMatch && request.method === "POST") {
+        const id = sheetFormulaMatch[1];
+        const body = await request.json();
+        return await handleSheetFormula(env, id, body);
+      }
+
+      const sheetResizeMatch = path.match(/^\/sheets\/([^/]+)\/resize$/);
+      if (sheetResizeMatch && request.method === "POST") {
+        const id = sheetResizeMatch[1];
+        const body = await request.json();
+        return await handleSheetResize(env, id, body);
+      }
+
+      const sheetMatch = path.match(/^\/sheets\/([^/]+)$/);
+      if (sheetMatch) {
+        const id = sheetMatch[1];
+        if (request.method === "GET") return await handleGetSheet(env, id);
+        if (request.method === "PATCH") {
+          const body = await request.json();
+          return await handleUpdateSheet(env, id, body);
+        }
+      }
+
+      // ─── Document (R2) Routes ───
+      const docBlocksMatch = path.match(/^\/docs\/([^/]+)\/blocks$/);
+      if (docBlocksMatch && request.method === "PATCH") {
+        const id = docBlocksMatch[1];
+        const body = await request.json();
+        return await handleUpdateDocBlocks(env, id, body);
+      }
+
+      const docExportMatch = path.match(/^\/docs\/([^/]+)\/export\/notion$/);
+      if (docExportMatch && request.method === "GET") {
+        const id = docExportMatch[1];
+        return await handleExportDocNotion(env, id);
+      }
+
+      const docMatch = path.match(/^\/docs\/([^/]+)$/);
+      if (docMatch) {
+        const id = docMatch[1];
+        if (request.method === "GET") return await handleGetDoc(env, id);
+        if (request.method === "PUT") {
+          const body = await request.json();
+          return await handleSaveDoc(env, id, body);
+        }
+      }
+
       // ─── Notion Routes ───
       const notionKey = await getNotionKey(request, env);
 
@@ -600,6 +649,29 @@ async function handleCreatePage(env, body) {
       ).bind(id, JSON.stringify(columns)).run();
     }
 
+    // If this is a sheet, initialize sheet_data
+    if (page_type === "sheet") {
+      const colCount = body.col_count || 26;
+      const rowCount = body.row_count || 100;
+      await env.DB.prepare(
+        `INSERT INTO sheet_data (id, col_count, row_count, cells, col_widths, created_at, updated_at)
+         VALUES (?, ?, ?, '{}', '{}', datetime('now'), datetime('now'))`
+      ).bind(id, colCount, rowCount).run();
+    }
+
+    // If this is a standalone document, initialize document metadata + R2 content
+    if (page_type === "document" && !config?.notionPageId) {
+      const r2Key = `docs/${id}.json`;
+      const initialContent = { version: 1, blocks: [] };
+      await env.DOCS.put(r2Key, JSON.stringify(initialContent), {
+        httpMetadata: { contentType: "application/json" },
+      });
+      await env.DB.prepare(
+        `INSERT INTO documents (id, r2_key, version, word_count, created_at, updated_at)
+         VALUES (?, ?, 1, 0, datetime('now'), datetime('now'))`
+      ).bind(id, r2Key).run();
+    }
+
     return jsonResponse({ ok: true, id }, 201);
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
@@ -652,6 +724,14 @@ async function handleDeletePage(env, id) {
     await env.DB.prepare("DELETE FROM table_schemas WHERE id = ?").bind(id).run();
     // Remove table rows if exists
     await env.DB.prepare("DELETE FROM table_rows WHERE table_id = ?").bind(id).run();
+    // Remove sheet data if exists
+    await env.DB.prepare("DELETE FROM sheet_data WHERE id = ?").bind(id).run();
+    // Remove document metadata + R2 content if exists
+    const docMeta = await env.DB.prepare("SELECT r2_key FROM documents WHERE id = ?").bind(id).first();
+    if (docMeta?.r2_key) {
+      try { await env.DOCS.delete(docMeta.r2_key); } catch {}
+    }
+    await env.DB.prepare("DELETE FROM documents WHERE id = ?").bind(id).run();
     return jsonResponse({ ok: true, id });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
@@ -813,6 +893,385 @@ async function handleQueryTable(env, tableId, body) {
     return jsonResponse({ rows: parsed, total: parsed.length });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// ─── Sheet Handlers ───
+
+async function handleGetSheet(env, id) {
+  try {
+    const row = await env.DB.prepare("SELECT * FROM sheet_data WHERE id = ?").bind(id).first();
+    if (!row) return jsonResponse({ _error: "Sheet not found" }, 404);
+    return jsonResponse({
+      ...row,
+      cells: JSON.parse(row.cells || "{}"),
+      col_widths: JSON.parse(row.col_widths || "{}"),
+    });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleUpdateSheet(env, id, body) {
+  try {
+    // Merge mode: read existing cells, merge with incoming
+    if (body.cells) {
+      const existing = await env.DB.prepare("SELECT cells FROM sheet_data WHERE id = ?").bind(id).first();
+      if (!existing) return jsonResponse({ _error: "Sheet not found" }, 404);
+      const currentCells = JSON.parse(existing.cells || "{}");
+      // Merge: incoming cells override existing ones
+      const merged = { ...currentCells };
+      for (const [key, val] of Object.entries(body.cells)) {
+        if (val === null || val === undefined) {
+          delete merged[key]; // null = clear cell
+        } else {
+          merged[key] = val;
+        }
+      }
+      await env.DB.prepare(
+        "UPDATE sheet_data SET cells = ?, updated_at = datetime('now') WHERE id = ?"
+      ).bind(JSON.stringify(merged), id).run();
+    }
+
+    if (body.col_widths) {
+      const existing = await env.DB.prepare("SELECT col_widths FROM sheet_data WHERE id = ?").bind(id).first();
+      const currentWidths = JSON.parse(existing?.col_widths || "{}");
+      const mergedWidths = { ...currentWidths, ...body.col_widths };
+      await env.DB.prepare(
+        "UPDATE sheet_data SET col_widths = ?, updated_at = datetime('now') WHERE id = ?"
+      ).bind(JSON.stringify(mergedWidths), id).run();
+    }
+
+    return jsonResponse({ ok: true, id });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleSheetFormula(env, id, body) {
+  const { fn, range, target } = body;
+  if (!fn || !range || !target) {
+    return jsonResponse({ _error: "Missing fn, range, or target" }, 400);
+  }
+
+  try {
+    const row = await env.DB.prepare("SELECT cells FROM sheet_data WHERE id = ?").bind(id).first();
+    if (!row) return jsonResponse({ _error: "Sheet not found" }, 404);
+    const cells = JSON.parse(row.cells || "{}");
+
+    // Parse range (e.g., "A2:A10")
+    const rangeValues = parseCellRange(range, cells);
+    const nums = rangeValues.map(Number).filter((n) => !isNaN(n));
+
+    let result;
+    switch (fn.toUpperCase()) {
+      case "SUM":
+        result = nums.reduce((a, b) => a + b, 0);
+        break;
+      case "AVG":
+      case "AVERAGE":
+        result = nums.length > 0 ? nums.reduce((a, b) => a + b, 0) / nums.length : 0;
+        break;
+      case "COUNT":
+        result = rangeValues.filter((v) => v !== null && v !== undefined && v !== "").length;
+        break;
+      case "MIN":
+        result = nums.length > 0 ? Math.min(...nums) : 0;
+        break;
+      case "MAX":
+        result = nums.length > 0 ? Math.max(...nums) : 0;
+        break;
+      case "CONCAT":
+        result = rangeValues.join("");
+        break;
+      default:
+        return jsonResponse({ _error: `Unknown function: ${fn}` }, 400);
+    }
+
+    // Store result + formula in target cell
+    cells[target] = { v: result, f: `${fn.toUpperCase()}(${range})` };
+
+    await env.DB.prepare(
+      "UPDATE sheet_data SET cells = ?, updated_at = datetime('now') WHERE id = ?"
+    ).bind(JSON.stringify(cells), id).run();
+
+    return jsonResponse({ ok: true, target, value: result, formula: `${fn.toUpperCase()}(${range})` });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleSheetResize(env, id, body) {
+  const sets = [];
+  const binds = [];
+
+  if (body.col_count !== undefined) { sets.push("col_count = ?"); binds.push(body.col_count); }
+  if (body.row_count !== undefined) { sets.push("row_count = ?"); binds.push(body.row_count); }
+
+  if (sets.length === 0) return jsonResponse({ _error: "No dimensions to update" }, 400);
+
+  sets.push("updated_at = datetime('now')");
+  binds.push(id);
+
+  try {
+    await env.DB.prepare(
+      `UPDATE sheet_data SET ${sets.join(", ")} WHERE id = ?`
+    ).bind(...binds).run();
+    return jsonResponse({ ok: true, id });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// ─── Sheet Helper: Parse Cell Range ───
+
+function parseCellRange(range, cells) {
+  // Parse "A2:A10" → list of cell values
+  const match = range.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i);
+  if (!match) return [];
+
+  const [, startCol, startRow, endCol, endRow] = match;
+  const values = [];
+
+  const sc = colToIndex(startCol.toUpperCase());
+  const ec = colToIndex(endCol.toUpperCase());
+  const sr = parseInt(startRow);
+  const er = parseInt(endRow);
+
+  for (let c = sc; c <= ec; c++) {
+    for (let r = sr; r <= er; r++) {
+      const key = indexToCol(c) + r;
+      const cell = cells[key];
+      if (cell !== undefined && cell !== null) {
+        // Cell can be { v: value, f?: formula } or plain value
+        values.push(typeof cell === "object" ? cell.v : cell);
+      }
+    }
+  }
+  return values;
+}
+
+function colToIndex(col) {
+  let idx = 0;
+  for (let i = 0; i < col.length; i++) {
+    idx = idx * 26 + (col.charCodeAt(i) - 64);
+  }
+  return idx;
+}
+
+function indexToCol(idx) {
+  let col = "";
+  while (idx > 0) {
+    const rem = (idx - 1) % 26;
+    col = String.fromCharCode(65 + rem) + col;
+    idx = Math.floor((idx - 1) / 26);
+  }
+  return col;
+}
+
+// ─── Document (R2) Handlers ───
+
+async function handleGetDoc(env, id) {
+  try {
+    // Get metadata from D1
+    const meta = await env.DB.prepare("SELECT * FROM documents WHERE id = ?").bind(id).first();
+    if (!meta) return jsonResponse({ _error: "Document not found" }, 404);
+
+    // Get content from R2
+    const r2Key = meta.r2_key || `docs/${id}.json`;
+    const obj = await env.DOCS.get(r2Key);
+    let content = { version: 1, blocks: [] };
+    if (obj) {
+      const text = await obj.text();
+      content = JSON.parse(text);
+    }
+
+    return jsonResponse({
+      id: meta.id,
+      version: meta.version,
+      word_count: meta.word_count,
+      created_at: meta.created_at,
+      updated_at: meta.updated_at,
+      content,
+    });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleSaveDoc(env, id, body) {
+  const { content } = body;
+  if (!content) return jsonResponse({ _error: "Missing content" }, 400);
+
+  const r2Key = `docs/${id}.json`;
+
+  try {
+    // Calculate word count from blocks
+    let wordCount = 0;
+    if (content.blocks) {
+      for (const block of content.blocks) {
+        const text = block.content || "";
+        wordCount += text.split(/\s+/).filter(Boolean).length;
+      }
+    }
+
+    // Save content to R2
+    await env.DOCS.put(r2Key, JSON.stringify(content), {
+      httpMetadata: { contentType: "application/json" },
+    });
+
+    // Upsert D1 metadata
+    await env.DB.prepare(
+      `INSERT INTO documents (id, r2_key, version, word_count, created_at, updated_at)
+       VALUES (?, ?, 1, ?, datetime('now'), datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET
+         version = documents.version + 1,
+         word_count = excluded.word_count,
+         updated_at = datetime('now')`
+    ).bind(id, r2Key, wordCount).run();
+
+    // Get updated metadata
+    const meta = await env.DB.prepare("SELECT version, word_count FROM documents WHERE id = ?").bind(id).first();
+
+    return jsonResponse({
+      ok: true,
+      id,
+      version: meta?.version || 1,
+      word_count: meta?.word_count || wordCount,
+    });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleUpdateDocBlocks(env, id, body) {
+  const { updates } = body;
+  if (!updates || !Array.isArray(updates)) {
+    return jsonResponse({ _error: "Missing updates array" }, 400);
+  }
+
+  const r2Key = `docs/${id}.json`;
+
+  try {
+    // Read current content
+    const obj = await env.DOCS.get(r2Key);
+    let content = { version: 1, blocks: [] };
+    if (obj) {
+      content = JSON.parse(await obj.text());
+    }
+
+    // Apply updates
+    for (const update of updates) {
+      const { action, block, blockId, index } = update;
+      switch (action) {
+        case "add":
+          if (typeof index === "number") {
+            content.blocks.splice(index, 0, block);
+          } else {
+            content.blocks.push(block);
+          }
+          break;
+        case "update":
+          content.blocks = content.blocks.map((b) =>
+            b.id === blockId ? { ...b, ...block } : b
+          );
+          break;
+        case "delete":
+          content.blocks = content.blocks.filter((b) => b.id !== blockId);
+          break;
+        case "move": {
+          const fromIdx = content.blocks.findIndex((b) => b.id === blockId);
+          if (fromIdx >= 0 && typeof index === "number") {
+            const [item] = content.blocks.splice(fromIdx, 1);
+            content.blocks.splice(index, 0, item);
+          }
+          break;
+        }
+      }
+    }
+
+    // Save updated content
+    await env.DOCS.put(r2Key, JSON.stringify(content), {
+      httpMetadata: { contentType: "application/json" },
+    });
+
+    // Update D1 metadata
+    let wordCount = 0;
+    for (const block of content.blocks) {
+      const text = block.content || "";
+      wordCount += text.split(/\s+/).filter(Boolean).length;
+    }
+
+    await env.DB.prepare(
+      `UPDATE documents SET version = version + 1, word_count = ?, updated_at = datetime('now') WHERE id = ?`
+    ).bind(wordCount, id).run();
+
+    return jsonResponse({ ok: true, id, blockCount: content.blocks.length });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleExportDocNotion(env, id) {
+  const r2Key = `docs/${id}.json`;
+
+  try {
+    const obj = await env.DOCS.get(r2Key);
+    if (!obj) return jsonResponse({ _error: "Document not found" }, 404);
+
+    const content = JSON.parse(await obj.text());
+    const notionBlocks = (content.blocks || []).map(wasabiBlockToNotion);
+
+    return jsonResponse({ blocks: notionBlocks });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// Convert Wasabi block format → Notion block API format
+function wasabiBlockToNotion(block) {
+  const richText = block.content
+    ? [{ type: "text", text: { content: block.content } }]
+    : [];
+
+  switch (block.type) {
+    case "heading_1":
+      return { type: "heading_1", heading_1: { rich_text: richText } };
+    case "heading_2":
+      return { type: "heading_2", heading_2: { rich_text: richText } };
+    case "heading_3":
+      return { type: "heading_3", heading_3: { rich_text: richText } };
+    case "bulleted_list_item":
+      return { type: "bulleted_list_item", bulleted_list_item: { rich_text: richText } };
+    case "numbered_list_item":
+      return { type: "numbered_list_item", numbered_list_item: { rich_text: richText } };
+    case "to_do":
+      return { type: "to_do", to_do: { rich_text: richText, checked: block.checked || false } };
+    case "toggle":
+      return { type: "toggle", toggle: { rich_text: richText } };
+    case "quote":
+      return { type: "quote", quote: { rich_text: richText } };
+    case "callout":
+      return {
+        type: "callout",
+        callout: {
+          rich_text: richText,
+          icon: block.icon ? { type: "emoji", emoji: block.icon } : { type: "emoji", emoji: "💡" },
+        },
+      };
+    case "code":
+      return { type: "code", code: { rich_text: richText, language: block.language || "plain text" } };
+    case "image":
+      return {
+        type: "image",
+        image: { type: "external", external: { url: block.url || "" } },
+      };
+    case "bookmark":
+      return { type: "bookmark", bookmark: { url: block.url || "" } };
+    case "divider":
+      return { type: "divider", divider: {} };
+    default:
+      return { type: "paragraph", paragraph: { rich_text: richText } };
   }
 }
 

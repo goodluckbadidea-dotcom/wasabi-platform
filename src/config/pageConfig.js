@@ -170,7 +170,7 @@ export function createLinkedNotionConfig(name, icon, notionDbId) {
 }
 
 /**
- * Create a document-type page config (Notion-backed for now).
+ * Create a document-type page config (Notion-backed for legacy).
  */
 export function createDocumentPageConfig(name, icon, notionPageId) {
   return {
@@ -189,6 +189,54 @@ export function createDocumentPageConfig(name, icon, notionPageId) {
         config: { pageId: notionPageId },
       },
     ],
+    refreshInterval: 0,
+  };
+}
+
+/**
+ * Create a standalone document page config (R2-backed, no Notion).
+ */
+export function createStandaloneDocConfig(name, icon) {
+  return {
+    name,
+    icon: icon || "page",
+    type: "page",
+    page_type: "document",
+    pageType: "document",
+    standalone: true,
+    databaseIds: [],
+    views: [
+      {
+        type: "document",
+        label: "Document",
+        position: "main",
+        config: { standalone: true },
+      },
+    ],
+    refreshInterval: 0,
+  };
+}
+
+/**
+ * Create a sheet (spreadsheet grid) page config.
+ */
+export function createSheetConfig(name, icon, colCount = 26, rowCount = 100) {
+  return {
+    name,
+    icon: icon || "table",
+    type: "page",
+    page_type: "sheet",
+    pageType: "sheet",
+    databaseIds: [],
+    views: [
+      {
+        type: "sheet",
+        label: "Sheet",
+        position: "main",
+      },
+    ],
+    col_count: colCount,
+    row_count: rowCount,
     refreshInterval: 0,
   };
 }
@@ -219,7 +267,7 @@ function d1ToFrontend(d1Page) {
     parentId: d1Page.parent_id || null,
     type,
     page_type: pt,
-    pageType: ["document", "linked_sheet", "database", "linked_notion"].includes(pt) ? pt : undefined,
+    pageType: ["document", "linked_sheet", "database", "linked_notion", "sheet"].includes(pt) ? pt : undefined,
     sort_order: d1Page.sort_order || 0,
     ...config,
   };
@@ -231,7 +279,7 @@ function d1ToFrontend(d1Page) {
 function frontendToD1(config) {
   const {
     id, name, icon, parentId, type, page_type, pageType,
-    sort_order, columns, ...rest
+    sort_order, columns, col_count, row_count, ...rest
   } = config;
 
   // Determine D1 page_type from available fields
@@ -254,6 +302,10 @@ function frontendToD1(config) {
 
   // Include columns for new database table creation
   if (columns) d1.columns = columns;
+
+  // Include dimensions for sheet creation
+  if (col_count) d1.col_count = col_count;
+  if (row_count) d1.row_count = row_count;
 
   return d1;
 }

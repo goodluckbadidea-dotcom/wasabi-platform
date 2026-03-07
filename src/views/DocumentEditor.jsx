@@ -7,6 +7,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { getBlocks, appendBlocks, updateBlock, deleteBlock } from "../notion/client.js";
+import { getDocument, saveDocument } from "../lib/api.js";
 
 // ─── Constants ───
 
@@ -190,6 +191,91 @@ function createEmptyBlock(type = "paragraph") {
 function getBlockText(block) {
   const content = block[block.type];
   return content?.rich_text?.map((rt) => rt.plain_text || rt.text?.content || "").join("") || "";
+}
+
+// ─── R2 ↔ Editor Block Conversion ───
+// R2 blocks: { id, type, content, rich_text?, checked?, icon?, url?, language? }
+// Editor blocks: Notion-format with { id, type, [type]: { rich_text: [...] }, _dirty, _isNew }
+
+const defaultAnnotations = () => ({
+  bold: false, italic: false, strikethrough: false,
+  underline: false, code: false, color: "default",
+});
+
+/**
+ * Convert an R2 block to the Notion-like format the editor uses internally.
+ */
+function r2BlockToEditor(r2Block) {
+  const base = { id: r2Block.id, type: r2Block.type, _dirty: false, _isNew: false, _lastSync: Date.now() };
+
+  // Use stored rich_text if available, otherwise create from plain content
+  const richText = r2Block.rich_text?.length
+    ? r2Block.rich_text
+    : (r2Block.content ? [{ type: "text", text: { content: r2Block.content }, annotations: defaultAnnotations() }] : []);
+
+  switch (r2Block.type) {
+    case "divider":
+      return { ...base, divider: {} };
+    case "image":
+      return { ...base, image: { type: "external", external: { url: r2Block.url || "" }, caption: [] } };
+    case "bookmark":
+      return { ...base, bookmark: { url: r2Block.url || "", caption: [] } };
+    case "to_do":
+      return { ...base, to_do: { rich_text: richText, checked: r2Block.checked || false } };
+    case "callout":
+      return { ...base, callout: { rich_text: richText, icon: { type: "emoji", emoji: r2Block.icon || "💡" }, color: "default" } };
+    case "code":
+      return { ...base, code: { rich_text: richText, language: r2Block.language || "plain text" } };
+    default:
+      return { ...base, [r2Block.type]: { rich_text: richText } };
+  }
+}
+
+/**
+ * Convert an editor (Notion-like) block to R2 storage format.
+ */
+function editorBlockToR2(block) {
+  const r2 = { id: block.id, type: block.type };
+
+  switch (block.type) {
+    case "divider":
+      break;
+    case "image":
+      r2.url = block.image?.external?.url || "";
+      break;
+    case "bookmark":
+      r2.url = block.bookmark?.url || "";
+      break;
+    case "to_do": {
+      const rt = block.to_do?.rich_text || [];
+      r2.rich_text = rt;
+      r2.content = rt.map((seg) => seg.text?.content || seg.plain_text || "").join("");
+      r2.checked = block.to_do?.checked || false;
+      break;
+    }
+    case "callout": {
+      const rt = block.callout?.rich_text || [];
+      r2.rich_text = rt;
+      r2.content = rt.map((seg) => seg.text?.content || seg.plain_text || "").join("");
+      r2.icon = block.callout?.icon?.emoji || "💡";
+      break;
+    }
+    case "code": {
+      const rt = block.code?.rich_text || [];
+      r2.rich_text = rt;
+      r2.content = rt.map((seg) => seg.text?.content || seg.plain_text || "").join("");
+      r2.language = block.code?.language;
+      break;
+    }
+    default: {
+      const rt = block[block.type]?.rich_text || [];
+      r2.rich_text = rt;
+      r2.content = rt.map((seg) => seg.text?.content || seg.plain_text || "").join("");
+      break;
+    }
+  }
+
+  return r2;
 }
 
 // ─── Styles ───
@@ -777,8 +863,13 @@ function isAtEnd(el, range) {
 
 // ─── Main Editor Component ───
 
-export default function DocumentEditor({ pageId }) {
+export default function DocumentEditor({ pageId: legacyPageId, config, pageConfig }) {
   const { user } = usePlatform();
+
+  // Determine standalone vs Notion-backed mode
+  const isStandalone = config?.standalone === true || pageConfig?.standalone === true;
+  const docId = isStandalone ? pageConfig?.id : (config?.pageId || legacyPageId);
+
   const [blocks, setBlocks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -792,18 +883,36 @@ export default function DocumentEditor({ pageId }) {
 
   // ── Load blocks ──
   const loadBlocks = useCallback(async () => {
-    if (!user?.workerUrl || !user?.notionKey || !pageId) {
+    if (!docId) {
       setLoading(false);
       return;
     }
+
+    // Guard: Notion mode requires worker + notionKey
+    if (!isStandalone && (!user?.workerUrl || !user?.notionKey)) {
+      setLoading(false);
+      return;
+    }
+
     try {
-      const result = await getBlocks(user.workerUrl, user.notionKey, pageId);
-      const loaded = (result || []).map((b) => ({
-        ...b,
-        _dirty: false,
-        _isNew: false,
-        _lastSync: Date.now(),
-      }));
+      let loaded;
+
+      if (isStandalone) {
+        // ── Standalone: load from R2 ──
+        const doc = await getDocument(docId);
+        const r2Blocks = doc?.blocks || [];
+        loaded = r2Blocks.map((b) => r2BlockToEditor(b));
+      } else {
+        // ── Notion-backed: load from Notion API ──
+        const result = await getBlocks(user.workerUrl, user.notionKey, docId);
+        loaded = (result || []).map((b) => ({
+          ...b,
+          _dirty: false,
+          _isNew: false,
+          _lastSync: Date.now(),
+        }));
+      }
+
       // Add an empty paragraph if page is empty
       if (!loaded.length) {
         loaded.push(createEmptyBlock("paragraph"));
@@ -816,7 +925,7 @@ export default function DocumentEditor({ pageId }) {
     } finally {
       setLoading(false);
     }
-  }, [user, pageId]);
+  }, [user, docId, isStandalone]);
 
   useEffect(() => { loadBlocks(); }, [loadBlocks]);
 
@@ -835,54 +944,82 @@ export default function DocumentEditor({ pageId }) {
 
   // ── Autosave ──
   const performSave = useCallback(async () => {
-    if (!user?.workerUrl || !user?.notionKey || !pageId) return;
+    if (!docId) return;
 
-    const dirtyBlocks = blocks.filter((b) => b._dirty);
-    const toDelete = [...deletedIdsRef.current];
-    if (!dirtyBlocks.length && !toDelete.length) {
-      setSaveStatus("saved");
-      return;
-    }
-
-    setSaveStatus("saving");
-    try {
-      // Delete removed blocks
-      for (const id of toDelete) {
-        if (!id.startsWith("_temp_")) {
-          await deleteBlock(user.workerUrl, user.notionKey, id);
-        }
+    if (isStandalone) {
+      // ── Standalone: full-document save to R2 ──
+      const hasDirty = blocks.some((b) => b._dirty || b._isNew) || deletedIdsRef.current.length > 0;
+      if (!hasDirty) {
+        setSaveStatus("saved");
+        return;
       }
-      deletedIdsRef.current = [];
 
-      // Process dirty blocks
-      for (const block of dirtyBlocks) {
-        const blockData = buildBlockPayload(block);
-        if (block._isNew) {
-          // Append as child of the page
-          const result = await appendBlocks(user.workerUrl, user.notionKey, pageId, [blockData]);
-          const newId = result?.results?.[0]?.id;
-          if (newId) {
+      setSaveStatus("saving");
+      try {
+        // Convert all current blocks to R2 format and save as one document
+        const r2Blocks = blocks.map((b) => editorBlockToR2(b));
+        const wordCount = r2Blocks.reduce((sum, b) => sum + (b.content?.split(/\s+/).filter(Boolean).length || 0), 0);
+        await saveDocument(docId, { version: 1, blocks: r2Blocks, word_count: wordCount });
+
+        // Mark all blocks as clean
+        deletedIdsRef.current = [];
+        setBlocks((prev) => prev.map((b) => ({ ...b, _dirty: false, _isNew: false, _lastSync: Date.now() })));
+        setSaveStatus("saved");
+      } catch (err) {
+        console.error("Save failed:", err);
+        setSaveStatus("error");
+      }
+    } else {
+      // ── Notion-backed: per-block save ──
+      if (!user?.workerUrl || !user?.notionKey) return;
+
+      const dirtyBlocks = blocks.filter((b) => b._dirty);
+      const toDelete = [...deletedIdsRef.current];
+      if (!dirtyBlocks.length && !toDelete.length) {
+        setSaveStatus("saved");
+        return;
+      }
+
+      setSaveStatus("saving");
+      try {
+        // Delete removed blocks
+        for (const id of toDelete) {
+          if (!id.startsWith("_temp_")) {
+            await deleteBlock(user.workerUrl, user.notionKey, id);
+          }
+        }
+        deletedIdsRef.current = [];
+
+        // Process dirty blocks
+        for (const block of dirtyBlocks) {
+          const blockData = buildBlockPayload(block);
+          if (block._isNew) {
+            // Append as child of the page
+            const result = await appendBlocks(user.workerUrl, user.notionKey, docId, [blockData]);
+            const newId = result?.results?.[0]?.id;
+            if (newId) {
+              setBlocks((prev) =>
+                prev.map((b) =>
+                  b.id === block.id ? { ...b, id: newId, _isNew: false, _dirty: false, _lastSync: Date.now() } : b
+                )
+              );
+            }
+          } else {
+            await updateBlock(user.workerUrl, user.notionKey, block.id, blockData);
             setBlocks((prev) =>
               prev.map((b) =>
-                b.id === block.id ? { ...b, id: newId, _isNew: false, _dirty: false, _lastSync: Date.now() } : b
+                b.id === block.id ? { ...b, _dirty: false, _lastSync: Date.now() } : b
               )
             );
           }
-        } else {
-          await updateBlock(user.workerUrl, user.notionKey, block.id, blockData);
-          setBlocks((prev) =>
-            prev.map((b) =>
-              b.id === block.id ? { ...b, _dirty: false, _lastSync: Date.now() } : b
-            )
-          );
         }
+        setSaveStatus("saved");
+      } catch (err) {
+        console.error("Save failed:", err);
+        setSaveStatus("error");
       }
-      setSaveStatus("saved");
-    } catch (err) {
-      console.error("Save failed:", err);
-      setSaveStatus("error");
     }
-  }, [blocks, user, pageId]);
+  }, [blocks, user, docId, isStandalone]);
 
   const scheduleSave = useCallback(() => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -1243,10 +1380,10 @@ export default function DocumentEditor({ pageId }) {
 
   // ── Render ──
 
-  if (!pageId) {
+  if (!docId) {
     return (
       <div style={{ padding: 40, textAlign: "center", color: C.darkMuted, fontSize: 14, fontFamily: FONT }}>
-        No page ID configured for this document.
+        No document ID configured for this page.
       </div>
     );
   }

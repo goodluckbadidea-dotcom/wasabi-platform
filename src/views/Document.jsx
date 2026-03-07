@@ -330,17 +330,23 @@ function groupBlocks(blocks) {
   return result;
 }
 
-export default function Document({ config = {}, editable = false }) {
+export default function Document({ config = {}, editable = false, pageConfig }) {
   const { user } = usePlatform();
   const [blocks, setBlocks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const isStandalone = config?.standalone === true || pageConfig?.standalone === true;
   const pageId = config.pageId;
 
-  // Editable mode: render DocumentEditor
+  // Standalone documents always use the DocumentEditor (they're always editable)
+  if (isStandalone) {
+    return <DocumentEditor config={config} pageConfig={pageConfig} />;
+  }
+
+  // Editable mode: render DocumentEditor for Notion-backed docs
   if (editable && pageId) {
-    return <DocumentEditor pageId={pageId} />;
+    return <DocumentEditor pageId={pageId} config={config} pageConfig={pageConfig} />;
   }
 
   const fetchBlocks = useCallback(async () => {
