@@ -553,3 +553,14 @@ export function IconUpload({ size = 20, color = d, ...rest }) {
     </Icon>
   );
 }
+
+export function IconSheet({ size = 20, color = d, ...rest }) {
+  return (
+    <Icon size={size} {...rest}>
+      <rect x="3" y="3" width="18" height="18" rx="2" stroke={color} strokeWidth="1.5" fill="none" />
+      <line x1="3" y1="9" x2="21" y2="9" stroke={color} strokeWidth="1.5" />
+      <line x1="3" y1="15" x2="21" y2="15" stroke={color} strokeWidth="1.5" />
+      <line x1="9" y1="3" x2="9" y2="21" stroke={color} strokeWidth="1.5" />
+    </Icon>
+  );
+}

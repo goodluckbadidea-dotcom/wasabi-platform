@@ -139,6 +139,51 @@ export default {
         return jsonResponse({ base64, contentType, size: buffer.byteLength });
       }
 
+      // ─── Linked Sheet proxy (fetch + parse CSV with caching) ───
+      if (path === "/sheets/fetch" && request.method === "POST") {
+        const { url: sheetUrl } = await request.json();
+        if (!sheetUrl) return jsonResponse({ _error: "Missing sheet URL" }, 400);
+        if (!sheetUrl.startsWith("https://")) return jsonResponse({ _error: "Only HTTPS URLs are supported" }, 400);
+
+        // Detect sheet type and build fetch URL
+        let fetchUrl = sheetUrl;
+        let sheetType = "csv";
+        const gMatch = sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+        if (gMatch) {
+          sheetType = "google_sheets";
+          fetchUrl = `https://docs.google.com/spreadsheets/d/${gMatch[1]}/gviz/tq?tqx=out:csv`;
+        }
+
+        // Check Cloudflare cache (5-min TTL)
+        const cacheKey = new Request(`https://wasabi-cache.internal/sheets/${encodeURIComponent(sheetUrl)}`, { method: "GET" });
+        const cache = caches.default;
+        const cached = await cache.match(cacheKey);
+        if (cached) return cached;
+
+        // Fetch the CSV
+        const csvRes = await fetch(fetchUrl, { headers: { "User-Agent": "Wasabi-Platform/1.0" } });
+        if (!csvRes.ok) {
+          const status = csvRes.status;
+          const msg = status === 401 || status === 403
+            ? "This sheet is not publicly accessible. Make sure it is shared via 'Anyone with the link can view'."
+            : `Failed to fetch sheet data (${status})`;
+          return jsonResponse({ _error: msg }, 502);
+        }
+        const csvText = await csvRes.text();
+
+        // Parse CSV
+        const { columns, rows } = parseCSV(csvText);
+        const result = { columns, rows: rows.slice(0, 10000), cachedAt: Date.now(), sheetType, truncated: rows.length > 10000 };
+
+        // Store in cache with 5-min TTL
+        const response = jsonResponse(result);
+        const cachedResponse = new Response(response.body, response);
+        cachedResponse.headers.set("Cache-Control", "public, max-age=300");
+        await cache.put(cacheKey, cachedResponse.clone());
+
+        return cachedResponse;
+      }
+
       // 404
       return jsonResponse({ error: "Not found", path }, 404);
 
@@ -236,4 +281,59 @@ function jsonResponse(data, status = 200) {
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+// ─── CSV Parser (state machine, handles quoted fields) ───
+function parseCSV(text) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let inQuoted = false;
+  let i = 0;
+
+  while (i < text.length) {
+    const ch = text[i];
+    if (inQuoted) {
+      if (ch === '"') {
+        if (i + 1 < text.length && text[i + 1] === '"') {
+          field += '"';
+          i += 2;
+        } else {
+          inQuoted = false;
+          i++;
+        }
+      } else {
+        field += ch;
+        i++;
+      }
+    } else {
+      if (ch === '"' && field.length === 0) {
+        inQuoted = true;
+        i++;
+      } else if (ch === ",") {
+        row.push(field);
+        field = "";
+        i++;
+      } else if (ch === "\r" || ch === "\n") {
+        row.push(field);
+        field = "";
+        if (ch === "\r" && i + 1 < text.length && text[i + 1] === "\n") i++;
+        i++;
+        if (row.length > 0 && row.some((c) => c.length > 0)) rows.push(row);
+        row = [];
+      } else {
+        field += ch;
+        i++;
+      }
+    }
+  }
+  // Last field/row
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    if (row.some((c) => c.length > 0)) rows.push(row);
+  }
+
+  if (rows.length === 0) return { columns: [], rows: [] };
+  const columns = rows[0];
+  return { columns, rows: rows.slice(1) };
 }

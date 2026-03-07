@@ -12,6 +12,7 @@ import { createSubpage, archivePage } from "../notion/client.js";
 import { IconDiamond, IconBolt, IconGear, IconStar, IconPlus, IconPage, IconClose, IconTrash } from "../design/icons.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
+import SheetUrlDialog from "./SheetUrlDialog.jsx";
 
 // ── View type → human-readable label ──
 const VIEW_LABELS = {
@@ -27,12 +28,14 @@ const VIEW_LABELS = {
   document: "Document",
   notificationFeed: "Notifications",
   chat: "Chat",
+  linked_sheet: "Linked Sheet",
 };
 
 // View types available for adding via "+" menu
 const ADDABLE_VIEW_TYPES = [
   "table", "kanban", "cardGrid", "gantt", "calendar",
   "charts", "form", "summaryTiles", "activityFeed", "chat",
+  "linked_sheet",
 ];
 
 function getViewLabel(view) {
@@ -53,6 +56,7 @@ export default function Navigation({
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [showDocsExpanded, setShowDocsExpanded] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null); // { type: 'page'|'view', pageConfig?, viewIdx? }
+  const [sheetDialogOpen, setSheetDialogOpen] = useState(false);
 
   // Drag reorder state
   const dragIdxRef = useRef(null);
@@ -114,6 +118,11 @@ export default function Navigation({
   // ── Add View ──
   const handleAddView = useCallback((type) => {
     if (!currentPage) return;
+    if (type === "linked_sheet") {
+      setSheetDialogOpen(true);
+      setShowAddMenu(false);
+      return;
+    }
     const label = VIEW_LABELS[type] || type;
     const newView = { type, label, position: "main", config: {} };
     const newViews = [...(currentPage.views || []), newView];
@@ -161,6 +170,27 @@ export default function Navigation({
       console.error("Failed to create document:", err);
     }
   }, [currentPage, user, platformIds, updatePageConfig, onSetActiveView]);
+
+  // ── Link Sheet (confirm from SheetUrlDialog) ──
+  const handleSheetConfirm = useCallback(({ sheetUrl, sheetType }) => {
+    if (!currentPage) return;
+    const newView = {
+      type: "linked_sheet",
+      label: "Linked Sheet",
+      position: "main",
+      config: { sheetUrl, sheetType },
+    };
+    const newViews = [...(currentPage.views || []), newView];
+    updatePageConfig(currentPage.id, { views: newViews });
+    setSheetDialogOpen(false);
+    if (user?.workerUrl && user?.notionKey && platformIds?.configDbId) {
+      savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
+        ...currentPage,
+        views: newViews,
+      }).catch((err) => console.error("Failed to persist linked sheet view:", err));
+    }
+    onSetActiveView(newViews.length - 1);
+  }, [currentPage, updatePageConfig, user, platformIds, onSetActiveView]);
 
   // ── Delete Page ──
   const handleDeletePage = useCallback(async (pageConfig) => {
@@ -839,6 +869,14 @@ export default function Navigation({
           message="Are you sure you want to delete this view? This action cannot be undone."
           onConfirm={() => handleDeleteView(confirmDelete.viewIdx)}
           onCancel={() => setConfirmDelete(null)}
+        />
+      )}
+
+      {/* Sheet URL dialog */}
+      {sheetDialogOpen && (
+        <SheetUrlDialog
+          onConfirm={handleSheetConfirm}
+          onCancel={() => setSheetDialogOpen(false)}
         />
       )}
     </div>
