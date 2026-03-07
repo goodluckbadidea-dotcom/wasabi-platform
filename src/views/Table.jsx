@@ -8,7 +8,7 @@ import { S } from "../design/styles.js";
 import { ANIM, injectAnimations } from "../design/animations.js";
 import { readProp, buildProp, extractProperties, getPageTitle } from "../notion/properties.js";
 import { debounce, formatDate, truncate } from "../utils/helpers.js";
-import { IconTrash, IconExport, IconEyeOff, IconExpand } from "../design/icons.jsx";
+import { IconTrash, IconExport, IconEyeOff, IconExpand, IconPlus } from "../design/icons.jsx";
 import FilterChips, { applyChipFilters } from "./FilterChips.jsx";
 import RecordDetail from "./RecordDetail.jsx";
 
@@ -632,9 +632,185 @@ function CellDisplay({ value, type, fieldName, schema, onClick }) {
 }
 
 
+// ─── Quick-Add Cell Input (inline per-column) ───
+function QuickAddCellInput({ type, fieldName, schema, value, onChange, onSubmit, autoFocus }) {
+  const baseStyle = {
+    width: "100%",
+    border: `1px solid ${C.darkBorder}`,
+    borderRadius: RADIUS.sm,
+    background: C.darkSurf2,
+    color: C.darkText,
+    fontFamily: FONT,
+    fontSize: 12,
+    padding: "5px 8px",
+    outline: "none",
+    transition: "border-color 0.15s",
+    boxSizing: "border-box",
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      onSubmit();
+    }
+    if (e.key === "Escape") {
+      e.target.blur();
+    }
+  };
+
+  switch (type) {
+    case "title":
+    case "rich_text":
+    case "url":
+    case "email":
+    case "phone_number":
+      return (
+        <input
+          type="text"
+          style={baseStyle}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+          autoFocus={autoFocus}
+          placeholder={type === "title" ? "Enter title..." : fieldName}
+          onFocus={(e) => { e.currentTarget.style.borderColor = C.accent; }}
+          onBlur={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
+        />
+      );
+
+    case "number":
+      return (
+        <input
+          type="number"
+          style={{ ...baseStyle, fontVariantNumeric: "tabular-nums" }}
+          value={value}
+          onChange={(e) => onChange(e.target.value ? Number(e.target.value) : "")}
+          onKeyDown={handleKeyDown}
+          placeholder="0"
+          onFocus={(e) => { e.currentTarget.style.borderColor = C.accent; }}
+          onBlur={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
+        />
+      );
+
+    case "select":
+    case "status":
+      return (
+        <select
+          style={{ ...baseStyle, cursor: "pointer" }}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        >
+          <option value="">—</option>
+          {getOptionNames(schema, fieldName).map((opt) => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+      );
+
+    case "multi_select":
+      return (
+        <input
+          type="text"
+          style={baseStyle}
+          value={Array.isArray(value) ? value.join(", ") : value}
+          onChange={(e) => onChange(e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
+          onKeyDown={handleKeyDown}
+          placeholder="Comma-separated..."
+          onFocus={(e) => { e.currentTarget.style.borderColor = C.accent; }}
+          onBlur={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
+        />
+      );
+
+    case "date":
+      return (
+        <input
+          type="date"
+          style={{ ...baseStyle, cursor: "pointer" }}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+        />
+      );
+
+    case "checkbox":
+      return (
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 18,
+            height: 18,
+            borderRadius: RADIUS.sm,
+            border: `2px solid ${value ? C.accent : C.darkBorder}`,
+            background: value ? C.accent : "transparent",
+            cursor: "pointer",
+            fontSize: 11,
+            fontWeight: 700,
+            color: "#fff",
+          }}
+          onClick={() => onChange(!value)}
+        >
+          {value ? "\u2713" : ""}
+        </span>
+      );
+
+    default:
+      return <span style={{ color: C.darkMuted, fontSize: 11 }}>—</span>;
+  }
+}
+
+// ─── Quick-Add Form (for empty state) ───
+function QuickAddForm({ schema, columns, quickAddValues, setQuickAddValues, quickAddSaving, quickAddError, onSubmit, onCancel }) {
+  return (
+    <div style={{
+      marginTop: 16,
+      padding: 16,
+      background: C.darkSurf,
+      border: `1px solid ${C.darkBorder}`,
+      borderRadius: RADIUS.xl,
+      display: "flex",
+      flexDirection: "column",
+      gap: 10,
+      maxWidth: 400,
+      width: "100%",
+    }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: C.darkText, marginBottom: 4 }}>New Record</div>
+      {columns.slice(0, 6).map((col) => {
+        const type = getFieldType(schema, col);
+        return (
+          <div key={col} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <label style={{ fontSize: 11, fontWeight: 500, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              {col}
+            </label>
+            <QuickAddCellInput
+              type={type}
+              fieldName={col}
+              schema={schema}
+              value={quickAddValues[col] ?? ""}
+              onChange={(val) => setQuickAddValues((prev) => ({ ...prev, [col]: val }))}
+              onSubmit={onSubmit}
+              autoFocus={type === "title"}
+            />
+          </div>
+        );
+      })}
+      <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+        <button style={{ ...S.btnPrimary, padding: "6px 16px", fontSize: 12 }} onClick={onSubmit} disabled={quickAddSaving}>
+          {quickAddSaving ? "Saving..." : "Add Record"}
+        </button>
+        <button style={{ ...S.btnGhost, padding: "6px 12px", fontSize: 12 }} onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+      {quickAddError && <span style={{ color: "#E05252", fontSize: 11 }}>{quickAddError}</span>}
+    </div>
+  );
+}
+
 // ─── Main Table Component ───
 
-export default function Table({ data = [], schema, config = {}, onUpdate, onRefresh, onDelete, pageConfig, onSaveFilters }) {
+export default function Table({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onSaveFilters }) {
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState(config.sort?.field || null);
   const [sortDir, setSortDir] = useState(config.sort?.direction || null); // "asc" | "desc" | null
@@ -660,6 +836,13 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
 
   // ── Record Detail Panel ──
   const [detailPage, setDetailPage] = useState(null);
+
+  // ── Quick-Add Row ──
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [quickAddValues, setQuickAddValues] = useState({});
+  const [quickAddSaving, setQuickAddSaving] = useState(false);
+  const [quickAddError, setQuickAddError] = useState(null);
+  const targetDatabaseId = config.databaseId || pageConfig?.databaseIds?.[0];
 
   // Inject animations on mount
   useEffect(() => {
@@ -921,6 +1104,38 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     });
   }, []);
 
+  // ── Quick-Add Handler ──
+  const handleQuickAdd = useCallback(async () => {
+    if (!onCreate || !targetDatabaseId) return;
+    // Must have at least a title value
+    const titleField = schema?.title?.name;
+    if (titleField && !quickAddValues[titleField]?.toString().trim()) {
+      setQuickAddError("Title is required");
+      return;
+    }
+    setQuickAddSaving(true);
+    setQuickAddError(null);
+    try {
+      const properties = {};
+      for (const [fieldName, val] of Object.entries(quickAddValues)) {
+        if (val === "" || val === null || val === undefined) continue;
+        const type = getFieldType(schema, fieldName);
+        if (!type) continue;
+        const prop = buildProp(type, val);
+        if (prop !== undefined) {
+          properties[fieldName] = prop;
+        }
+      }
+      await onCreate(targetDatabaseId, properties);
+      setQuickAddValues({});
+      setQuickAddError(null);
+    } catch (err) {
+      setQuickAddError(err.message || "Failed to create record");
+    } finally {
+      setQuickAddSaving(false);
+    }
+  }, [onCreate, targetDatabaseId, quickAddValues, schema]);
+
   // ─── Render ───
 
   // Empty state
@@ -946,15 +1161,38 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           <div style={styles.emptySub}>
             This table is empty. Add records to your Notion database or adjust your filters to see data here.
           </div>
-          {onRefresh && (
-            <button
-              style={{ ...S.btnSecondary, marginTop: 8 }}
-              onClick={onRefresh}
-              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-            >
-              Refresh
-            </button>
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            {onCreate && targetDatabaseId && (
+              <button
+                style={{ ...S.btnPrimary, display: "flex", alignItems: "center", gap: 6 }}
+                onClick={() => setQuickAddOpen(true)}
+              >
+                <IconPlus size={12} color="#fff" /> Create First Record
+              </button>
+            )}
+            {onRefresh && (
+              <button
+                style={S.btnSecondary}
+                onClick={onRefresh}
+                onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+              >
+                Refresh
+              </button>
+            )}
+          </div>
+          {/* Quick-add row in empty state */}
+          {quickAddOpen && onCreate && targetDatabaseId && schema && (
+            <QuickAddForm
+              schema={schema}
+              columns={schema.allFields.filter((f) => EDITABLE_TYPES.has(f.type)).map((f) => f.name)}
+              quickAddValues={quickAddValues}
+              setQuickAddValues={setQuickAddValues}
+              quickAddSaving={quickAddSaving}
+              quickAddError={quickAddError}
+              onSubmit={handleQuickAdd}
+              onCancel={() => { setQuickAddOpen(false); setQuickAddValues({}); setQuickAddError(null); }}
+            />
           )}
         </div>
       </div>
@@ -1138,6 +1376,23 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           )}
         </div>
 
+        {/* Add Row */}
+        {onCreate && targetDatabaseId && (
+          <button
+            style={{
+              ...styles.refreshBtn,
+              ...(quickAddOpen ? { borderColor: C.accent, background: `${C.accent}18` } : {}),
+            }}
+            onClick={() => {
+              setQuickAddOpen((o) => !o);
+              if (quickAddOpen) { setQuickAddValues({}); setQuickAddError(null); }
+            }}
+            title={quickAddOpen ? "Close add row" : "Add new row"}
+          >
+            <IconPlus size={14} color={quickAddOpen ? C.accent : C.darkMuted} />
+          </button>
+        )}
+
         {/* CSV Export */}
         <button
           style={styles.refreshBtn}
@@ -1319,6 +1574,61 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                   </tr>
                 );
               })}
+
+              {/* Quick-add row */}
+              {quickAddOpen && onCreate && targetDatabaseId && (
+                <>
+                  <tr style={{ background: `${C.accent}08` }}>
+                    <td style={{ ...styles.td, textAlign: "center", padding: "6px 8px" }}>
+                      <IconPlus size={10} color={C.accent} />
+                    </td>
+                    {columns.map((col) => {
+                      const type = getFieldType(schema, col);
+                      const isEditable = EDITABLE_TYPES.has(type);
+                      const titleField = schema?.title?.name;
+                      return (
+                        <td key={col} style={{ ...styles.td, padding: "4px 6px" }}>
+                          {isEditable ? (
+                            <QuickAddCellInput
+                              type={type}
+                              fieldName={col}
+                              schema={schema}
+                              value={quickAddValues[col] ?? ""}
+                              onChange={(val) => setQuickAddValues((prev) => ({ ...prev, [col]: val }))}
+                              onSubmit={handleQuickAdd}
+                              autoFocus={col === titleField}
+                            />
+                          ) : (
+                            <span style={{ color: C.darkMuted, fontSize: 11, fontStyle: "italic" }}>—</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  <tr style={{ background: `${C.accent}05` }}>
+                    <td colSpan={columns.length + 1} style={{ padding: "6px 12px", borderBottom: `1px solid ${C.edgeLine}` }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <button
+                          style={{ ...S.btnPrimary, padding: "5px 14px", fontSize: 12 }}
+                          onClick={handleQuickAdd}
+                          disabled={quickAddSaving}
+                        >
+                          {quickAddSaving ? "Saving..." : "Add Row"}
+                        </button>
+                        <button
+                          style={{ ...S.btnGhost, padding: "5px 10px", fontSize: 12 }}
+                          onClick={() => { setQuickAddOpen(false); setQuickAddValues({}); setQuickAddError(null); }}
+                        >
+                          Cancel
+                        </button>
+                        {quickAddError && (
+                          <span style={{ color: "#E05252", fontSize: 11 }}>{quickAddError}</span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                </>
+              )}
             </tbody>
             {/* Totals row */}
             <tfoot>

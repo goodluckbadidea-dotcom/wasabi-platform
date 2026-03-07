@@ -7,7 +7,8 @@ import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { detectSchema, classifyProperties } from "../notion/schema.js";
-import { IconSearch, IconDatabase, IconCheck, IconPlus, IconClose } from "../design/icons.jsx";
+import { createDatabase } from "../notion/client.js";
+import { IconSearch, IconDatabase, IconCheck, IconPlus, IconClose, IconTrash } from "../design/icons.jsx";
 
 // ── Styles ──
 const ds = {
@@ -254,8 +255,8 @@ export default function DatabaseBrowser({
   connectedIds = [],
   multi = true,
 }) {
-  const { user } = usePlatform();
-  const [mode, setMode] = useState("browse"); // "browse" | "paste"
+  const { user, platformIds } = usePlatform();
+  const [mode, setMode] = useState("browse"); // "browse" | "paste" | "create"
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -265,6 +266,12 @@ export default function DatabaseBrowser({
   const [pasteInput, setPasteInput] = useState("");
   const [pasteLoading, setPasteLoading] = useState(false);
   const [pasteError, setPasteError] = useState(null);
+
+  // Create mode
+  const [newDbTitle, setNewDbTitle] = useState("");
+  const [newDbFields, setNewDbFields] = useState([{ name: "Name", type: "title" }]);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState(null);
 
   // Schema preview
   const [previewDb, setPreviewDb] = useState(null); // { id, title, schema }
@@ -413,6 +420,9 @@ export default function DatabaseBrowser({
         </button>
         <button style={ds.tab(mode === "paste")} onClick={() => setMode("paste")}>
           Paste URL / ID
+        </button>
+        <button style={ds.tab(mode === "create")} onClick={() => setMode("create")}>
+          Create New
         </button>
       </div>
 
@@ -587,6 +597,53 @@ export default function DatabaseBrowser({
           )}
         </>
       )}
+
+      {/* ── Create Mode ── */}
+      {mode === "create" && (
+        <CreateDatabaseForm
+          newDbTitle={newDbTitle}
+          setNewDbTitle={setNewDbTitle}
+          newDbFields={newDbFields}
+          setNewDbFields={setNewDbFields}
+          creating={creating}
+          createError={createError}
+          onSubmit={async () => {
+            if (!newDbTitle.trim()) {
+              setCreateError("Database name is required.");
+              return;
+            }
+            if (newDbFields.some((f) => !f.name.trim())) {
+              setCreateError("All fields must have a name.");
+              return;
+            }
+            setCreating(true);
+            setCreateError(null);
+            try {
+              const result = await createDatabase(
+                user.workerUrl,
+                user.notionKey,
+                platformIds.rootPageId,
+                newDbTitle.trim(),
+                newDbFields.map((f) => ({
+                  name: f.name.trim(),
+                  type: f.type,
+                  ...(f.options ? { options: f.options.split(",").map((o) => o.trim()).filter(Boolean) } : {}),
+                }))
+              );
+              // Detect the full schema from the newly created database
+              const schema = await detectSchema(user.workerUrl, user.notionKey, result.id);
+              handleConnect(result.id, newDbTitle.trim(), schema);
+              // Reset form
+              setNewDbTitle("");
+              setNewDbFields([{ name: "Name", type: "title" }]);
+            } catch (err) {
+              setCreateError(err.message || "Failed to create database");
+            } finally {
+              setCreating(false);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -638,6 +695,201 @@ function SchemaPreview({ schema, isConnected, onConnect }) {
         {isConnected
           ? "This database is already connected."
           : "Does this look right? Click Connect to add it."}
+      </div>
+    </div>
+  );
+}
+
+// ── Supported field types for database creation ──
+const FIELD_TYPE_OPTIONS = [
+  { value: "title", label: "Title" },
+  { value: "rich_text", label: "Text" },
+  { value: "number", label: "Number" },
+  { value: "select", label: "Select" },
+  { value: "status", label: "Status" },
+  { value: "multi_select", label: "Multi Select" },
+  { value: "date", label: "Date" },
+  { value: "checkbox", label: "Checkbox" },
+  { value: "url", label: "URL" },
+  { value: "email", label: "Email" },
+  { value: "phone_number", label: "Phone" },
+];
+
+const TYPES_WITH_OPTIONS = new Set(["select", "status", "multi_select"]);
+
+// ── Create Database Form Sub-Component ──
+function CreateDatabaseForm({
+  newDbTitle, setNewDbTitle,
+  newDbFields, setNewDbFields,
+  creating, createError, onSubmit,
+}) {
+  const updateField = (idx, key, value) => {
+    setNewDbFields((prev) =>
+      prev.map((f, i) => (i === idx ? { ...f, [key]: value } : f))
+    );
+  };
+
+  const removeField = (idx) => {
+    setNewDbFields((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const addField = () => {
+    setNewDbFields((prev) => [...prev, { name: "", type: "rich_text" }]);
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Database name */}
+      <div>
+        <label style={{ fontSize: 11, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
+          Database Name
+        </label>
+        <input
+          type="text"
+          style={ds.urlInput}
+          value={newDbTitle}
+          onChange={(e) => setNewDbTitle(e.target.value)}
+          placeholder="e.g. Project Tasks"
+        />
+      </div>
+
+      {/* Field list */}
+      <div>
+        <label style={{ fontSize: 11, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>
+          Fields
+        </label>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {newDbFields.map((field, idx) => {
+            const isTitle = field.type === "title";
+            return (
+              <div key={idx} style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                {/* Field name */}
+                <input
+                  type="text"
+                  style={{ ...ds.urlInput, flex: 1, padding: "8px 10px", fontSize: 12 }}
+                  value={field.name}
+                  onChange={(e) => updateField(idx, "name", e.target.value)}
+                  placeholder="Field name"
+                />
+                {/* Type dropdown */}
+                <select
+                  style={{
+                    ...ds.urlInput,
+                    width: 120,
+                    flex: "none",
+                    padding: "8px 6px",
+                    fontSize: 12,
+                    cursor: isTitle ? "not-allowed" : "pointer",
+                    opacity: isTitle ? 0.6 : 1,
+                  }}
+                  value={field.type}
+                  onChange={(e) => updateField(idx, "type", e.target.value)}
+                  disabled={isTitle}
+                >
+                  {FIELD_TYPE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                {/* Remove button (not for title) */}
+                {!isTitle ? (
+                  <button
+                    style={{
+                      background: "none",
+                      border: `1px solid ${C.darkBorder}`,
+                      borderRadius: RADIUS.md,
+                      padding: "8px",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      transition: "border-color 0.15s",
+                      flexShrink: 0,
+                    }}
+                    onClick={() => removeField(idx)}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#E05252"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
+                    title="Remove field"
+                  >
+                    <IconTrash size={12} color={C.darkMuted} />
+                  </button>
+                ) : (
+                  <div style={{ width: 34, flexShrink: 0 }} /> // Spacer for alignment
+                )}
+                {/* Options input for select/status/multi_select */}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Options inputs (shown below the field row for types that need them) */}
+        {newDbFields.map((field, idx) =>
+          TYPES_WITH_OPTIONS.has(field.type) ? (
+            <div key={`opts-${idx}`} style={{ marginTop: 4, marginBottom: 4, paddingLeft: 8 }}>
+              <input
+                type="text"
+                style={{ ...ds.urlInput, fontSize: 11, padding: "6px 10px" }}
+                value={field.options || ""}
+                onChange={(e) => updateField(idx, "options", e.target.value)}
+                placeholder={`Options for "${field.name}" (comma-separated)`}
+              />
+            </div>
+          ) : null
+        )}
+
+        {/* Add field button */}
+        <button
+          style={{
+            background: "none",
+            border: `1px dashed ${C.darkBorder}`,
+            borderRadius: RADIUS.md,
+            padding: "8px 14px",
+            fontSize: 12,
+            fontFamily: FONT,
+            color: C.darkMuted,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            marginTop: 4,
+            transition: "all 0.15s",
+          }}
+          onClick={addField}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = C.accent;
+            e.currentTarget.style.color = C.accent;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = C.darkBorder;
+            e.currentTarget.style.color = C.darkMuted;
+          }}
+        >
+          <IconPlus size={12} color="currentColor" /> Add Field
+        </button>
+      </div>
+
+      {/* Error display */}
+      {createError && <div style={ds.errorMsg}>{createError}</div>}
+
+      {/* Submit button */}
+      <button
+        style={{
+          ...ds.connectBtn,
+          width: "100%",
+          padding: "10px 16px",
+          fontSize: 13,
+          opacity: creating || !newDbTitle.trim() ? 0.5 : 1,
+          cursor: creating || !newDbTitle.trim() ? "not-allowed" : "pointer",
+        }}
+        onClick={onSubmit}
+        disabled={creating || !newDbTitle.trim()}
+      >
+        {creating ? "Creating Database..." : "Create Database"}
+      </button>
+
+      <div style={ds.hint}>
+        Creates a new Notion database under your workspace. You can always add more fields later in Notion.
       </div>
     </div>
   );

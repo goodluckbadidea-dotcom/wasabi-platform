@@ -1,5 +1,6 @@
 // ─── Dynamic View Renderer ───
 // Reads a page config and mounts the appropriate view components.
+// Supports per-view database scoping via viewConfig.config.databaseId.
 
 import React, { Suspense } from "react";
 import { C, RADIUS } from "../design/tokens.js";
@@ -32,8 +33,9 @@ const VIEW_REGISTRY = {
 
 /**
  * Render a single view from a view config.
+ * If viewConfig.config.databaseId is set, scopes data and schema to that database.
  */
-function ViewBlock({ viewConfig, data, schema, onUpdate, onRefresh, onCreate, onDelete, pageConfig }) {
+function ViewBlock({ viewConfig, data, schema, schemas, onUpdate, onRefresh, onCreate, onDelete, pageConfig }) {
   const Component = VIEW_REGISTRY[viewConfig.type];
 
   if (!Component) {
@@ -52,10 +54,19 @@ function ViewBlock({ viewConfig, data, schema, onUpdate, onRefresh, onCreate, on
     );
   }
 
+  // Per-view database scoping: filter data and select schema for the target DB
+  const scopedDbId = viewConfig.config?.databaseId;
+  const viewData = scopedDbId
+    ? data.filter((row) => row._databaseId === scopedDbId)
+    : data;
+  const viewSchema = (scopedDbId && schemas?.[scopedDbId])
+    ? schemas[scopedDbId]
+    : schema;
+
   return (
     <Component
-      data={data}
-      schema={schema}
+      data={viewData}
+      schema={viewSchema}
       config={viewConfig.config || {}}
       onUpdate={onUpdate}
       onRefresh={onRefresh}
@@ -69,7 +80,7 @@ function ViewBlock({ viewConfig, data, schema, onUpdate, onRefresh, onCreate, on
 /**
  * Render all views for a page in a layout.
  */
-export default function ViewRenderer({ views = [], data, schema, onUpdate, onRefresh, onCreate, onDelete, pageConfig }) {
+export default function ViewRenderer({ views = [], data, schema, schemas, onUpdate, onRefresh, onCreate, onDelete, pageConfig }) {
   const mainViews = views.filter((v) => v.position !== "sidebar" && v.position !== "bottom");
   const sideViews = views.filter((v) => v.position === "sidebar");
   const bottomViews = views.filter((v) => v.position === "bottom");
@@ -93,6 +104,7 @@ export default function ViewRenderer({ views = [], data, schema, onUpdate, onRef
                 viewConfig={v}
                 data={data}
                 schema={schema}
+                schemas={schemas}
                 onUpdate={onUpdate}
                 onRefresh={onRefresh}
                 onCreate={onCreate}
@@ -132,8 +144,12 @@ export default function ViewRenderer({ views = [], data, schema, onUpdate, onRef
                   viewConfig={v}
                   data={data}
                   schema={schema}
+                  schemas={schemas}
                   onUpdate={onUpdate}
                   onRefresh={onRefresh}
+                  onCreate={onCreate}
+                  onDelete={onDelete}
+                  pageConfig={pageConfig}
                 />
               </ErrorBoundary>
             ))}
@@ -156,8 +172,12 @@ export default function ViewRenderer({ views = [], data, schema, onUpdate, onRef
                   viewConfig={v}
                   data={data}
                   schema={schema}
+                  schemas={schemas}
                   onUpdate={onUpdate}
                   onRefresh={onRefresh}
+                  onCreate={onCreate}
+                  onDelete={onDelete}
+                  pageConfig={pageConfig}
                 />
               </ErrorBoundary>
             </div>
