@@ -211,7 +211,11 @@ export default function AutomationBuilder({ automationEngine }) {
       });
       setRules(parsed);
     } catch (err) {
-      console.error("[AutomationBuilder] Failed to fetch rules:", err);
+      if (err.message?.includes("404")) {
+        console.warn("[AutomationBuilder] Rules database not found (404) — may need re-setup.");
+      } else {
+        console.error("[AutomationBuilder] Failed to fetch rules:", err);
+      }
     } finally {
       setRulesLoading(false);
     }

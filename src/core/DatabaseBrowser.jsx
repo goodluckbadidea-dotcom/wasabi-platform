@@ -7,7 +7,8 @@ import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { detectSchema, classifyProperties } from "../notion/schema.js";
-import { createDatabase, ensurePageActive } from "../notion/client.js";
+import { createDatabase, createPage, ensurePageActive } from "../notion/client.js";
+import { buildProp } from "../notion/properties.js";
 import { IconSearch, IconDatabase, IconCheck, IconPlus, IconClose, IconTrash } from "../design/icons.jsx";
 
 // ── Styles ──
@@ -273,6 +274,15 @@ export default function DatabaseBrowser({
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState(null);
 
+  // Upload mode
+  const [uploadFile, setUploadFile] = useState(null); // { name, headers, rows, rawText }
+  const [uploadDbTitle, setUploadDbTitle] = useState("");
+  const [uploadColumns, setUploadColumns] = useState([]); // [{ name, type, sample }]
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(null); // { done, total }
+  const [dragOver, setDragOver] = useState(false);
+
   // Schema preview
   const [previewDb, setPreviewDb] = useState(null); // { id, title, schema }
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -423,6 +433,9 @@ export default function DatabaseBrowser({
         </button>
         <button style={ds.tab(mode === "create")} onClick={() => setMode("create")}>
           Create New
+        </button>
+        <button style={ds.tab(mode === "upload")} onClick={() => setMode("upload")}>
+          Upload File
         </button>
       </div>
 
@@ -596,6 +609,91 @@ export default function DatabaseBrowser({
             />
           )}
         </>
+      )}
+
+      {/* ── Upload Mode ── */}
+      {mode === "upload" && (
+        <UploadDatabaseForm
+          uploadFile={uploadFile}
+          setUploadFile={setUploadFile}
+          uploadDbTitle={uploadDbTitle}
+          setUploadDbTitle={setUploadDbTitle}
+          uploadColumns={uploadColumns}
+          setUploadColumns={setUploadColumns}
+          uploading={uploading}
+          uploadError={uploadError}
+          uploadProgress={uploadProgress}
+          dragOver={dragOver}
+          setDragOver={setDragOver}
+          onSubmit={async () => {
+            if (!uploadFile) return;
+            if (!uploadDbTitle.trim()) { setUploadError("Database name is required."); return; }
+            if (uploadColumns.some((c) => !c.name.trim())) { setUploadError("All columns must have a name."); return; }
+
+            setUploading(true);
+            setUploadError(null);
+            setUploadProgress(null);
+            try {
+              await ensurePageActive(user.workerUrl, user.notionKey, platformIds.rootPageId);
+
+              // Build schema: first column with type=title, rest as detected
+              const schema = uploadColumns.map((col, i) => ({
+                name: col.name.trim(),
+                type: i === 0 ? "title" : col.type,
+                ...(col.options ? { options: col.options.split(",").map((o) => o.trim()).filter(Boolean) } : {}),
+              }));
+
+              const result = await createDatabase(
+                user.workerUrl, user.notionKey,
+                platformIds.rootPageId,
+                uploadDbTitle.trim(),
+                schema
+              );
+              const dbId = result.id;
+
+              // Bulk create records
+              const rows = uploadFile.rows;
+              const total = rows.length;
+              let done = 0;
+              setUploadProgress({ done: 0, total });
+
+              // Batch in groups of 3 for reasonable parallelism
+              for (let i = 0; i < total; i += 3) {
+                const batch = rows.slice(i, i + 3);
+                await Promise.all(
+                  batch.map((row) => {
+                    const properties = {};
+                    uploadColumns.forEach((col, ci) => {
+                      const val = row[ci];
+                      if (val !== undefined && val !== null && val !== "") {
+                        const type = ci === 0 ? "title" : col.type;
+                        const built = buildProp(type, val);
+                        if (built) properties[col.name.trim()] = built;
+                      }
+                    });
+                    return createPage(user.workerUrl, user.notionKey, dbId, properties);
+                  })
+                );
+                done += batch.length;
+                setUploadProgress({ done: Math.min(done, total), total });
+              }
+
+              // Detect schema and connect
+              const detectedSchema = await detectSchema(user.workerUrl, user.notionKey, dbId);
+              handleConnect(dbId, uploadDbTitle.trim(), detectedSchema);
+
+              // Reset upload form
+              setUploadFile(null);
+              setUploadDbTitle("");
+              setUploadColumns([]);
+              setUploadProgress(null);
+            } catch (err) {
+              setUploadError(err.message || "Failed to import file");
+            } finally {
+              setUploading(false);
+            }
+          }}
+        />
       )}
 
       {/* ── Create Mode ── */}
@@ -894,6 +992,364 @@ function CreateDatabaseForm({
       <div style={ds.hint}>
         Creates a new Notion database under your workspace. You can always add more fields later in Notion.
       </div>
+    </div>
+  );
+}
+
+// ── CSV/TSV Parsing Helpers ──
+
+/** Parse CSV/TSV text into { headers, rows }. Auto-detects delimiter. */
+function parseCSV(text) {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length === 0) return { headers: [], rows: [] };
+
+  // Auto-detect delimiter: tab or comma
+  const firstLine = lines[0];
+  const delimiter = firstLine.includes("\t") ? "\t" : ",";
+
+  const parseLine = (line) => {
+    const cells = [];
+    let current = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"' && line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else if (ch === '"') {
+          inQuotes = false;
+        } else {
+          current += ch;
+        }
+      } else {
+        if (ch === '"') {
+          inQuotes = true;
+        } else if (ch === delimiter) {
+          cells.push(current.trim());
+          current = "";
+        } else {
+          current += ch;
+        }
+      }
+    }
+    cells.push(current.trim());
+    return cells;
+  };
+
+  const headers = parseLine(lines[0]);
+  const rows = lines.slice(1).map(parseLine);
+  return { headers, rows };
+}
+
+/** Detect the Notion property type for a column based on sample values. */
+function detectColumnType(values) {
+  const samples = values.filter((v) => v !== "" && v != null).slice(0, 50);
+  if (samples.length === 0) return "rich_text";
+
+  // Check if all are numbers
+  if (samples.every((v) => !isNaN(v) && v !== "")) return "number";
+
+  // Check if all are booleans
+  const boolSet = new Set(["true", "false", "yes", "no", "1", "0"]);
+  if (samples.every((v) => boolSet.has(v.toLowerCase()))) return "checkbox";
+
+  // Check if all look like dates (ISO or common formats)
+  const dateRe = /^\d{4}[-/]\d{1,2}[-/]\d{1,2}|^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}/;
+  if (samples.every((v) => dateRe.test(v))) return "date";
+
+  // Check if all look like URLs
+  if (samples.every((v) => /^https?:\/\//.test(v))) return "url";
+
+  // Check if all look like emails
+  if (samples.every((v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v))) return "email";
+
+  // Check if low cardinality (good for select) — <=10 unique values out of 50+ rows
+  const unique = new Set(samples);
+  if (unique.size <= 10 && samples.length >= 5) return "select";
+
+  return "rich_text";
+}
+
+/** Convert a checkbox-like string to boolean. */
+function toBool(v) {
+  if (typeof v === "boolean") return v;
+  const s = String(v).toLowerCase().trim();
+  return s === "true" || s === "yes" || s === "1";
+}
+
+// ── Upload Database Form Sub-Component ──
+function UploadDatabaseForm({
+  uploadFile, setUploadFile,
+  uploadDbTitle, setUploadDbTitle,
+  uploadColumns, setUploadColumns,
+  uploading, uploadError, uploadProgress,
+  dragOver, setDragOver, onSubmit,
+}) {
+  const fileInputRef = useRef(null);
+
+  const handleFileSelected = (file) => {
+    if (!file) return;
+    const ext = file.name.split(".").pop().toLowerCase();
+    if (!["csv", "tsv", "txt"].includes(ext)) {
+      return; // silently ignore non-table files
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = reader.result;
+      const { headers, rows } = parseCSV(text);
+      if (headers.length === 0) return;
+
+      // Detect column types from data
+      const columns = headers.map((h, i) => {
+        const colValues = rows.map((r) => r[i] || "");
+        const detectedType = i === 0 ? "title" : detectColumnType(colValues);
+        const samples = colValues.filter(Boolean).slice(0, 3);
+        return { name: h, type: detectedType, sample: samples.join(", ") };
+      });
+
+      setUploadFile({ name: file.name, headers, rows, rawText: text });
+      setUploadDbTitle(file.name.replace(/\.\w+$/, "").replace(/[_-]/g, " "));
+      setUploadColumns(columns);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer?.files?.[0];
+    handleFileSelected(file);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setDragOver(true);
+  };
+
+  const previewRows = uploadFile?.rows?.slice(0, 5) || [];
+
+  // Determine if ready to submit
+  const canSubmit = uploadFile && uploadDbTitle.trim() && !uploading;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Drop zone / file picker */}
+      {!uploadFile && (
+        <div
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={() => setDragOver(false)}
+          onClick={() => fileInputRef.current?.click()}
+          style={{
+            border: `2px dashed ${dragOver ? C.accent : C.darkBorder}`,
+            borderRadius: RADIUS.lg,
+            padding: "36px 20px",
+            textAlign: "center",
+            cursor: "pointer",
+            background: dragOver ? `${C.accent}08` : C.darkSurf2,
+            transition: "all 0.15s",
+          }}
+        >
+          <div style={{ fontSize: 28, marginBottom: 8 }}>📄</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.darkText, marginBottom: 4 }}>
+            Drop a CSV or TSV file here
+          </div>
+          <div style={{ fontSize: 11, color: C.darkMuted }}>
+            or click to browse — accepts .csv, .tsv
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,.tsv,.txt"
+            style={{ display: "none" }}
+            onChange={(e) => handleFileSelected(e.target.files?.[0])}
+          />
+        </div>
+      )}
+
+      {/* File loaded — show schema + preview */}
+      {uploadFile && (
+        <>
+          {/* File info bar */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 10,
+            padding: "10px 14px", background: C.darkSurf2,
+            border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.lg,
+          }}>
+            <span style={{ fontSize: 16 }}>📄</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: C.darkText, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {uploadFile.name}
+              </div>
+              <div style={{ fontSize: 11, color: C.darkMuted }}>
+                {uploadFile.rows.length} rows, {uploadFile.headers.length} columns
+              </div>
+            </div>
+            <button
+              style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}
+              onClick={() => { setUploadFile(null); setUploadColumns([]); setUploadDbTitle(""); }}
+              title="Remove file"
+            >
+              <IconClose size={12} color={C.darkMuted} />
+            </button>
+          </div>
+
+          {/* Database name */}
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
+              Database Name
+            </label>
+            <input
+              type="text"
+              style={ds.urlInput}
+              value={uploadDbTitle}
+              onChange={(e) => setUploadDbTitle(e.target.value)}
+              placeholder="e.g. Imported Data"
+            />
+          </div>
+
+          {/* Column schema with type overrides */}
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>
+              Columns (auto-detected types)
+            </label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {uploadColumns.map((col, idx) => (
+                <div key={idx} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <input
+                    type="text"
+                    style={{ ...ds.urlInput, flex: 1, padding: "7px 10px", fontSize: 12 }}
+                    value={col.name}
+                    onChange={(e) => {
+                      setUploadColumns((prev) =>
+                        prev.map((c, i) => (i === idx ? { ...c, name: e.target.value } : c))
+                      );
+                    }}
+                  />
+                  <select
+                    style={{
+                      ...ds.urlInput, width: 120, flex: "none", padding: "7px 6px", fontSize: 12,
+                      cursor: idx === 0 ? "not-allowed" : "pointer",
+                      opacity: idx === 0 ? 0.6 : 1,
+                    }}
+                    value={idx === 0 ? "title" : col.type}
+                    onChange={(e) => {
+                      setUploadColumns((prev) =>
+                        prev.map((c, i) => (i === idx ? { ...c, type: e.target.value } : c))
+                      );
+                    }}
+                    disabled={idx === 0}
+                  >
+                    {FIELD_TYPE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                  {col.sample && (
+                    <span style={{ fontSize: 10, color: C.darkMuted, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 0 }}>
+                      e.g. {col.sample}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Data preview */}
+          {previewRows.length > 0 && (
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 8 }}>
+                Preview (first {previewRows.length} rows)
+              </label>
+              <div style={{
+                overflowX: "auto", border: `1px solid ${C.darkBorder}`,
+                borderRadius: RADIUS.md, background: C.darkSurf2,
+              }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: FONT }}>
+                  <thead>
+                    <tr>
+                      {uploadColumns.map((col, i) => (
+                        <th key={i} style={{
+                          padding: "6px 10px", textAlign: "left", fontWeight: 600,
+                          color: C.darkMuted, borderBottom: `1px solid ${C.darkBorder}`,
+                          whiteSpace: "nowrap", fontSize: 10, textTransform: "uppercase",
+                          letterSpacing: "0.04em",
+                        }}>
+                          {col.name}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewRows.map((row, ri) => (
+                      <tr key={ri}>
+                        {uploadColumns.map((_, ci) => (
+                          <td key={ci} style={{
+                            padding: "5px 10px", color: C.darkText,
+                            borderBottom: ri < previewRows.length - 1 ? `1px solid ${C.darkBorder}20` : "none",
+                            maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          }}>
+                            {row[ci] || ""}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {uploadFile.rows.length > 5 && (
+                <div style={{ fontSize: 10, color: C.darkMuted, marginTop: 4, fontStyle: "italic" }}>
+                  + {uploadFile.rows.length - 5} more rows
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Progress bar */}
+          {uploadProgress && (
+            <div>
+              <div style={{
+                height: 6, borderRadius: 3, background: C.darkSurf2,
+                border: `1px solid ${C.darkBorder}`, overflow: "hidden",
+              }}>
+                <div style={{
+                  height: "100%", borderRadius: 3,
+                  background: C.accent, transition: "width 0.3s",
+                  width: `${Math.round((uploadProgress.done / uploadProgress.total) * 100)}%`,
+                }} />
+              </div>
+              <div style={{ fontSize: 11, color: C.darkMuted, marginTop: 4, textAlign: "center" }}>
+                {uploadProgress.done} / {uploadProgress.total} records imported
+              </div>
+            </div>
+          )}
+
+          {/* Error */}
+          {uploadError && <div style={ds.errorMsg}>{uploadError}</div>}
+
+          {/* Submit */}
+          <button
+            style={{
+              ...ds.connectBtn, width: "100%", padding: "10px 16px", fontSize: 13,
+              opacity: canSubmit ? 1 : 0.5,
+              cursor: canSubmit ? "pointer" : "not-allowed",
+            }}
+            onClick={onSubmit}
+            disabled={!canSubmit}
+          >
+            {uploading
+              ? uploadProgress
+                ? `Importing ${uploadProgress.done}/${uploadProgress.total}...`
+                : "Creating database..."
+              : `Create Database & Import ${uploadFile.rows.length} Records`}
+          </button>
+
+          <div style={ds.hint}>
+            Creates a new Notion database with the detected schema and imports all rows as records.
+          </div>
+        </>
+      )}
     </div>
   );
 }

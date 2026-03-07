@@ -395,6 +395,7 @@ export function createAutomationEngine(opts) {
   let _lastTickTime = null;
   let _lastRuleCount = -1;       // -1 = unknown, 0 = none found (triggers backoff)
   let _currentIntervalMs = tickIntervalMs;
+  let _consecutiveErrors = 0;    // Track consecutive fetch failures
   const _executing = new Set();  // Rule IDs currently executing (prevents double-fire)
 
   // ── Single tick ──
@@ -420,10 +421,29 @@ export function createAutomationEngine(opts) {
       const pages = await queryAll(workerUrl, notionKey, rulesDbId, filter);
       rules = pages.map(parseRulePage);
     } catch (err) {
+      _consecutiveErrors++;
+      const is404 = err.message?.includes("404") || err.message?.includes("object_not_found");
+      if (is404) {
+        console.warn(LOG_PREFIX, `Rules database not found (404). Stopping automation engine.`);
+        if (onError) onError(err);
+        stop();
+        return;
+      }
+      if (_consecutiveErrors >= 5) {
+        console.warn(LOG_PREFIX, `${_consecutiveErrors} consecutive failures — stopping automation engine.`);
+        if (onError) onError(err);
+        stop();
+        return;
+      }
+      if (_consecutiveErrors >= 3) {
+        _currentIntervalMs = BACKOFF_TICK_MS;
+        restartInterval();
+      }
       console.error(LOG_PREFIX, "Failed to fetch rules:", err.message);
       if (onError) onError(err);
       return;
     }
+    _consecutiveErrors = 0; // Reset on success
 
     console.log(LOG_PREFIX, `Found ${rules.length} enabled rule(s)`);
 
