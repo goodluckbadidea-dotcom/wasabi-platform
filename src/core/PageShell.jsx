@@ -14,6 +14,7 @@ import SubPageNav from "./SubPageNav.jsx";
 import DatabaseBrowser from "./DatabaseBrowser.jsx";
 import { ViewSkeleton } from "./ErrorBoundary.jsx";
 import { IconWarning, IconRefresh, IconPlus, IconDatabase, IconClose } from "../design/icons.jsx";
+import SyncPanel from "../components/SyncPanel.jsx";
 
 const DEFAULT_REFRESH_MS = 30000; // 30 seconds
 
@@ -65,6 +66,7 @@ export default function PageShell({
   const [error, setError] = useState(null);
   const refreshTimer = useRef(null);
   const [showAddDb, setShowAddDb] = useState(false);
+  const [showSync, setShowSync] = useState(false);
 
   // Detect page types that don't need data fetching
   const sourceType = resolveSourceType(effectiveConfig);
@@ -463,6 +465,22 @@ export default function PageShell({
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
+          {isStandaloneTable && (
+            <button
+              onClick={() => setShowSync((prev) => !prev)}
+              style={{
+                ...S.btnGhost,
+                fontSize: 10,
+                padding: "3px 8px",
+                background: showSync ? C.accent + "22" : "transparent",
+                border: showSync ? `1px solid ${C.accent}44` : `1px solid transparent`,
+                color: showSync ? C.accent : C.darkMuted,
+              }}
+              title="Notion sync settings"
+            >
+              Sync
+            </button>
+          )}
           <button
             onClick={fetchData}
             style={{
@@ -474,6 +492,13 @@ export default function PageShell({
           >
             <IconRefresh size={14} color={C.darkMuted} />
           </button>
+        </div>
+      )}
+
+      {/* Sync panel (collapsible, for standalone tables only) */}
+      {showSync && isStandaloneTable && effectiveConfig.id && (
+        <div style={{ padding: "12px 20px 0", background: C.dark }}>
+          <SyncPanel tableId={effectiveConfig.id} />
         </div>
       )}
 

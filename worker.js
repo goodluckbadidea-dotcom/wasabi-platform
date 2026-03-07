@@ -385,6 +385,41 @@ export default {
         return await handleSearchKB(env, body);
       }
 
+      // ─── Notion Sync Routes ───
+      const syncConfigureMatch = path.match(/^\/sync\/([^/]+)\/configure$/);
+      if (syncConfigureMatch && request.method === "POST") {
+        const tableId = syncConfigureMatch[1];
+        const body = await request.json();
+        const notionKey = await getNotionKey(request, env);
+        return await handleSyncConfigure(env, tableId, body, notionKey);
+      }
+
+      const syncPushMatch = path.match(/^\/sync\/([^/]+)\/push$/);
+      if (syncPushMatch && request.method === "POST") {
+        const tableId = syncPushMatch[1];
+        const notionKey = await getNotionKey(request, env);
+        return await handleSyncPush(env, tableId, notionKey);
+      }
+
+      const syncPullMatch = path.match(/^\/sync\/([^/]+)\/pull$/);
+      if (syncPullMatch && request.method === "POST") {
+        const tableId = syncPullMatch[1];
+        const notionKey = await getNotionKey(request, env);
+        return await handleSyncPull(env, tableId, notionKey);
+      }
+
+      const syncStatusMatch = path.match(/^\/sync\/([^/]+)\/status$/);
+      if (syncStatusMatch && request.method === "GET") {
+        const tableId = syncStatusMatch[1];
+        return await handleSyncStatus(env, tableId);
+      }
+
+      const syncDeleteMatch = path.match(/^\/sync\/([^/]+)$/);
+      if (syncDeleteMatch && request.method === "DELETE") {
+        const tableId = syncDeleteMatch[1];
+        return await handleSyncDelete(env, tableId);
+      }
+
       // ─── Notion Routes ───
       const notionKey = await getNotionKey(request, env);
 
@@ -1798,4 +1833,390 @@ function safeParseJSON(str) {
   if (typeof str === "object") return str;
   try { return JSON.parse(str); }
   catch { return {}; }
+}
+
+// ─── Notion Sync Handlers ───
+
+/**
+ * Configure sync between a D1 table and a Notion database.
+ * Creates or updates a sync_configs row + auto-generates field mapping.
+ */
+async function handleSyncConfigure(env, tableId, body, notionKey) {
+  const { notion_db_id, direction = "app_to_notion", field_mapping } = body;
+  if (!notion_db_id) return jsonResponse({ _error: "notion_db_id required" }, 400);
+  if (!notionKey) return jsonResponse({ _error: "Notion API key not configured" }, 400);
+
+  // Get D1 table schema
+  const schema = await env.DB.prepare("SELECT columns FROM table_schemas WHERE id = ?").bind(tableId).first();
+  if (!schema) return jsonResponse({ _error: "Table not found" }, 404);
+  const columns = safeParseJSON(schema.columns);
+
+  // Get Notion database schema
+  let notionSchema;
+  try {
+    const res = await fetch(`${NOTION_API}/databases/${notion_db_id}`, {
+      headers: {
+        Authorization: `Bearer ${notionKey}`,
+        "Notion-Version": NOTION_VERSION,
+      },
+    });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      return jsonResponse({ _error: `Notion API error: ${errBody.message || res.status}` }, 502);
+    }
+    notionSchema = await res.json();
+  } catch (err) {
+    return jsonResponse({ _error: `Failed to reach Notion: ${err.message}` }, 502);
+  }
+
+  // Auto-generate field mapping if not provided
+  let mapping = field_mapping;
+  if (!mapping || Object.keys(mapping).length === 0) {
+    mapping = {};
+    const notionProps = notionSchema.properties || {};
+    for (const col of Array.isArray(columns) ? columns : []) {
+      // Try exact name match first, then case-insensitive
+      const colName = col.name || col.id;
+      if (notionProps[colName]) {
+        mapping[col.id] = { notion_property: colName, notion_type: notionProps[colName].type };
+      } else {
+        const match = Object.entries(notionProps).find(
+          ([k]) => k.toLowerCase() === colName.toLowerCase()
+        );
+        if (match) {
+          mapping[col.id] = { notion_property: match[0], notion_type: match[1].type };
+        }
+      }
+    }
+  }
+
+  // Check for existing config
+  const existing = await env.DB.prepare(
+    "SELECT id FROM sync_configs WHERE table_id = ?"
+  ).bind(tableId).first();
+
+  const id = existing?.id || crypto.randomUUID();
+
+  if (existing) {
+    await env.DB.prepare(
+      "UPDATE sync_configs SET notion_db_id = ?, direction = ?, field_mapping = ?, enabled = 1 WHERE id = ?"
+    ).bind(notion_db_id, direction, JSON.stringify(mapping), id).run();
+  } else {
+    await env.DB.prepare(
+      "INSERT INTO sync_configs (id, table_id, notion_db_id, direction, field_mapping, enabled) VALUES (?, ?, ?, ?, ?, 1)"
+    ).bind(id, tableId, notion_db_id, direction, JSON.stringify(mapping)).run();
+  }
+
+  return jsonResponse({
+    id,
+    table_id: tableId,
+    notion_db_id,
+    direction,
+    field_mapping: mapping,
+    notion_title: notionSchema.title?.[0]?.plain_text || "Untitled",
+  });
+}
+
+/**
+ * Push D1 table rows → Notion pages.
+ * Creates new pages or updates existing ones (tracked via row metadata.notion_page_id).
+ */
+async function handleSyncPush(env, tableId, notionKey) {
+  if (!notionKey) return jsonResponse({ _error: "Notion API key not configured" }, 400);
+
+  // Get sync config
+  const config = await env.DB.prepare(
+    "SELECT * FROM sync_configs WHERE table_id = ? AND enabled = 1"
+  ).bind(tableId).first();
+  if (!config) return jsonResponse({ _error: "No sync configured for this table" }, 404);
+
+  const fieldMapping = safeParseJSON(config.field_mapping);
+  const notionDbId = config.notion_db_id;
+
+  // Get table schema for column name lookup
+  const schema = await env.DB.prepare("SELECT columns FROM table_schemas WHERE id = ?").bind(tableId).first();
+  const columns = schema ? (Array.isArray(safeParseJSON(schema.columns)) ? safeParseJSON(schema.columns) : []) : [];
+  const colMap = {};
+  for (const c of columns) colMap[c.id] = c;
+
+  // Get all non-archived rows
+  const { results: rows } = await env.DB.prepare(
+    "SELECT * FROM table_rows WHERE table_id = ? AND archived = 0"
+  ).bind(tableId).all();
+
+  let created = 0, updated = 0, errors = 0;
+
+  for (const row of rows || []) {
+    const cells = safeParseJSON(row.cells);
+    const metadata = safeParseJSON(row.metadata);
+    const notionPageId = metadata.notion_page_id;
+
+    // Build Notion properties from field mapping
+    const properties = {};
+    for (const [colId, mapping] of Object.entries(fieldMapping)) {
+      const value = cells[colId];
+      if (value === undefined || value === null) continue;
+      const notionProp = mapping.notion_property;
+      const notionType = mapping.notion_type;
+      properties[notionProp] = buildNotionPropValue(notionType, value);
+    }
+
+    try {
+      if (notionPageId) {
+        // Update existing Notion page
+        await fetch(`${NOTION_API}/pages/${notionPageId}`, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${notionKey}`,
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ properties }),
+        });
+        updated++;
+      } else {
+        // Create new Notion page
+        const res = await fetch(`${NOTION_API}/pages`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${notionKey}`,
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            parent: { database_id: notionDbId },
+            properties,
+          }),
+        });
+        const page = await res.json();
+        if (page.id) {
+          // Store Notion page ID in row metadata
+          metadata.notion_page_id = page.id;
+          metadata.last_synced_at = new Date().toISOString();
+          await env.DB.prepare(
+            "UPDATE table_rows SET metadata = ? WHERE id = ?"
+          ).bind(JSON.stringify(metadata), row.id).run();
+          created++;
+        } else {
+          errors++;
+        }
+      }
+    } catch (err) {
+      console.error(`Sync push error for row ${row.id}:`, err.message);
+      errors++;
+    }
+  }
+
+  // Update last synced timestamp
+  await env.DB.prepare(
+    "UPDATE sync_configs SET last_synced_at = datetime('now') WHERE table_id = ?"
+  ).bind(tableId).run();
+
+  return jsonResponse({ pushed: { created, updated, errors }, total: (rows || []).length });
+}
+
+/**
+ * Pull Notion pages → D1 table rows.
+ * Creates new rows or updates existing ones (matched by notion_page_id in metadata).
+ */
+async function handleSyncPull(env, tableId, notionKey) {
+  if (!notionKey) return jsonResponse({ _error: "Notion API key not configured" }, 400);
+
+  const config = await env.DB.prepare(
+    "SELECT * FROM sync_configs WHERE table_id = ? AND enabled = 1"
+  ).bind(tableId).first();
+  if (!config) return jsonResponse({ _error: "No sync configured for this table" }, 404);
+
+  const fieldMapping = safeParseJSON(config.field_mapping);
+  const notionDbId = config.notion_db_id;
+
+  // Get table schema
+  const schema = await env.DB.prepare("SELECT columns FROM table_schemas WHERE id = ?").bind(tableId).first();
+  const columns = schema ? (Array.isArray(safeParseJSON(schema.columns)) ? safeParseJSON(schema.columns) : []) : [];
+
+  // Get existing rows with notion_page_id
+  const { results: existingRows } = await env.DB.prepare(
+    "SELECT id, metadata FROM table_rows WHERE table_id = ? AND archived = 0"
+  ).bind(tableId).all();
+
+  const notionIdToRowId = {};
+  for (const row of existingRows || []) {
+    const meta = safeParseJSON(row.metadata);
+    if (meta.notion_page_id) {
+      notionIdToRowId[meta.notion_page_id] = row.id;
+    }
+  }
+
+  // Query all pages from Notion database (with pagination)
+  let notionPages = [];
+  let cursor = undefined;
+  do {
+    const body = { page_size: 100 };
+    if (cursor) body.start_cursor = cursor;
+    const res = await fetch(`${NOTION_API}/databases/${notionDbId}/query`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${notionKey}`,
+        "Notion-Version": NOTION_VERSION,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    notionPages.push(...(data.results || []));
+    cursor = data.has_more ? data.next_cursor : null;
+  } while (cursor);
+
+  let created = 0, updated = 0, errors = 0;
+
+  // Reverse field mapping: notion_property → col_id
+  const reverseMapping = {};
+  for (const [colId, mapping] of Object.entries(fieldMapping)) {
+    reverseMapping[mapping.notion_property] = colId;
+  }
+
+  for (const page of notionPages) {
+    const cells = {};
+    for (const [propName, propVal] of Object.entries(page.properties || {})) {
+      const colId = reverseMapping[propName];
+      if (!colId) continue;
+      cells[colId] = readNotionPropValue(propVal);
+    }
+
+    const existingRowId = notionIdToRowId[page.id];
+
+    try {
+      if (existingRowId) {
+        // Update existing row
+        await env.DB.prepare(
+          "UPDATE table_rows SET cells = ?, metadata = ?, updated_at = datetime('now') WHERE id = ?"
+        ).bind(
+          JSON.stringify(cells),
+          JSON.stringify({ notion_page_id: page.id, last_synced_at: new Date().toISOString() }),
+          existingRowId
+        ).run();
+        updated++;
+      } else {
+        // Create new row
+        const rowId = crypto.randomUUID();
+        await env.DB.prepare(
+          "INSERT INTO table_rows (id, table_id, cells, metadata) VALUES (?, ?, ?, ?)"
+        ).bind(
+          rowId, tableId, JSON.stringify(cells),
+          JSON.stringify({ notion_page_id: page.id, last_synced_at: new Date().toISOString() })
+        ).run();
+        created++;
+      }
+    } catch (err) {
+      console.error(`Sync pull error for page ${page.id}:`, err.message);
+      errors++;
+    }
+  }
+
+  await env.DB.prepare(
+    "UPDATE sync_configs SET last_synced_at = datetime('now') WHERE table_id = ?"
+  ).bind(tableId).run();
+
+  return jsonResponse({ pulled: { created, updated, errors }, total: notionPages.length });
+}
+
+/**
+ * Get sync status for a table.
+ */
+async function handleSyncStatus(env, tableId) {
+  const config = await env.DB.prepare(
+    "SELECT * FROM sync_configs WHERE table_id = ?"
+  ).bind(tableId).first();
+
+  if (!config) return jsonResponse({ configured: false });
+
+  return jsonResponse({
+    configured: true,
+    id: config.id,
+    table_id: config.table_id,
+    notion_db_id: config.notion_db_id,
+    direction: config.direction,
+    field_mapping: safeParseJSON(config.field_mapping),
+    last_synced_at: config.last_synced_at,
+    enabled: !!config.enabled,
+  });
+}
+
+/**
+ * Remove sync configuration for a table.
+ */
+async function handleSyncDelete(env, tableId) {
+  await env.DB.prepare("DELETE FROM sync_configs WHERE table_id = ?").bind(tableId).run();
+  return jsonResponse({ success: true, table_id: tableId });
+}
+
+/**
+ * Convert a JS value into a Notion property value object for push.
+ */
+function buildNotionPropValue(type, value) {
+  switch (type) {
+    case "title":
+      return { title: [{ text: { content: String(value) } }] };
+    case "rich_text":
+      return { rich_text: [{ text: { content: String(value) } }] };
+    case "number":
+      return { number: typeof value === "number" ? value : parseFloat(value) || 0 };
+    case "select":
+      return { select: { name: String(value) } };
+    case "multi_select": {
+      const items = Array.isArray(value) ? value : String(value).split(",").map((s) => s.trim());
+      return { multi_select: items.map((name) => ({ name })) };
+    }
+    case "status":
+      return { status: { name: String(value) } };
+    case "date":
+      return { date: { start: String(value) } };
+    case "checkbox":
+      return { checkbox: !!value };
+    case "url":
+      return { url: String(value) || null };
+    case "email":
+      return { email: String(value) || null };
+    case "phone_number":
+      return { phone_number: String(value) || null };
+    default:
+      return { rich_text: [{ text: { content: String(value) } }] };
+  }
+}
+
+/**
+ * Read a Notion property value into a plain JS value for pull.
+ */
+function readNotionPropValue(prop) {
+  if (!prop) return null;
+  switch (prop.type) {
+    case "title":
+      return (prop.title || []).map((t) => t.plain_text).join("");
+    case "rich_text":
+      return (prop.rich_text || []).map((t) => t.plain_text).join("");
+    case "number":
+      return prop.number;
+    case "select":
+      return prop.select?.name || null;
+    case "multi_select":
+      return (prop.multi_select || []).map((s) => s.name);
+    case "status":
+      return prop.status?.name || null;
+    case "date":
+      return prop.date?.start || null;
+    case "checkbox":
+      return !!prop.checkbox;
+    case "url":
+      return prop.url || null;
+    case "email":
+      return prop.email || null;
+    case "phone_number":
+      return prop.phone_number || null;
+    case "created_time":
+      return prop.created_time || null;
+    case "last_edited_time":
+      return prop.last_edited_time || null;
+    default:
+      return null;
+  }
 }

@@ -290,6 +290,31 @@ export async function searchKB(query, category) {
   });
 }
 
+// ─── Notion Sync ───
+
+export async function configureSyncNotionDB(tableId, { notion_db_id, direction, field_mapping }) {
+  return apiFetch(`/sync/${tableId}/configure`, {
+    method: "POST",
+    body: { notion_db_id, direction, field_mapping },
+  });
+}
+
+export async function syncPush(tableId) {
+  return apiFetch(`/sync/${tableId}/push`, { method: "POST" });
+}
+
+export async function syncPull(tableId) {
+  return apiFetch(`/sync/${tableId}/pull`, { method: "POST" });
+}
+
+export async function getSyncStatus(tableId) {
+  return apiFetch(`/sync/${tableId}/status`, { method: "GET" });
+}
+
+export async function deleteSync(tableId) {
+  return apiFetch(`/sync/${tableId}`, { method: "DELETE" });
+}
+
 // ─── Notion Proxy (backward compat) ───
 // These maintain the existing API surface so current code keeps working.
 

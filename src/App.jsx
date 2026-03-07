@@ -59,16 +59,13 @@ function AppContent() {
   const engineRef = useRef(null);
 
   useEffect(() => {
-    if (!isAuthenticated || !isSetup || !user || !platformIds?.rulesDbId) return;
+    if (!isAuthenticated || !isSetup || !user?.workerUrl) return;
 
-    // Create and start the automation engine
+    // Create and start the automation engine (works without Notion — reads rules from D1)
     const engine = createAutomationEngine({
       workerUrl: user.workerUrl,
-      notionKey: user.notionKey,
-      claudeKey: user.claudeKey,
-      rulesDbId: platformIds.rulesDbId,
-      notifDbId: platformIds.notifDbId,
-      kbDbId: platformIds.kbDbId,
+      notionKey: user.notionKey || "",
+      claudeKey: user.claudeKey || "",
       tickIntervalMs: 60_000,
       onRuleFired: (rule, result) => {
         console.log(`[Automation] Rule "${rule.name}" fired (${result.path})`);
@@ -85,7 +82,7 @@ function AppContent() {
       engine.stop();
       engineRef.current = null;
     };
-  }, [isAuthenticated, isSetup, user, platformIds]);
+  }, [isAuthenticated, isSetup, user]);
 
   // Template selection handler — hooks MUST be called before any early returns
   const handleStartTemplate = useCallback(

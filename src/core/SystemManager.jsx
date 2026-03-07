@@ -10,10 +10,10 @@ import { runAgent, extractChoices } from "../agent/runAgent.js";
 import { SYSTEM_TOOLS } from "../agent/tools.js";
 import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createToolExecutor } from "../agent/toolExecutor.js";
-import { queryAll } from "../notion/pagination.js";
 import WasabiOrb from "./WasabiOrb.jsx";
 import { IconGear } from "../design/icons.jsx";
 import { getSessionUsage, getUsageHistory, formatCost, formatTokens } from "../utils/costTracker.js";
+import * as api from "../lib/api.js";
 import { getConnections, setConnection as apiSetConnection, deleteConnection as apiDeleteConnection, checkHealth } from "../lib/api.js";
 
 // ── Tab button style (matches WasabiPanel) ──
@@ -657,43 +657,20 @@ export default function SystemManager() {
   }, [tab]);
 
   useEffect(() => {
-    if (
-      statsFetched.current ||
-      !user?.workerUrl ||
-      !user?.notionKey ||
-      !platformIds
-    )
-      return;
+    if (statsFetched.current) return;
     statsFetched.current = true;
 
     const fetchStats = async () => {
       setStatsLoading(true);
       try {
-        const promises = [];
+        // Fetch counts from D1 (no Notion key required)
+        const [kbResult, rulesResult] = await Promise.all([
+          api.listKB().catch(() => ({ entries: [] })),
+          api.listRules().catch(() => ({ rules: [] })),
+        ]);
 
-        // KB count
-        if (platformIds.kbDbId) {
-          promises.push(
-            queryAll(user.workerUrl, user.notionKey, platformIds.kbDbId)
-              .then((r) => r.length)
-              .catch(() => 0)
-          );
-        } else {
-          promises.push(Promise.resolve(0));
-        }
-
-        // Rules count
-        if (platformIds.rulesDbId) {
-          promises.push(
-            queryAll(user.workerUrl, user.notionKey, platformIds.rulesDbId)
-              .then((r) => r.length)
-              .catch(() => 0)
-          );
-        } else {
-          promises.push(Promise.resolve(0));
-        }
-
-        const [kbCount, rulesCount] = await Promise.all(promises);
+        const kbCount = (kbResult.entries || []).length;
+        const rulesCount = (rulesResult.rules || []).length;
         setStats({ pages: pages.length, kb: kbCount, rules: rulesCount });
       } catch (err) {
         console.warn("Failed to fetch system stats:", err);
@@ -704,7 +681,7 @@ export default function SystemManager() {
     };
 
     fetchStats();
-  }, [user, platformIds, pages.length]);
+  }, [pages.length]);
 
   // Update page count when pages change
   useEffect(() => {
