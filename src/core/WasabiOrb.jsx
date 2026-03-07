@@ -12,7 +12,7 @@ const VS = 64;
 const CX = VS / 2;
 const CY = VS / 2;
 const BASE_R = 22;
-const N_POINTS = 12;
+const N_POINTS = 16;
 const TWO_PI = Math.PI * 2;
 
 let _orbIdCounter = 0;
@@ -27,7 +27,7 @@ function buildBlobPath(cx, cy, radii, angles) {
       y: cy + Math.sin(angles[i]) * radii[i],
     });
   }
-  const tension = 0.45;
+  const tension = 0.55;
   let d = `M ${pts[0].x},${pts[0].y}`;
   for (let i = 0; i < n; i++) {
     const p0 = pts[(i - 1 + n) % n];
@@ -115,16 +115,15 @@ export default function WasabiOrb({ size = 32 }) {
     const harmonics = [];
     for (let i = 0; i < N_POINTS; i++) {
       harmonics.push({
-        f1: 0.7 + i * 0.12,   p1: i * 1.1 + 0.5,  a1: 2.4 + (i % 3) * 0.5,
-        f2: 1.6 + i * 0.18,   p2: i * 1.7 + 1.7,  a2: 1.1 + (i % 2) * 0.4,
-        f3: 0.22 + i * 0.04,  p3: i * 0.7 + 3.1,  a3: 1.6 + (i % 4) * 0.35,
+        f1: 0.6 + i * 0.09,   p1: i * 1.1 + 0.5,  a1: 3.0 + (i % 3) * 0.8,
+        f2: 1.3 + i * 0.14,   p2: i * 1.7 + 1.7,  a2: 1.8 + (i % 2) * 0.5,
+        f3: 0.18 + i * 0.03,  p3: i * 0.7 + 3.1,  a3: 2.2 + (i % 4) * 0.4,
       });
     }
 
     const tick = (ts) => {
       if (!blobRef.current) { raf = requestAnimationFrame(tick); return; }
       const t = ts * 0.001;
-      const E = 0.15;
 
       // Floating drift
       const driftX = Math.sin(t * 0.5 + 1.0) * 1.2 + Math.sin(t * 1.1 + 2.5) * 0.6;
@@ -142,24 +141,37 @@ export default function WasabiOrb({ size = 32 }) {
         const baseAngle = (i / N_POINTS) * TWO_PI + rot;
         const h = harmonics[i];
         const deform =
-          Math.sin(t * h.f1 + h.p1) * h.a1 * E +
-          Math.sin(t * h.f2 + h.p2) * h.a2 * E +
+          Math.sin(t * h.f1 + h.p1) * h.a1 +
+          Math.sin(t * h.f2 + h.p2) * h.a2 +
           Math.sin(t * h.f3 + h.p3) * h.a3;
         radii.push(BASE_R + deform);
         angles.push(baseAngle);
       }
 
-      const pathD = buildBlobPath(cx, cy, radii, angles);
+      // Triple smoothing pass — big motion stays blobby, never ridged
+      let smooth = radii;
+      for (let pass = 0; pass < 3; pass++) {
+        const next = [];
+        for (let i = 0; i < N_POINTS; i++) {
+          const p = smooth[(i - 1 + N_POINTS) % N_POINTS];
+          const c = smooth[i];
+          const n = smooth[(i + 1) % N_POINTS];
+          next.push(p * 0.25 + c * 0.5 + n * 0.25);
+        }
+        smooth = next;
+      }
+
+      const pathD = buildBlobPath(cx, cy, smooth, angles);
       blobRef.current.setAttribute("d", pathD);
       if (innerRef.current) innerRef.current.setAttribute("d", pathD);
 
       if (highlightRef.current) {
-        const hlRadii = radii.map(r => r * 0.72);
+        const hlRadii = smooth.map(r => r * 0.72);
         highlightRef.current.setAttribute("d", buildBlobPath(cx - 2.5, cy - 3.0, hlRadii, angles));
       }
 
       if (shadowRef.current) {
-        const shRadii = radii.map(r => r * 1.05);
+        const shRadii = smooth.map(r => r * 1.05);
         shadowRef.current.setAttribute("d", buildBlobPath(cx + 0.5, cy + 1.0, shRadii, angles));
       }
 
