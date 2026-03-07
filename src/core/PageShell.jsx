@@ -70,6 +70,8 @@ export default function PageShell({
 
   // Detect document pages (no database fetch needed)
   const isDocumentPage = effectiveConfig.pageType === "document";
+  // Detect linked-sheet-only pages (no database fetch needed, views are self-contained)
+  const isLinkedSheetPage = effectiveConfig.pageType === "linked_sheet";
 
   // Get the active view config based on effective config (sub-page or parent)
   const views = effectiveConfig.views || [];
@@ -88,8 +90,8 @@ export default function PageShell({
 
   // Fetch data from all connected databases
   const fetchData = useCallback(async () => {
-    // Document pages have no databases to fetch
-    if (isDocumentPage) {
+    // Document pages and linked-sheet-only pages have no databases to fetch
+    if (isDocumentPage || isLinkedSheetPage) {
       setLoading(false);
       return;
     }
@@ -129,7 +131,7 @@ export default function PageShell({
     } finally {
       setLoading(false);
     }
-  }, [user, effectiveDbs, isDocumentPage]);
+  }, [user, effectiveDbs, isDocumentPage, isLinkedSheetPage]);
 
   // Initial fetch
   useEffect(() => {
@@ -243,6 +245,16 @@ export default function PageShell({
     if (user?.workerUrl && user?.notionKey && platformIds?.configDbId) {
       savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
         ...target, views: updatedViews,
+      }).catch(() => {});
+    }
+  }, [effectiveConfig, updatePageConfig, user, platformIds]);
+
+  const handleReorderViews = useCallback((newViews) => {
+    const target = effectiveConfig;
+    updatePageConfig(target.id, { views: newViews });
+    if (user?.workerUrl && user?.notionKey && platformIds?.configDbId) {
+      savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
+        ...target, views: newViews,
       }).catch(() => {});
     }
   }, [effectiveConfig, updatePageConfig, user, platformIds]);
@@ -415,11 +427,12 @@ export default function PageShell({
         onAddSubPage={() => onAddSubPage?.()}
         onDeleteView={handleDeleteView}
         onRenameView={handleRenameView}
+        onReorderViews={handleReorderViews}
         onAddView={() => setShowAddDb(true)}
       />
 
-      {/* Header bar — simplified for document pages */}
-      {isDocumentPage ? (
+      {/* Header bar — simplified for document and linked-sheet-only pages */}
+      {(isDocumentPage || isLinkedSheetPage) ? (
         <div
           style={{
             height: 40,
@@ -433,7 +446,7 @@ export default function PageShell({
           }}
         >
           <span style={{ fontSize: 11, color: C.darkMuted }}>
-            Document
+            {isDocumentPage ? "Document" : "Linked Sheet"}
           </span>
           <div style={{ flex: 1 }} />
         </div>

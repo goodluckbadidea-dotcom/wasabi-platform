@@ -339,6 +339,7 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
 
   // ── Save Database Page ──
   const hasLinkedSheets = views.some((v) => v.type === "linked_sheet");
+  const hasOnlyLinkedSheets = hasLinkedSheets && connectedDbs.length === 0;
 
   const handleSave = useCallback(async () => {
     setError(null);
@@ -357,12 +358,16 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
 
     setSaving(true);
     try {
+      // Determine page type: linked-sheet-only pages get a distinct pageType
+      // so PageShell and validatePageConfigs handle them gracefully
+      const effectivePageType = hasOnlyLinkedSheets ? "linked_sheet" : "database";
+
       const pageConfig = {
         name: pageName.trim(),
         icon: pageIcon,
         type: subPageParent ? "sub_page" : "page",
         parentId: subPageParent || folderId || null,
-        pageType: "database",
+        pageType: effectivePageType,
         databaseIds: connectedDbs.map((db) => db.id),
         views,
         refreshInterval: refreshInterval * 1000,
@@ -384,7 +389,7 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
     } finally {
       setSaving(false);
     }
-  }, [pageName, pageIcon, connectedDbs, views, refreshInterval, user, platformIds, addPage, hasLinkedSheets]);
+  }, [pageName, pageIcon, connectedDbs, views, refreshInterval, user, platformIds, addPage, hasLinkedSheets, hasOnlyLinkedSheets, subPageParent, folderId]);
 
   // ── Save Document Page ──
   const handleSaveDocument = useCallback(async () => {
@@ -396,16 +401,19 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
 
     setSaving(true);
     try {
-      // Ensure root page is active (auto-unarchive if needed)
-      await ensurePageActive(user.workerUrl, user.notionKey, platformIds.rootPageId);
-
-      // Create a Notion subpage under the root page
-      const notionPage = await createSubpage(
-        user.workerUrl,
-        user.notionKey,
-        platformIds.rootPageId,
-        pageName.trim()
-      );
+      // Create a Notion subpage — try under root page, fallback to workspace level
+      let notionPage;
+      try {
+        await ensurePageActive(user.workerUrl, user.notionKey, platformIds.rootPageId);
+        notionPage = await createSubpage(
+          user.workerUrl, user.notionKey, platformIds.rootPageId, pageName.trim()
+        );
+      } catch {
+        console.warn("[PageBuilder] Root page unavailable, creating at workspace level");
+        notionPage = await createSubpage(
+          user.workerUrl, user.notionKey, null, pageName.trim()
+        );
+      }
 
       // Build document page config
       const docConfig = {
@@ -430,7 +438,7 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
     } finally {
       setSaving(false);
     }
-  }, [pageName, pageIcon, user, platformIds, addPage]);
+  }, [pageName, pageIcon, user, platformIds, addPage, subPageParent, folderId]);
 
   // ── Save Folder ──
   const handleSaveFolder = useCallback(async () => {

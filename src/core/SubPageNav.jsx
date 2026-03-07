@@ -123,9 +123,12 @@ export default function SubPageNav({
   onDeleteView,
   onRenameView,
   onAddView,
+  onReorderViews,
 }) {
   const [hoveredPill, setHoveredPill] = useState(null);
   const [hoveredTab, setHoveredTab] = useState(null);
+  const [dragIdx, setDragIdx] = useState(null);
+  const [overIdx, setOverIdx] = useState(null);
 
   // Determine which config is active for view tabs
   const activeConfig = activeSubPage
@@ -194,10 +197,44 @@ export default function SubPageNav({
             const isActive = idx === activeViewIndex;
             const isHovered = hoveredTab === idx;
             const label = v.label || VIEW_TYPE_LABELS[v.type] || v.type;
+            const isDragging = dragIdx === idx;
+            const isDropTarget = overIdx === idx && dragIdx !== null && dragIdx !== idx;
             return (
               <div
                 key={idx}
-                style={{ display: "inline-flex", alignItems: "center", position: "relative" }}
+                draggable
+                onDragStart={(e) => {
+                  setDragIdx(idx);
+                  e.dataTransfer.effectAllowed = "move";
+                  e.dataTransfer.setData("text/plain", String(idx));
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  setOverIdx(idx);
+                }}
+                onDragEnd={() => {
+                  if (dragIdx !== null && overIdx !== null && dragIdx !== overIdx) {
+                    const reordered = [...views];
+                    const [moved] = reordered.splice(dragIdx, 1);
+                    reordered.splice(overIdx, 0, moved);
+                    onReorderViews?.(reordered);
+                    // Keep active view tracking the same view
+                    if (activeViewIndex === dragIdx) onSetActiveView?.(overIdx);
+                    else if (dragIdx < activeViewIndex && overIdx >= activeViewIndex) onSetActiveView?.(activeViewIndex - 1);
+                    else if (dragIdx > activeViewIndex && overIdx <= activeViewIndex) onSetActiveView?.(activeViewIndex + 1);
+                  }
+                  setDragIdx(null);
+                  setOverIdx(null);
+                }}
+                onDragLeave={() => setOverIdx(null)}
+                style={{
+                  display: "inline-flex", alignItems: "center", position: "relative",
+                  opacity: isDragging ? 0.4 : 1,
+                  borderLeft: isDropTarget && dragIdx > idx ? `2px solid ${C.accent}` : "2px solid transparent",
+                  borderRight: isDropTarget && dragIdx < idx ? `2px solid ${C.accent}` : "2px solid transparent",
+                  transition: "opacity 0.12s",
+                }}
                 onMouseEnter={() => setHoveredTab(idx)}
                 onMouseLeave={() => setHoveredTab(null)}
               >

@@ -19,7 +19,13 @@ const BLOCK_TYPES = [
   { type: "heading_3", label: "Heading 3", shortcut: "3" },
   { type: "bulleted_list_item", label: "Bullet List", shortcut: "b" },
   { type: "numbered_list_item", label: "Numbered List", shortcut: "n" },
+  { type: "to_do", label: "To-do", shortcut: "td" },
+  { type: "toggle", label: "Toggle", shortcut: "t" },
+  { type: "quote", label: "Quote", shortcut: "q" },
+  { type: "callout", label: "Callout", shortcut: "co" },
   { type: "code", label: "Code Block", shortcut: "c" },
+  { type: "image", label: "Image", shortcut: "img" },
+  { type: "bookmark", label: "Bookmark", shortcut: "bm" },
   { type: "divider", label: "Divider", shortcut: "d" },
 ];
 
@@ -164,16 +170,21 @@ function tempId() {
 }
 
 function createEmptyBlock(type = "paragraph") {
-  if (type === "divider") {
-    return { id: tempId(), type: "divider", divider: {}, _isNew: true, _dirty: true };
+  const base = { id: tempId(), type, _isNew: true, _dirty: true };
+  switch (type) {
+    case "divider":
+      return { ...base, divider: {} };
+    case "to_do":
+      return { ...base, to_do: { rich_text: [], checked: false } };
+    case "callout":
+      return { ...base, callout: { rich_text: [], icon: { type: "emoji", emoji: "💡" }, color: "default" } };
+    case "image":
+      return { ...base, image: { type: "external", external: { url: "" }, caption: [] }, _needsUrl: true };
+    case "bookmark":
+      return { ...base, bookmark: { url: "", caption: [] }, _needsUrl: true };
+    default:
+      return { ...base, [type]: { rich_text: [] } };
   }
-  return {
-    id: tempId(),
-    type,
-    [type]: { rich_text: [] },
-    _isNew: true,
-    _dirty: true,
-  };
 }
 
 function getBlockText(block) {
@@ -243,6 +254,22 @@ function blockStyle(type) {
     case "bulleted_list_item":
     case "numbered_list_item":
       return { ...base, fontSize: 14, paddingLeft: 24 };
+    case "to_do":
+      return { ...base, fontSize: 14 };
+    case "toggle":
+      return { ...base, fontSize: 14 };
+    case "quote":
+      return {
+        ...base,
+        fontSize: 14,
+        borderLeft: `3px solid ${C.accent}`,
+        paddingLeft: 14,
+        fontStyle: "italic",
+        color: C.darkMuted,
+        margin: "4px 0",
+      };
+    case "callout":
+      return { ...base, fontSize: 14, flex: 1 };
     case "code":
       return {
         ...base,
@@ -410,6 +437,7 @@ const EditableBlock = React.memo(function EditableBlock({
   onSplit,
   onMerge,
   onDelete,
+  onToggle,
   blockRef,
 }) {
   const ref = useRef(null);
@@ -440,23 +468,97 @@ const EditableBlock = React.memo(function EditableBlock({
     }
   }, [html]);
 
-  // Divider blocks are non-editable
+  // ── Non-text block types ──
+
   if (block.type === "divider") {
     return (
       <div style={{ ...blockWrapBase, padding: "8px 0" }}>
         <hr
-          style={{
-            border: "none",
-            height: 1,
-            background: C.darkBorder,
-            margin: 0,
-            cursor: "pointer",
-          }}
+          style={{ border: "none", height: 1, background: C.darkBorder, margin: 0, cursor: "pointer" }}
           onClick={() => onFocus(index)}
         />
       </div>
     );
   }
+
+  if (block.type === "image") {
+    const url = block.image?.external?.url || "";
+    return (
+      <div style={{ ...blockWrapBase, margin: "10px 0" }} onClick={() => onFocus(index)}>
+        {!url ? (
+          <div style={{
+            padding: 16, background: C.darkSurf, borderRadius: RADIUS.lg,
+            border: `1px dashed ${C.darkBorder}`, display: "flex", alignItems: "center", gap: 10,
+          }}>
+            <span style={{ fontSize: 18, opacity: 0.5 }}>🖼</span>
+            <input
+              placeholder="Paste image URL and press Enter..."
+              autoFocus={focused}
+              style={{
+                flex: 1, background: "none", border: "none", outline: "none",
+                color: C.darkText, fontFamily: FONT, fontSize: 13,
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  const v = e.target.value.trim();
+                  if (v) onChange(index, [], { type: "external", external: { url: v } });
+                }
+                if (e.key === "Backspace" && !e.target.value) onMerge(index);
+              }}
+            />
+          </div>
+        ) : (
+          <img src={url} alt="" style={{ maxWidth: "100%", borderRadius: RADIUS.lg, display: "block" }}
+            onError={(e) => { e.target.style.display = "none"; }} />
+        )}
+      </div>
+    );
+  }
+
+  if (block.type === "bookmark") {
+    const url = block.bookmark?.url || "";
+    return (
+      <div style={{ ...blockWrapBase, margin: "6px 0" }} onClick={() => onFocus(index)}>
+        {!url ? (
+          <div style={{
+            padding: 12, background: C.darkSurf, borderRadius: RADIUS.lg,
+            border: `1px dashed ${C.darkBorder}`, display: "flex", alignItems: "center", gap: 10,
+          }}>
+            <span style={{ fontSize: 14, opacity: 0.5 }}>🔖</span>
+            <input
+              placeholder="Paste URL and press Enter..."
+              autoFocus={focused}
+              style={{
+                flex: 1, background: "none", border: "none", outline: "none",
+                color: C.darkText, fontFamily: FONT, fontSize: 13,
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  const v = e.target.value.trim();
+                  if (v) onChange(index, [], { url: v });
+                }
+                if (e.key === "Backspace" && !e.target.value) onMerge(index);
+              }}
+            />
+          </div>
+        ) : (
+          <a href={url} target="_blank" rel="noopener noreferrer" style={{
+            display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+            background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
+            borderRadius: RADIUS.lg, color: C.accent, fontSize: 13,
+            textDecoration: "none", fontFamily: FONT, overflow: "hidden",
+          }}>
+            <span style={{ fontSize: 14 }}>🔖</span>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{url}</span>
+          </a>
+        )}
+      </div>
+    );
+  }
+
+  // ── Text-based block types ──
 
   const handleInput = () => {
     if (isComposing.current) return;
@@ -528,25 +630,122 @@ const EditableBlock = React.memo(function EditableBlock({
   const showBullet = block.type === "bulleted_list_item";
   const showNumber = block.type === "numbered_list_item";
 
+  // Shared contentEditable element
+  const editableDiv = (extraStyle) => (
+    <div
+      ref={ref}
+      contentEditable
+      suppressContentEditableWarning
+      onInput={handleInput}
+      onKeyDown={handleKeyDown}
+      onFocus={() => onFocus(index)}
+      onCompositionStart={() => { isComposing.current = true; }}
+      onCompositionEnd={() => { isComposing.current = false; handleInput(); }}
+      style={{ ...blockStyle(block.type), ...extraStyle }}
+      data-block-index={index}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+
+  // ── To-do: checkbox + text ──
+  if (block.type === "to_do") {
+    const checked = block.to_do?.checked || false;
+    return (
+      <div style={{ ...blockWrapBase, display: "flex", alignItems: "flex-start", gap: 8 }}>
+        <span
+          onClick={() => onChange(index, block.to_do?.rich_text || [], { checked: !checked })}
+          style={{
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            width: 16, height: 16, borderRadius: 3, cursor: "pointer", flexShrink: 0,
+            marginTop: 6,
+            border: `2px solid ${checked ? C.accent : C.darkBorder}`,
+            background: checked ? C.accent : "transparent",
+            color: "#fff", fontSize: 10, fontWeight: 700,
+            transition: "all 0.12s",
+          }}
+        >
+          {checked ? "✓" : ""}
+        </span>
+        {editableDiv({
+          textDecoration: checked ? "line-through" : "none",
+          opacity: checked ? 0.5 : 1,
+        })}
+      </div>
+    );
+  }
+
+  // ── Callout: emoji + colored bg ──
+  if (block.type === "callout") {
+    const emoji = block.callout?.icon?.emoji || "💡";
+    return (
+      <div style={{
+        ...blockWrapBase, display: "flex", gap: 10, padding: "10px 14px",
+        background: C.darkSurf, borderRadius: RADIUS.lg,
+        borderLeft: `3px solid ${C.accent}`, margin: "6px 0",
+      }}>
+        <span
+          style={{ fontSize: 18, flexShrink: 0, cursor: "pointer", lineHeight: "24px" }}
+          title="Click to change icon"
+          onClick={() => {
+            const emojis = ["💡", "⚠️", "📌", "🔥", "✅", "❗", "💬", "📝", "🎯", "⭐"];
+            const next = emojis[(emojis.indexOf(emoji) + 1) % emojis.length];
+            onChange(index, block.callout?.rich_text || [], { icon: { type: "emoji", emoji: next } });
+          }}
+        >
+          {emoji}
+        </span>
+        {editableDiv({})}
+      </div>
+    );
+  }
+
+  // ── Toggle: disclosure triangle + text ──
+  if (block.type === "toggle") {
+    const isOpen = block._open !== false; // default open
+    return (
+      <div style={{ ...blockWrapBase, margin: "4px 0" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 4 }}>
+          <span
+            onClick={() => onToggle?.(index)}
+            style={{
+              cursor: "pointer", fontSize: 12, color: C.darkMuted, userSelect: "none",
+              flexShrink: 0, marginTop: 5, display: "inline-block",
+              transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
+              transition: "transform 0.15s",
+            }}
+          >
+            ▶
+          </span>
+          {isOpen ? editableDiv({}) : (
+            <div
+              style={{ ...blockStyle("toggle"), color: C.darkMuted, cursor: "pointer" }}
+              onClick={() => onToggle?.(index)}
+            >
+              {getBlockText(block) || "Empty toggle"}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Quote: left-border styled text ──
+  if (block.type === "quote") {
+    return (
+      <div style={{ ...blockWrapBase, margin: "6px 0" }}>
+        {editableDiv({})}
+      </div>
+    );
+  }
+
+  // ── Default: paragraph, headings, lists, code ──
   return (
     <div style={blockWrapBase}>
       {showBullet && <span style={listBulletStyle}>•</span>}
       {showNumber && (
         <span style={listBulletStyle}>{(block._listIndex || 1)}.</span>
       )}
-      <div
-        ref={ref}
-        contentEditable
-        suppressContentEditableWarning
-        onInput={handleInput}
-        onKeyDown={handleKeyDown}
-        onFocus={() => onFocus(index)}
-        onCompositionStart={() => { isComposing.current = true; }}
-        onCompositionEnd={() => { isComposing.current = false; handleInput(); }}
-        style={blockStyle(block.type)}
-        data-block-index={index}
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+      {editableDiv({})}
     </div>
   );
 });
@@ -700,17 +899,25 @@ export default function DocumentEditor({ pageId }) {
 
   // ── Block Operations ──
 
-  const handleBlockChange = useCallback((index, richText) => {
+  const handleBlockChange = useCallback((index, richText, extraData) => {
     setBlocks((prev) => {
       const updated = [...prev];
       const block = { ...updated[index] };
-      block[block.type] = { ...block[block.type], rich_text: richText };
+      block[block.type] = { ...block[block.type], rich_text: richText, ...extraData };
       block._dirty = true;
       updated[index] = block;
       return updated;
     });
     scheduleSave();
   }, [scheduleSave]);
+
+  const handleToggleOpen = useCallback((index) => {
+    setBlocks((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], _open: !updated[index]._open };
+      return updated;
+    });
+  }, []);
 
   const handleSplit = useCallback((index, preParts, postParts) => {
     setBlocks((prev) => {
@@ -818,13 +1025,25 @@ export default function DocumentEditor({ pageId }) {
       const block = { ...updated[index] };
       const richText = block[block.type]?.rich_text || [];
 
-      if (newType === "divider") {
-        // Replace with divider, lose text
-        const divider = createEmptyBlock("divider");
-        divider.id = block.id;
-        divider._isNew = block._isNew;
-        divider._dirty = true;
-        updated[index] = divider;
+      // Non-text block types — create fresh, preserve ID
+      if (newType === "divider" || newType === "image" || newType === "bookmark") {
+        const fresh = createEmptyBlock(newType);
+        fresh.id = block.id;
+        fresh._isNew = block._isNew;
+        fresh._dirty = true;
+        updated[index] = fresh;
+      } else if (newType === "to_do") {
+        delete block[block.type];
+        block.type = newType;
+        block.to_do = { rich_text: richText, checked: false };
+        block._dirty = true;
+        updated[index] = block;
+      } else if (newType === "callout") {
+        delete block[block.type];
+        block.type = newType;
+        block.callout = { rich_text: richText, icon: { type: "emoji", emoji: "💡" }, color: "default" };
+        block._dirty = true;
+        updated[index] = block;
       } else {
         delete block[block.type];
         block.type = newType;
@@ -884,6 +1103,17 @@ export default function DocumentEditor({ pageId }) {
       return updated;
     });
     setFocusIdx(focusIdx + 2);
+    scheduleSave();
+  }, [focusIdx, scheduleSave]);
+
+  const handleInsertBlock = useCallback((type) => {
+    if (focusIdx == null) return;
+    setBlocks((prev) => {
+      const updated = [...prev];
+      updated.splice(focusIdx + 1, 0, createEmptyBlock(type));
+      return updated;
+    });
+    setFocusIdx(focusIdx + 1);
     scheduleSave();
   }, [focusIdx, scheduleSave]);
 
@@ -1110,13 +1340,37 @@ export default function DocumentEditor({ pageId }) {
         <button style={toolBtn(currentBlockType === "code")} onClick={() => focusIdx != null && changeBlockType(focusIdx, "code")} title="Code Block">
           {"{ }"}
         </button>
-        <button style={toolBtn(false)} onClick={handleInsertDivider} title="Divider">
+
+        <div style={{ width: 1, height: 18, background: C.darkBorder, margin: "0 6px" }} />
+
+        <button style={toolBtn(currentBlockType === "to_do")} onClick={() => focusIdx != null && changeBlockType(focusIdx, "to_do")} title="To-do (/td)">
+          ☐
+        </button>
+        <button style={toolBtn(currentBlockType === "toggle")} onClick={() => focusIdx != null && changeBlockType(focusIdx, "toggle")} title="Toggle (/t)">
+          ▶
+        </button>
+        <button style={toolBtn(currentBlockType === "quote")} onClick={() => focusIdx != null && changeBlockType(focusIdx, "quote")} title="Quote (/q)">
+          "
+        </button>
+        <button style={toolBtn(currentBlockType === "callout")} onClick={() => focusIdx != null && changeBlockType(focusIdx, "callout")} title="Callout (/co)">
+          💡
+        </button>
+
+        <div style={{ width: 1, height: 18, background: C.darkBorder, margin: "0 6px" }} />
+
+        <button style={toolBtn(false)} onClick={() => handleInsertBlock("image")} title="Image (/img)">
+          🖼
+        </button>
+        <button style={toolBtn(false)} onClick={() => handleInsertBlock("bookmark")} title="Bookmark (/bm)">
+          🔖
+        </button>
+        <button style={toolBtn(false)} onClick={handleInsertDivider} title="Divider (/d)">
           ―
         </button>
         <button
           style={toolBtn(currentBlockType === "paragraph")}
           onClick={() => focusIdx != null && changeBlockType(focusIdx, "paragraph")}
-          title="Paragraph"
+          title="Paragraph (/p)"
         >
           ¶
         </button>
@@ -1145,6 +1399,7 @@ export default function DocumentEditor({ pageId }) {
               onSplit={handleSplit}
               onMerge={handleMerge}
               onDelete={handleDeleteAtEnd}
+              onToggle={handleToggleOpen}
               blockRef={{ current: null, set: (el) => { blockRefs.current[i] = el; } }}
             />
           ))}
@@ -1192,29 +1447,66 @@ export default function DocumentEditor({ pageId }) {
 
 // ─── Build Notion Block Payload ───
 
+function buildRichTextPayload(richText) {
+  return (richText || []).map((rt) => ({
+    type: "text",
+    text: {
+      content: rt.text?.content || rt.plain_text || "",
+      link: rt.text?.link || (rt.href ? { url: rt.href } : null),
+    },
+    annotations: rt.annotations || {
+      bold: false, italic: false, strikethrough: false,
+      underline: false, code: false, color: "default",
+    },
+  }));
+}
+
 function buildBlockPayload(block) {
   if (block.type === "divider") {
     return { type: "divider", divider: {} };
   }
+  if (block.type === "image") {
+    return {
+      type: "image",
+      image: {
+        type: "external",
+        external: { url: block.image?.external?.url || "" },
+      },
+    };
+  }
+  if (block.type === "bookmark") {
+    return {
+      type: "bookmark",
+      bookmark: { url: block.bookmark?.url || "" },
+    };
+  }
+  if (block.type === "to_do") {
+    const content = block.to_do || {};
+    return {
+      type: "to_do",
+      to_do: {
+        rich_text: buildRichTextPayload(content.rich_text),
+        checked: content.checked || false,
+      },
+    };
+  }
+  if (block.type === "callout") {
+    const content = block.callout || {};
+    return {
+      type: "callout",
+      callout: {
+        rich_text: buildRichTextPayload(content.rich_text),
+        icon: content.icon || { type: "emoji", emoji: "💡" },
+        color: content.color || "default",
+      },
+    };
+  }
+  // toggle, quote, paragraph, headings, lists, code — all use rich_text
   const content = block[block.type] || {};
   return {
     type: block.type,
     [block.type]: {
-      rich_text: (content.rich_text || []).map((rt) => ({
-        type: "text",
-        text: {
-          content: rt.text?.content || rt.plain_text || "",
-          link: rt.text?.link || (rt.href ? { url: rt.href } : null),
-        },
-        annotations: rt.annotations || {
-          bold: false,
-          italic: false,
-          strikethrough: false,
-          underline: false,
-          code: false,
-          color: "default",
-        },
-      })),
+      rich_text: buildRichTextPayload(content.rich_text),
       ...(block.type === "code" && content.language ? { language: content.language } : {}),
     },
   };

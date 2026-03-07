@@ -163,6 +163,8 @@ export async function validatePageConfigs(workerUrl, notionKey, configs) {
     configs.map(async (config) => {
       // Folders have no resources to validate
       if (config.type === "folder") return config;
+      // Linked-sheet-only pages have no Notion resources to validate
+      if (config.pageType === "linked_sheet") return config;
       if (config.pageType === "document") {
         // Document pages: check the Notion page from the document view
         const docView = config.views?.find((v) => v.type === "document");
