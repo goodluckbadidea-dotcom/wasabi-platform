@@ -9,7 +9,8 @@ import { usePlatform } from "../context/PlatformContext.jsx";
 import { detectSchema, classifyProperties } from "../notion/schema.js";
 import { createDatabase, createPage, ensurePageActive } from "../notion/client.js";
 import { buildProp } from "../notion/properties.js";
-import { IconSearch, IconDatabase, IconCheck, IconPlus, IconClose, IconTrash } from "../design/icons.jsx";
+import { IconSearch, IconDatabase, IconCheck, IconPlus, IconClose, IconTrash, IconSheet } from "../design/icons.jsx";
+import { detectSheetType, validateSheetUrl } from "../sheets/sheetClient.js";
 
 // ── Styles ──
 const ds = {
@@ -253,6 +254,7 @@ function parseSearchResults(results) {
 // ── Main Component ──
 export default function DatabaseBrowser({
   onConnect,
+  onConnectSheet,
   connectedIds = [],
   multi = true,
 }) {
@@ -267,6 +269,7 @@ export default function DatabaseBrowser({
   const [pasteInput, setPasteInput] = useState("");
   const [pasteLoading, setPasteLoading] = useState(false);
   const [pasteError, setPasteError] = useState(null);
+  const [sheetPreview, setSheetPreview] = useState(null); // { url, type } when a sheet URL is detected
 
   // Create mode
   const [newDbTitle, setNewDbTitle] = useState("");
@@ -396,6 +399,26 @@ export default function DatabaseBrowser({
 
   // ── Paste URL / ID handler ──
   const handlePaste = useCallback(async () => {
+    setSheetPreview(null);
+
+    // Check if this is a Google Sheet or CSV URL first
+    const sheetValidation = validateSheetUrl(pasteInput);
+    if (sheetValidation.type === "google_sheets" || sheetValidation.type === "csv") {
+      if (sheetValidation.valid) {
+        setSheetPreview({ url: pasteInput.trim(), type: sheetValidation.type });
+        setPasteError(null);
+        setPreviewDb(null);
+      } else {
+        setPasteError(sheetValidation.error || "Invalid sheet URL");
+      }
+      return;
+    }
+    if (sheetValidation.type === "unsupported") {
+      setPasteError(sheetValidation.error || "This provider is not yet supported");
+      return;
+    }
+
+    // Otherwise try as a Notion database URL/ID
     const dbId = extractDatabaseId(pasteInput);
     if (!dbId) {
       setPasteError("Could not find a valid database ID. Try pasting the full Notion URL.");
@@ -571,14 +594,15 @@ export default function DatabaseBrowser({
               onChange={(e) => {
                 setPasteInput(e.target.value);
                 setPasteError(null);
+                setSheetPreview(null);
               }}
-              placeholder="Paste a Notion database URL or ID..."
+              placeholder="Paste a Notion database URL, Google Sheet URL, or CSV link..."
               onKeyDown={(e) => {
                 if (e.key === "Enter") handlePaste();
               }}
             />
             <div style={ds.hint}>
-              Examples: https://notion.so/workspace/abc123... or just the 32-character ID
+              Examples: https://notion.so/workspace/abc123... or https://docs.google.com/spreadsheets/d/...
             </div>
             {pasteError && <div style={ds.errorMsg}>{pasteError}</div>}
           </div>
@@ -598,8 +622,56 @@ export default function DatabaseBrowser({
             {pasteLoading ? "Looking up database..." : "Look Up Database"}
           </button>
 
+          {/* Sheet URL detected preview */}
+          {sheetPreview && (
+            <div style={{
+              padding: 16,
+              background: C.darkSurf2,
+              border: `1px solid ${C.darkBorder}`,
+              borderRadius: RADIUS.md,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <IconSheet size={20} color={C.accent} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.darkText }}>
+                    {sheetPreview.type === "google_sheets" ? "Google Sheet detected" : "CSV file detected"}
+                  </div>
+                  <div style={{ fontSize: 11, color: C.darkMuted, marginTop: 2, wordBreak: "break-all" }}>
+                    {sheetPreview.url.length > 80 ? sheetPreview.url.slice(0, 80) + "..." : sheetPreview.url}
+                  </div>
+                </div>
+              </div>
+              <div style={{ fontSize: 12, color: C.darkMuted, lineHeight: 1.5 }}>
+                This will be added as a <strong style={{ color: C.darkText }}>Linked Sheet</strong> view —
+                a read-only table that stays in sync with the source.
+              </div>
+              <button
+                style={{
+                  ...ds.connectBtn,
+                  width: "100%",
+                  padding: "10px 16px",
+                  fontSize: 13,
+                }}
+                onClick={() => {
+                  if (onConnectSheet) {
+                    onConnectSheet({ sheetUrl: sheetPreview.url, sheetType: sheetPreview.type });
+                  }
+                  setSheetPreview(null);
+                  setPasteInput("");
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.85"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}
+              >
+                Connect as Linked Sheet
+              </button>
+            </div>
+          )}
+
           {/* Schema preview for pasted DB */}
-          {previewDb?.schema && mode === "paste" && (
+          {previewDb?.schema && mode === "paste" && !sheetPreview && (
             <SchemaPreview
               schema={previewDb.schema}
               isConnected={isConnected(previewDb.id)}

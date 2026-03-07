@@ -14,7 +14,7 @@ import {
   IconPage, IconTable, IconKanban, IconChart, IconForm,
   IconCalendar, IconFolder, IconStar, IconBolt, IconUsers,
   IconInbox, IconBell, IconGear, IconCards, IconTimeline,
-  IconDatabase, IconClose, IconChevronLeft,
+  IconDatabase, IconClose, IconChevronLeft, IconSheet,
 } from "../design/icons.jsx";
 
 // ── Available view types ──
@@ -30,6 +30,7 @@ const VIEW_TYPES = [
   { type: "activityFeed", label: "Activity Feed", desc: "Recent changes stream", Icon: IconInbox },
   { type: "document", label: "Document", desc: "Rich text page content", Icon: IconPage },
   { type: "chat", label: "Chat", desc: "AI chat with data context", Icon: IconBell },
+  { type: "linked_sheet", label: "Linked Sheet", desc: "Read-only Google Sheet or CSV", Icon: IconSheet },
 ];
 
 // ── Icon map for page icon picker ──
@@ -255,6 +256,19 @@ export default function VisualPageBuilder({ onCancel }) {
   // Remove a connected database
   const handleDbRemove = useCallback((dbId) => {
     setConnectedDbs((prev) => prev.filter((db) => db.id !== dbId));
+  }, []);
+
+  // Handle connecting a Google Sheet / CSV as a Linked Sheet view
+  const handleSheetConnect = useCallback(({ sheetUrl, sheetType }) => {
+    setViews((prev) => [
+      ...prev,
+      {
+        type: "linked_sheet",
+        label: "Linked Sheet",
+        position: "main",
+        config: { sheetUrl, sheetType },
+      },
+    ]);
   }, []);
 
   // Apply auto-detected views — always ensure Table is first
@@ -656,6 +670,7 @@ export default function VisualPageBuilder({ onCancel }) {
           {/* Database browser */}
           <DatabaseBrowser
             onConnect={handleDbConnect}
+            onConnectSheet={handleSheetConnect}
             connectedIds={connectedIds}
             multi={true}
           />
