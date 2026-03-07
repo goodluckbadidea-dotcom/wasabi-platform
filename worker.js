@@ -213,6 +213,65 @@ export default {
         return await handleDeleteConnection(env, key);
       }
 
+      // ─── Page Config CRUD ───
+      // Schema routes matched before single-page routes to avoid ID collision
+      const schemaMatch = path.match(/^\/pages\/([^/]+)\/schema$/);
+      if (schemaMatch) {
+        const id = schemaMatch[1];
+        if (request.method === "GET") return await handleGetSchema(env, id);
+        if (request.method === "PATCH") {
+          const body = await request.json();
+          return await handleUpdateSchema(env, id, body);
+        }
+      }
+
+      if (path === "/pages" && request.method === "GET") {
+        return await handleListPages(env);
+      }
+      if (path === "/pages" && request.method === "POST") {
+        const body = await request.json();
+        return await handleCreatePage(env, body);
+      }
+      const pageConfigMatch = path.match(/^\/pages\/([^/]+)$/);
+      if (pageConfigMatch) {
+        const id = pageConfigMatch[1];
+        if (request.method === "GET") return await handleGetPage(env, id);
+        if (request.method === "PATCH") {
+          const body = await request.json();
+          return await handleUpdatePage(env, id, body);
+        }
+        if (request.method === "DELETE") return await handleDeletePage(env, id);
+      }
+
+      // ─── Table Row CRUD ───
+      // Single-row routes matched before collection routes
+      const rowMatch = path.match(/^\/tables\/([^/]+)\/rows\/([^/]+)$/);
+      if (rowMatch) {
+        const [, tableId, rowId] = rowMatch;
+        if (request.method === "PATCH") {
+          const body = await request.json();
+          return await handleUpdateRow(env, tableId, rowId, body);
+        }
+        if (request.method === "DELETE") return await handleDeleteRow(env, tableId, rowId);
+      }
+
+      const tableRowsMatch = path.match(/^\/tables\/([^/]+)\/rows$/);
+      if (tableRowsMatch) {
+        const tableId = tableRowsMatch[1];
+        if (request.method === "GET") return await handleListRows(env, tableId, url);
+        if (request.method === "POST") {
+          const body = await request.json();
+          return await handleCreateRows(env, tableId, body);
+        }
+      }
+
+      const queryMatch = path.match(/^\/tables\/([^/]+)\/query$/);
+      if (queryMatch && request.method === "POST") {
+        const tableId = queryMatch[1];
+        const body = await request.json();
+        return await handleQueryTable(env, tableId, body);
+      }
+
       // ─── Notion Routes ───
       const notionKey = await getNotionKey(request, env);
 
@@ -491,6 +550,309 @@ async function handleDeleteConnection(env, key) {
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
   }
+}
+
+// ─── Page Config Handlers ───
+
+async function handleListPages(env) {
+  try {
+    const rows = await env.DB.prepare(
+      "SELECT * FROM page_configs ORDER BY sort_order, created_at"
+    ).all();
+    // Parse JSON config for each page
+    const pages = rows.results.map((r) => ({
+      ...r,
+      config: JSON.parse(r.config || "{}"),
+    }));
+    return jsonResponse({ pages });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleCreatePage(env, body) {
+  const { title, icon, page_type, parent_id, sort_order, config, columns } = body;
+  if (!title || !page_type) {
+    return jsonResponse({ _error: "Missing title or page_type" }, 400);
+  }
+
+  const id = body.id || crypto.randomUUID();
+
+  try {
+    await env.DB.prepare(
+      `INSERT INTO page_configs (id, parent_id, title, icon, page_type, sort_order, config, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+    ).bind(
+      id,
+      parent_id || null,
+      title,
+      icon || "",
+      page_type,
+      sort_order || 0,
+      JSON.stringify(config || {})
+    ).run();
+
+    // If this is a standalone database, create the table schema
+    if (page_type === "database" && columns) {
+      await env.DB.prepare(
+        `INSERT INTO table_schemas (id, columns, created_at, updated_at)
+         VALUES (?, ?, datetime('now'), datetime('now'))`
+      ).bind(id, JSON.stringify(columns)).run();
+    }
+
+    return jsonResponse({ ok: true, id }, 201);
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleGetPage(env, id) {
+  try {
+    const row = await env.DB.prepare("SELECT * FROM page_configs WHERE id = ?").bind(id).first();
+    if (!row) return jsonResponse({ _error: "Page not found" }, 404);
+    return jsonResponse({ ...row, config: JSON.parse(row.config || "{}") });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleUpdatePage(env, id, body) {
+  const sets = [];
+  const binds = [];
+
+  if (body.title !== undefined) { sets.push("title = ?"); binds.push(body.title); }
+  if (body.icon !== undefined) { sets.push("icon = ?"); binds.push(body.icon); }
+  if (body.parent_id !== undefined) { sets.push("parent_id = ?"); binds.push(body.parent_id); }
+  if (body.page_type !== undefined) { sets.push("page_type = ?"); binds.push(body.page_type); }
+  if (body.sort_order !== undefined) { sets.push("sort_order = ?"); binds.push(body.sort_order); }
+  if (body.config !== undefined) { sets.push("config = ?"); binds.push(JSON.stringify(body.config)); }
+
+  if (sets.length === 0) return jsonResponse({ _error: "No fields to update" }, 400);
+
+  sets.push("updated_at = datetime('now')");
+  binds.push(id);
+
+  try {
+    await env.DB.prepare(
+      `UPDATE page_configs SET ${sets.join(", ")} WHERE id = ?`
+    ).bind(...binds).run();
+    return jsonResponse({ ok: true, id });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleDeletePage(env, id) {
+  try {
+    // Delete page config
+    await env.DB.prepare("DELETE FROM page_configs WHERE id = ?").bind(id).run();
+    // Remove child pages (pages in folder, sub-pages)
+    await env.DB.prepare("DELETE FROM page_configs WHERE parent_id = ?").bind(id).run();
+    // Remove table schema if exists
+    await env.DB.prepare("DELETE FROM table_schemas WHERE id = ?").bind(id).run();
+    // Remove table rows if exists
+    await env.DB.prepare("DELETE FROM table_rows WHERE table_id = ?").bind(id).run();
+    return jsonResponse({ ok: true, id });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// ─── Table Schema Handlers ───
+
+async function handleGetSchema(env, id) {
+  try {
+    const row = await env.DB.prepare("SELECT * FROM table_schemas WHERE id = ?").bind(id).first();
+    if (!row) return jsonResponse({ _error: "Schema not found" }, 404);
+    return jsonResponse({ ...row, columns: JSON.parse(row.columns) });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleUpdateSchema(env, id, body) {
+  if (!body.columns) return jsonResponse({ _error: "Missing columns" }, 400);
+
+  try {
+    await env.DB.prepare(
+      `INSERT INTO table_schemas (id, columns, created_at, updated_at)
+       VALUES (?, ?, datetime('now'), datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET columns = excluded.columns, updated_at = datetime('now')`
+    ).bind(id, JSON.stringify(body.columns)).run();
+    return jsonResponse({ ok: true, id });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// ─── Table Row Handlers ───
+
+async function handleListRows(env, tableId, url) {
+  const limit = Math.min(parseInt(url.searchParams.get("limit")) || 100, 10000);
+  const offset = parseInt(url.searchParams.get("offset")) || 0;
+  const includeArchived = url.searchParams.get("archived") === "true";
+
+  try {
+    let sql = "SELECT * FROM table_rows WHERE table_id = ?";
+    if (!includeArchived) sql += " AND archived = 0";
+    sql += " ORDER BY sort_order, created_at";
+    sql += ` LIMIT ${limit} OFFSET ${offset}`;
+
+    const rows = await env.DB.prepare(sql).bind(tableId).all();
+
+    const parsed = rows.results.map((r) => ({
+      ...r,
+      cells: JSON.parse(r.cells || "{}"),
+      metadata: JSON.parse(r.metadata || "{}"),
+    }));
+
+    return jsonResponse({ rows: parsed, has_more: rows.results.length === limit });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleCreateRows(env, tableId, body) {
+  const rows = Array.isArray(body.rows) ? body.rows : [body];
+  const created = [];
+
+  try {
+    for (const row of rows) {
+      const id = row.id || crypto.randomUUID();
+      await env.DB.prepare(
+        `INSERT INTO table_rows (id, table_id, cells, sort_order, metadata, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+      ).bind(
+        id,
+        tableId,
+        JSON.stringify(row.cells || {}),
+        row.sort_order || 0,
+        JSON.stringify(row.metadata || {})
+      ).run();
+      created.push(id);
+    }
+    return jsonResponse({ ok: true, ids: created }, 201);
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleUpdateRow(env, tableId, rowId, body) {
+  const sets = [];
+  const binds = [];
+
+  try {
+    if (body.cells !== undefined) {
+      if (body.merge_cells) {
+        // Merge mode: read existing cells, merge with new, write back
+        const existing = await env.DB.prepare(
+          "SELECT cells FROM table_rows WHERE id = ? AND table_id = ?"
+        ).bind(rowId, tableId).first();
+        const currentCells = existing ? JSON.parse(existing.cells || "{}") : {};
+        const merged = { ...currentCells, ...body.cells };
+        sets.push("cells = ?"); binds.push(JSON.stringify(merged));
+      } else {
+        sets.push("cells = ?"); binds.push(JSON.stringify(body.cells));
+      }
+    }
+    if (body.sort_order !== undefined) { sets.push("sort_order = ?"); binds.push(body.sort_order); }
+    if (body.archived !== undefined) { sets.push("archived = ?"); binds.push(body.archived ? 1 : 0); }
+    if (body.metadata !== undefined) { sets.push("metadata = ?"); binds.push(JSON.stringify(body.metadata)); }
+
+    if (sets.length === 0) return jsonResponse({ _error: "No fields to update" }, 400);
+
+    sets.push("updated_at = datetime('now')");
+    binds.push(rowId, tableId);
+
+    await env.DB.prepare(
+      `UPDATE table_rows SET ${sets.join(", ")} WHERE id = ? AND table_id = ?`
+    ).bind(...binds).run();
+    return jsonResponse({ ok: true, id: rowId });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleDeleteRow(env, tableId, rowId) {
+  try {
+    await env.DB.prepare(
+      "UPDATE table_rows SET archived = 1, updated_at = datetime('now') WHERE id = ? AND table_id = ?"
+    ).bind(rowId, tableId).run();
+    return jsonResponse({ ok: true, id: rowId });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleQueryTable(env, tableId, body) {
+  try {
+    const limit = Math.min(body.limit || 1000, 10000);
+    const offset = body.offset || 0;
+
+    const rows = await env.DB.prepare(
+      `SELECT * FROM table_rows WHERE table_id = ? AND archived = 0
+       ORDER BY sort_order, created_at LIMIT ${limit} OFFSET ${offset}`
+    ).bind(tableId).all();
+
+    let parsed = rows.results.map((r) => ({
+      ...r,
+      cells: JSON.parse(r.cells || "{}"),
+      metadata: JSON.parse(r.metadata || "{}"),
+    }));
+
+    // Apply filters on JSON cells (worker-side)
+    if (body.filters && body.filters.length > 0) {
+      parsed = applyRowFilters(parsed, body.filters);
+    }
+
+    // Apply sorts on JSON cells (worker-side)
+    if (body.sorts && body.sorts.length > 0) {
+      parsed = applyRowSorts(parsed, body.sorts);
+    }
+
+    return jsonResponse({ rows: parsed, total: parsed.length });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// ─── Row Filter/Sort Helpers ───
+
+function applyRowFilters(rows, filters) {
+  return rows.filter((row) =>
+    filters.every((f) => {
+      const val = row.cells[f.column];
+      const cmp = f.value;
+      switch (f.op) {
+        case "equals": return val === cmp;
+        case "not_equals": return val !== cmp;
+        case "contains": return String(val || "").toLowerCase().includes(String(cmp).toLowerCase());
+        case "not_contains": return !String(val || "").toLowerCase().includes(String(cmp).toLowerCase());
+        case "starts_with": return String(val || "").toLowerCase().startsWith(String(cmp).toLowerCase());
+        case "ends_with": return String(val || "").toLowerCase().endsWith(String(cmp).toLowerCase());
+        case "is_empty": return val === null || val === undefined || val === "";
+        case "is_not_empty": return val !== null && val !== undefined && val !== "";
+        case "gt": return Number(val) > Number(cmp);
+        case "gte": return Number(val) >= Number(cmp);
+        case "lt": return Number(val) < Number(cmp);
+        case "lte": return Number(val) <= Number(cmp);
+        default: return true;
+      }
+    })
+  );
+}
+
+function applyRowSorts(rows, sorts) {
+  return [...rows].sort((a, b) => {
+    for (const s of sorts) {
+      const va = a.cells[s.column] ?? "";
+      const vb = b.cells[s.column] ?? "";
+      const dir = s.direction === "desc" ? -1 : 1;
+      if (va < vb) return -1 * dir;
+      if (va > vb) return 1 * dir;
+    }
+    return 0;
+  });
 }
 
 // ─── Notion API Helper ───

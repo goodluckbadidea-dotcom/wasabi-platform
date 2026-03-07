@@ -6,10 +6,11 @@ import React, { useState, useCallback, useMemo } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { savePageConfig, createDocumentPageConfig, createFolderConfig } from "../config/pageConfig.js";
+import { savePageConfig, createDocumentPageConfig, createFolderConfig, createTableConfig, createLinkedNotionConfig } from "../config/pageConfig.js";
 import { autoDetectViews } from "../notion/schema.js";
 import { createSubpage, ensurePageActive } from "../notion/client.js";
 import DatabaseBrowser from "./DatabaseBrowser.jsx";
+import ColumnBuilder from "../components/ColumnBuilder.jsx";
 import {
   IconPage, IconTable, IconKanban, IconChart, IconForm,
   IconCalendar, IconFolder, IconStar, IconBolt, IconUsers,
@@ -218,12 +219,17 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
   const folderId = parentFolderId || activeFolder || null;
   const subPageParent = parentPageId || null;
 
-  // ── Page Type Selection ── (null = show picker, "database", "document", or "folder")
+  // ── Page Type Selection ── (null = show picker, "database", "createTable", "document", or "folder")
   const [pageType, setPageType] = useState(null);
 
   // ── Page Config State ──
   const [pageName, setPageName] = useState("");
   const [pageIcon, setPageIcon] = useState("page");
+
+  // ── Standalone Table Columns ──
+  const [tableColumns, setTableColumns] = useState([
+    { id: "col_name", name: "Name", type: "text" },
+  ]);
   const [connectedDbs, setConnectedDbs] = useState([]); // [{ id, title, schema }]
   const [views, setViews] = useState([
     { type: "table", label: "Table", position: "main", config: {} },
@@ -337,7 +343,7 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
     setViews((prev) => prev.map((v, i) => (i === idx ? { ...v, label } : v)));
   }, []);
 
-  // ── Save Database Page ──
+  // ── Save Linked Database Page ──
   const hasLinkedSheets = views.some((v) => v.type === "linked_sheet");
   const hasOnlyLinkedSheets = hasLinkedSheets && connectedDbs.length === 0;
 
@@ -358,14 +364,13 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
 
     setSaving(true);
     try {
-      // Determine page type: linked-sheet-only pages get a distinct pageType
-      // so PageShell and validatePageConfigs handle them gracefully
-      const effectivePageType = hasOnlyLinkedSheets ? "linked_sheet" : "database";
+      const effectivePageType = hasOnlyLinkedSheets ? "linked_sheet" : "linked_notion";
 
       const pageConfig = {
         name: pageName.trim(),
         icon: pageIcon,
         type: subPageParent ? "sub_page" : "page",
+        page_type: effectivePageType,
         parentId: subPageParent || folderId || null,
         pageType: effectivePageType,
         databaseIds: connectedDbs.map((db) => db.id),
@@ -373,15 +378,8 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
         refreshInterval: refreshInterval * 1000,
       };
 
-      // Save to Notion config DB
-      const pageId = await savePageConfig(
-        user.workerUrl,
-        user.notionKey,
-        platformIds.configDbId,
-        pageConfig
-      );
-
-      // Add to local state
+      // Save to D1
+      const pageId = await savePageConfig(pageConfig);
       addPage({ ...pageConfig, id: pageId });
       setSuccess(true);
     } catch (err) {
@@ -389,7 +387,38 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
     } finally {
       setSaving(false);
     }
-  }, [pageName, pageIcon, connectedDbs, views, refreshInterval, user, platformIds, addPage, hasLinkedSheets, hasOnlyLinkedSheets, subPageParent, folderId]);
+  }, [pageName, pageIcon, connectedDbs, views, refreshInterval, addPage, hasLinkedSheets, hasOnlyLinkedSheets, subPageParent, folderId]);
+
+  // ── Save Standalone Table ──
+  const handleSaveTable = useCallback(async () => {
+    setError(null);
+    if (!pageName.trim()) {
+      setError("Table name is required");
+      return;
+    }
+    const namedCols = tableColumns.filter((c) => c.name.trim());
+    if (namedCols.length === 0) {
+      setError("Add at least one named column");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const config = {
+        ...createTableConfig(pageName.trim(), pageIcon, namedCols),
+        type: subPageParent ? "sub_page" : "page",
+        parentId: subPageParent || folderId || null,
+      };
+
+      const pageId = await savePageConfig(config);
+      addPage({ ...config, id: pageId });
+      setSuccess(true);
+    } catch (err) {
+      setError(err.message || "Failed to create table");
+    } finally {
+      setSaving(false);
+    }
+  }, [pageName, pageIcon, tableColumns, addPage, subPageParent, folderId]);
 
   // ── Save Document Page ──
   const handleSaveDocument = useCallback(async () => {
@@ -428,13 +457,8 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
         parentId: subPageParent || folderId || null,
       };
 
-      // Save to Notion config DB
-      const configId = await savePageConfig(
-        user.workerUrl,
-        user.notionKey,
-        platformIds.configDbId,
-        docConfig
-      );
+      // Save to D1
+      const configId = await savePageConfig(docConfig);
 
       // Add to local state
       addPage({ ...docConfig, id: configId });
@@ -463,9 +487,7 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
     setSaving(true);
     try {
       const config = createFolderConfig(pageName.trim(), pageIcon);
-      const configId = await savePageConfig(
-        user.workerUrl, user.notionKey, platformIds.configDbId, config
-      );
+      const configId = await savePageConfig(config);
       addPage({ ...config, id: configId });
       setSuccess(true);
     } catch (err) {
@@ -473,7 +495,7 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
     } finally {
       setSaving(false);
     }
-  }, [pageName, pageIcon, user, platformIds, addPage]);
+  }, [pageName, pageIcon, addPage]);
 
   // ── Contextual header text ──
   const contextLabel = subPageParent
@@ -493,7 +515,7 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
           <div style={vs.headerSub}>Choose what kind of page to create</div>
         </div>
         <div style={{ ...vs.body, alignItems: "center", justifyContent: "center" }}>
-          <div style={{ display: "flex", gap: 20, maxWidth: showFolderOption ? 740 : 560, width: "100%" }}>
+          <div style={{ display: "flex", gap: 16, maxWidth: showFolderOption ? 960 : 740, width: "100%", flexWrap: "wrap" }}>
             {/* Folder card (only at top level, not when creating inside a folder or as a sub-page) */}
             {showFolderOption && (
               <div
@@ -523,7 +545,34 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
               </div>
             )}
 
-            {/* Database Page card */}
+            {/* Create Table card */}
+            <div
+              style={{
+                flex: 1,
+                padding: 28,
+                background: C.darkSurf,
+                border: `1px solid ${C.darkBorder}`,
+                borderRadius: RADIUS.xl,
+                cursor: "pointer",
+                transition: "all 0.15s",
+                textAlign: "center",
+              }}
+              onClick={() => setPageType("createTable")}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.background = `${C.accent}08`; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; e.currentTarget.style.background = C.darkSurf; }}
+            >
+              <div style={{ marginBottom: 14 }}>
+                <IconTable size={32} color={C.accent} />
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: C.darkText, marginBottom: 8 }}>
+                Create Table
+              </div>
+              <div style={{ fontSize: 13, color: C.darkMuted, lineHeight: 1.5 }}>
+                Build a standalone database with typed columns. No Notion required.
+              </div>
+            </div>
+
+            {/* Link a Database card */}
             <div
               style={{
                 flex: 1,
@@ -543,10 +592,10 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
                 <IconDatabase size={32} color={C.accent} />
               </div>
               <div style={{ fontSize: 16, fontWeight: 700, color: C.darkText, marginBottom: 8 }}>
-                Database Page
+                Link a Database
               </div>
               <div style={{ fontSize: 13, color: C.darkMuted, lineHeight: 1.5 }}>
-                Connect to Notion databases. Add tables, charts, kanban boards, and more.
+                Connect a Notion database or Google Sheet. Add views like tables, kanban, and charts.
               </div>
             </div>
 
@@ -750,7 +799,101 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
     );
   }
 
-  // ── Database Page Flow (existing) ──
+  // ── Create Table Flow (standalone D1 table) ──
+  if (pageType === "createTable") {
+    return (
+      <div style={vs.container}>
+        <div style={vs.header}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span
+              style={{ cursor: "pointer", display: "flex", alignItems: "center" }}
+              onClick={() => setPageType(null)}
+              title="Back to type selection"
+            >
+              <IconChevronLeft size={16} color={C.darkMuted} />
+            </span>
+            <div>
+              <div style={vs.headerTitle}>New Table</div>
+              <div style={vs.headerSub}>Create a standalone database with typed columns</div>
+            </div>
+          </div>
+        </div>
+        <div style={vs.body}>
+          {/* Table Identity */}
+          <div style={vs.section}>
+            <div style={vs.sectionTitle}>Table Identity</div>
+            <div style={{ display: "flex", gap: 12, marginBottom: 14 }}>
+              <div>
+                <label style={vs.label}>Icon</label>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", maxWidth: 200 }}>
+                  {ICONS.map((ic) => {
+                    const Ic = ICON_MAP[ic];
+                    return (
+                      <span key={ic} style={vs.iconBtn(pageIcon === ic)} onClick={() => setPageIcon(ic)} title={ic}>
+                        <Ic size={16} color={pageIcon === ic ? C.accent : C.darkMuted} />
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={vs.label}>Table Name</label>
+                <input
+                  style={vs.input}
+                  value={pageName}
+                  onChange={(e) => setPageName(e.target.value)}
+                  placeholder="e.g. Contacts, Inventory, Tasks"
+                  autoFocus
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Column Builder */}
+          <div style={vs.section}>
+            <div style={vs.sectionTitle}>Columns</div>
+            <ColumnBuilder columns={tableColumns} onChange={setTableColumns} />
+          </div>
+
+          <div style={{
+            padding: "12px 16px",
+            background: `${C.accent}10`,
+            border: `1px solid ${C.accent}30`,
+            borderRadius: RADIUS.md,
+            fontSize: 13,
+            color: C.darkMuted,
+            lineHeight: 1.5,
+          }}>
+            Your table data is stored in Cloudflare D1 — no Notion connection required.
+            The first column is always used as the row title.
+          </div>
+
+          {error && <div style={vs.error}>{error}</div>}
+          {success && <div style={vs.success}>Table created successfully!</div>}
+        </div>
+        <div style={vs.footer}>
+          <button style={S.btnGhost} onClick={() => setPageType(null)}>Back</button>
+          <div style={{ flex: 1 }} />
+          <button
+            style={{
+              ...S.btnPrimary,
+              padding: "10px 28px",
+              fontSize: 14,
+              fontWeight: 600,
+              opacity: saving ? 0.6 : 1,
+              cursor: saving ? "not-allowed" : "pointer",
+            }}
+            onClick={handleSaveTable}
+            disabled={saving}
+          >
+            {saving ? "Creating..." : "Create Table"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Link Database Flow (existing) ──
   return (
     <div style={vs.container}>
       {/* Header */}
@@ -764,8 +907,8 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
             <IconChevronLeft size={16} color={C.darkMuted} />
           </span>
           <div>
-            <div style={vs.headerTitle}>New Database Page</div>
-            <div style={vs.headerSub}>Connect databases, choose views, design your layout</div>
+            <div style={vs.headerTitle}>Link a Database</div>
+            <div style={vs.headerSub}>Connect to a Notion database or Google Sheet, then add views</div>
           </div>
         </div>
       </div>

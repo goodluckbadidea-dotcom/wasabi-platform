@@ -93,6 +93,76 @@ export async function deleteConnection(key) {
   return apiFetch(`/connections/${key}`, { method: "DELETE" });
 }
 
+// ─── Page Config CRUD ───
+
+export async function listPages() {
+  return apiFetch("/pages", { method: "GET" });
+}
+
+export async function createPageConfig(pageConfig) {
+  return apiFetch("/pages", { method: "POST", body: pageConfig });
+}
+
+export async function getPageConfig(id) {
+  return apiFetch(`/pages/${id}`, { method: "GET" });
+}
+
+export async function updatePageConfig(id, updates) {
+  return apiFetch(`/pages/${id}`, { method: "PATCH", body: updates });
+}
+
+export async function deletePageConfig(id) {
+  return apiFetch(`/pages/${id}`, { method: "DELETE" });
+}
+
+// ─── Table Schema ───
+
+export async function getTableSchema(id) {
+  return apiFetch(`/pages/${id}/schema`, { method: "GET" });
+}
+
+export async function updateTableSchema(id, columns) {
+  return apiFetch(`/pages/${id}/schema`, { method: "PATCH", body: { columns } });
+}
+
+// ─── Table Rows ───
+
+export async function listRows(tableId, { limit, offset, archived } = {}) {
+  const params = new URLSearchParams();
+  if (limit) params.set("limit", limit);
+  if (offset) params.set("offset", offset);
+  if (archived) params.set("archived", "true");
+  const qs = params.toString();
+  return apiFetch(`/tables/${tableId}/rows${qs ? `?${qs}` : ""}`, { method: "GET" });
+}
+
+export async function createRows(tableId, rows) {
+  return apiFetch(`/tables/${tableId}/rows`, {
+    method: "POST",
+    body: { rows: Array.isArray(rows) ? rows : [rows] },
+  });
+}
+
+export async function updateRow(tableId, rowId, updates) {
+  // Default to merge mode for cell updates (partial cell updates)
+  const body = { ...updates };
+  if (body.cells && body.merge_cells === undefined) {
+    body.merge_cells = true;
+  }
+  return apiFetch(`/tables/${tableId}/rows/${rowId}`, { method: "PATCH", body });
+}
+
+export async function deleteRow(tableId, rowId) {
+  return apiFetch(`/tables/${tableId}/rows/${rowId}`, { method: "DELETE" });
+}
+
+export async function queryTable(tableId, { filters, sorts, limit, offset } = {}) {
+  return apiFetch(`/tables/${tableId}/query`, {
+    method: "POST",
+    body: { filters, sorts, limit, offset },
+  });
+}
+
 // ─── Notion Proxy (backward compat) ───
 // These maintain the existing API surface so current code keeps working.
 

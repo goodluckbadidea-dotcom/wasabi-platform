@@ -1,57 +1,25 @@
-// ─── Page Config Persistence ───
-// Stores and loads page configurations from Notion + localStorage cache.
+// ─── Page Config Persistence (D1 Backend) ───
+// CRUD via worker /pages routes. localStorage cache for instant loads.
+// Replaces the old Notion-backed config storage.
 
-import { queryAll, createPage, updatePage, createDatabase, getPage, getDatabase } from "../notion/client.js";
-import { safeJSON } from "../utils/helpers.js";
-
-const CONFIG_DB_SCHEMA = [
-  { name: "Name", type: "title" },
-  { name: "Icon", type: "rich_text" },
-  { name: "Config", type: "rich_text" },
-  { name: "ParentPage", type: "rich_text" },
-  { name: "Active", type: "checkbox" },
-];
+import { listPages, createPageConfig as apiCreate, updatePageConfig as apiUpdate, deletePageConfig as apiDelete } from "../lib/api.js";
+import { getPage, getDatabase } from "../notion/client.js";
 
 const CACHE_KEY = "wasabi_page_configs";
 
-/**
- * Initialize the Page Config database.
- */
-export async function initConfigDB(workerUrl, notionKey, parentPageId) {
-  const db = await createDatabase(workerUrl, notionKey, parentPageId, "Wasabi Page Configs", CONFIG_DB_SCHEMA);
-  return db.id;
-}
+// ─── Load from D1 ───
 
 /**
- * Load all active page configs from Notion.
- * Returns array of page config objects.
+ * Load all page configs from D1.
+ * Returns array in the format the frontend expects.
  */
-export async function loadPageConfigs(workerUrl, notionKey, configDbId) {
-  const results = await queryAll(workerUrl, notionKey, configDbId, {
-    property: "Active",
-    checkbox: { equals: true },
-  });
+export async function loadPageConfigs() {
+  const result = await listPages();
+  const pages = result.pages || [];
 
-  const configs = results.map((page) => {
-    const name = page.properties?.Name?.title?.map((t) => t.plain_text).join("") || "Untitled";
-    const icon = page.properties?.Icon?.rich_text?.map((t) => t.plain_text).join("") || "page";
-    const configStr = page.properties?.Config?.rich_text?.map((t) => t.plain_text).join("") || "{}";
-    const parentId = page.properties?.ParentPage?.rich_text?.map((t) => t.plain_text).join("") || null;
+  const configs = pages.map(d1ToFrontend);
 
-    const config = safeJSON(configStr, {});
-    // Migration: ensure type field exists (legacy pages default to "page")
-    const type = config.type || "page";
-    return {
-      id: page.id,
-      name,
-      icon,
-      parentId: parentId || null,
-      type,
-      ...config,
-    };
-  });
-
-  // Cache locally
+  // Cache locally for instant loads on next mount
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify(configs));
   } catch {}
@@ -71,109 +39,54 @@ export function loadCachedConfigs() {
   }
 }
 
-/**
- * Save a page config to Notion.
- */
-export async function savePageConfig(workerUrl, notionKey, configDbId, pageConfig) {
-  const { id, name, icon, parentId, ...rest } = pageConfig;
-  const configStr = JSON.stringify(rest);
+// ─── Save / Update ───
 
-  if (id) {
-    // Update existing
-    await updatePage(workerUrl, notionKey, id, {
-      Name: { title: [{ type: "text", text: { content: name } }] },
-      Icon: { rich_text: [{ type: "text", text: { content: icon || "page" } }] },
-      Config: { rich_text: [{ type: "text", text: { content: configStr } }] },
-      ParentPage: { rich_text: [{ type: "text", text: { content: parentId || "" } }] },
-      Active: { checkbox: true },
-    });
-    return id;
+/**
+ * Save a page config (create or update) in D1.
+ * Returns the page ID.
+ */
+export async function savePageConfig(pageConfig) {
+  const d1 = frontendToD1(pageConfig);
+
+  if (pageConfig.id) {
+    await apiUpdate(pageConfig.id, d1);
+    return pageConfig.id;
   }
 
-  // Create new
-  const page = await createPage(workerUrl, notionKey, configDbId, {
-    Name: { title: [{ type: "text", text: { content: name } }] },
-    Icon: { rich_text: [{ type: "text", text: { content: icon || "page" } }] },
-    Config: { rich_text: [{ type: "text", text: { content: configStr } }] },
-    ParentPage: { rich_text: [{ type: "text", text: { content: parentId || "" } }] },
-    Active: { checkbox: true },
-  });
-
-  return page.id;
+  const result = await apiCreate(d1);
+  return result.id;
 }
 
 /**
- * Check if a page config is a document page (no database).
+ * Archive (delete) a page config from D1.
  */
-export function isDocumentPage(pageConfig) {
-  return pageConfig?.pageType === "document";
+export async function archivePageConfig(pageConfigId) {
+  await apiDelete(pageConfigId);
 }
 
-/**
- * Create a folder config object (purely organizational, no views/DB).
- */
-export function createFolderConfig(name, icon) {
-  return {
-    name,
-    icon: icon || "folder",
-    type: "folder",
-    databaseIds: [],
-    views: [],
-    refreshInterval: 0,
-  };
-}
+// ─── Validation ───
 
 /**
- * Create a document-type page config object.
- */
-export function createDocumentPageConfig(name, icon, notionPageId) {
-  return {
-    name,
-    icon: icon || "page",
-    pageType: "document",
-    notionPageId,
-    databaseIds: [],
-    views: [
-      {
-        type: "document",
-        label: "Document",
-        position: "main",
-        config: { pageId: notionPageId },
-      },
-    ],
-    refreshInterval: 0,
-  };
-}
-
-/**
- * Archive (soft-delete) a page config.
- */
-export async function archivePageConfig(workerUrl, notionKey, pageConfigId) {
-  await updatePage(workerUrl, notionKey, pageConfigId, {
-    Active: { checkbox: false },
-  });
-}
-
-/**
- * Validate page configs by checking if their Notion resources still exist.
- * Returns { valid, stale } — stale pages reference deleted databases/pages.
+ * Validate page configs by checking their backend resources.
+ * D1 standalone tables are always valid. Only Notion-linked pages need validation.
  */
 export async function validatePageConfigs(workerUrl, notionKey, configs) {
+  if (!workerUrl || !notionKey) return { valid: configs, stale: [] };
+
   const results = await Promise.allSettled(
     configs.map(async (config) => {
-      // Folders have no resources to validate
+      const pt = config.page_type || config.pageType;
+      // These don't reference Notion resources — always valid
       if (config.type === "folder") return config;
-      // Linked-sheet-only pages have no Notion resources to validate
-      if (config.pageType === "linked_sheet") return config;
-      if (config.pageType === "document") {
-        // Document pages: check the Notion page from the document view
+      if (pt === "database" || pt === "linked_sheet") return config;
+      if (pt === "sub_page" && !config.databaseIds?.length) return config;
+
+      if (pt === "document") {
         const docView = config.views?.find((v) => v.type === "document");
         const pageId = docView?.config?.pageId || config.notionPageId;
         if (pageId) await getPage(workerUrl, notionKey, pageId);
-      } else {
-        // Data pages: check the first database
-        const dbIds = config.databaseIds || [];
-        if (dbIds.length > 0) await getDatabase(workerUrl, notionKey, dbIds[0]);
+      } else if (config.databaseIds?.length) {
+        await getDatabase(workerUrl, notionKey, config.databaseIds[0]);
       }
       return config;
     })
@@ -191,4 +104,156 @@ export async function validatePageConfigs(workerUrl, notionKey, configs) {
   });
 
   return { valid, stale };
+}
+
+// ─── Config Object Creators ───
+
+/**
+ * Create a folder config (no backend resources).
+ */
+export function createFolderConfig(name, icon) {
+  return {
+    name,
+    icon: icon || "folder",
+    type: "folder",
+    page_type: "folder",
+    databaseIds: [],
+    views: [],
+    refreshInterval: 0,
+  };
+}
+
+/**
+ * Create a standalone D1 table config.
+ */
+export function createTableConfig(name, icon, columns) {
+  return {
+    name,
+    icon: icon || "table",
+    type: "page",
+    page_type: "database",
+    pageType: "database",
+    databaseIds: [],
+    views: [
+      {
+        type: "table",
+        label: "All Records",
+        position: "main",
+      },
+    ],
+    columns,
+    refreshInterval: 0,
+  };
+}
+
+/**
+ * Create a linked Notion database config.
+ */
+export function createLinkedNotionConfig(name, icon, notionDbId) {
+  return {
+    name,
+    icon: icon || "database",
+    type: "page",
+    page_type: "linked_notion",
+    pageType: "linked_notion",
+    databaseIds: [notionDbId],
+    views: [
+      {
+        type: "table",
+        label: "All Records",
+        position: "main",
+        config: { databaseId: notionDbId },
+      },
+    ],
+    refreshInterval: 30000,
+  };
+}
+
+/**
+ * Create a document-type page config (Notion-backed for now).
+ */
+export function createDocumentPageConfig(name, icon, notionPageId) {
+  return {
+    name,
+    icon: icon || "page",
+    type: "page",
+    page_type: "document",
+    pageType: "document",
+    notionPageId,
+    databaseIds: [],
+    views: [
+      {
+        type: "document",
+        label: "Document",
+        position: "main",
+        config: { pageId: notionPageId },
+      },
+    ],
+    refreshInterval: 0,
+  };
+}
+
+/**
+ * Check if a config represents a document page.
+ */
+export function isDocumentPage(pageConfig) {
+  return pageConfig?.pageType === "document" || pageConfig?.page_type === "document";
+}
+
+// ─── D1 ↔ Frontend Format Conversion ───
+
+/**
+ * Convert D1 page_configs row → frontend page config object.
+ */
+function d1ToFrontend(d1Page) {
+  const config = d1Page.config || {};
+  const pt = d1Page.page_type;
+  const type = pt === "folder" ? "folder"
+    : pt === "sub_page" ? "sub_page"
+    : "page";
+
+  return {
+    id: d1Page.id,
+    name: d1Page.title,
+    icon: d1Page.icon || "page",
+    parentId: d1Page.parent_id || null,
+    type,
+    page_type: pt,
+    pageType: ["document", "linked_sheet", "database", "linked_notion"].includes(pt) ? pt : undefined,
+    sort_order: d1Page.sort_order || 0,
+    ...config,
+  };
+}
+
+/**
+ * Convert frontend page config → D1 page_configs row.
+ */
+function frontendToD1(config) {
+  const {
+    id, name, icon, parentId, type, page_type, pageType,
+    sort_order, columns, ...rest
+  } = config;
+
+  // Determine D1 page_type from available fields
+  let d1Type = page_type || pageType;
+  if (!d1Type) {
+    if (type === "folder") d1Type = "folder";
+    else if (type === "sub_page") d1Type = "sub_page";
+    else if (rest.databaseIds?.length) d1Type = "linked_notion";
+    else d1Type = "database";
+  }
+
+  const d1 = {
+    title: name,
+    icon: icon || "page",
+    parent_id: parentId || null,
+    page_type: d1Type,
+    sort_order: sort_order || 0,
+    config: rest,
+  };
+
+  // Include columns for new database table creation
+  if (columns) d1.columns = columns;
+
+  return d1;
 }

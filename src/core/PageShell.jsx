@@ -6,9 +6,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { queryAll } from "../notion/pagination.js";
-import { detectSchema } from "../notion/schema.js";
-import { updatePage, createPage, archivePage } from "../notion/client.js";
+import { fetchDataSource, updateRecord, createRecord, deleteRecords, resolveSourceType } from "../lib/dataSource.js";
 import { savePageConfig } from "../config/pageConfig.js";
 import ViewRenderer from "../views/ViewRenderer.jsx";
 import ChatPanel from "../views/ChatPanel.jsx";
@@ -48,7 +46,7 @@ export default function PageShell({
   onAddSubPage,
 }) {
   const {
-    user, platformIds, updatePageConfig,
+    user, updatePageConfig,
     activeSubPage, setActiveSubPage, getSubPages,
   } = usePlatform();
 
@@ -68,10 +66,11 @@ export default function PageShell({
   const refreshTimer = useRef(null);
   const [showAddDb, setShowAddDb] = useState(false);
 
-  // Detect document pages (no database fetch needed)
-  const isDocumentPage = effectiveConfig.pageType === "document";
-  // Detect linked-sheet-only pages (no database fetch needed, views are self-contained)
-  const isLinkedSheetPage = effectiveConfig.pageType === "linked_sheet";
+  // Detect page types that don't need data fetching
+  const sourceType = resolveSourceType(effectiveConfig);
+  const isDocumentPage = effectiveConfig.pageType === "document" || effectiveConfig.page_type === "document";
+  const isLinkedSheetPage = effectiveConfig.pageType === "linked_sheet" || effectiveConfig.page_type === "linked_sheet";
+  const isStandaloneTable = sourceType === "d1";
 
   // Get the active view config based on effective config (sub-page or parent)
   const views = effectiveConfig.views || [];
@@ -88,42 +87,32 @@ export default function PageShell({
   // Multi-database schema map: { dbId → schema }
   const [schemas, setSchemas] = useState({});
 
-  // Fetch data from all connected databases
+  // Fetch data via data source abstraction (handles D1 + Notion + Sheets)
   const fetchData = useCallback(async () => {
-    // Document pages and linked-sheet-only pages have no databases to fetch
+    // Document and linked-sheet-only pages have no databases to fetch
     if (isDocumentPage || isLinkedSheetPage) {
       setLoading(false);
       return;
     }
-    if (!user?.workerUrl || !user?.notionKey || !effectiveDbs?.length) {
+
+    // For Notion sources, check we have credentials
+    if (sourceType === "notion" && (!user?.workerUrl || !user?.notionKey)) {
+      setLoading(false);
+      return;
+    }
+
+    // For D1 sources, we just need the worker connection (api.js handles auth)
+    // For Notion sources, we need effectiveDbs
+    if (sourceType === "notion" && !effectiveDbs?.length) {
       setLoading(false);
       return;
     }
 
     try {
-      // Fetch schemas for ALL connected databases
-      const schemaMap = {};
-      for (const dbId of effectiveDbs) {
-        try {
-          const dbSchema = await detectSchema(user.workerUrl, user.notionKey, dbId);
-          schemaMap[dbId] = dbSchema;
-        } catch (err) {
-          console.warn(`Schema fetch failed for ${dbId}:`, err.message);
-        }
-      }
-      setSchemas(schemaMap);
-
-      // Use primary database schema as the main schema (backward compat)
-      const primaryDbId = effectiveDbs[0];
-      setSchema(schemaMap[primaryDbId] || null);
-
-      // Fetch data from all databases
-      const allData = [];
-      for (const dbId of effectiveDbs) {
-        const results = await queryAll(user.workerUrl, user.notionKey, dbId);
-        allData.push(...results.map((r) => ({ ...r, _databaseId: dbId })));
-      }
-      setData(allData);
+      const result = await fetchDataSource(effectiveConfig, user);
+      setData(result.data);
+      setSchema(result.schema);
+      setSchemas(result.schemas);
       setError(null);
     } catch (err) {
       console.error("Failed to fetch page data:", err);
@@ -131,7 +120,7 @@ export default function PageShell({
     } finally {
       setLoading(false);
     }
-  }, [user, effectiveDbs, isDocumentPage, isLinkedSheetPage]);
+  }, [user, effectiveConfig, effectiveDbs, sourceType, isDocumentPage, isLinkedSheetPage]);
 
   // Initial fetch
   useEffect(() => {
@@ -147,16 +136,12 @@ export default function PageShell({
     return () => clearInterval(refreshTimer.current);
   }, [fetchData, refreshMs]);
 
-  // Handle inline edits from views
-  // Views call: onUpdate(pageId, fieldName, builtPropObject)
-  // where builtPropObject is already constructed via buildProp()
+  // Handle inline edits from views — works for both D1 and Notion sources
   const handleUpdate = useCallback(
     async (pageId, propertyName, propPayload) => {
       try {
         if (propPayload) {
-          await updatePage(user.workerUrl, user.notionKey, pageId, {
-            [propertyName]: propPayload,
-          });
+          await updateRecord(effectiveConfig, pageId, propertyName, propPayload, user);
           // Optimistic: update local data
           setData((prev) =>
             prev.map((page) => {
@@ -180,38 +165,35 @@ export default function PageShell({
         console.error("Update failed:", err);
       }
     },
-    [user, fetchData]
+    [effectiveConfig, user, fetchData]
   );
 
   // Handle new record creation from Form view
   const handleCreate = useCallback(
     async (databaseId, properties) => {
       try {
-        await createPage(user.workerUrl, user.notionKey, databaseId, properties);
-        // Refresh to show the new record
+        await createRecord(effectiveConfig, properties, user);
         await fetchData();
       } catch (err) {
         console.error("Create failed:", err);
-        throw err; // Let the Form view handle the error
+        throw err;
       }
     },
-    [user, fetchData]
+    [effectiveConfig, user, fetchData]
   );
 
   // Handle bulk delete (archive) from Table view
   const handleDelete = useCallback(
     async (pageIds) => {
-      if (!user?.workerUrl || !user?.notionKey || !pageIds?.length) return;
+      if (!pageIds?.length) return;
       try {
-        for (const id of pageIds) {
-          await archivePage(user.workerUrl, user.notionKey, id);
-        }
+        await deleteRecords(effectiveConfig, pageIds, user);
         await fetchData();
       } catch (err) {
         console.error("Bulk delete failed:", err);
       }
     },
-    [user, fetchData]
+    [effectiveConfig, user, fetchData]
   );
 
   // Handle refresh interval change
@@ -231,33 +213,21 @@ export default function PageShell({
       i === viewIdx ? { ...v, label: newLabel } : v
     );
     updatePageConfig(target.id, { views: updatedViews });
-    if (user?.workerUrl && user?.notionKey && platformIds?.configDbId) {
-      savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
-        ...target, views: updatedViews,
-      }).catch(() => {});
-    }
-  }, [effectiveConfig, updatePageConfig, user, platformIds]);
+    savePageConfig({ ...target, views: updatedViews }).catch(() => {});
+  }, [effectiveConfig, updatePageConfig]);
 
   const handleDeleteView = useCallback((viewIdx) => {
     const target = effectiveConfig;
     const updatedViews = (target.views || []).filter((_, i) => i !== viewIdx);
     updatePageConfig(target.id, { views: updatedViews });
-    if (user?.workerUrl && user?.notionKey && platformIds?.configDbId) {
-      savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
-        ...target, views: updatedViews,
-      }).catch(() => {});
-    }
-  }, [effectiveConfig, updatePageConfig, user, platformIds]);
+    savePageConfig({ ...target, views: updatedViews }).catch(() => {});
+  }, [effectiveConfig, updatePageConfig]);
 
   const handleReorderViews = useCallback((newViews) => {
     const target = effectiveConfig;
     updatePageConfig(target.id, { views: newViews });
-    if (user?.workerUrl && user?.notionKey && platformIds?.configDbId) {
-      savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
-        ...target, views: newViews,
-      }).catch(() => {});
-    }
-  }, [effectiveConfig, updatePageConfig, user, platformIds]);
+    savePageConfig({ ...target, views: newViews }).catch(() => {});
+  }, [effectiveConfig, updatePageConfig]);
 
   // Connected database IDs for the DatabaseBrowser
   const connectedIds = useMemo(() => effectiveDbs || [], [effectiveDbs]);
@@ -288,9 +258,9 @@ export default function PageShell({
         views: newViews,
       });
 
-      // Persist to Notion config database
+      // Persist to D1
       try {
-        await savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
+        await savePageConfig({
           ...targetConfig,
           databaseIds: newDatabaseIds,
           views: newViews,
@@ -303,7 +273,7 @@ export default function PageShell({
       // Re-fetch to include the new database
       fetchData();
     },
-    [effectiveConfig, updatePageConfig, user, platformIds, fetchData]
+    [effectiveConfig, updatePageConfig, user, fetchData]
   );
 
   if (loading && data.length === 0) {
