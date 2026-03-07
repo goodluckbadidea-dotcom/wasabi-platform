@@ -20,7 +20,7 @@ import PageShell from "./core/PageShell.jsx";
 import WasabiFlame from "./core/WasabiFlame.jsx";
 import WasabiOrb from "./core/WasabiOrb.jsx";
 import SystemManager from "./core/SystemManager.jsx";
-import AutomationBuilder from "./core/AutomationBuilder.jsx";
+import AutomationPage from "./core/AutomationPage.jsx";
 import HomePage from "./core/HomePage.jsx";
 import { ErrorBoundary } from "./core/ErrorBoundary.jsx";
 import { createAutomationEngine } from "./agent/automations.js";
@@ -161,14 +161,18 @@ function AppContent() {
   // Find active page config
   const activePageConfig = pages.find((p) => p.id === activePage);
 
-  // Get/set active view for current page
+  // Get/set active view for current page (or automations pseudo-page)
   const activeViewIndex = activePageConfig
     ? viewStates[activePageConfig.id] ?? 0
+    : activePage === "automations"
+    ? viewStates["automations"] ?? 0
     : 0;
 
   const setActiveView = (idx) => {
     if (activePageConfig) {
       setViewStates((prev) => ({ ...prev, [activePageConfig.id]: idx }));
+    } else if (activePage === "automations") {
+      setViewStates((prev) => ({ ...prev, automations: idx }));
     }
   };
 
@@ -191,9 +195,9 @@ function AppContent() {
       );
     }
 
-    // Automations
+    // Automations (sub-view tabs: Node Editor, Simple Rules, Upload)
     if (activePage === "automations") {
-      return <AutomationBuilder automationEngine={engineRef.current} />;
+      return <AutomationPage automationEngine={engineRef.current} activeTab={activeViewIndex} />;
     }
 
     // System manager

@@ -490,3 +490,56 @@ export function IconExpand({ size = 20, color = d, ...rest }) {
     </Icon>
   );
 }
+
+// ─── Node Editor Icons ───
+
+export function IconPlay({ size = 20, color = d, ...rest }) {
+  return (
+    <Icon size={size} {...rest}>
+      <polygon points="6 3 20 12 6 21" fill={color} stroke="none" />
+    </Icon>
+  );
+}
+
+export function IconCondition({ size = 20, color = d, ...rest }) {
+  // Diamond / branch shape
+  return (
+    <Icon size={size} {...rest}>
+      <path d="M12 2L22 12L12 22L2 12Z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" fill="none" />
+      <path d="M12 8v8M9 12h6" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+    </Icon>
+  );
+}
+
+export function IconTransform({ size = 20, color = d, ...rest }) {
+  // Shuffle / arrows
+  return (
+    <Icon size={size} {...rest}>
+      <polyline points="16 3 21 3 21 8" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <line x1="4" y1="20" x2="21" y2="3" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      <polyline points="21 16 21 21 16 21" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <line x1="15" y1="15" x2="21" y2="21" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="4" y1="4" x2="9" y2="9" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+    </Icon>
+  );
+}
+
+export function IconConnect({ size = 20, color = d, ...rest }) {
+  // Two linked circles
+  return (
+    <Icon size={size} {...rest}>
+      <circle cx="7" cy="12" r="4" stroke={color} strokeWidth="1.5" fill="none" />
+      <circle cx="17" cy="12" r="4" stroke={color} strokeWidth="1.5" fill="none" />
+      <line x1="11" y1="12" x2="13" y2="12" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+    </Icon>
+  );
+}
+
+export function IconWasabiNode({ size = 20, color = "#F5B724", ...rest }) {
+  // Stylized W for Wasabi AI node
+  return (
+    <Icon size={size} {...rest}>
+      <path d="M3 6L7 18L12 10L17 18L21 6" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </Icon>
+  );
+}

@@ -88,6 +88,15 @@ const KEYFRAMES = `
   from { width: 0; opacity: 0; }
   to   { opacity: 1; }
 }
+
+@keyframes nodeGlow {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+@keyframes dashFlow {
+  to { stroke-dashoffset: -20; }
+}
 `;
 
 let injected = false;
@@ -123,4 +132,6 @@ export const ANIM = {
   scaleIn:     (delay = 0) => `scaleIn 0.2s ease ${delay}s both`,
   navDrop:     "navDrop 0.18s cubic-bezier(0.16,1,0.3,1)",
   panelSlideIn: "panelSlideIn 0.25s cubic-bezier(0.4,0,0.2,1)",
+  nodeGlow:     "nodeGlow 1.5s ease-in-out infinite",
+  dashFlow:     "dashFlow 0.6s linear infinite",
 };

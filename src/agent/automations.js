@@ -1,11 +1,13 @@
 // ─── Automation Execution Engine ───
 // Browser-only polling engine. Queries the Automation Rules DB
 // periodically and executes rules when trigger conditions are met.
+// Also supports node-based automation flows (via flowExecutor).
 // No server cron — runs via setInterval in the browser tab.
 
 import * as client from "../notion/client.js";
 import { queryAll } from "../notion/pagination.js";
 import { readProp } from "../notion/properties.js";
+import { safeJSON } from "../utils/helpers.js";
 
 // ─── Constants ───
 
@@ -540,6 +542,98 @@ export function createAutomationEngine(opts) {
     });
 
     await Promise.allSettled(executions);
+
+    // ── Flow processing (node-based automations) ──
+    await processFlows();
+  }
+
+  /**
+   * Process enabled node-based automation flows.
+   * Lazily checks for flowsDbId and runs triggered flows.
+   */
+  async function processFlows() {
+    // Check if flowsDbId exists (may have been created after engine start)
+    let flowsDbId;
+    try {
+      const stored = JSON.parse(localStorage.getItem("wasabi_platform_ids") || "{}");
+      flowsDbId = stored.flowsDbId;
+    } catch {}
+    if (!flowsDbId) return;
+
+    let flowPages;
+    try {
+      flowPages = await queryAll(workerUrl, notionKey, flowsDbId, {
+        property: "Enabled",
+        checkbox: { equals: true },
+      });
+    } catch (err) {
+      // Silently skip — flows DB might not exist yet
+      if (!err.message?.includes("404")) {
+        console.warn(LOG_PREFIX, "Failed to fetch flows:", err.message);
+      }
+      return;
+    }
+
+    if (flowPages.length === 0) return;
+
+    // Lazy import flowExecutor to avoid circular deps
+    let executeFlow;
+    try {
+      const mod = await import("./flowExecutor.js");
+      executeFlow = mod.executeFlow;
+    } catch (err) {
+      console.warn(LOG_PREFIX, "Flow executor not available:", err.message);
+      return;
+    }
+
+    for (const page of flowPages) {
+      const flowDataStr = page.properties?.["Flow Data"]?.rich_text?.map((t) => t.plain_text).join("") || "{}";
+      const flowData = safeJSON(flowDataStr, {});
+      const flowId = page.id;
+
+      if (!flowData.nodes || flowData.nodes.length === 0) continue;
+      if (_executing.has(flowId)) continue;
+
+      // Check if any trigger node should fire
+      const triggerNodes = flowData.nodes.filter((n) => n.type === "trigger");
+      let shouldFire = false;
+
+      for (const trigger of triggerNodes) {
+        if (trigger.subtype === "schedule") {
+          const lastRun = page.properties?.["Last Run"]?.date?.start;
+          const interval = trigger.config?.interval_minutes || 60;
+          if (!lastRun) { shouldFire = true; break; }
+          const elapsed = (Date.now() - new Date(lastRun).getTime()) / 60_000;
+          if (elapsed >= interval) { shouldFire = true; break; }
+        }
+        // manual triggers don't fire on poll, status_change/field_change need query (Phase 2)
+      }
+
+      if (!shouldFire) continue;
+
+      _executing.add(flowId);
+      try {
+        await executeFlow(
+          flowData,
+          { workerUrl, notionKey, claudeKey, notifDbId, rulesDbId },
+          {},
+          null, null // no visual trace in background
+        );
+
+        // Update Last Run + Run Count
+        const runCount = page.properties?.["Run Count"]?.number || 0;
+        await client.updatePage(workerUrl, notionKey, flowId, {
+          "Last Run": { date: { start: new Date().toISOString() } },
+          "Run Count": { number: runCount + 1 },
+        }).catch(() => {});
+
+        console.log(LOG_PREFIX, `Flow "${page.properties?.Name?.title?.[0]?.plain_text || flowId}" executed`);
+      } catch (err) {
+        console.error(LOG_PREFIX, `Flow execution failed:`, err.message);
+      } finally {
+        _executing.delete(flowId);
+      }
+    }
   }
 
   // ── Interval management ──

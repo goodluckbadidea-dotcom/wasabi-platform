@@ -60,11 +60,21 @@ export default function Navigation({
 
   // Get current page's views for sub-nav
   const currentPage = pages.find((p) => p.id === activePage);
-  const subItems = (currentPage?.views || []).map((view, idx) => ({
-    id: idx,
-    label: getViewLabel(view),
-    type: view.type,
-  }));
+
+  // Synthetic sub-items for the Automations pseudo-page
+  const AUTOMATION_SUB_ITEMS = [
+    { id: 0, label: "Node Editor", type: "nodeEditor" },
+    { id: 1, label: "Simple Rules", type: "simpleRules" },
+    { id: 2, label: "Upload", type: "upload" },
+  ];
+
+  const subItems = activePage === "automations"
+    ? AUTOMATION_SUB_ITEMS
+    : (currentPage?.views || []).map((view, idx) => ({
+        id: idx,
+        label: getViewLabel(view),
+        type: view.type,
+      }));
 
   // Standalone document pages (for Docs section)
   const standaloneDocPages = useMemo(() =>
