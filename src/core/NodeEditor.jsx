@@ -328,7 +328,7 @@ function EmptyState({ onNew }) {
       fontFamily: FONT,
       color: C.darkMuted,
     }}>
-      <div style={{ fontSize: 48, opacity: 0.3 }}>⚡</div>
+      <div style={{ opacity: 0.3 }}><IconBolt size={48} color={C.darkMuted} /></div>
       <div style={{ fontSize: 16, fontWeight: 600, color: C.darkText }}>Node Automation Editor</div>
       <div style={{ fontSize: 13, color: C.darkMuted, textAlign: "center", maxWidth: 300, lineHeight: 1.6 }}>
         Create visual automation flows by connecting nodes together.

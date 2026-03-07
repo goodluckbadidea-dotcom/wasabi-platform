@@ -4,6 +4,7 @@
 
 import React from "react";
 import { C, FONT } from "../design/tokens.js";
+import { IconUpload } from "../design/icons.jsx";
 import AutomationBuilder from "./AutomationBuilder.jsx";
 
 // Lazy-load NodeEditor (created in Step 7)
@@ -29,7 +30,7 @@ export default function AutomationPage({ automationEngine, activeTab = 0 }) {
         flexDirection: "column",
         gap: 8,
       }}>
-        <span style={{ fontSize: 32 }}>📦</span>
+        <IconUpload size={32} color={C.darkMuted} />
         <span>Upload Automations</span>
         <span style={{ fontSize: 12, color: C.darkBorder }}>
           CSV/TSV file upload automation coming soon
