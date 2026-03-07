@@ -3,7 +3,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { loadPlatformIds, savePlatformIds } from "../config/setup.js";
-import { loadCachedConfigs, loadPageConfigs } from "../config/pageConfig.js";
+import { loadCachedConfigs, loadPageConfigs, validatePageConfigs, archivePageConfig } from "../config/pageConfig.js";
 
 const PlatformContext = createContext(null);
 
@@ -49,9 +49,25 @@ export function PlatformProvider({ children }) {
     hasSynced.current = true;
 
     loadPageConfigs(user.workerUrl, user.notionKey, platformIds.configDbId)
-      .then((configs) => {
+      .then(async (configs) => {
         if (configs.length > 0) {
-          setPages(configs);
+          setPages(configs); // Show all immediately for fast UI
+
+          // Background validation: detect and remove stale pages
+          try {
+            const { valid, stale } = await validatePageConfigs(user.workerUrl, user.notionKey, configs);
+            if (stale.length > 0) {
+              setPages(valid);
+              try { localStorage.setItem("wasabi_page_configs", JSON.stringify(valid)); } catch {}
+              // Archive stale configs in Notion (fire-and-forget)
+              for (const s of stale) {
+                archivePageConfig(user.workerUrl, user.notionKey, s.id).catch(() => {});
+              }
+              console.log(`[Platform] Cleaned up ${stale.length} stale page config(s)`);
+            }
+          } catch (err) {
+            console.warn("[Platform] Page validation failed:", err);
+          }
         }
       })
       .catch((err) => {

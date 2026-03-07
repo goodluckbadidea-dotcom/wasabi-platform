@@ -7,10 +7,11 @@
 import React, { useState, useCallback, useRef, useMemo } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { savePageConfig } from "../config/pageConfig.js";
-import { createSubpage } from "../notion/client.js";
-import { IconDiamond, IconBolt, IconGear, IconStar, IconPlus, IconPage, IconClose } from "../design/icons.jsx";
+import { savePageConfig, archivePageConfig } from "../config/pageConfig.js";
+import { createSubpage, archivePage } from "../notion/client.js";
+import { IconDiamond, IconBolt, IconGear, IconStar, IconPlus, IconPage, IconClose, IconTrash } from "../design/icons.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
+import ConfirmDialog from "./ConfirmDialog.jsx";
 
 // ── View type → human-readable label ──
 const VIEW_LABELS = {
@@ -47,10 +48,11 @@ export default function Navigation({
   onSetActiveView,
   isThinking,
 }) {
-  const { user, platformIds, pages, activePage, setActivePage, updatePageConfig } = usePlatform();
+  const { user, platformIds, pages, activePage, setActivePage, updatePageConfig, removePage } = usePlatform();
   const [hoveredItem, setHoveredItem] = useState(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [showDocsExpanded, setShowDocsExpanded] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null); // { type: 'page'|'view', pageConfig?, viewIdx? }
 
   // Drag reorder state
   const dragIdxRef = useRef(null);
@@ -160,6 +162,48 @@ export default function Navigation({
     }
   }, [currentPage, user, platformIds, updatePageConfig, onSetActiveView]);
 
+  // ── Delete Page ──
+  const handleDeletePage = useCallback(async (pageConfig) => {
+    try {
+      if (user?.workerUrl && user?.notionKey) {
+        await archivePageConfig(user.workerUrl, user.notionKey, pageConfig.id);
+        // Archive associated databases
+        for (const dbId of (pageConfig.databaseIds || [])) {
+          archivePage(user.workerUrl, user.notionKey, dbId).catch(() => {});
+        }
+        // Archive document page if applicable
+        if (pageConfig.pageType === "document" && pageConfig.notionPageId) {
+          archivePage(user.workerUrl, user.notionKey, pageConfig.notionPageId).catch(() => {});
+        }
+      }
+      removePage(pageConfig.id);
+    } catch (err) {
+      console.error("[Navigation] Failed to delete page:", err);
+    }
+    setConfirmDelete(null);
+  }, [user, removePage]);
+
+  // ── Delete View ──
+  const handleDeleteView = useCallback((viewIdx) => {
+    if (!currentPage) return;
+    const newViews = currentPage.views.filter((_, idx) => idx !== viewIdx);
+    updatePageConfig(currentPage.id, { views: newViews });
+    // Persist to Notion
+    if (user?.workerUrl && user?.notionKey && platformIds?.configDbId) {
+      savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
+        ...currentPage,
+        views: newViews,
+      }).catch((err) => console.error("[Navigation] Failed to persist view deletion:", err));
+    }
+    // Adjust active view
+    if (activeView === viewIdx) {
+      onSetActiveView(Math.max(0, viewIdx - 1));
+    } else if (activeView > viewIdx) {
+      onSetActiveView(activeView - 1);
+    }
+    setConfirmDelete(null);
+  }, [currentPage, updatePageConfig, user, platformIds, activeView, onSetActiveView]);
+
   // Bottom button style helper
   const bottomBtnStyle = (isActive) => ({
     background: isActive ? C.accent : "none",
@@ -206,6 +250,9 @@ export default function Navigation({
             padding: "18px 20px 12px",
             borderBottom: `1px solid ${C.darkBorder}`,
             flexShrink: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
           }}
         >
           <span
@@ -220,6 +267,27 @@ export default function Navigation({
           >
             {sectionLabel}
           </span>
+          {currentPage && (
+            <button
+              onClick={() => setConfirmDelete({ type: "page", pageConfig: currentPage })}
+              title="Delete page"
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: 4,
+                display: "flex",
+                alignItems: "center",
+                opacity: 0.3,
+                transition: "opacity 0.15s",
+                outline: "none",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.3"; }}
+            >
+              <IconTrash size={11} color={C.darkMuted} />
+            </button>
+          )}
         </div>
       )}
       {collapsed && (
@@ -341,7 +409,35 @@ export default function Navigation({
                     {item.label}
                   </span>
                 )}
-                {isActive && !collapsed && (
+                {/* Hover: show delete X (only for real views, not automation tabs, and not the last view) */}
+                {isHovered && !collapsed && currentPage && activePage !== "automations" && subItems.length > 1 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmDelete({ type: "view", viewIdx: item.id });
+                    }}
+                    title="Delete view"
+                    style={{
+                      marginLeft: "auto",
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      opacity: 0.5,
+                      transition: "opacity 0.12s",
+                      outline: "none",
+                      flexShrink: 0,
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
+                  >
+                    <IconClose size={8} color={isActive ? "#fff" : C.darkMuted} />
+                  </button>
+                )}
+                {/* Active dot (only when not hovered) */}
+                {isActive && !collapsed && !isHovered && (
                   <div
                     style={{
                       marginLeft: "auto",
@@ -561,33 +657,65 @@ export default function Navigation({
                 {standaloneDocPages.map((doc) => {
                   const isDocActive = activePage === doc.id;
                   return (
-                    <button
+                    <div
                       key={doc.id}
-                      onClick={() => setActivePage(doc.id)}
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        gap: 6,
-                        width: "100%",
-                        background: isDocActive ? C.accent : "transparent",
-                        border: "none",
-                        borderRadius: RADIUS.sm,
-                        padding: "5px 8px",
-                        cursor: "pointer",
-                        outline: "none",
-                        fontFamily: "'Outfit',sans-serif",
-                        fontSize: 11,
-                        color: isDocActive ? "#fff" : C.darkMuted,
-                        transition: "background 0.12s",
+                        position: "relative",
                       }}
-                      onMouseEnter={(e) => { if (!isDocActive) e.currentTarget.style.background = C.darkSurf2; }}
-                      onMouseLeave={(e) => { if (!isDocActive) e.currentTarget.style.background = "transparent"; }}
                     >
-                      <IconDiamond size={6} color={isDocActive ? "#fff" : C.darkBorder} />
-                      <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {doc.name}
-                      </span>
-                    </button>
+                      <button
+                        onClick={() => setActivePage(doc.id)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          flex: 1,
+                          background: isDocActive ? C.accent : "transparent",
+                          border: "none",
+                          borderRadius: RADIUS.sm,
+                          padding: "5px 8px",
+                          cursor: "pointer",
+                          outline: "none",
+                          fontFamily: "'Outfit',sans-serif",
+                          fontSize: 11,
+                          color: isDocActive ? "#fff" : C.darkMuted,
+                          transition: "background 0.12s",
+                          minWidth: 0,
+                        }}
+                        onMouseEnter={(e) => { if (!isDocActive) e.currentTarget.style.background = C.darkSurf2; }}
+                        onMouseLeave={(e) => { if (!isDocActive) e.currentTarget.style.background = "transparent"; }}
+                      >
+                        <IconDiamond size={6} color={isDocActive ? "#fff" : C.darkBorder} />
+                        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {doc.name}
+                        </span>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmDelete({ type: "page", pageConfig: doc });
+                        }}
+                        title="Delete document"
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          padding: 3,
+                          display: "flex",
+                          alignItems: "center",
+                          opacity: 0,
+                          transition: "opacity 0.12s",
+                          outline: "none",
+                          flexShrink: 0,
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.opacity = "0"; }}
+                      >
+                        <IconClose size={7} color={C.darkMuted} />
+                      </button>
+                    </div>
                   );
                 })}
               </div>
@@ -695,6 +823,24 @@ export default function Navigation({
           />
         </svg>
       </button>
+
+      {/* Confirm dialogs */}
+      {confirmDelete?.type === "page" && (
+        <ConfirmDialog
+          title="Delete Page"
+          message={`Are you sure you want to delete "${confirmDelete.pageConfig.name}"? This action cannot be undone.`}
+          onConfirm={() => handleDeletePage(confirmDelete.pageConfig)}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
+      {confirmDelete?.type === "view" && (
+        <ConfirmDialog
+          title="Delete View"
+          message="Are you sure you want to delete this view? This action cannot be undone."
+          onConfirm={() => handleDeleteView(confirmDelete.viewIdx)}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
     </div>
   );
 }

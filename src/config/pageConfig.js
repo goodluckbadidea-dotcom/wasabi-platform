@@ -1,7 +1,7 @@
 // ─── Page Config Persistence ───
 // Stores and loads page configurations from Notion + localStorage cache.
 
-import { queryAll, createPage, updatePage, createDatabase } from "../notion/client.js";
+import { queryAll, createPage, updatePage, createDatabase, getPage, getDatabase } from "../notion/client.js";
 import { safeJSON } from "../utils/helpers.js";
 
 const CONFIG_DB_SCHEMA = [
@@ -135,4 +135,39 @@ export async function archivePageConfig(workerUrl, notionKey, pageConfigId) {
   await updatePage(workerUrl, notionKey, pageConfigId, {
     Active: { checkbox: false },
   });
+}
+
+/**
+ * Validate page configs by checking if their Notion resources still exist.
+ * Returns { valid, stale } — stale pages reference deleted databases/pages.
+ */
+export async function validatePageConfigs(workerUrl, notionKey, configs) {
+  const results = await Promise.allSettled(
+    configs.map(async (config) => {
+      if (config.pageType === "document") {
+        // Document pages: check the Notion page from the document view
+        const docView = config.views?.find((v) => v.type === "document");
+        const pageId = docView?.config?.pageId || config.notionPageId;
+        if (pageId) await getPage(workerUrl, notionKey, pageId);
+      } else {
+        // Data pages: check the first database
+        const dbIds = config.databaseIds || [];
+        if (dbIds.length > 0) await getDatabase(workerUrl, notionKey, dbIds[0]);
+      }
+      return config;
+    })
+  );
+
+  const valid = [];
+  const stale = [];
+  results.forEach((result, i) => {
+    if (result.status === "fulfilled") {
+      valid.push(configs[i]);
+    } else {
+      console.warn(`[PageConfig] Stale page "${configs[i].name}":`, result.reason?.message);
+      stale.push(configs[i]);
+    }
+  });
+
+  return { valid, stale };
 }

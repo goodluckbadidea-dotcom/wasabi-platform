@@ -6,12 +6,15 @@ import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
+import { archivePageConfig } from "../config/pageConfig.js";
+import { archivePage } from "../notion/client.js";
 import WasabiFlame from "./WasabiFlame.jsx";
 import { TEMPLATES } from "./Onboarding.jsx";
+import ConfirmDialog from "./ConfirmDialog.jsx";
 import {
   IconStar, IconTable, IconDatabase, IconCalendar, IconKanban,
   IconTimeline, IconChart, IconBolt, IconGear, IconFolder,
-  IconChevronRight,
+  IconChevronRight, IconTrash,
 } from "../design/icons.jsx";
 
 // ── localStorage key for home config ──
@@ -208,8 +211,28 @@ function removeHover(e) {
 
 // ── Main Component ──
 export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) {
-  const { pages, activePage, setActivePage } = usePlatform();
+  const { pages, activePage, setActivePage, removePage, user } = usePlatform();
   const [homeConfig, setHomeConfig] = useState(() => loadHomeConfig());
+  const [confirmDelete, setConfirmDelete] = useState(null);
+
+  // ── Delete page ──
+  const handleDeletePage = useCallback(async (pageConfig) => {
+    try {
+      if (user?.workerUrl && user?.notionKey) {
+        await archivePageConfig(user.workerUrl, user.notionKey, pageConfig.id);
+        for (const dbId of (pageConfig.databaseIds || [])) {
+          archivePage(user.workerUrl, user.notionKey, dbId).catch(() => {});
+        }
+        if (pageConfig.pageType === "document" && pageConfig.notionPageId) {
+          archivePage(user.workerUrl, user.notionKey, pageConfig.notionPageId).catch(() => {});
+        }
+      }
+      removePage(pageConfig.id);
+    } catch (err) {
+      console.error("[HomePage] Failed to delete page:", err);
+    }
+    setConfirmDelete(null);
+  }, [user, removePage]);
 
   const pinnedIds = homeConfig.pinned || [];
 
@@ -348,6 +371,7 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
                 isPinned={true}
                 onTogglePin={() => togglePin(page.id)}
                 onClick={() => setActivePage(page.id)}
+                onDelete={() => setConfirmDelete(page)}
               />
             ))}
           </div>
@@ -374,6 +398,7 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
                 isPinned={false}
                 onTogglePin={() => togglePin(page.id)}
                 onClick={() => setActivePage(page.id)}
+                onDelete={() => setConfirmDelete(page)}
               />
             ))}
           </div>
@@ -439,12 +464,22 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
           ))}
         </div>
       </div>
+
+      {/* Confirm delete dialog */}
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Delete Page"
+          message={`Are you sure you want to delete "${confirmDelete.name}"? This action cannot be undone.`}
+          onConfirm={() => handleDeletePage(confirmDelete)}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
     </div>
   );
 }
 
 // ── Page Card Sub-component ──
-function PageCard({ page, delay, isPinned, onTogglePin, onClick }) {
+function PageCard({ page, delay, isPinned, onTogglePin, onClick, onDelete }) {
   const viewTypes = (page.views || []).map((v) => v.type);
   const uniqueTypes = [...new Set(viewTypes)];
 
@@ -471,6 +506,20 @@ function PageCard({ page, delay, isPinned, onTogglePin, onClick }) {
         title={isPinned ? "Unpin" : "Pin to home"}
       >
         <IconStar size={12} color={isPinned ? C.accent : C.darkMuted} />
+      </button>
+
+      {/* Delete button */}
+      <button
+        style={{ ...hs.pinBtn, top: 32 }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete();
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.4"; }}
+        title="Delete page"
+      >
+        <IconTrash size={11} color={C.darkMuted} />
       </button>
 
       <div style={hs.cardTitle}>{page.name || "Untitled"}</div>
