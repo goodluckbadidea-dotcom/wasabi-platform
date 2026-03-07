@@ -5,13 +5,13 @@
 
 const QUERY_DATABASE = {
   name: "query_database",
-  description: "Query a Notion database with optional filters and sorts. Returns matching pages with all properties.",
+  description: "Query a database (Notion or D1 standalone table) with optional filters and sorts. Returns matching records with all properties.",
   input_schema: {
     type: "object",
     properties: {
       database_id: {
         type: "string",
-        description: "The Notion database ID to query.",
+        description: "The database ID to query (Notion DB ID or D1 table ID).",
       },
       filter: {
         type: "object",

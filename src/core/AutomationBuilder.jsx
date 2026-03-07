@@ -10,9 +10,8 @@ import { runAgent, extractChoices } from "../agent/runAgent.js";
 import { WASABI_TOOLS } from "../agent/tools.js";
 import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createToolExecutor, createDelegateFunction } from "../agent/toolExecutor.js";
-import { queryAll } from "../notion/pagination.js";
-import { readProp } from "../notion/properties.js";
-import { updatePage, archivePage } from "../notion/client.js";
+import * as api from "../lib/api.js";
+// Legacy Notion imports removed — rules now stored in D1
 import WasabiOrb from "./WasabiOrb.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
 import { IconTrash } from "../design/icons.jsx";
@@ -203,39 +202,25 @@ export default function AutomationBuilder({ automationEngine }) {
   const [togglingIds, setTogglingIds] = useState(new Set());
   const [confirmDelete, setConfirmDelete] = useState(null); // rule object to confirm deletion
 
-  // ─── Fetch rules from Notion ───
+  // ─── Fetch rules from D1 ───
 
   const fetchRules = useCallback(async () => {
-    if (!platformIds.rulesDbId) {
-      setRulesLoading(false);
-      return;
-    }
     try {
       setRulesLoading(true);
-      const pages = await queryAll(
-        user.workerUrl, user.notionKey,
-        platformIds.rulesDbId
-      );
-      const parsed = pages.map((page) => {
-        const props = page.properties || {};
-        return {
-          id: page.id,
-          name: readProp(props.Name) || readProp(props.name) || "Untitled Rule",
-          trigger: readProp(props.Trigger) || readProp(props.trigger) || "manual",
-          enabled: readProp(props.Enabled) ?? readProp(props.enabled) ?? false,
-        };
-      });
+      const result = await api.listRules();
+      const parsed = (result.rules || []).map((row) => ({
+        id: row.id,
+        name: row.name || "Untitled Rule",
+        trigger: row.trigger_type || "manual",
+        enabled: !!row.enabled,
+      }));
       setRules(parsed);
     } catch (err) {
-      if (err.message?.includes("404")) {
-        console.warn("[AutomationBuilder] Rules database not found (404) — may need re-setup.");
-      } else {
-        console.error("[AutomationBuilder] Failed to fetch rules:", err);
-      }
+      console.error("[AutomationBuilder] Failed to fetch rules:", err);
     } finally {
       setRulesLoading(false);
     }
-  }, [user.workerUrl, user.notionKey, platformIds.rulesDbId]);
+  }, []);
 
   useEffect(() => {
     fetchRules();
@@ -253,9 +238,7 @@ export default function AutomationBuilder({ automationEngine }) {
     );
 
     try {
-      await updatePage(user.workerUrl, user.notionKey, ruleId, {
-        Enabled: { checkbox: newValue },
-      });
+      await api.updateRule(ruleId, { enabled: newValue ? 1 : 0 });
     } catch (err) {
       console.error("[AutomationBuilder] Toggle failed:", err);
       // Revert optimistic update
@@ -269,7 +252,7 @@ export default function AutomationBuilder({ automationEngine }) {
         return next;
       });
     }
-  }, [user.workerUrl, user.notionKey]);
+  }, []);
 
   // ─── Test rule ───
 
@@ -283,25 +266,23 @@ export default function AutomationBuilder({ automationEngine }) {
 
   const handleDeleteRule = useCallback(async (rule) => {
     try {
-      await archivePage(user.workerUrl, user.notionKey, rule.id);
+      await api.deleteRule(rule.id);
     } catch (err) {
-      console.error("[AutomationBuilder] Failed to archive rule:", err);
+      console.error("[AutomationBuilder] Failed to delete rule:", err);
     }
     setRules((prev) => prev.filter((r) => r.id !== rule.id));
     setConfirmDelete(null);
-  }, [user.workerUrl, user.notionKey]);
+  }, []);
 
   // ─── Rename rule ───
   const handleRenameRule = useCallback(async (ruleId, newName) => {
     setRules((prev) => prev.map((r) => (r.id === ruleId ? { ...r, name: newName } : r)));
     try {
-      await updatePage(user.workerUrl, user.notionKey, ruleId, {
-        Name: { title: [{ type: "text", text: { content: newName } }] },
-      });
+      await api.updateRule(ruleId, { name: newName });
     } catch (err) {
       console.error("[AutomationBuilder] Rename failed:", err);
     }
-  }, [user.workerUrl, user.notionKey]);
+  }, []);
 
   // ─── Tool executor ───
 

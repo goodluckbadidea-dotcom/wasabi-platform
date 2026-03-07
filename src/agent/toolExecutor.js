@@ -7,6 +7,7 @@ import { queryAll } from "../notion/pagination.js";
 import { detectSchema, autoDetectViews, schemaToText, suggestViewMappings } from "../notion/schema.js";
 import { writeKB, searchKB, kbResultsToText } from "./memory.js";
 import { extractProperties, getPageTitle } from "../notion/properties.js";
+import * as api from "../lib/api.js";
 
 /**
  * Create a tool executor bound to a specific user's credentials and platform config.
@@ -249,38 +250,41 @@ export function createToolExecutor({
 
       // ─── Notifications ───
       case "post_notification": {
-        await client.postNotification(workerUrl, notionKey, notifDbId, {
-          message: toolInput.message,
-          type: toolInput.type || "notification",
-          source: toolInput.source || "wasabi",
-        });
+        // D1 path (preferred) — no notifDbId needed
+        if (!notifDbId || notifDbId === "d1") {
+          await api.createNotification({
+            message: toolInput.message,
+            type: toolInput.type || "notification",
+            source: toolInput.source || "wasabi",
+          });
+        } else {
+          // Legacy Notion path
+          await client.postNotification(workerUrl, notionKey, notifDbId, {
+            message: toolInput.message,
+            type: toolInput.type || "notification",
+            source: toolInput.source || "wasabi",
+          });
+        }
         return JSON.stringify({ success: true });
       }
 
       // ─── Automation Rule Creation ───
       case "create_automation_rule": {
-        if (!rulesDbId) {
-          return JSON.stringify({ error: "Automation Rules database not configured." });
-        }
-        const ruleProps = {
-          Name: { title: [{ type: "text", text: { content: toolInput.name || "Untitled Rule" } }] },
-          Trigger: { select: { name: toolInput.trigger } },
-          Instruction: { rich_text: [{ type: "text", text: { content: toolInput.instruction || "" } }] },
-          "Database ID": { rich_text: [{ type: "text", text: { content: toolInput.database_id || "" } }] },
-          Enabled: { checkbox: true },
-          "Fire Count": { number: 0 },
-        };
-        if (toolInput.description) {
-          ruleProps.Description = { rich_text: [{ type: "text", text: { content: toolInput.description } }] };
-        }
-        if (toolInput.trigger_config) {
-          ruleProps["Trigger Config"] = { rich_text: [{ type: "text", text: { content: JSON.stringify(toolInput.trigger_config) } }] };
-        }
-        if (toolInput.owner_page) {
-          ruleProps["Owner Page"] = { rich_text: [{ type: "text", text: { content: toolInput.owner_page } }] };
-        }
-        const rulePage = await client.createPage(workerUrl, notionKey, rulesDbId, ruleProps);
-        return JSON.stringify({ success: true, rule_id: rulePage.id, name: toolInput.name });
+        // D1 path (preferred)
+        const ruleResult = await api.createRule({
+          name: toolInput.name || "Untitled Rule",
+          description: toolInput.description || "",
+          trigger_type: toolInput.trigger,
+          trigger_config: toolInput.trigger_config || {},
+          action_config: {
+            instruction: toolInput.instruction || "",
+            database_id: toolInput.database_id || "",
+            owner_page: toolInput.owner_page || "",
+          },
+          enabled: true,
+          scope_table_id: toolInput.database_id || null,
+        });
+        return JSON.stringify({ success: true, rule_id: ruleResult.id, name: toolInput.name });
       }
 
       // ─── File Processing ───

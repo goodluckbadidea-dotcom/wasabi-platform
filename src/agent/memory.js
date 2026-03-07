@@ -1,39 +1,48 @@
 // ─── Wasabi Knowledge Base ───
 // Persistent memory system. Wasabi writes, page agents read.
-// Stored as a Notion database with structured categories.
+// D1-backed via /d1/kb routes. Falls back to Notion for legacy configs.
 
+import * as api from "../lib/api.js";
+
+// Legacy Notion imports (kept for backward compat with existing setups)
 import { queryAll, createPage, updatePage, createDatabase } from "../notion/client.js";
 
 const KB_SCHEMA = [
   { name: "Key", type: "title" },
   { name: "Category", type: "select", options: ["page_config", "user_preference", "business_context", "learned_pattern", "database_schema"] },
   { name: "Content", type: "rich_text" },
-  { name: "Source", type: "select", options: ["conversation", "upload", "automation", "system"] },
+  { name: "Source", type: "select", options: ["conversation", "automation", "system"] },
   { name: "Last Referenced", type: "date" },
 ];
 
 /**
- * Initialize the Knowledge Base database.
- * Called during first-run setup.
+ * Legacy: Create the Knowledge Base Notion database under a parent page.
+ * Only used by the old Notion-based setup flow.
  */
 export async function initKnowledgeBase(workerUrl, notionKey, parentPageId) {
-  const db = await createDatabase(workerUrl, notionKey, parentPageId, "Wasabi Knowledge Base", KB_SCHEMA);
+  const db = await createDatabase(workerUrl, notionKey, parentPageId, "Knowledge Base", KB_SCHEMA);
   return db.id;
 }
 
 /**
  * Write an entry to the Knowledge Base.
- * Checks for existing key — updates if found, creates if not.
+ * Uses D1 by default. Falls back to Notion if kbDbId is provided.
  */
 export async function writeKB(workerUrl, notionKey, kbDbId, { key, category, content, source = "conversation" }) {
-  // Check for existing entry with same key
+  // ── D1 path (preferred) ──
+  // If no kbDbId provided or it looks like a D1 signal, use D1
+  if (!kbDbId || kbDbId === "d1") {
+    await api.createKBEntry({ key, category, content, source });
+    return;
+  }
+
+  // ── Legacy Notion path ──
   const existing = await queryAll(workerUrl, notionKey, kbDbId, {
     property: "Key",
     title: { equals: key },
   });
 
   if (existing.length > 0) {
-    // Update existing entry
     return updatePage(workerUrl, notionKey, existing[0].id, {
       Content: { rich_text: [{ type: "text", text: { content } }] },
       Category: { select: { name: category } },
@@ -42,7 +51,6 @@ export async function writeKB(workerUrl, notionKey, kbDbId, { key, category, con
     });
   }
 
-  // Create new entry
   return createPage(workerUrl, notionKey, kbDbId, {
     Key: { title: [{ type: "text", text: { content: key } }] },
     Category: { select: { name: category } },
@@ -54,20 +62,26 @@ export async function writeKB(workerUrl, notionKey, kbDbId, { key, category, con
 
 /**
  * Search the Knowledge Base by text and optional category.
- * Returns matching entries sorted by relevance (simple text match).
  */
 export async function searchKB(workerUrl, notionKey, kbDbId, { query, category }) {
+  // ── D1 path ──
+  if (!kbDbId || kbDbId === "d1") {
+    const result = await api.searchKB(query, category);
+    return (result.results || []).map((r) => ({
+      key: r.key,
+      category: r.category,
+      content: r.content,
+      pageId: r.id,
+    }));
+  }
+
+  // ── Legacy Notion path ──
   const filter = category
-    ? {
-        and: [
-          { property: "Category", select: { equals: category } },
-        ],
-      }
+    ? { and: [{ property: "Category", select: { equals: category } }] }
     : undefined;
 
   const all = await queryAll(workerUrl, notionKey, kbDbId, filter);
 
-  // Simple text matching (Notion doesn't support full-text search via API)
   const queryLower = (query || "").toLowerCase();
   const scored = all.map((page) => {
     const key = page.properties?.Key?.title?.map((t) => t.plain_text).join("") || "";
@@ -95,9 +109,20 @@ export async function searchKB(workerUrl, notionKey, kbDbId, { query, category }
 }
 
 /**
- * Read all entries in a category (for lightweight context loading).
+ * Read all entries in a category.
  */
 export async function readKBCategory(workerUrl, notionKey, kbDbId, category) {
+  // ── D1 path ──
+  if (!kbDbId || kbDbId === "d1") {
+    const result = await api.listKB({ category });
+    return (result.entries || []).map((r) => ({
+      key: r.key,
+      content: r.content,
+      pageId: r.id,
+    }));
+  }
+
+  // ── Legacy Notion path ──
   const results = await queryAll(workerUrl, notionKey, kbDbId, {
     property: "Category",
     select: { equals: category },

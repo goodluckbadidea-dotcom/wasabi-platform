@@ -321,6 +321,70 @@ export default {
         }
       }
 
+      // ─── D1 Automation Rules CRUD ───
+      const ruleMatch = path.match(/^\/d1\/rules\/([^/]+)$/);
+      if (ruleMatch) {
+        const id = ruleMatch[1];
+        if (request.method === "GET") return await handleGetRule(env, id);
+        if (request.method === "PATCH") {
+          const body = await request.json();
+          return await handleUpdateRule(env, id, body);
+        }
+        if (request.method === "DELETE") return await handleDeleteRule(env, id);
+      }
+
+      if (path === "/d1/rules" && request.method === "GET") {
+        return await handleListRules(env, url);
+      }
+      if (path === "/d1/rules" && request.method === "POST") {
+        const body = await request.json();
+        return await handleCreateRule(env, body);
+      }
+
+      // ─── D1 Notifications CRUD ───
+      const notifMatch = path.match(/^\/d1\/notifications\/([^/]+)$/);
+      if (notifMatch) {
+        const id = notifMatch[1];
+        if (request.method === "GET") return await handleGetNotification(env, id);
+        if (request.method === "PATCH") {
+          const body = await request.json();
+          return await handleUpdateNotification(env, id, body);
+        }
+        if (request.method === "DELETE") return await handleDeleteNotification(env, id);
+      }
+
+      if (path === "/d1/notifications" && request.method === "GET") {
+        return await handleListNotifications(env, url);
+      }
+      if (path === "/d1/notifications" && request.method === "POST") {
+        const body = await request.json();
+        return await handleCreateNotification(env, body);
+      }
+
+      // ─── D1 Knowledge Base CRUD ───
+      const kbMatch = path.match(/^\/d1\/kb\/([^/]+)$/);
+      if (kbMatch) {
+        const id = kbMatch[1];
+        if (request.method === "GET") return await handleGetKB(env, id);
+        if (request.method === "PATCH") {
+          const body = await request.json();
+          return await handleUpdateKB(env, id, body);
+        }
+        if (request.method === "DELETE") return await handleDeleteKB(env, id);
+      }
+
+      if (path === "/d1/kb" && request.method === "GET") {
+        return await handleListKB(env, url);
+      }
+      if (path === "/d1/kb" && request.method === "POST") {
+        const body = await request.json();
+        return await handleCreateKB(env, body);
+      }
+      if (path === "/d1/kb/search" && request.method === "POST") {
+        const body = await request.json();
+        return await handleSearchKB(env, body);
+      }
+
       // ─── Notion Routes ───
       const notionKey = await getNotionKey(request, env);
 
@@ -1455,4 +1519,283 @@ function parseCSV(text) {
   if (rows.length === 0) return { columns: [], rows: [] };
   const columns = rows[0];
   return { columns, rows: rows.slice(1) };
+}
+
+// ─── D1 Automation Rules Handlers ───
+
+async function handleListRules(env, url) {
+  const enabled = url.searchParams.get("enabled");
+  let query = "SELECT * FROM automation_rules";
+  const params = [];
+  if (enabled === "true") { query += " WHERE enabled = 1"; }
+  else if (enabled === "false") { query += " WHERE enabled = 0"; }
+  query += " ORDER BY created_at DESC";
+
+  const { results } = await env.DB.prepare(query).bind(...params).all();
+  // Parse JSON config fields
+  const rules = (results || []).map((r) => ({
+    ...r,
+    trigger_config: safeParseJSON(r.trigger_config),
+    action_config: safeParseJSON(r.action_config),
+    enabled: !!r.enabled,
+  }));
+  return jsonResponse({ rules });
+}
+
+async function handleCreateRule(env, body) {
+  const id = crypto.randomUUID();
+  const {
+    name, description = "", trigger_type, trigger_config = {},
+    action_config = {}, enabled = false, scope_table_id = null,
+  } = body;
+
+  if (!name || !trigger_type) {
+    return jsonResponse({ _error: "name and trigger_type required" }, 400);
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO automation_rules (id, name, description, trigger_type, trigger_config, action_config, enabled, scope_table_id, fire_count, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, datetime('now'), datetime('now'))`
+  ).bind(
+    id, name, description, trigger_type,
+    JSON.stringify(trigger_config), JSON.stringify(action_config),
+    enabled ? 1 : 0, scope_table_id,
+  ).run();
+
+  return jsonResponse({ id, name, success: true });
+}
+
+async function handleGetRule(env, id) {
+  const row = await env.DB.prepare("SELECT * FROM automation_rules WHERE id = ?").bind(id).first();
+  if (!row) return jsonResponse({ _error: "Rule not found" }, 404);
+  row.trigger_config = safeParseJSON(row.trigger_config);
+  row.action_config = safeParseJSON(row.action_config);
+  row.enabled = !!row.enabled;
+  return jsonResponse(row);
+}
+
+async function handleUpdateRule(env, id, body) {
+  const sets = [];
+  const vals = [];
+
+  for (const [key, val] of Object.entries(body)) {
+    if (["name", "description", "trigger_type", "scope_table_id", "last_fired_at"].includes(key)) {
+      sets.push(`${key} = ?`);
+      vals.push(val);
+    } else if (key === "trigger_config" || key === "action_config") {
+      sets.push(`${key} = ?`);
+      vals.push(typeof val === "string" ? val : JSON.stringify(val));
+    } else if (key === "enabled") {
+      sets.push("enabled = ?");
+      vals.push(val ? 1 : 0);
+    } else if (key === "fire_count") {
+      sets.push("fire_count = ?");
+      vals.push(val);
+    }
+  }
+
+  if (sets.length === 0) return jsonResponse({ _error: "No valid fields to update" }, 400);
+
+  sets.push("updated_at = datetime('now')");
+  vals.push(id);
+
+  await env.DB.prepare(`UPDATE automation_rules SET ${sets.join(", ")} WHERE id = ?`).bind(...vals).run();
+  return jsonResponse({ success: true, id });
+}
+
+async function handleDeleteRule(env, id) {
+  await env.DB.prepare("DELETE FROM automation_rules WHERE id = ?").bind(id).run();
+  return jsonResponse({ success: true, id });
+}
+
+// ─── D1 Notifications Handlers ───
+
+async function handleListNotifications(env, url) {
+  const status = url.searchParams.get("status");
+  const limit = parseInt(url.searchParams.get("limit") || "50", 10);
+  const offset = parseInt(url.searchParams.get("offset") || "0", 10);
+
+  let query = "SELECT * FROM notifications";
+  const params = [];
+  if (status) {
+    query += " WHERE status = ?";
+    params.push(status);
+  }
+  query += " ORDER BY created_at DESC LIMIT ? OFFSET ?";
+  params.push(limit, offset);
+
+  const { results } = await env.DB.prepare(query).bind(...params).all();
+
+  // Also get unread count
+  const countRow = await env.DB.prepare(
+    "SELECT COUNT(*) as count FROM notifications WHERE status = 'unread'"
+  ).first();
+
+  return jsonResponse({
+    notifications: results || [],
+    unread_count: countRow?.count || 0,
+  });
+}
+
+async function handleCreateNotification(env, body) {
+  const id = crypto.randomUUID();
+  const { message, type = "notification", source = "", status = "unread" } = body;
+
+  if (!message) return jsonResponse({ _error: "message required" }, 400);
+
+  await env.DB.prepare(
+    `INSERT INTO notifications (id, message, type, status, source, created_at)
+     VALUES (?, ?, ?, ?, ?, datetime('now'))`
+  ).bind(id, message, type, status, source).run();
+
+  return jsonResponse({ id, success: true });
+}
+
+async function handleGetNotification(env, id) {
+  const row = await env.DB.prepare("SELECT * FROM notifications WHERE id = ?").bind(id).first();
+  if (!row) return jsonResponse({ _error: "Notification not found" }, 404);
+  return jsonResponse(row);
+}
+
+async function handleUpdateNotification(env, id, body) {
+  const sets = [];
+  const vals = [];
+
+  if (body.status) { sets.push("status = ?"); vals.push(body.status); }
+  if (body.message) { sets.push("message = ?"); vals.push(body.message); }
+
+  if (sets.length === 0) return jsonResponse({ _error: "No valid fields to update" }, 400);
+
+  vals.push(id);
+  await env.DB.prepare(`UPDATE notifications SET ${sets.join(", ")} WHERE id = ?`).bind(...vals).run();
+  return jsonResponse({ success: true, id });
+}
+
+async function handleDeleteNotification(env, id) {
+  await env.DB.prepare("DELETE FROM notifications WHERE id = ?").bind(id).run();
+  return jsonResponse({ success: true, id });
+}
+
+// ─── D1 Knowledge Base Handlers ───
+
+async function handleListKB(env, url) {
+  const category = url.searchParams.get("category");
+  let query = "SELECT * FROM knowledge_base";
+  const params = [];
+  if (category) {
+    query += " WHERE category = ?";
+    params.push(category);
+  }
+  query += " ORDER BY updated_at DESC";
+
+  const { results } = await env.DB.prepare(query).bind(...params).all();
+  // Parse JSON fields
+  const entries = (results || []).map((r) => ({
+    ...r,
+    related_pages: safeParseJSON(r.related_pages),
+  }));
+  return jsonResponse({ entries });
+}
+
+async function handleCreateKB(env, body) {
+  const id = crypto.randomUUID();
+  const {
+    key, category = "business_context", content,
+    source = "conversation", related_pages = [],
+  } = body;
+
+  if (!key || !content) return jsonResponse({ _error: "key and content required" }, 400);
+
+  // Upsert: check for existing entry with same key
+  const existing = await env.DB.prepare(
+    "SELECT id FROM knowledge_base WHERE key = ?"
+  ).bind(key).first();
+
+  if (existing) {
+    await env.DB.prepare(
+      `UPDATE knowledge_base SET content = ?, category = ?, source = ?, related_pages = ?, updated_at = datetime('now') WHERE id = ?`
+    ).bind(content, category, source, JSON.stringify(related_pages), existing.id).run();
+    return jsonResponse({ id: existing.id, updated: true, success: true });
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO knowledge_base (id, key, category, content, source, related_pages, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+  ).bind(id, key, category, content, source, JSON.stringify(related_pages)).run();
+
+  return jsonResponse({ id, success: true });
+}
+
+async function handleGetKB(env, id) {
+  const row = await env.DB.prepare("SELECT * FROM knowledge_base WHERE id = ?").bind(id).first();
+  if (!row) return jsonResponse({ _error: "KB entry not found" }, 404);
+  row.related_pages = safeParseJSON(row.related_pages);
+  return jsonResponse(row);
+}
+
+async function handleUpdateKB(env, id, body) {
+  const sets = [];
+  const vals = [];
+
+  for (const [key, val] of Object.entries(body)) {
+    if (["key", "category", "content", "source"].includes(key)) {
+      sets.push(`${key} = ?`);
+      vals.push(val);
+    } else if (key === "related_pages") {
+      sets.push("related_pages = ?");
+      vals.push(JSON.stringify(val));
+    }
+  }
+
+  if (sets.length === 0) return jsonResponse({ _error: "No valid fields to update" }, 400);
+
+  sets.push("updated_at = datetime('now')");
+  vals.push(id);
+
+  await env.DB.prepare(`UPDATE knowledge_base SET ${sets.join(", ")} WHERE id = ?`).bind(...vals).run();
+  return jsonResponse({ success: true, id });
+}
+
+async function handleDeleteKB(env, id) {
+  await env.DB.prepare("DELETE FROM knowledge_base WHERE id = ?").bind(id).run();
+  return jsonResponse({ success: true, id });
+}
+
+async function handleSearchKB(env, body) {
+  const { query, category } = body;
+  if (!query) return jsonResponse({ _error: "query required" }, 400);
+
+  let sql = "SELECT * FROM knowledge_base";
+  const params = [];
+  if (category) {
+    sql += " WHERE category = ?";
+    params.push(category);
+  }
+  sql += " ORDER BY updated_at DESC";
+
+  const { results } = await env.DB.prepare(sql).bind(...params).all();
+
+  // Simple text matching (score by key + content match)
+  const queryLower = query.toLowerCase();
+  const scored = (results || []).map((r) => {
+    let score = 0;
+    if ((r.key || "").toLowerCase().includes(queryLower)) score += 10;
+    if ((r.content || "").toLowerCase().includes(queryLower)) score += 5;
+    if ((r.category || "").toLowerCase().includes(queryLower)) score += 2;
+    return { ...r, related_pages: safeParseJSON(r.related_pages), _score: score };
+  });
+
+  const matches = scored
+    .filter((s) => s._score > 0)
+    .sort((a, b) => b._score - a._score)
+    .slice(0, 10);
+
+  return jsonResponse({ results: matches });
+}
+
+function safeParseJSON(str) {
+  if (!str) return {};
+  if (typeof str === "object") return str;
+  try { return JSON.parse(str); }
+  catch { return {}; }
 }

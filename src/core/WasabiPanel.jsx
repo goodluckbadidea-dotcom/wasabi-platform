@@ -16,9 +16,8 @@ import { WASABI_TOOLS } from "../agent/tools.js";
 import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createToolExecutor, createDelegateFunction } from "../agent/toolExecutor.js";
 import BatchQueue from "./BatchQueue.jsx";
-import { queryAll } from "../notion/pagination.js";
-import { updatePage } from "../notion/client.js";
-import { readProp } from "../notion/properties.js";
+import * as api from "../lib/api.js";
+// Legacy Notion imports removed — notifications now stored in D1
 import { timeAgo } from "../utils/helpers.js";
 
 // ── Tab button style ──
@@ -76,35 +75,23 @@ export default function WasabiPanel({ onClose, isThinking }) {
   const notifFetched = useRef(false);
 
   const fetchNotifications = useCallback(async () => {
-    const notifDbId = platformIds?.notifDbId;
-    if (!user?.workerUrl || !user?.notionKey || !notifDbId) return;
     setNotifLoading(true);
     try {
-      const results = await queryAll(user.workerUrl, user.notionKey, notifDbId, null, [
-        { property: "Created", direction: "descending" },
-      ]);
-      const parsed = results.map((page) => {
-        const props = page.properties || {};
-        let message = "", readStatus = "unread", source = "", createdTime = page.created_time || "";
-        for (const [key, prop] of Object.entries(props)) {
-          const val = readProp(prop);
-          const lk = key.toLowerCase();
-          if (prop.type === "title") message = val || "";
-          else if (lk === "status" || lk === "read") {
-            if (prop.type === "checkbox") readStatus = val ? "read" : "unread";
-            else readStatus = (val || "unread").toLowerCase();
-          }
-          else if (lk === "source" || lk === "from") source = val || "";
-        }
-        return { id: page.id, text: message, read: readStatus === "read", timestamp: createdTime, source };
-      });
+      const result = await api.listNotifications({ limit: 50 });
+      const parsed = (result.notifications || []).map((row) => ({
+        id: row.id,
+        text: row.message || "",
+        read: row.status === "read",
+        timestamp: row.created_at || "",
+        source: row.source || "",
+      }));
       setNotifications(parsed);
     } catch (err) {
       console.error("Failed to fetch notifications:", err);
     } finally {
       setNotifLoading(false);
     }
-  }, [user, platformIds]);
+  }, []);
 
   // Fetch notifications when tab is first opened
   useEffect(() => {
@@ -115,16 +102,13 @@ export default function WasabiPanel({ onClose, isThinking }) {
   }, [tab, fetchNotifications]);
 
   const markNotifRead = useCallback(async (notifId) => {
-    if (!user?.workerUrl || !user?.notionKey) return;
     setNotifications((prev) => prev.map((n) => (n.id === notifId ? { ...n, read: true } : n)));
     try {
-      await updatePage(user.workerUrl, user.notionKey, notifId, { Status: { select: { name: "read" } } });
-    } catch {
-      try {
-        await updatePage(user.workerUrl, user.notionKey, notifId, { Read: { checkbox: true } });
-      } catch {}
+      await api.updateNotification(notifId, { status: "read" });
+    } catch (err) {
+      console.error("Failed to mark notification read:", err);
     }
-  }, [user]);
+  }, []);
 
   // Auto-resize log textarea
   const autoResize = () => {

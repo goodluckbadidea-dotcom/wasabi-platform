@@ -208,6 +208,88 @@ export async function exportDocNotion(id) {
   return apiFetch(`/docs/${id}/export/notion`, { method: "GET" });
 }
 
+// ─── Automation Rules ───
+
+export async function listRules({ enabled } = {}) {
+  const params = new URLSearchParams();
+  if (enabled !== undefined) params.set("enabled", enabled);
+  const qs = params.toString();
+  return apiFetch(`/d1/rules${qs ? `?${qs}` : ""}`, { method: "GET" });
+}
+
+export async function createRule(rule) {
+  return apiFetch("/d1/rules", { method: "POST", body: rule });
+}
+
+export async function getRule(id) {
+  return apiFetch(`/d1/rules/${id}`, { method: "GET" });
+}
+
+export async function updateRule(id, updates) {
+  return apiFetch(`/d1/rules/${id}`, { method: "PATCH", body: updates });
+}
+
+export async function deleteRule(id) {
+  return apiFetch(`/d1/rules/${id}`, { method: "DELETE" });
+}
+
+// ─── Notifications ───
+
+export async function listNotifications({ status, limit, offset } = {}) {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (limit) params.set("limit", limit);
+  if (offset) params.set("offset", offset);
+  const qs = params.toString();
+  return apiFetch(`/d1/notifications${qs ? `?${qs}` : ""}`, { method: "GET" });
+}
+
+export async function createNotification({ message, type, source }) {
+  return apiFetch("/d1/notifications", {
+    method: "POST",
+    body: { message, type, source },
+  });
+}
+
+export async function updateNotification(id, updates) {
+  return apiFetch(`/d1/notifications/${id}`, { method: "PATCH", body: updates });
+}
+
+export async function deleteNotification(id) {
+  return apiFetch(`/d1/notifications/${id}`, { method: "DELETE" });
+}
+
+// ─── Knowledge Base ───
+
+export async function listKB({ category } = {}) {
+  const params = new URLSearchParams();
+  if (category) params.set("category", category);
+  const qs = params.toString();
+  return apiFetch(`/d1/kb${qs ? `?${qs}` : ""}`, { method: "GET" });
+}
+
+export async function createKBEntry({ key, category, content, source, related_pages }) {
+  return apiFetch("/d1/kb", {
+    method: "POST",
+    body: { key, category, content, source, related_pages },
+  });
+}
+
+export async function updateKBEntry(id, updates) {
+  return apiFetch(`/d1/kb/${id}`, { method: "PATCH", body: updates });
+}
+
+export async function deleteKBEntry(id) {
+  return apiFetch(`/d1/kb/${id}`, { method: "DELETE" });
+}
+
+export async function searchKB(query, category) {
+  return apiFetch("/d1/kb/search", {
+    method: "POST",
+    body: { query, category },
+  });
+}
+
 // ─── Notion Proxy (backward compat) ───
 // These maintain the existing API surface so current code keeps working.
 
