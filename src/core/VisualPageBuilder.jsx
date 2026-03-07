@@ -327,14 +327,16 @@ export default function VisualPageBuilder({ onCancel }) {
   }, []);
 
   // ── Save Database Page ──
+  const hasLinkedSheets = views.some((v) => v.type === "linked_sheet");
+
   const handleSave = useCallback(async () => {
     setError(null);
     if (!pageName.trim()) {
       setError("Page name is required");
       return;
     }
-    if (connectedDbs.length === 0) {
-      setError("Connect at least one database");
+    if (connectedDbs.length === 0 && !hasLinkedSheets) {
+      setError("Connect at least one database or linked sheet");
       return;
     }
     if (views.length === 0) {
@@ -369,7 +371,7 @@ export default function VisualPageBuilder({ onCancel }) {
     } finally {
       setSaving(false);
     }
-  }, [pageName, pageIcon, connectedDbs, views, refreshInterval, user, platformIds, addPage]);
+  }, [pageName, pageIcon, connectedDbs, views, refreshInterval, user, platformIds, addPage, hasLinkedSheets]);
 
   // ── Save Document Page ──
   const handleSaveDocument = useCallback(async () => {
