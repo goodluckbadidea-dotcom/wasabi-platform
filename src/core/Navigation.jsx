@@ -8,7 +8,7 @@ import React, { useState, useCallback, useRef, useMemo } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { savePageConfig, archivePageConfig } from "../config/pageConfig.js";
-import { createSubpage, archivePage } from "../notion/client.js";
+import { createSubpage, archivePage, ensurePageActive } from "../notion/client.js";
 import { IconDiamond, IconBolt, IconGear, IconStar, IconPlus, IconPage, IconClose, IconTrash } from "../design/icons.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
@@ -196,6 +196,10 @@ export default function Navigation({
   const handleDeletePage = useCallback(async (pageConfig) => {
     try {
       if (user?.workerUrl && user?.notionKey) {
+        // Ensure root page is active before archiving children
+        if (platformIds?.rootPageId) {
+          await ensurePageActive(user.workerUrl, user.notionKey, platformIds.rootPageId);
+        }
         await archivePageConfig(user.workerUrl, user.notionKey, pageConfig.id);
         // Archive associated databases
         for (const dbId of (pageConfig.databaseIds || [])) {
@@ -211,7 +215,7 @@ export default function Navigation({
       console.error("[Navigation] Failed to delete page:", err);
     }
     setConfirmDelete(null);
-  }, [user, removePage]);
+  }, [user, platformIds, removePage]);
 
   // ── Delete View ──
   const handleDeleteView = useCallback((viewIdx) => {

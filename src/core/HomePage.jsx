@@ -7,7 +7,7 @@ import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { archivePageConfig } from "../config/pageConfig.js";
-import { archivePage } from "../notion/client.js";
+import { archivePage, ensurePageActive } from "../notion/client.js";
 import WasabiFlame from "./WasabiFlame.jsx";
 import { TEMPLATES } from "./Onboarding.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
@@ -211,7 +211,7 @@ function removeHover(e) {
 
 // ── Main Component ──
 export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) {
-  const { pages, activePage, setActivePage, removePage, user } = usePlatform();
+  const { pages, activePage, setActivePage, removePage, user, platformIds } = usePlatform();
   const [homeConfig, setHomeConfig] = useState(() => loadHomeConfig());
   const [confirmDelete, setConfirmDelete] = useState(null);
 
@@ -219,6 +219,10 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
   const handleDeletePage = useCallback(async (pageConfig) => {
     try {
       if (user?.workerUrl && user?.notionKey) {
+        // Ensure root page is active before archiving children
+        if (platformIds?.rootPageId) {
+          await ensurePageActive(user.workerUrl, user.notionKey, platformIds.rootPageId);
+        }
         await archivePageConfig(user.workerUrl, user.notionKey, pageConfig.id);
         for (const dbId of (pageConfig.databaseIds || [])) {
           archivePage(user.workerUrl, user.notionKey, dbId).catch(() => {});
@@ -232,7 +236,7 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
       console.error("[HomePage] Failed to delete page:", err);
     }
     setConfirmDelete(null);
-  }, [user, removePage]);
+  }, [user, platformIds, removePage]);
 
   const pinnedIds = homeConfig.pinned || [];
 
