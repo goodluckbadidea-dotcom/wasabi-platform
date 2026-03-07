@@ -1,9 +1,11 @@
 // ─── Wasabi Platform Context ───
 // Central state provider for the entire application.
+// Setup now requires only a worker URL + secret (Notion optional).
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { loadPlatformIds, savePlatformIds } from "../config/setup.js";
 import { loadCachedConfigs, loadPageConfigs, validatePageConfigs, archivePageConfig } from "../config/pageConfig.js";
+import { getConnection, saveConnection } from "../lib/api.js";
 
 const PlatformContext = createContext(null);
 
@@ -25,10 +27,13 @@ function saveUserKeys(keys) {
 }
 
 export function PlatformProvider({ children }) {
-  // ─── User credentials ───
+  // ─── User credentials (legacy: workerUrl, notionKey, claudeKey) ───
   const [user, setUser] = useState(() => loadUserKeys());
 
-  // ─── Platform infrastructure IDs ───
+  // ─── Worker connection (new: workerUrl + secret via api.js) ───
+  const [workerConnection, setWorkerConnection] = useState(() => getConnection());
+
+  // ─── Platform infrastructure IDs (legacy Notion-based) ───
   const [platformIds, setPlatformIds] = useState(() => loadPlatformIds());
 
   // ─── Pages ───
@@ -145,6 +150,50 @@ export function PlatformProvider({ children }) {
     savePlatformIds(ids);
   }, []);
 
+  /**
+   * Complete the new simplified setup (worker URL + secret).
+   * Seeds legacy user state with workerUrl for backward compat.
+   */
+  const completeSetup = useCallback((workerUrl, secret) => {
+    const conn = saveConnection(workerUrl, secret);
+    setWorkerConnection(conn);
+
+    // Seed legacy user keys so existing code keeps working
+    const keys = {
+      workerUrl,
+      notionKey: user?.notionKey || "",
+      claudeKey: user?.claudeKey || "",
+    };
+    setUser(keys);
+    saveUserKeys(keys);
+
+    // Mark as "setup complete" without requiring Notion IDs
+    if (!platformIds) {
+      const stubIds = { d1Initialized: true };
+      setPlatformIds(stubIds);
+      savePlatformIds(stubIds);
+    }
+  }, [user, platformIds]);
+
+  /**
+   * Update a connection key on the worker. Also updates legacy user keys.
+   */
+  const updateConnectionKey = useCallback((key, value) => {
+    if (key === "notion") {
+      setUser((prev) => {
+        const updated = { ...prev, notionKey: value };
+        saveUserKeys(updated);
+        return updated;
+      });
+    } else if (key === "claude") {
+      setUser((prev) => {
+        const updated = { ...prev, claudeKey: value };
+        saveUserKeys(updated);
+        return updated;
+      });
+    }
+  }, []);
+
   const addPage = useCallback((pageConfig) => {
     setPages((prev) => {
       const updated = [...prev, pageConfig];
@@ -212,16 +261,26 @@ export function PlatformProvider({ children }) {
     });
   }, []);
 
+  // ─── Derived state ───
+  const isWorkerConnected = !!(workerConnection?.workerUrl);
+  const isLegacySetup = !!(platformIds?.rootPageId);
+  const isLegacyAuth = !!(user?.notionKey && user?.claudeKey && user?.workerUrl);
+
   const value = {
     // Credentials
     user,
     setUserKeys,
-    isAuthenticated: !!(user?.notionKey && user?.claudeKey && user?.workerUrl),
+    isAuthenticated: isWorkerConnected || isLegacyAuth,
 
-    // Platform IDs
+    // Worker connection (new)
+    workerConnection,
+    completeSetup,
+    updateConnectionKey,
+
+    // Platform IDs (legacy — still needed for existing Notion features)
     platformIds,
     setPlatformIds: setIds,
-    isSetup: !!(platformIds?.rootPageId),
+    isSetup: isWorkerConnected || isLegacySetup,
 
     // Pages
     pages,

@@ -1,6 +1,6 @@
 // ─── Wasabi Platform Cloudflare Worker ───
-// Generalized Notion + Claude API proxy. No hardcoded DB IDs.
-// All database IDs and API keys passed from client per-request.
+// Backend with D1 storage, optional Notion + Claude proxy.
+// Auth via shared secret (X-Wasabi-Key header).
 
 const NOTION_API = "https://api.notion.com/v1";
 const NOTION_VERSION = "2022-06-28";
@@ -9,8 +9,168 @@ const CLAUDE_API = "https://api.anthropic.com/v1/messages";
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Claude-Key",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Claude-Key, X-Wasabi-Key",
 };
+
+// ─── D1 Schema ───
+const D1_SCHEMA = `
+CREATE TABLE IF NOT EXISTS connections (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  metadata TEXT DEFAULT '{}',
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS page_configs (
+  id TEXT PRIMARY KEY,
+  parent_id TEXT,
+  title TEXT NOT NULL,
+  icon TEXT DEFAULT '',
+  page_type TEXT NOT NULL,
+  sort_order INTEGER DEFAULT 0,
+  config TEXT DEFAULT '{}',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS table_schemas (
+  id TEXT PRIMARY KEY,
+  columns TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS table_rows (
+  id TEXT PRIMARY KEY,
+  table_id TEXT NOT NULL,
+  cells TEXT NOT NULL,
+  sort_order INTEGER DEFAULT 0,
+  archived INTEGER DEFAULT 0,
+  metadata TEXT DEFAULT '{}',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS sheet_data (
+  id TEXT PRIMARY KEY,
+  col_count INTEGER DEFAULT 26,
+  row_count INTEGER DEFAULT 100,
+  cells TEXT NOT NULL DEFAULT '{}',
+  col_widths TEXT DEFAULT '{}',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS documents (
+  id TEXT PRIMARY KEY,
+  r2_key TEXT NOT NULL,
+  version INTEGER DEFAULT 1,
+  word_count INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS automation_rules (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT DEFAULT '',
+  trigger_type TEXT NOT NULL,
+  trigger_config TEXT DEFAULT '{}',
+  action_config TEXT DEFAULT '{}',
+  enabled INTEGER DEFAULT 0,
+  scope_table_id TEXT,
+  fire_count INTEGER DEFAULT 0,
+  last_fired_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  message TEXT NOT NULL,
+  type TEXT DEFAULT 'notification',
+  status TEXT DEFAULT 'unread',
+  source TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS knowledge_base (
+  id TEXT PRIMARY KEY,
+  key TEXT NOT NULL,
+  category TEXT DEFAULT 'business_context',
+  content TEXT NOT NULL,
+  source TEXT DEFAULT 'conversation',
+  related_pages TEXT DEFAULT '[]',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS cell_links (
+  id TEXT PRIMARY KEY,
+  source_page_id TEXT NOT NULL,
+  source_view_idx INTEGER,
+  source_ref TEXT NOT NULL,
+  target_page_id TEXT NOT NULL,
+  target_view_idx INTEGER,
+  target_ref TEXT NOT NULL,
+  direction TEXT DEFAULT 'one_way',
+  active INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS sync_configs (
+  id TEXT PRIMARY KEY,
+  table_id TEXT NOT NULL,
+  notion_db_id TEXT NOT NULL,
+  direction TEXT DEFAULT 'app_to_notion',
+  field_mapping TEXT DEFAULT '{}',
+  last_synced_at TEXT,
+  enabled INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+`;
+
+const D1_INDEXES = `
+CREATE INDEX IF NOT EXISTS idx_rows_table ON table_rows(table_id, archived);
+CREATE INDEX IF NOT EXISTS idx_notif_status ON notifications(status);
+`;
+
+// ─── Auth Middleware ───
+function authenticate(request, env) {
+  const secret = env.WASABI_SECRET;
+  // If no secret is configured, allow all requests (first-time setup)
+  if (!secret) return true;
+  const provided = request.headers.get("X-Wasabi-Key");
+  return provided === secret;
+}
+
+// ─── Get Notion key: from D1 connections or request header ───
+async function getNotionKey(request, env) {
+  // First try the request header (backward compat)
+  const headerKey = request.headers.get("Authorization")?.replace("Bearer ", "");
+  if (headerKey) return headerKey;
+  // Then try D1 connections table
+  try {
+    const row = await env.DB.prepare("SELECT value FROM connections WHERE key = 'notion'").first();
+    return row?.value || null;
+  } catch {
+    return null;
+  }
+}
+
+// ─── Get Claude key: from D1 connections or request header ───
+async function getClaudeKey(request, body, env) {
+  // First try the request header/body (backward compat)
+  const headerKey = request.headers.get("X-Claude-Key") || body?.claudeKey;
+  if (headerKey) return headerKey;
+  // Then try D1 connections table
+  try {
+    const row = await env.DB.prepare("SELECT value FROM connections WHERE key = 'claude'").first();
+    return row?.value || null;
+  } catch {
+    return null;
+  }
+}
 
 export default {
   async fetch(request, env) {
@@ -21,10 +181,40 @@ export default {
 
     const url = new URL(request.url);
     const path = url.pathname;
-    const notionKey = request.headers.get("Authorization")?.replace("Bearer ", "");
 
     try {
+      // ─── Public Routes (no auth required) ───
+
+      // Health check
+      if (path === "/health" && request.method === "GET") {
+        return await handleHealth(env);
+      }
+
+      // ─── Auth Gate ───
+      if (!authenticate(request, env)) {
+        return jsonResponse({ _error: "Unauthorized" }, 401);
+      }
+
+      // ─── D1 Bootstrap ───
+      if (path === "/init" && request.method === "POST") {
+        return await handleInit(env);
+      }
+
+      // ─── Connections CRUD ───
+      if (path === "/connections" && request.method === "GET") {
+        return await handleGetConnections(env);
+      }
+      if (path === "/connections" && request.method === "POST") {
+        const body = await request.json();
+        return await handleSetConnection(env, body);
+      }
+      if (path.startsWith("/connections/") && request.method === "DELETE") {
+        const key = path.split("/connections/")[1];
+        return await handleDeleteConnection(env, key);
+      }
+
       // ─── Notion Routes ───
+      const notionKey = await getNotionKey(request, env);
 
       // Query database (with pagination)
       if (path === "/query" && request.method === "POST") {
@@ -75,7 +265,7 @@ export default {
         return await notionFetch(`/databases/${dbId}`, "PATCH", notionKey, body);
       }
 
-      // Update single block (/block/ singular — distinct from /blocks/ plural)
+      // Update single block
       if (path.startsWith("/block/") && request.method === "PATCH") {
         const blockId = path.split("/block/")[1];
         const body = await request.json();
@@ -107,7 +297,7 @@ export default {
         return await notionFetch("/search", "POST", notionKey, body);
       }
 
-      // Test connection
+      // Test Notion connection
       if (path === "/test" && request.method === "GET") {
         return await notionFetch("/users/me", "GET", notionKey);
       }
@@ -115,7 +305,7 @@ export default {
       // ─── Claude API ───
       if (path === "/claude" && request.method === "POST") {
         const body = await request.json();
-        const claudeKey = request.headers.get("X-Claude-Key") || body.claudeKey;
+        const claudeKey = await getClaudeKey(request, body, env);
         if (!claudeKey) {
           return jsonResponse({ _error: "Missing Claude API key" }, 400);
         }
@@ -145,7 +335,6 @@ export default {
         if (!sheetUrl) return jsonResponse({ _error: "Missing sheet URL" }, 400);
         if (!sheetUrl.startsWith("https://")) return jsonResponse({ _error: "Only HTTPS URLs are supported" }, 400);
 
-        // Detect sheet type and build fetch URL
         let fetchUrl = sheetUrl;
         let sheetType = "csv";
         const gMatch = sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
@@ -154,13 +343,11 @@ export default {
           fetchUrl = `https://docs.google.com/spreadsheets/d/${gMatch[1]}/gviz/tq?tqx=out:csv`;
         }
 
-        // Check Cloudflare cache (5-min TTL)
         const cacheKey = new Request(`https://wasabi-cache.internal/sheets/${encodeURIComponent(sheetUrl)}`, { method: "GET" });
         const cache = caches.default;
         const cached = await cache.match(cacheKey);
         if (cached) return cached;
 
-        // Fetch the CSV
         const csvRes = await fetch(fetchUrl, { headers: { "User-Agent": "Wasabi-Platform/1.0" } });
         if (!csvRes.ok) {
           const status = csvRes.status;
@@ -171,11 +358,9 @@ export default {
         }
         const csvText = await csvRes.text();
 
-        // Parse CSV
         const { columns, rows } = parseCSV(csvText);
         const result = { columns, rows: rows.slice(0, 10000), cachedAt: Date.now(), sheetType, truncated: rows.length > 10000 };
 
-        // Store in cache with 5-min TTL
         const response = jsonResponse(result);
         const cachedResponse = new Response(response.body, response);
         cachedResponse.headers.set("Cache-Control", "public, max-age=300");
@@ -192,6 +377,121 @@ export default {
     }
   },
 };
+
+// ─── Route Handlers ───
+
+async function handleHealth(env) {
+  const status = { ok: true, version: "2.0.0", d1: false, r2: false, notion: false, claude: false };
+
+  // Check D1
+  try {
+    await env.DB.prepare("SELECT 1").first();
+    status.d1 = true;
+  } catch {}
+
+  // Check R2
+  try {
+    if (env.DOCS) {
+      await env.DOCS.head("__health__");
+      status.r2 = true;
+    }
+  } catch {
+    // R2 binding exists but head() on missing key throws — that's fine
+    if (env.DOCS) status.r2 = true;
+  }
+
+  // Check if Notion connection exists
+  try {
+    const row = await env.DB.prepare("SELECT key FROM connections WHERE key = 'notion'").first();
+    status.notion = !!row;
+  } catch {}
+
+  // Check if Claude connection exists
+  try {
+    const row = await env.DB.prepare("SELECT key FROM connections WHERE key = 'claude'").first();
+    status.claude = !!row;
+  } catch {}
+
+  return jsonResponse(status);
+}
+
+async function handleInit(env) {
+  const statements = D1_SCHEMA.split(";").map((s) => s.trim()).filter((s) => s.length > 0);
+  const indexStatements = D1_INDEXES.split(";").map((s) => s.trim()).filter((s) => s.length > 0);
+
+  try {
+    // Create tables
+    for (const sql of statements) {
+      await env.DB.prepare(sql).run();
+    }
+    // Create indexes
+    for (const sql of indexStatements) {
+      await env.DB.prepare(sql).run();
+    }
+
+    // Return table list
+    const tables = await env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' ORDER BY name"
+    ).all();
+
+    return jsonResponse({
+      ok: true,
+      tables: tables.results.map((t) => t.name),
+      message: "Database initialized successfully",
+    });
+  } catch (err) {
+    return jsonResponse({ _error: `Init failed: ${err.message}` }, 500);
+  }
+}
+
+async function handleGetConnections(env) {
+  try {
+    const rows = await env.DB.prepare(
+      "SELECT key, metadata, updated_at FROM connections ORDER BY key"
+    ).all();
+    // Never expose actual API key values — just metadata
+    return jsonResponse({
+      connections: rows.results.map((r) => ({
+        key: r.key,
+        metadata: JSON.parse(r.metadata || "{}"),
+        updated_at: r.updated_at,
+        connected: true,
+      })),
+    });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleSetConnection(env, body) {
+  const { key, value, metadata } = body;
+  if (!key || !value) {
+    return jsonResponse({ _error: "Missing key or value" }, 400);
+  }
+
+  try {
+    await env.DB.prepare(
+      `INSERT INTO connections (key, value, metadata, updated_at)
+       VALUES (?, ?, ?, datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, metadata = excluded.metadata, updated_at = datetime('now')`
+    ).bind(key, value, JSON.stringify(metadata || {})).run();
+
+    return jsonResponse({ ok: true, key });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleDeleteConnection(env, key) {
+  if (!key) return jsonResponse({ _error: "Missing connection key" }, 400);
+
+  try {
+    await env.DB.prepare("DELETE FROM connections WHERE key = ?").bind(key).run();
+    return jsonResponse({ ok: true, key });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
 
 // ─── Notion API Helper ───
 async function notionFetch(endpoint, method, notionKey, body) {
@@ -210,7 +510,6 @@ async function notionFetch(endpoint, method, notionKey, body) {
     opts.body = JSON.stringify(body);
   }
 
-  // Retry with backoff for rate limits
   for (let attempt = 0; attempt < 4; attempt++) {
     const res = await fetch(`${NOTION_API}${endpoint}`, opts);
 
@@ -327,7 +626,6 @@ function parseCSV(text) {
       }
     }
   }
-  // Last field/row
   if (field.length > 0 || row.length > 0) {
     row.push(field);
     if (row.some((c) => c.length > 0)) rows.push(row);

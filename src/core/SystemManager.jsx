@@ -1,6 +1,5 @@
 // ─── SystemManager ───
-// Three-tab system management interface: Overview, Agent Configs, Chat.
-// Replaces the "Coming in Phase 4" stub in App.jsx.
+// Four-tab system management interface: Overview, Connections, Agent Configs, Chat.
 // No emojis. Dark theme. Inline CSS-in-JS.
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
@@ -15,6 +14,7 @@ import { queryAll } from "../notion/pagination.js";
 import WasabiOrb from "./WasabiOrb.jsx";
 import { IconGear } from "../design/icons.jsx";
 import { getSessionUsage, getUsageHistory, formatCost, formatTokens } from "../utils/costTracker.js";
+import { getConnections, setConnection as apiSetConnection, deleteConnection as apiDeleteConnection, checkHealth } from "../lib/api.js";
 
 // ── Tab button style (matches WasabiPanel) ──
 const tabBtn = (active) => ({
@@ -438,12 +438,157 @@ function AgentRow({ page, onSave }) {
   );
 }
 
+// ── Connection row (for Connections tab) ──
+const CONNECTION_DEFS = [
+  { key: "notion", label: "Notion", placeholder: "ntn_...", description: "Connect a Notion integration to link databases and sync data." },
+  { key: "claude", label: "Claude", placeholder: "sk-ant-...", description: "Anthropic API key for AI chat, automations, and agent tools." },
+];
+
+function ConnectionRow({ def, connected, onSave, onDelete }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = useCallback(async () => {
+    if (!value.trim()) return;
+    setSaving(true);
+    try {
+      await onSave(def.key, value.trim(), { label: def.label });
+      setEditing(false);
+      setValue("");
+    } catch (err) {
+      console.error(`Failed to save ${def.key}:`, err);
+    } finally {
+      setSaving(false);
+    }
+  }, [def, value, onSave]);
+
+  const handleDelete = useCallback(async () => {
+    setSaving(true);
+    try {
+      await onDelete(def.key);
+    } catch (err) {
+      console.error(`Failed to delete ${def.key}:`, err);
+    } finally {
+      setSaving(false);
+    }
+  }, [def, onDelete]);
+
+  return (
+    <div style={{
+      background: C.darkSurf,
+      border: `1px solid ${C.darkBorder}`,
+      borderRadius: RADIUS.lg,
+      padding: "14px 16px",
+      marginBottom: 10,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: editing ? 10 : 0 }}>
+        {/* Status dot */}
+        <span style={{
+          width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+          background: connected ? C.accent : C.darkMuted + "44",
+        }} />
+        {/* Name */}
+        <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: C.darkText, fontFamily: FONT }}>
+          {def.label}
+        </span>
+        {/* Status label */}
+        <span style={{ fontSize: 10, color: connected ? C.accent : C.darkMuted, fontFamily: FONT }}>
+          {connected ? "Connected" : "Not connected"}
+        </span>
+        {/* Actions */}
+        {connected ? (
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              onClick={() => setEditing((e) => !e)}
+              style={{
+                background: C.darkSurf2, border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
+                color: C.darkMuted, fontFamily: FONT, fontSize: 11, padding: "3px 10px", cursor: "pointer",
+              }}
+            >
+              Update
+            </button>
+            <button
+              onClick={handleDelete}
+              disabled={saving}
+              style={{
+                background: "transparent", border: `1px solid #FF480044`, borderRadius: RADIUS.sm,
+                color: "#FF6B3D", fontFamily: FONT, fontSize: 11, padding: "3px 10px", cursor: saving ? "default" : "pointer",
+                opacity: saving ? 0.5 : 1,
+              }}
+            >
+              Remove
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setEditing(true)}
+            style={{
+              background: C.accent, border: "none", borderRadius: RADIUS.sm,
+              color: "#fff", fontFamily: FONT, fontSize: 11, fontWeight: 600, padding: "4px 14px", cursor: "pointer",
+            }}
+          >
+            Add
+          </button>
+        )}
+      </div>
+
+      {/* Description */}
+      {!editing && (
+        <p style={{ fontSize: 11, color: C.darkMuted, marginTop: 6, marginLeft: 18, lineHeight: 1.4 }}>
+          {def.description}
+        </p>
+      )}
+
+      {/* Edit form */}
+      {editing && (
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            type="password"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder={def.placeholder}
+            style={{
+              flex: 1, background: C.dark, border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.md,
+              color: C.darkText, fontFamily: MONO, fontSize: 12, padding: "8px 10px", outline: "none",
+            }}
+            onFocus={(e) => { e.target.style.borderColor = C.accent; }}
+            onBlur={(e) => { e.target.style.borderColor = C.darkBorder; }}
+            onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") setEditing(false); }}
+            autoFocus
+          />
+          <button
+            onClick={handleSave}
+            disabled={saving || !value.trim()}
+            style={{
+              background: saving ? C.darkSurf2 : C.accent, border: "none", borderRadius: RADIUS.md,
+              color: "#fff", fontFamily: FONT, fontSize: 12, fontWeight: 600, padding: "8px 16px",
+              cursor: saving || !value.trim() ? "default" : "pointer", opacity: saving || !value.trim() ? 0.5 : 1,
+            }}
+          >
+            {saving ? "..." : "Save"}
+          </button>
+          <button
+            onClick={() => { setEditing(false); setValue(""); }}
+            style={{
+              background: C.darkSurf2, border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.md,
+              color: C.darkMuted, fontFamily: FONT, fontSize: 12, padding: "8px 12px", cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // SystemManager
 // ════════════════════════════════════════════════════════════════════════════
 
 export default function SystemManager() {
-  const { user, platformIds, pages, updatePageConfig } = usePlatform();
+  const { user, platformIds, pages, updatePageConfig, workerConnection, updateConnectionKey } = usePlatform();
 
   // ── Tab state ──
   const [tab, setTab] = useState("overview");
@@ -456,6 +601,53 @@ export default function SystemManager() {
   // ── Cost tracking ──
   const [costData, setCostData] = useState(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+
+  // ── Connections state ──
+  const [connections, setConnections] = useState([]);
+  const [connectionsLoading, setConnectionsLoading] = useState(false);
+  const connectionsFetched = useRef(false);
+
+  // Load connections when tab activates
+  useEffect(() => {
+    if (tab !== "connections" || connectionsFetched.current) return;
+    connectionsFetched.current = true;
+    setConnectionsLoading(true);
+    getConnections()
+      .then((data) => setConnections(data.connections || []))
+      .catch((err) => console.warn("Failed to load connections:", err))
+      .finally(() => setConnectionsLoading(false));
+  }, [tab]);
+
+  const handleSaveConnection = useCallback(async (key, value, metadata) => {
+    await apiSetConnection(key, value, metadata);
+    // Update local state
+    setConnections((prev) => {
+      const existing = prev.findIndex((c) => c.key === key);
+      const entry = { key, metadata, connected: true, updated_at: new Date().toISOString() };
+      if (existing >= 0) {
+        const updated = [...prev];
+        updated[existing] = entry;
+        return updated;
+      }
+      return [...prev, entry];
+    });
+    // Update legacy user keys in PlatformContext
+    updateConnectionKey(key, value);
+  }, [updateConnectionKey]);
+
+  const handleDeleteConnection = useCallback(async (key) => {
+    await apiDeleteConnection(key);
+    setConnections((prev) => prev.filter((c) => c.key !== key));
+    updateConnectionKey(key, "");
+  }, [updateConnectionKey]);
+
+  // ── Worker health ──
+  const [health, setHealth] = useState(null);
+  useEffect(() => {
+    if (tab === "overview" || tab === "connections") {
+      checkHealth().then(setHealth).catch(() => setHealth(null));
+    }
+  }, [tab]);
 
   // Load cost data when overview tab is active
   useEffect(() => {
@@ -666,6 +858,12 @@ export default function SystemManager() {
             onClick={() => setTab("overview")}
           >
             Overview
+          </button>
+          <button
+            style={tabBtn(tab === "connections")}
+            onClick={() => setTab("connections")}
+          >
+            Connections
           </button>
           <button
             style={tabBtn(tab === "configs")}
@@ -919,6 +1117,79 @@ export default function SystemManager() {
                 })()}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ═══ CONNECTIONS TAB ═══ */}
+        {tab === "connections" && (
+          <div style={{ padding: "20px 24px" }}>
+            {/* Worker status */}
+            <div style={{
+              background: C.darkSurf,
+              border: `1px solid ${C.darkBorder}`,
+              borderRadius: RADIUS.lg,
+              padding: "14px 16px",
+              marginBottom: 20,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                <span style={{
+                  width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+                  background: health?.ok ? C.accent : "#FF6B3D",
+                }} />
+                <span style={{ fontSize: 13, fontWeight: 500, color: C.darkText, fontFamily: FONT }}>
+                  Worker
+                </span>
+                <span style={{ fontSize: 10, color: health?.ok ? C.accent : "#FF6B3D", fontFamily: FONT }}>
+                  {health?.ok ? "Healthy" : "Unreachable"}
+                </span>
+              </div>
+              {workerConnection?.workerUrl && (
+                <div style={{ fontSize: 11, color: C.darkMuted, fontFamily: MONO, marginLeft: 18, wordBreak: "break-all" }}>
+                  {workerConnection.workerUrl}
+                </div>
+              )}
+              {health && (
+                <div style={{ display: "flex", gap: 8, marginTop: 8, marginLeft: 18, flexWrap: "wrap" }}>
+                  {[
+                    { label: "D1", ok: health.d1 },
+                    { label: "R2", ok: health.r2 },
+                  ].map((svc) => (
+                    <span key={svc.label} style={{
+                      fontSize: 9, fontFamily: MONO, padding: "2px 8px",
+                      borderRadius: RADIUS.sm, border: `1px solid ${C.darkBorder}`,
+                      background: svc.ok ? C.accent + "18" : C.darkSurf2,
+                      color: svc.ok ? C.accent : C.darkMuted,
+                    }}>
+                      {svc.label}: {svc.ok ? "OK" : "off"}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Section label */}
+            <div style={{
+              fontSize: 10, color: C.darkMuted, fontFamily: FONT,
+              textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12,
+            }}>
+              Integrations
+            </div>
+
+            {connectionsLoading ? (
+              <div style={{ color: C.darkMuted, fontSize: 12, textAlign: "center", padding: 20 }}>
+                Loading connections...
+              </div>
+            ) : (
+              CONNECTION_DEFS.map((def) => (
+                <ConnectionRow
+                  key={def.key}
+                  def={def}
+                  connected={connections.some((c) => c.key === def.key)}
+                  onSave={handleSaveConnection}
+                  onDelete={handleDeleteConnection}
+                />
+              ))
+            )}
           </div>
         )}
 

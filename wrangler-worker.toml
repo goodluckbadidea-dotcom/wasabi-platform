@@ -1,0 +1,19 @@
+name = "wasabi-worker"
+main = "worker.js"
+compatibility_date = "2025-09-27"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "wasabi-main"
+database_id = "74c85b52-e230-43c1-8d7d-631402b6a682"
+
+# R2 bucket — uncomment after enabling R2 in Cloudflare Dashboard
+# [[r2_buckets]]
+# binding = "DOCS"
+# bucket_name = "wasabi-docs"
+
+# WASABI_SECRET set via: npx wrangler secret put WASABI_SECRET -c wrangler-worker.toml

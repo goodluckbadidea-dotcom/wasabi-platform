@@ -1,126 +1,81 @@
 // ─── Setup Wizard ───
-// First screen: API key entry + Notion connection validation.
+// Simplified setup: Worker URL + shared secret → health check → D1 init.
+// Notion and Claude are optional connections added later in System Manager.
 
 import React, { useState, useCallback } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { testConnection, getPage } from "../notion/client.js";
+import { saveConnection, checkHealth, initDatabase } from "../lib/api.js";
 import WasabiFlame from "./WasabiFlame.jsx";
-import { runFirstTimeSetup, isSetupComplete } from "../config/setup.js";
-
-/**
- * Extract a Notion page ID from a URL or raw ID string.
- * Supports: full URLs, UUIDs with/without dashes, or short hex IDs at the end of a URL.
- */
-function extractPageId(input) {
-  const s = (input || "").trim();
-  // Already a UUID with dashes
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)) return s;
-  // UUID without dashes
-  if (/^[0-9a-f]{32}$/i.test(s)) {
-    return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
-  }
-  // URL — grab the last 32-hex-char block (with or without dashes)
-  const match = s.match(/([0-9a-f]{32})/i) || s.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
-  if (match) {
-    const raw = match[1].replace(/-/g, "");
-    return `${raw.slice(0,8)}-${raw.slice(8,12)}-${raw.slice(12,16)}-${raw.slice(16,20)}-${raw.slice(20)}`;
-  }
-  return null;
-}
 
 export default function SetupWizard() {
-  const { setUserKeys, setPlatformIds, setIsLoading } = usePlatform();
+  const { completeSetup } = usePlatform();
 
   const [workerUrl, setWorkerUrl] = useState("");
-  const [notionKey, setNotionKey] = useState("");
-  const [claudeKey, setClaudeKey] = useState("");
-  const [parentPage, setParentPage] = useState("");
-  const [step, setStep] = useState("keys"); // "keys" | "connecting" | "setting-up" | "error"
+  const [secret, setSecret] = useState("");
+  const [step, setStep] = useState("connect"); // "connect" | "checking" | "initializing" | "error"
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
 
   const handleConnect = useCallback(async () => {
     const url = workerUrl.trim().replace(/\/$/, "");
-    const notion = notionKey.trim();
-    const claude = claudeKey.trim();
-    const parentId = extractPageId(parentPage);
+    const key = secret.trim();
 
-    if (!url || !notion || !claude) {
-      setError("Worker URL, Notion key, and Claude key are required.");
+    if (!url) {
+      setError("Worker URL is required.");
       return;
     }
 
-    if (!parentId) {
-      setError("Please paste a valid Notion page URL or ID. This page will contain Wasabi's workspace.");
-      return;
-    }
-
-    setStep("connecting");
+    setStep("checking");
     setError("");
-    setStatus("Testing Notion connection...");
+    setStatus("Checking worker health...");
 
     try {
-      // Test Notion connection
-      const result = await testConnection(url, notion);
-      if (!result.ok) {
-        setError(`Notion connection failed: ${result.error}`);
-        setStep("keys");
+      // Save connection locally so api.js can use it
+      saveConnection(url, key);
+
+      // Health check
+      const health = await checkHealth();
+      if (!health.ok) {
+        setError("Worker responded but reported unhealthy status.");
+        setStep("connect");
         return;
       }
 
-      // Verify we can access the parent page before setup
-      setStatus("Verifying page access...");
-      try {
-        await getPage(url, notion, parentId);
-      } catch (pageErr) {
-        const msg = pageErr.message || "";
-        if (msg.includes("404") || msg.includes("not find")) {
-          setError(
-            "Cannot access that Notion page. Make sure you've shared it with your integration " +
-            "(open the page in Notion → ··· menu → Connections → Add your integration)."
-          );
-        } else if (msg.includes("401")) {
-          setError("Invalid Notion API key — double-check it and try again.");
-        } else if (msg.includes("403")) {
-          setError("Insufficient permissions on this page. Your integration needs full access.");
-        } else {
-          setError(`Cannot access page: ${msg}`);
-        }
-        setStep("keys");
+      if (!health.d1) {
+        setError("D1 database not bound to worker. Check your wrangler-worker.toml configuration.");
+        setStep("connect");
         return;
       }
 
-      setStatus("Page verified. Setting up platform...");
-      setStep("setting-up");
+      // Initialize D1 tables
+      setStatus("Initializing database...");
+      setStep("initializing");
 
-      // Save keys first
-      const keys = { workerUrl: url, notionKey: notion, claudeKey: claude };
-      setUserKeys(keys);
+      const initResult = await initDatabase();
+      if (!initResult.ok) {
+        setError(`Database initialization failed: ${initResult._error || "Unknown error"}`);
+        setStep("connect");
+        return;
+      }
 
-      // Run first-time setup under the user's chosen parent page
-      const ids = await runFirstTimeSetup(url, notion, parentId);
-      setPlatformIds(ids);
+      setStatus("Ready!");
 
-      setStatus("Done!");
-      // PlatformContext will now show the app
+      // Complete setup — PlatformContext will switch to the app
+      completeSetup(url, key);
     } catch (err) {
       const msg = err.message || "";
-      let userError;
-      if (msg.includes("404")) {
-        userError = "Page not found — check the page ID and make sure it's shared with your integration.";
-      } else if (msg.includes("401")) {
-        userError = "Invalid Notion API key.";
-      } else if (msg.includes("403")) {
-        userError = "Insufficient permissions on this page.";
+      if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("fetch")) {
+        setError("Cannot reach worker. Check the URL and make sure the worker is deployed.");
+      } else if (msg.includes("Unauthorized") || msg.includes("401")) {
+        setError("Invalid secret. Check your WASABI_SECRET and try again.");
       } else {
-        userError = `Setup failed: ${msg}`;
+        setError(msg || "Connection failed");
       }
-      setError(userError);
-      setStep("keys");
+      setStep("connect");
     }
-  }, [workerUrl, notionKey, claudeKey, parentPage, setUserKeys, setPlatformIds]);
+  }, [workerUrl, secret, completeSetup]);
 
   const inputStyle = {
     ...S.input,
@@ -132,7 +87,7 @@ export default function SetupWizard() {
     borderRadius: RADIUS.lg,
   };
 
-  const isConnecting = step === "connecting" || step === "setting-up";
+  const isConnecting = step === "checking" || step === "initializing";
 
   return (
     <div style={{
@@ -160,7 +115,7 @@ export default function SetupWizard() {
             Wasabi
           </h1>
           <p style={{ fontSize: 13, color: C.darkMuted, marginTop: 6 }}>
-            Connect your APIs to get started
+            Connect to your Wasabi worker to get started
           </p>
         </div>
 
@@ -174,7 +129,7 @@ export default function SetupWizard() {
               type="url"
               value={workerUrl}
               onChange={(e) => setWorkerUrl(e.target.value)}
-              placeholder="https://your-worker.workers.dev"
+              placeholder="https://wasabi-worker.your-account.workers.dev"
               style={inputStyle}
               disabled={isConnecting}
             />
@@ -182,47 +137,18 @@ export default function SetupWizard() {
 
           <div>
             <label style={{ ...S.label, color: C.darkMuted, display: "block", marginBottom: 6 }}>
-              Notion API Key
+              Shared Secret
             </label>
             <input
               type="password"
-              value={notionKey}
-              onChange={(e) => setNotionKey(e.target.value)}
-              placeholder="ntn_..."
-              style={inputStyle}
-              disabled={isConnecting}
-            />
-          </div>
-
-          <div>
-            <label style={{ ...S.label, color: C.darkMuted, display: "block", marginBottom: 6 }}>
-              Claude API Key
-            </label>
-            <input
-              type="password"
-              value={claudeKey}
-              onChange={(e) => setClaudeKey(e.target.value)}
-              placeholder="sk-ant-..."
-              style={inputStyle}
-              disabled={isConnecting}
-            />
-          </div>
-
-          <div>
-            <label style={{ ...S.label, color: C.darkMuted, display: "block", marginBottom: 6 }}>
-              Notion Parent Page
-            </label>
-            <input
-              type="text"
-              value={parentPage}
-              onChange={(e) => setParentPage(e.target.value)}
-              placeholder="Paste any Notion page URL"
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+              placeholder="Your WASABI_SECRET (optional for first setup)"
               style={inputStyle}
               disabled={isConnecting}
             />
             <p style={{ fontSize: 11, color: C.darkMuted, marginTop: 4, lineHeight: 1.4 }}>
-              Wasabi creates its workspace under this page.
-              Share it with your Notion integration first.
+              The shared secret configured on your worker. Leave blank if not yet set.
             </p>
           </div>
 
@@ -251,7 +177,7 @@ export default function SetupWizard() {
               alignItems: "center",
               gap: 8,
             }}>
-              <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⟳</span>
+              <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>&#x27F3;</span>
               {status}
             </div>
           )}
@@ -269,7 +195,7 @@ export default function SetupWizard() {
               cursor: isConnecting ? "default" : "pointer",
             }}
           >
-            {isConnecting ? "Setting up..." : "Connect & Launch"}
+            {isConnecting ? "Connecting..." : "Connect"}
           </button>
         </div>
 
@@ -280,9 +206,9 @@ export default function SetupWizard() {
           marginTop: 20,
           lineHeight: 1.5,
         }}>
-          Your API keys are stored locally and never sent to third parties.
+          Your worker handles all API calls and data storage.
           <br />
-          You need a Cloudflare Worker deployed as a proxy.
+          Add Notion, Claude, and other integrations in System Manager after connecting.
         </p>
       </div>
     </div>
