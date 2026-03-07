@@ -459,7 +459,7 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
     ? "New Sub-page"
     : folderId
     ? "New Page"
-    : "Create New";
+    : "+ Create New";
 
   // ── Page Type Selection Screen ──
   if (!pageType) {
