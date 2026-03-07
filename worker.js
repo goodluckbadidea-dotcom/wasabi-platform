@@ -815,23 +815,45 @@ async function handleUpdatePage(env, id, body) {
 
 async function handleDeletePage(env, id) {
   try {
-    // Delete page config
-    await env.DB.prepare("DELETE FROM page_configs WHERE id = ?").bind(id).run();
-    // Remove child pages (pages in folder, sub-pages)
-    await env.DB.prepare("DELETE FROM page_configs WHERE parent_id = ?").bind(id).run();
-    // Remove table schema if exists
-    await env.DB.prepare("DELETE FROM table_schemas WHERE id = ?").bind(id).run();
-    // Remove table rows if exists
-    await env.DB.prepare("DELETE FROM table_rows WHERE table_id = ?").bind(id).run();
-    // Remove sheet data if exists
-    await env.DB.prepare("DELETE FROM sheet_data WHERE id = ?").bind(id).run();
-    // Remove document metadata + R2 content if exists
-    const docMeta = await env.DB.prepare("SELECT r2_key FROM documents WHERE id = ?").bind(id).first();
-    if (docMeta?.r2_key) {
-      try { await env.DOCS.delete(docMeta.r2_key); } catch {}
+    // Collect all IDs to delete (the page itself + any children)
+    const children = await env.DB.prepare(
+      "SELECT id FROM page_configs WHERE parent_id = ?"
+    ).bind(id).all();
+    const allIds = [id, ...(children.results || []).map((r) => r.id)];
+
+    for (const pid of allIds) {
+      // Remove table schema
+      await env.DB.prepare("DELETE FROM table_schemas WHERE id = ?").bind(pid).run();
+      // Remove table rows
+      await env.DB.prepare("DELETE FROM table_rows WHERE table_id = ?").bind(pid).run();
+      // Remove sheet data
+      await env.DB.prepare("DELETE FROM sheet_data WHERE id = ?").bind(pid).run();
+      // Remove sync configs
+      await env.DB.prepare("DELETE FROM sync_configs WHERE table_id = ?").bind(pid).run();
+      // Remove cell links (source or target)
+      await env.DB.prepare(
+        "DELETE FROM cell_links WHERE source_page_id = ? OR target_page_id = ?"
+      ).bind(pid, pid).run();
+      // Remove automation rules scoped to this page
+      await env.DB.prepare(
+        "DELETE FROM automation_rules WHERE scope_table_id = ?"
+      ).bind(pid).run();
+      // Remove document metadata + R2 content
+      const docMeta = await env.DB.prepare(
+        "SELECT r2_key FROM documents WHERE id = ?"
+      ).bind(pid).first();
+      if (docMeta?.r2_key) {
+        try { await env.DOCS.delete(docMeta.r2_key); } catch {}
+      }
+      await env.DB.prepare("DELETE FROM documents WHERE id = ?").bind(pid).run();
     }
-    await env.DB.prepare("DELETE FROM documents WHERE id = ?").bind(id).run();
-    return jsonResponse({ ok: true, id });
+
+    // Remove child page configs
+    await env.DB.prepare("DELETE FROM page_configs WHERE parent_id = ?").bind(id).run();
+    // Remove the page config itself
+    await env.DB.prepare("DELETE FROM page_configs WHERE id = ?").bind(id).run();
+
+    return jsonResponse({ ok: true, id, deleted_children: allIds.length - 1 });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
   }

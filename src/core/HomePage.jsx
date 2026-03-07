@@ -221,24 +221,28 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
 
   // ── Delete page ──
   const handleDeletePage = useCallback(async (pageConfig) => {
-    // Always remove from local state first — Notion cleanup is best-effort
+    // 1. Remove from local state (instant UI update)
     removePage(pageConfig.id);
     setConfirmDelete(null);
+
+    // 2. Delete from D1 (permanent — cascades to rows, schema, docs, sheets)
+    archivePageConfig(pageConfig.id).catch((err) => {
+      console.error("[HomePage] Failed to delete page from D1:", err);
+    });
+
+    // 3. Best-effort Notion cleanup for non-linked pages
     if (user?.workerUrl && user?.notionKey) {
-      try {
-        if (platformIds?.rootPageId) {
-          await ensurePageActive(user.workerUrl, user.notionKey, platformIds.rootPageId);
+      const pt = pageConfig.pageType || pageConfig.page_type;
+      if (pt !== "linked_notion") {
+        for (const dbId of (pageConfig.databaseIds || [])) {
+          archivePage(user.workerUrl, user.notionKey, dbId).catch(() => {});
         }
-      } catch {}
-      archivePageConfig(user.workerUrl, user.notionKey, pageConfig.id).catch(() => {});
-      for (const dbId of (pageConfig.databaseIds || [])) {
-        archivePage(user.workerUrl, user.notionKey, dbId).catch(() => {});
       }
-      if (pageConfig.pageType === "document" && pageConfig.notionPageId) {
+      if (pt === "document" && pageConfig.notionPageId) {
         archivePage(user.workerUrl, user.notionKey, pageConfig.notionPageId).catch(() => {});
       }
     }
-  }, [user, platformIds, removePage]);
+  }, [user, removePage]);
 
   // ── Rename Page ──
   const handleRenamePage = useCallback((pageId, newName) => {
