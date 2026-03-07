@@ -1,10 +1,13 @@
 // ─── Document View ───
-// Renders Notion page blocks as rich text. Read-only.
+// Renders Notion page blocks as rich text.
+// When editable=true, renders the DocumentEditor for Phase 1 rich editing.
+// Otherwise renders in read-only mode.
 
 import React, { useState, useEffect, useCallback } from "react";
 import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { getBlocks } from "../notion/client.js";
+import DocumentEditor from "./DocumentEditor.jsx";
 
 /**
  * Render Notion rich_text array into React elements.
@@ -327,13 +330,18 @@ function groupBlocks(blocks) {
   return result;
 }
 
-export default function Document({ config = {} }) {
+export default function Document({ config = {}, editable = false }) {
   const { user } = usePlatform();
   const [blocks, setBlocks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const pageId = config.pageId;
+
+  // Editable mode: render DocumentEditor
+  if (editable && pageId) {
+    return <DocumentEditor pageId={pageId} />;
+  }
 
   const fetchBlocks = useCallback(async () => {
     if (!user?.workerUrl || !user?.notionKey || !pageId) {

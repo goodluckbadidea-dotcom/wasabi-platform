@@ -100,6 +100,35 @@ export async function savePageConfig(workerUrl, notionKey, configDbId, pageConfi
 }
 
 /**
+ * Check if a page config is a document page (no database).
+ */
+export function isDocumentPage(pageConfig) {
+  return pageConfig?.pageType === "document";
+}
+
+/**
+ * Create a document-type page config object.
+ */
+export function createDocumentPageConfig(name, icon, notionPageId) {
+  return {
+    name,
+    icon: icon || "page",
+    pageType: "document",
+    notionPageId,
+    databaseIds: [],
+    views: [
+      {
+        type: "document",
+        label: "Document",
+        position: "main",
+        config: { pageId: notionPageId },
+      },
+    ],
+    refreshInterval: 0,
+  };
+}
+
+/**
  * Archive (soft-delete) a page config.
  */
 export async function archivePageConfig(workerUrl, notionKey, pageConfigId) {

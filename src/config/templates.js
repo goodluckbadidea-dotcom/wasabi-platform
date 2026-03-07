@@ -17,8 +17,8 @@ export const TEMPLATES = [
       { name: "Notes", type: "rich_text" },
     ],
     views: [
-      { type: "gantt", position: "main", config: {} },
       { type: "table", position: "main", config: {} },
+      { type: "gantt", position: "main", config: {} },
       { type: "kanban", position: "main", config: {} },
       { type: "summaryTiles", position: "main", config: {} },
       { type: "chat", position: "main", config: {} },
@@ -41,8 +41,8 @@ export const TEMPLATES = [
       { name: "Notes", type: "rich_text" },
     ],
     views: [
-      { type: "cardGrid", position: "main", config: {} },
       { type: "table", position: "main", config: {} },
+      { type: "cardGrid", position: "main", config: {} },
       { type: "activityFeed", position: "main", config: {} },
       { type: "summaryTiles", position: "main", config: {} },
       { type: "chat", position: "main", config: {} },
@@ -88,6 +88,7 @@ export const TEMPLATES = [
       { name: "Notes", type: "rich_text" },
     ],
     views: [
+      { type: "table", position: "main", config: {} },
       { type: "kanban", position: "main", config: {} },
       { type: "gantt", position: "main", config: {} },
       { type: "notificationFeed", position: "main", config: {} },
@@ -131,8 +132,8 @@ export const TEMPLATES = [
       { name: "Notes", type: "rich_text" },
     ],
     views: [
-      { type: "kanban", position: "main", config: {} },
       { type: "table", position: "main", config: {} },
+      { type: "kanban", position: "main", config: {} },
       { type: "form", position: "main", config: {} },
       { type: "chat", position: "main", config: {} },
     ],

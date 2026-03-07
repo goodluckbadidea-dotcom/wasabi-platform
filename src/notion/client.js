@@ -122,6 +122,53 @@ export async function getBlocks(workerUrl, notionKey, pageId) {
 }
 
 /**
+ * Append block children to a page or block.
+ * Uses the existing PATCH /blocks/:id worker route (plural — appends children).
+ */
+export async function appendBlocks(workerUrl, notionKey, parentId, children) {
+  const res = await fetch(`${workerUrl}/blocks/${parentId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${notionKey}`,
+    },
+    body: JSON.stringify({ children }),
+  });
+  if (!res.ok) throw new Error(`Failed to append blocks (${res.status})`);
+  return res.json();
+}
+
+/**
+ * Update a single block's content.
+ * Uses the PATCH /block/:id worker route (singular — updates one block).
+ */
+export async function updateBlock(workerUrl, notionKey, blockId, blockData) {
+  const res = await fetch(`${workerUrl}/block/${blockId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${notionKey}`,
+    },
+    body: JSON.stringify(blockData),
+  });
+  if (!res.ok) throw new Error(`Failed to update block (${res.status})`);
+  return res.json();
+}
+
+/**
+ * Delete a single block.
+ * Uses the DELETE /block/:id worker route.
+ */
+export async function deleteBlock(workerUrl, notionKey, blockId) {
+  const res = await fetch(`${workerUrl}/block/${blockId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${notionKey}` },
+  });
+  if (!res.ok) throw new Error(`Failed to delete block (${res.status})`);
+  return res.json();
+}
+
+/**
  * Create a new Notion database under a parent page.
  */
 export async function createDatabase(workerUrl, notionKey, parentPageId, title, schema) {

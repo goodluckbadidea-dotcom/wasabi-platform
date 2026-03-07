@@ -75,6 +75,19 @@ export default {
         return await notionFetch(`/databases/${dbId}`, "PATCH", notionKey, body);
       }
 
+      // Update single block (/block/ singular — distinct from /blocks/ plural)
+      if (path.startsWith("/block/") && request.method === "PATCH") {
+        const blockId = path.split("/block/")[1];
+        const body = await request.json();
+        return await notionFetch(`/blocks/${blockId}`, "PATCH", notionKey, body);
+      }
+
+      // Delete single block
+      if (path.startsWith("/block/") && request.method === "DELETE") {
+        const blockId = path.split("/block/")[1];
+        return await notionFetch(`/blocks/${blockId}`, "DELETE", notionKey);
+      }
+
       // Get blocks
       if (path.startsWith("/blocks/") && request.method === "GET") {
         const blockId = path.split("/blocks/")[1];

@@ -6,14 +6,15 @@ import React, { useState, useCallback, useMemo } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { savePageConfig } from "../config/pageConfig.js";
+import { savePageConfig, createDocumentPageConfig } from "../config/pageConfig.js";
 import { autoDetectViews } from "../notion/schema.js";
+import { createSubpage } from "../notion/client.js";
 import DatabaseBrowser from "./DatabaseBrowser.jsx";
 import {
   IconPage, IconTable, IconKanban, IconChart, IconForm,
   IconCalendar, IconFolder, IconStar, IconBolt, IconUsers,
   IconInbox, IconBell, IconGear, IconCards, IconTimeline,
-  IconDatabase, IconClose,
+  IconDatabase, IconClose, IconChevronLeft,
 } from "../design/icons.jsx";
 
 // ── Available view types ──
@@ -212,6 +213,9 @@ const vs = {
 export default function VisualPageBuilder({ onCancel }) {
   const { user, platformIds, addPage } = usePlatform();
 
+  // ── Page Type Selection ── (null = show picker, "database" or "document")
+  const [pageType, setPageType] = useState(null);
+
   // ── Page Config State ──
   const [pageName, setPageName] = useState("");
   const [pageIcon, setPageIcon] = useState("page");
@@ -253,7 +257,7 @@ export default function VisualPageBuilder({ onCancel }) {
     setConnectedDbs((prev) => prev.filter((db) => db.id !== dbId));
   }, []);
 
-  // Apply auto-detected views
+  // Apply auto-detected views — always ensure Table is first
   const applySuggestedViews = useCallback(() => {
     if (connectedDbs.length === 0) return;
     const schema = connectedDbs[0].schema;
@@ -266,6 +270,16 @@ export default function VisualPageBuilder({ onCancel }) {
       position: "main",
       config: {},
     }));
+    // Ensure Table is first view
+    if (newViews[0]?.type !== "table") {
+      const tableIdx = newViews.findIndex((v) => v.type === "table");
+      if (tableIdx > 0) {
+        const [t] = newViews.splice(tableIdx, 1);
+        newViews.unshift(t);
+      } else {
+        newViews.unshift({ type: "table", label: "Table", position: "main", config: {} });
+      }
+    }
     setViews(newViews);
     setShowSuggestions(false);
   }, [connectedDbs]);
@@ -298,7 +312,7 @@ export default function VisualPageBuilder({ onCancel }) {
     setViews((prev) => prev.map((v, i) => (i === idx ? { ...v, label } : v)));
   }, []);
 
-  // ── Save ──
+  // ── Save Database Page ──
   const handleSave = useCallback(async () => {
     setError(null);
     if (!pageName.trim()) {
@@ -319,6 +333,7 @@ export default function VisualPageBuilder({ onCancel }) {
       const pageConfig = {
         name: pageName.trim(),
         icon: pageIcon,
+        pageType: "database",
         databaseIds: connectedDbs.map((db) => db.id),
         views,
         refreshInterval: refreshInterval * 1000,
@@ -342,12 +357,218 @@ export default function VisualPageBuilder({ onCancel }) {
     }
   }, [pageName, pageIcon, connectedDbs, views, refreshInterval, user, platformIds, addPage]);
 
+  // ── Save Document Page ──
+  const handleSaveDocument = useCallback(async () => {
+    setError(null);
+    if (!pageName.trim()) {
+      setError("Page name is required");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      // Create a Notion subpage under the root page
+      const notionPage = await createSubpage(
+        user.workerUrl,
+        user.notionKey,
+        platformIds.rootPageId,
+        pageName.trim()
+      );
+
+      // Build document page config
+      const docConfig = createDocumentPageConfig(pageName.trim(), pageIcon, notionPage.id);
+
+      // Save to Notion config DB
+      const configId = await savePageConfig(
+        user.workerUrl,
+        user.notionKey,
+        platformIds.configDbId,
+        docConfig
+      );
+
+      // Add to local state
+      addPage({ ...docConfig, id: configId });
+      setSuccess(true);
+    } catch (err) {
+      setError(err.message || "Failed to create document page");
+    } finally {
+      setSaving(false);
+    }
+  }, [pageName, pageIcon, user, platformIds, addPage]);
+
+  // ── Page Type Selection Screen ──
+  if (!pageType) {
+    return (
+      <div style={vs.container}>
+        <div style={vs.header}>
+          <div style={vs.headerTitle}>Create New Page</div>
+          <div style={vs.headerSub}>Choose what kind of page to create</div>
+        </div>
+        <div style={{ ...vs.body, alignItems: "center", justifyContent: "center" }}>
+          <div style={{ display: "flex", gap: 20, maxWidth: 560, width: "100%" }}>
+            {/* Database Page card */}
+            <div
+              style={{
+                flex: 1,
+                padding: 28,
+                background: C.darkSurf,
+                border: `1px solid ${C.darkBorder}`,
+                borderRadius: RADIUS.xl,
+                cursor: "pointer",
+                transition: "all 0.15s",
+                textAlign: "center",
+              }}
+              onClick={() => setPageType("database")}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.background = `${C.accent}08`; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; e.currentTarget.style.background = C.darkSurf; }}
+            >
+              <div style={{ marginBottom: 14 }}>
+                <IconDatabase size={32} color={C.accent} />
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: C.darkText, marginBottom: 8 }}>
+                Database Page
+              </div>
+              <div style={{ fontSize: 13, color: C.darkMuted, lineHeight: 1.5 }}>
+                Connect to Notion databases. Add tables, charts, kanban boards, and more.
+              </div>
+            </div>
+
+            {/* Document Page card */}
+            <div
+              style={{
+                flex: 1,
+                padding: 28,
+                background: C.darkSurf,
+                border: `1px solid ${C.darkBorder}`,
+                borderRadius: RADIUS.xl,
+                cursor: "pointer",
+                transition: "all 0.15s",
+                textAlign: "center",
+              }}
+              onClick={() => setPageType("document")}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.background = `${C.accent}08`; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; e.currentTarget.style.background = C.darkSurf; }}
+            >
+              <div style={{ marginBottom: 14 }}>
+                <IconPage size={32} color={C.accent} />
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: C.darkText, marginBottom: 8 }}>
+                Document Page
+              </div>
+              <div style={{ fontSize: 13, color: C.darkMuted, lineHeight: 1.5 }}>
+                Create a rich text document for notes, SOPs, and reference content.
+              </div>
+            </div>
+          </div>
+        </div>
+        {/* Footer */}
+        <div style={vs.footer}>
+          {onCancel && (
+            <button style={S.btnGhost} onClick={onCancel}>Cancel</button>
+          )}
+          <div style={{ flex: 1 }} />
+        </div>
+      </div>
+    );
+  }
+
+  // ── Document Page Flow (simplified) ──
+  if (pageType === "document") {
+    return (
+      <div style={vs.container}>
+        <div style={vs.header}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span
+              style={{ cursor: "pointer", display: "flex", alignItems: "center" }}
+              onClick={() => setPageType(null)}
+              title="Back to page type selection"
+            >
+              <IconChevronLeft size={16} color={C.darkMuted} />
+            </span>
+            <div>
+              <div style={vs.headerTitle}>New Document</div>
+              <div style={vs.headerSub}>Create a rich text document page</div>
+            </div>
+          </div>
+        </div>
+        <div style={vs.body}>
+          {/* Page Identity */}
+          <div style={vs.section}>
+            <div style={vs.sectionTitle}>Page Identity</div>
+            <div style={{ display: "flex", gap: 12, marginBottom: 14 }}>
+              <div>
+                <label style={vs.label}>Icon</label>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", maxWidth: 200 }}>
+                  {ICONS.map((ic) => {
+                    const Ic = ICON_MAP[ic];
+                    return (
+                      <span key={ic} style={vs.iconBtn(pageIcon === ic)} onClick={() => setPageIcon(ic)} title={ic}>
+                        <Ic size={16} color={pageIcon === ic ? C.accent : C.darkMuted} />
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={vs.label}>Document Name</label>
+                <input
+                  style={vs.input}
+                  value={pageName}
+                  onChange={(e) => setPageName(e.target.value)}
+                  placeholder="e.g. Team Handbook"
+                  autoFocus
+                />
+              </div>
+            </div>
+          </div>
+
+          <div style={{ padding: "12px 16px", background: `${C.accent}10`, border: `1px solid ${C.accent}30`, borderRadius: RADIUS.md, fontSize: 13, color: C.darkMuted, lineHeight: 1.5 }}>
+            A new Notion page will be created and linked to Wasabi. You can edit it using the built-in rich text editor.
+          </div>
+
+          {error && <div style={vs.error}>{error}</div>}
+          {success && <div style={vs.success}>Document created successfully!</div>}
+        </div>
+        <div style={vs.footer}>
+          <button style={S.btnGhost} onClick={() => setPageType(null)}>Back</button>
+          <div style={{ flex: 1 }} />
+          <button
+            style={{
+              ...S.btnPrimary,
+              padding: "10px 28px",
+              fontSize: 14,
+              fontWeight: 600,
+              opacity: saving ? 0.6 : 1,
+              cursor: saving ? "not-allowed" : "pointer",
+            }}
+            onClick={handleSaveDocument}
+            disabled={saving}
+          >
+            {saving ? "Creating..." : "Create Document"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Database Page Flow (existing) ──
   return (
     <div style={vs.container}>
       {/* Header */}
       <div style={vs.header}>
-        <div style={vs.headerTitle}>Visual Page Builder</div>
-        <div style={vs.headerSub}>Design your page layout — connect databases, choose views</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span
+            style={{ cursor: "pointer", display: "flex", alignItems: "center" }}
+            onClick={() => setPageType(null)}
+            title="Back to page type selection"
+          >
+            <IconChevronLeft size={16} color={C.darkMuted} />
+          </span>
+          <div>
+            <div style={vs.headerTitle}>New Database Page</div>
+            <div style={vs.headerSub}>Connect databases, choose views, design your layout</div>
+          </div>
+        </div>
       </div>
 
       {/* Body */}
@@ -579,11 +800,9 @@ export default function VisualPageBuilder({ onCancel }) {
 
       {/* Footer */}
       <div style={vs.footer}>
-        {onCancel && (
-          <button style={S.btnGhost} onClick={onCancel}>
-            Cancel
-          </button>
-        )}
+        <button style={S.btnGhost} onClick={() => setPageType(null)}>
+          Back
+        </button>
         <div style={{ flex: 1 }} />
         <button
           style={{

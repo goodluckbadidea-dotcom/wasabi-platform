@@ -2,12 +2,14 @@
 // Per-page sub-navigation sidebar. Shows sub-views for the active top-level page.
 // Flame character at bottom opens the Wasabi Panel.
 // Collapsible: 48px (icons) or 220px (full). Matches original app.
-// No emojis — all SVG icons.
+// Includes: "+" button for adding views/documents, drag reorder, Docs section.
 
-import React, { useState } from "react";
+import React, { useState, useCallback, useRef, useMemo } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { IconDiamond, IconBolt, IconGear, IconStar } from "../design/icons.jsx";
+import { savePageConfig } from "../config/pageConfig.js";
+import { createSubpage } from "../notion/client.js";
+import { IconDiamond, IconBolt, IconGear, IconStar, IconPlus, IconPage, IconClose } from "../design/icons.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
 
 // ── View type → human-readable label ──
@@ -26,6 +28,12 @@ const VIEW_LABELS = {
   chat: "Chat",
 };
 
+// View types available for adding via "+" menu
+const ADDABLE_VIEW_TYPES = [
+  "table", "kanban", "cardGrid", "gantt", "calendar",
+  "charts", "form", "summaryTiles", "activityFeed", "chat",
+];
+
 function getViewLabel(view) {
   return view.name || VIEW_LABELS[view.type] || view.type;
 }
@@ -39,8 +47,14 @@ export default function Navigation({
   onSetActiveView,
   isThinking,
 }) {
-  const { pages, activePage, setActivePage } = usePlatform();
+  const { user, platformIds, pages, activePage, setActivePage, updatePageConfig } = usePlatform();
   const [hoveredItem, setHoveredItem] = useState(null);
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const [showDocsExpanded, setShowDocsExpanded] = useState(false);
+
+  // Drag reorder state
+  const dragIdxRef = useRef(null);
+  const [dropIndicatorIdx, setDropIndicatorIdx] = useState(null);
 
   const SIDEBAR_W = collapsed ? 48 : 220;
 
@@ -52,6 +66,12 @@ export default function Navigation({
     type: view.type,
   }));
 
+  // Standalone document pages (for Docs section)
+  const standaloneDocPages = useMemo(() =>
+    pages.filter((p) => p.pageType === "document"),
+    [pages]
+  );
+
   // Section label: current page name or section indicator
   const sectionLabel = currentPage
     ? currentPage.name
@@ -62,6 +82,97 @@ export default function Navigation({
     : activePage === "wasabi"
     ? "New Page"
     : "Home";
+
+  // ── Drag Reorder ──
+  const handleReorderViews = useCallback((fromIdx, toIdx) => {
+    if (!currentPage || fromIdx === toIdx) return;
+    const views = [...currentPage.views];
+    const [moved] = views.splice(fromIdx, 1);
+    views.splice(toIdx > fromIdx ? toIdx - 1 : toIdx, 0, moved);
+    updatePageConfig(currentPage.id, { views });
+    // Persist to Notion
+    if (user?.workerUrl && user?.notionKey && platformIds?.configDbId) {
+      savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
+        ...currentPage,
+        views,
+      }).catch((err) => console.error("Failed to persist view reorder:", err));
+    }
+  }, [currentPage, updatePageConfig, user, platformIds]);
+
+  // ── Add View ──
+  const handleAddView = useCallback((type) => {
+    if (!currentPage) return;
+    const label = VIEW_LABELS[type] || type;
+    const newView = { type, label, position: "main", config: {} };
+    const newViews = [...(currentPage.views || []), newView];
+    updatePageConfig(currentPage.id, { views: newViews });
+    setShowAddMenu(false);
+    // Persist
+    if (user?.workerUrl && user?.notionKey && platformIds?.configDbId) {
+      savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
+        ...currentPage,
+        views: newViews,
+      }).catch((err) => console.error("Failed to persist new view:", err));
+    }
+    // Switch to new view
+    onSetActiveView(newViews.length - 1);
+  }, [currentPage, updatePageConfig, user, platformIds, onSetActiveView]);
+
+  // ── Create Document (sub-view of current page) ──
+  const handleCreateDocument = useCallback(async () => {
+    if (!currentPage || !user?.workerUrl || !user?.notionKey) return;
+    setShowAddMenu(false);
+    try {
+      const notionPage = await createSubpage(
+        user.workerUrl,
+        user.notionKey,
+        platformIds.rootPageId,
+        `${currentPage.name} - Document`
+      );
+      const newView = {
+        type: "document",
+        label: "Document",
+        position: "main",
+        config: { pageId: notionPage.id, editable: true },
+      };
+      const newViews = [...(currentPage.views || []), newView];
+      updatePageConfig(currentPage.id, { views: newViews });
+      // Persist
+      if (platformIds?.configDbId) {
+        savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
+          ...currentPage,
+          views: newViews,
+        }).catch((err) => console.error("Failed to persist document view:", err));
+      }
+      onSetActiveView(newViews.length - 1);
+    } catch (err) {
+      console.error("Failed to create document:", err);
+    }
+  }, [currentPage, user, platformIds, updatePageConfig, onSetActiveView]);
+
+  // Bottom button style helper
+  const bottomBtnStyle = (isActive) => ({
+    background: isActive ? C.accent : "none",
+    border: "none",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: collapsed ? 0 : 10,
+    padding: collapsed ? "8px 0" : "7px 10px",
+    borderRadius: RADIUS.lg,
+    transition: "background 0.15s",
+    outline: "none",
+    width: "100%",
+    justifyContent: collapsed ? "center" : "flex-start",
+  });
+
+  const bottomLabelStyle = (isActive) => ({
+    fontFamily: "'Outfit',sans-serif",
+    fontSize: 12,
+    fontWeight: isActive ? 600 : 400,
+    color: isActive ? "#fff" : C.darkMuted,
+    letterSpacing: "0.02em",
+  });
 
   return (
     <div
@@ -111,7 +222,7 @@ export default function Navigation({
         />
       )}
 
-      {/* Sub-nav items */}
+      {/* Sub-nav items (with drag reorder) */}
       <div
         style={{
           flex: 1,
@@ -137,68 +248,256 @@ export default function Navigation({
         {subItems.map((item) => {
           const isActive = activeView === item.id;
           const isHovered = hoveredItem === item.id;
+          const showDropBefore = dropIndicatorIdx === item.id;
+
           return (
-            <button
-              key={item.id}
-              onClick={() => onSetActiveView(item.id)}
-              onMouseEnter={() => setHoveredItem(item.id)}
-              onMouseLeave={() => setHoveredItem(null)}
-              title={collapsed ? item.label : undefined}
-              style={{
-                width: collapsed ? "100%" : "calc(100% - 16px)",
-                margin: collapsed ? "0" : "6px 8px",
-                border: isActive ? "none" : `1px solid ${C.darkBorder}`,
-                cursor: "pointer",
-                outline: "none",
-                display: "flex",
-                alignItems: "center",
-                gap: collapsed ? 0 : 10,
-                justifyContent: collapsed ? "center" : "flex-start",
-                padding: collapsed ? "13px 0" : "10px 14px",
-                borderRadius: collapsed ? 0 : 999,
-                background: isActive
-                  ? C.accent
-                  : isHovered
-                  ? C.darkSurf2
-                  : "transparent",
-                transition: "all 0.12s",
-                fontFamily: "'Outfit',sans-serif",
-              }}
-            >
-              <IconDiamond
-                size={8}
-                color={isActive ? "#fff" : C.darkBorder}
-              />
-              {!collapsed && (
-                <span
-                  style={{
-                    fontSize: 13,
-                    fontWeight: isActive ? 600 : 400,
-                    color: isActive ? "#fff" : C.darkMuted,
-                    letterSpacing: "0.01em",
-                    whiteSpace: "nowrap",
-                    transition: "color 0.12s",
-                  }}
-                >
-                  {item.label}
-                </span>
+            <React.Fragment key={item.id}>
+              {/* Drop indicator line */}
+              {showDropBefore && (
+                <div style={{
+                  height: 2,
+                  background: C.accent,
+                  margin: collapsed ? "0" : "0 8px",
+                  borderRadius: 1,
+                }} />
               )}
-              {isActive && !collapsed && (
-                <div
-                  style={{
-                    marginLeft: "auto",
-                    width: 5,
-                    height: 5,
-                    borderRadius: "50%",
-                    background: "#fff",
-                    flexShrink: 0,
-                    boxShadow: "0 0 4px rgba(255,255,255,0.4)",
-                  }}
+              <button
+                draggable={!collapsed}
+                onDragStart={(e) => {
+                  dragIdxRef.current = item.id;
+                  e.dataTransfer.effectAllowed = "move";
+                  // Make drag preview subtle
+                  e.dataTransfer.setData("text/plain", item.label);
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  if (dragIdxRef.current !== item.id) {
+                    setDropIndicatorIdx(item.id);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (dragIdxRef.current != null && dragIdxRef.current !== item.id) {
+                    handleReorderViews(dragIdxRef.current, item.id);
+                  }
+                  dragIdxRef.current = null;
+                  setDropIndicatorIdx(null);
+                }}
+                onDragEnd={() => {
+                  dragIdxRef.current = null;
+                  setDropIndicatorIdx(null);
+                }}
+                onClick={() => onSetActiveView(item.id)}
+                onMouseEnter={() => setHoveredItem(item.id)}
+                onMouseLeave={() => setHoveredItem(null)}
+                title={collapsed ? item.label : undefined}
+                style={{
+                  width: collapsed ? "100%" : "calc(100% - 16px)",
+                  margin: collapsed ? "0" : "6px 8px",
+                  border: isActive ? "none" : `1px solid ${C.darkBorder}`,
+                  cursor: "pointer",
+                  outline: "none",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: collapsed ? 0 : 10,
+                  justifyContent: collapsed ? "center" : "flex-start",
+                  padding: collapsed ? "13px 0" : "10px 14px",
+                  borderRadius: collapsed ? 0 : 999,
+                  background: isActive
+                    ? C.accent
+                    : isHovered
+                    ? C.darkSurf2
+                    : "transparent",
+                  transition: "all 0.12s",
+                  fontFamily: "'Outfit',sans-serif",
+                }}
+              >
+                <IconDiamond
+                  size={8}
+                  color={isActive ? "#fff" : C.darkBorder}
                 />
-              )}
-            </button>
+                {!collapsed && (
+                  <span
+                    style={{
+                      fontSize: 13,
+                      fontWeight: isActive ? 600 : 400,
+                      color: isActive ? "#fff" : C.darkMuted,
+                      letterSpacing: "0.01em",
+                      whiteSpace: "nowrap",
+                      transition: "color 0.12s",
+                    }}
+                  >
+                    {item.label}
+                  </span>
+                )}
+                {isActive && !collapsed && (
+                  <div
+                    style={{
+                      marginLeft: "auto",
+                      width: 5,
+                      height: 5,
+                      borderRadius: "50%",
+                      background: "#fff",
+                      flexShrink: 0,
+                      boxShadow: "0 0 4px rgba(255,255,255,0.4)",
+                    }}
+                  />
+                )}
+              </button>
+            </React.Fragment>
           );
         })}
+
+        {/* "+" Add button — below sub-items */}
+        {currentPage && !collapsed && (
+          <div style={{ padding: "4px 8px", position: "relative" }}>
+            <button
+              onClick={() => setShowAddMenu(!showAddMenu)}
+              style={{
+                width: "calc(100% - 0px)",
+                border: `1px dashed ${C.darkBorder}`,
+                background: "transparent",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 14px",
+                borderRadius: 999,
+                fontFamily: "'Outfit',sans-serif",
+                fontSize: 12,
+                color: C.darkMuted,
+                outline: "none",
+                transition: "all 0.12s",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.color = C.accent; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; e.currentTarget.style.color = C.darkMuted; }}
+            >
+              <IconPlus size={10} color="currentColor" />
+              <span>Add</span>
+            </button>
+
+            {/* Add menu dropdown */}
+            {showAddMenu && (
+              <>
+                {/* Backdrop */}
+                <div
+                  onClick={() => setShowAddMenu(false)}
+                  style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 98 }}
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    left: 8,
+                    top: "100%",
+                    marginTop: 4,
+                    background: C.darkSurf,
+                    border: `1px solid ${C.darkBorder}`,
+                    borderRadius: RADIUS.lg,
+                    boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                    zIndex: 99,
+                    padding: "4px 0",
+                    minWidth: 180,
+                    maxHeight: 320,
+                    overflowY: "auto",
+                  }}
+                >
+                  {/* Section: Add View */}
+                  <div style={{
+                    padding: "6px 12px 4px",
+                    fontSize: 10,
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    color: C.darkMuted,
+                  }}>
+                    Add View
+                  </div>
+                  {ADDABLE_VIEW_TYPES.map((vt) => (
+                    <button
+                      key={vt}
+                      onClick={() => handleAddView(vt)}
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        background: "none",
+                        border: "none",
+                        padding: "7px 14px",
+                        textAlign: "left",
+                        cursor: "pointer",
+                        color: C.darkText,
+                        fontFamily: "'Outfit',sans-serif",
+                        fontSize: 13,
+                        outline: "none",
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+                    >
+                      {VIEW_LABELS[vt] || vt}
+                    </button>
+                  ))}
+
+                  {/* Divider */}
+                  <div style={{ height: 1, background: C.darkBorder, margin: "4px 0" }} />
+
+                  {/* Create Document */}
+                  <div style={{
+                    padding: "6px 12px 4px",
+                    fontSize: 10,
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    color: C.darkMuted,
+                  }}>
+                    Create
+                  </div>
+                  <button
+                    onClick={handleCreateDocument}
+                    style={{
+                      display: "flex",
+                      width: "100%",
+                      background: "none",
+                      border: "none",
+                      padding: "7px 14px",
+                      textAlign: "left",
+                      cursor: "pointer",
+                      color: C.darkText,
+                      fontFamily: "'Outfit',sans-serif",
+                      fontSize: 13,
+                      outline: "none",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+                  >
+                    <IconPage size={14} color={C.darkMuted} />
+                    Document
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+        {currentPage && collapsed && (
+          <button
+            onClick={() => setShowAddMenu(!showAddMenu)}
+            title="Add view or document"
+            style={{
+              width: "100%",
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "10px 0",
+              outline: "none",
+            }}
+          >
+            <IconPlus size={12} color={C.darkMuted} />
+          </button>
+        )}
       </div>
 
       {/* Bottom action buttons */}
@@ -218,108 +517,96 @@ export default function Navigation({
         <button
           onClick={() => setActivePage(null)}
           title="Home"
-          style={{
-            background: activePage === null ? C.accent : "none",
-            border: "none",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: collapsed ? 0 : 10,
-            padding: collapsed ? "8px 0" : "7px 10px",
-            borderRadius: RADIUS.lg,
-            transition: "background 0.15s",
-            outline: "none",
-            width: "100%",
-            justifyContent: collapsed ? "center" : "flex-start",
-          }}
-          onMouseEnter={(e) => {
-            if (activePage !== null) e.currentTarget.style.background = C.darkSurf2;
-          }}
-          onMouseLeave={(e) => {
-            if (activePage !== null) e.currentTarget.style.background = "transparent";
-          }}
+          style={bottomBtnStyle(activePage === null)}
+          onMouseEnter={(e) => { if (activePage !== null) e.currentTarget.style.background = C.darkSurf2; }}
+          onMouseLeave={(e) => { if (activePage !== null) e.currentTarget.style.background = "transparent"; }}
         >
           <IconStar size={collapsed ? 16 : 14} color={activePage === null ? "#fff" : C.darkMuted} />
-          {!collapsed && (
-            <span style={{
-              fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: activePage === null ? 600 : 400,
-              color: activePage === null ? "#fff" : C.darkMuted, letterSpacing: "0.02em",
-            }}>
-              Home
-            </span>
-          )}
+          {!collapsed && <span style={bottomLabelStyle(activePage === null)}>Home</span>}
         </button>
+
+        {/* Docs button (only when standalone docs exist) */}
+        {standaloneDocPages.length > 0 && (
+          <>
+            <button
+              onClick={() => setShowDocsExpanded(!showDocsExpanded)}
+              title="Documents"
+              style={bottomBtnStyle(false)}
+              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            >
+              <IconPage size={collapsed ? 16 : 14} color={C.darkMuted} />
+              {!collapsed && (
+                <span style={bottomLabelStyle(false)}>
+                  Docs
+                  <span style={{ fontSize: 10, marginLeft: 4, color: C.darkBorder }}>
+                    {standaloneDocPages.length}
+                  </span>
+                </span>
+              )}
+            </button>
+            {/* Expanded docs list */}
+            {showDocsExpanded && !collapsed && (
+              <div style={{ paddingLeft: 8, marginBottom: 4 }}>
+                {standaloneDocPages.map((doc) => {
+                  const isDocActive = activePage === doc.id;
+                  return (
+                    <button
+                      key={doc.id}
+                      onClick={() => setActivePage(doc.id)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        width: "100%",
+                        background: isDocActive ? C.accent : "transparent",
+                        border: "none",
+                        borderRadius: RADIUS.sm,
+                        padding: "5px 8px",
+                        cursor: "pointer",
+                        outline: "none",
+                        fontFamily: "'Outfit',sans-serif",
+                        fontSize: 11,
+                        color: isDocActive ? "#fff" : C.darkMuted,
+                        transition: "background 0.12s",
+                      }}
+                      onMouseEnter={(e) => { if (!isDocActive) e.currentTarget.style.background = C.darkSurf2; }}
+                      onMouseLeave={(e) => { if (!isDocActive) e.currentTarget.style.background = "transparent"; }}
+                    >
+                      <IconDiamond size={6} color={isDocActive ? "#fff" : C.darkBorder} />
+                      <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {doc.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
 
         {/* Automations button */}
         <button
           onClick={() => setActivePage("automations")}
           title="Automations"
-          style={{
-            background: activePage === "automations" ? C.accent : "none",
-            border: "none",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: collapsed ? 0 : 10,
-            padding: collapsed ? "8px 0" : "7px 10px",
-            borderRadius: RADIUS.lg,
-            transition: "background 0.15s",
-            outline: "none",
-            width: "100%",
-            justifyContent: collapsed ? "center" : "flex-start",
-          }}
-          onMouseEnter={(e) => {
-            if (activePage !== "automations") e.currentTarget.style.background = C.darkSurf2;
-          }}
-          onMouseLeave={(e) => {
-            if (activePage !== "automations") e.currentTarget.style.background = "transparent";
-          }}
+          style={bottomBtnStyle(activePage === "automations")}
+          onMouseEnter={(e) => { if (activePage !== "automations") e.currentTarget.style.background = C.darkSurf2; }}
+          onMouseLeave={(e) => { if (activePage !== "automations") e.currentTarget.style.background = "transparent"; }}
         >
           <IconBolt size={collapsed ? 16 : 14} color={activePage === "automations" ? "#fff" : C.darkMuted} />
-          {!collapsed && (
-            <span style={{
-              fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: activePage === "automations" ? 600 : 400,
-              color: activePage === "automations" ? "#fff" : C.darkMuted, letterSpacing: "0.02em",
-            }}>
-              Automations
-            </span>
-          )}
+          {!collapsed && <span style={bottomLabelStyle(activePage === "automations")}>Automations</span>}
         </button>
 
         {/* System button */}
         <button
           onClick={() => setActivePage("system")}
           title="System"
-          style={{
-            background: activePage === "system" ? C.accent : "none",
-            border: "none",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: collapsed ? 0 : 10,
-            padding: collapsed ? "8px 0" : "7px 10px",
-            borderRadius: RADIUS.lg,
-            transition: "background 0.15s",
-            outline: "none",
-            width: "100%",
-            justifyContent: collapsed ? "center" : "flex-start",
-          }}
-          onMouseEnter={(e) => {
-            if (activePage !== "system") e.currentTarget.style.background = C.darkSurf2;
-          }}
-          onMouseLeave={(e) => {
-            if (activePage !== "system") e.currentTarget.style.background = "transparent";
-          }}
+          style={bottomBtnStyle(activePage === "system")}
+          onMouseEnter={(e) => { if (activePage !== "system") e.currentTarget.style.background = C.darkSurf2; }}
+          onMouseLeave={(e) => { if (activePage !== "system") e.currentTarget.style.background = "transparent"; }}
         >
           <IconGear size={collapsed ? 16 : 14} color={activePage === "system" ? "#fff" : C.darkMuted} />
-          {!collapsed && (
-            <span style={{
-              fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: activePage === "system" ? 600 : 400,
-              color: activePage === "system" ? "#fff" : C.darkMuted, letterSpacing: "0.02em",
-            }}>
-              System
-            </span>
-          )}
+          {!collapsed && <span style={bottomLabelStyle(activePage === "system")}>System</span>}
         </button>
 
         {/* Wasabi flame */}
@@ -341,12 +628,8 @@ export default function Navigation({
               justifyContent: collapsed ? "center" : "flex-start",
               marginTop: 2,
             }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = C.darkSurf2;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "transparent";
-            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
             title="Open Wasabi"
           >
             <WasabiFlame size={collapsed ? 26 : 30} isThinking={isThinking} />
@@ -389,12 +672,8 @@ export default function Navigation({
           zIndex: 10,
           transition: "background 0.12s",
         }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = "#363636";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = C.darkSurf2;
-        }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = "#363636"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
       >
         <svg width="8" height="12" viewBox="0 0 8 12" fill="none">
           <path

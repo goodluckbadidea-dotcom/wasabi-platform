@@ -68,6 +68,7 @@ function ViewBlock({ viewConfig, data, schema, schemas, onUpdate, onRefresh, onC
       data={viewData}
       schema={viewSchema}
       config={viewConfig.config || {}}
+      editable={viewConfig.config?.editable || false}
       onUpdate={onUpdate}
       onRefresh={onRefresh}
       onCreate={onCreate}

@@ -49,15 +49,31 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
   const refreshTimer = useRef(null);
   const [showAddDb, setShowAddDb] = useState(false);
 
+  // Detect document pages (no database fetch needed)
+  const isDocumentPage = pageConfig.pageType === "document";
+
   // Get the active view config based on sidebar selection
   const views = pageConfig.views || [];
-  const activeView = views[activeViewIndex] || views[0];
+  let activeView = views[activeViewIndex] || views[0];
+
+  // For document pages, inject editable: true into the document view config
+  if (isDocumentPage && activeView?.type === "document") {
+    activeView = {
+      ...activeView,
+      config: { ...activeView.config, editable: true },
+    };
+  }
 
   // Multi-database schema map: { dbId → schema }
   const [schemas, setSchemas] = useState({});
 
   // Fetch data from all connected databases
   const fetchData = useCallback(async () => {
+    // Document pages have no databases to fetch
+    if (isDocumentPage) {
+      setLoading(false);
+      return;
+    }
     if (!user?.workerUrl || !user?.notionKey || !pageConfig.databaseIds?.length) return;
 
     try {
@@ -339,60 +355,80 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      {/* Compact header: record count + refresh */}
-      <div
-        style={{
-          height: 40,
-          minHeight: 40,
-          display: "flex",
-          alignItems: "center",
-          padding: "0 20px",
-          borderBottom: `1px solid ${C.edgeLine}`,
-          background: C.dark,
-          gap: 12,
-        }}
-      >
-        <span style={{ fontSize: 11, color: C.darkMuted }}>
-          {data.length} record{data.length !== 1 ? "s" : ""}
-        </span>
-        <div style={{ flex: 1 }} />
-        {/* Add Database button */}
-        <button
-          onClick={() => setShowAddDb(true)}
+      {/* Header bar — simplified for document pages */}
+      {isDocumentPage ? (
+        <div
           style={{
-            ...S.btnGhost,
-            fontSize: 11,
-            padding: "3px 8px",
+            height: 40,
+            minHeight: 40,
             display: "flex",
             alignItems: "center",
-            gap: 4,
+            padding: "0 20px",
+            borderBottom: `1px solid ${C.edgeLine}`,
+            background: C.dark,
+            gap: 12,
           }}
-          title="Connect another database"
         >
-          <IconPlus size={10} color={C.darkMuted} />
-          <IconDatabase size={12} color={C.darkMuted} />
-        </button>
-        <select
-          style={refreshSelectStyle}
-          value={refreshMs}
-          onChange={(e) => handleRefreshChange(Number(e.target.value))}
-        >
-          {REFRESH_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-        <button
-          onClick={fetchData}
+          <span style={{ fontSize: 11, color: C.darkMuted }}>
+            Document
+          </span>
+          <div style={{ flex: 1 }} />
+        </div>
+      ) : (
+        <div
           style={{
-            ...S.btnGhost,
-            fontSize: 12,
-            padding: "4px 8px",
+            height: 40,
+            minHeight: 40,
+            display: "flex",
+            alignItems: "center",
+            padding: "0 20px",
+            borderBottom: `1px solid ${C.edgeLine}`,
+            background: C.dark,
+            gap: 12,
           }}
-          title="Refresh"
         >
-          <IconRefresh size={14} color={C.darkMuted} />
-        </button>
-      </div>
+          <span style={{ fontSize: 11, color: C.darkMuted }}>
+            {data.length} record{data.length !== 1 ? "s" : ""}
+          </span>
+          <div style={{ flex: 1 }} />
+          {/* Add Database button */}
+          <button
+            onClick={() => setShowAddDb(true)}
+            style={{
+              ...S.btnGhost,
+              fontSize: 11,
+              padding: "3px 8px",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+            title="Connect another database"
+          >
+            <IconPlus size={10} color={C.darkMuted} />
+            <IconDatabase size={12} color={C.darkMuted} />
+          </button>
+          <select
+            style={refreshSelectStyle}
+            value={refreshMs}
+            onChange={(e) => handleRefreshChange(Number(e.target.value))}
+          >
+            {REFRESH_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <button
+            onClick={fetchData}
+            style={{
+              ...S.btnGhost,
+              fontSize: 12,
+              padding: "4px 8px",
+            }}
+            title="Refresh"
+          >
+            <IconRefresh size={14} color={C.darkMuted} />
+          </button>
+        </div>
+      )}
 
       {/* Active view */}
       <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
