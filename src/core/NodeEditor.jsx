@@ -16,6 +16,7 @@ import {
 import { loadCachedFlows, saveFlow, loadFlows, initFlowsDB, deleteFlow } from "../config/flowStorage.js";
 import { savePlatformIds, loadPlatformIds } from "../config/setup.js";
 import ConfirmDialog from "./ConfirmDialog.jsx";
+import InlineEdit from "./InlineEdit.jsx";
 
 // ── Node Palette Definition ──
 
@@ -81,7 +82,7 @@ function getDefaultLabel(type, subtype) {
 
 // ── Flow List Sidebar ──
 
-function FlowListPanel({ flows, activeFlowId, onSelect, onNew, onDelete, collapsed }) {
+function FlowListPanel({ flows, activeFlowId, onSelect, onNew, onDelete, onRename, collapsed }) {
   const [hoveredId, setHoveredId] = useState(null);
   if (collapsed) return null;
 
@@ -186,16 +187,14 @@ function FlowListPanel({ flows, activeFlowId, onSelect, onNew, onDelete, collaps
                   background: flow.enabled ? "#7DC143" : C.darkBorder,
                   flexShrink: 0,
                 }} />
-                <span style={{
-                  fontSize: 12,
-                  fontWeight: isActive ? 600 : 400,
-                  color: isActive ? "#fff" : C.darkText,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}>
-                  {flow.name || "Untitled Flow"}
-                </span>
+                <InlineEdit
+                  value={flow.name || ""}
+                  onCommit={(newName) => onRename(flow.id, newName)}
+                  placeholder="Untitled Flow"
+                  fontSize={12}
+                  fontWeight={isActive ? 600 : 400}
+                  color={isActive ? "#fff" : C.darkText}
+                />
               </button>
               {isHovered && (
                 <button
@@ -692,6 +691,17 @@ export default function NodeEditor({ automationEngine }) {
     setConfirmDelete(null);
   }, [activeFlowId, user]);
 
+  // ── Rename flow ──
+  const handleRenameFlow = useCallback((flowId, newName) => {
+    setFlows((prev) => prev.map((f) => (f.id === flowId ? { ...f, name: newName } : f)));
+    // Update localStorage cache
+    try {
+      const cached = loadCachedFlows();
+      const updated = cached.map((f) => (f.id === flowId ? { ...f, name: newName } : f));
+      localStorage.setItem("wasabi_flows", JSON.stringify(updated));
+    } catch {}
+  }, []);
+
   // ── Keyboard shortcuts ──
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -724,6 +734,7 @@ export default function NodeEditor({ automationEngine }) {
           onSelect={setActiveFlowId}
           onNew={handleNewFlow}
           onDelete={(id) => setConfirmDelete(id)}
+          onRename={handleRenameFlow}
         />
         <EmptyState onNew={handleNewFlow} />
         {confirmDelete && (
@@ -748,6 +759,7 @@ export default function NodeEditor({ automationEngine }) {
         onSelect={setActiveFlowId}
         onNew={handleNewFlow}
         onDelete={(id) => setConfirmDelete(id)}
+        onRename={handleRenameFlow}
       />
 
       {/* Main canvas area */}

@@ -16,6 +16,7 @@ import { updatePage, archivePage } from "../notion/client.js";
 import WasabiOrb from "./WasabiOrb.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
 import { IconTrash } from "../design/icons.jsx";
+import InlineEdit from "./InlineEdit.jsx";
 
 // ─── Trigger type pill colors ───
 
@@ -290,6 +291,18 @@ export default function AutomationBuilder({ automationEngine }) {
     setConfirmDelete(null);
   }, [user.workerUrl, user.notionKey]);
 
+  // ─── Rename rule ───
+  const handleRenameRule = useCallback(async (ruleId, newName) => {
+    setRules((prev) => prev.map((r) => (r.id === ruleId ? { ...r, name: newName } : r)));
+    try {
+      await updatePage(user.workerUrl, user.notionKey, ruleId, {
+        Name: { title: [{ type: "text", text: { content: newName } }] },
+      });
+    } catch (err) {
+      console.error("[AutomationBuilder] Rename failed:", err);
+    }
+  }, [user.workerUrl, user.notionKey]);
+
   // ─── Tool executor ───
 
   const executeTool = useCallback((toolName, toolInput) => {
@@ -444,9 +457,15 @@ ${rulesListStr}`;
           {!rulesLoading && rules.map((rule) => (
             <div key={rule.id} style={styles.ruleItem}>
               <div style={styles.ruleTop}>
-                <span style={styles.ruleName} title={rule.name}>
-                  {rule.name}
-                </span>
+                <InlineEdit
+                  value={rule.name}
+                  onCommit={(newName) => handleRenameRule(rule.id, newName)}
+                  placeholder="Untitled Rule"
+                  fontSize={13}
+                  fontWeight={500}
+                  color={C.darkText}
+                  maxWidth="160px"
+                />
                 <div
                   style={styles.toggle(rule.enabled)}
                   onClick={() => {

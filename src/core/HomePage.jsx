@@ -6,11 +6,12 @@ import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { archivePageConfig } from "../config/pageConfig.js";
+import { archivePageConfig, savePageConfig } from "../config/pageConfig.js";
 import { archivePage, ensurePageActive } from "../notion/client.js";
 import WasabiFlame from "./WasabiFlame.jsx";
 import { TEMPLATES } from "./Onboarding.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
+import InlineEdit from "./InlineEdit.jsx";
 import {
   IconStar, IconTable, IconDatabase, IconCalendar, IconKanban,
   IconTimeline, IconChart, IconBolt, IconGear, IconFolder,
@@ -211,7 +212,7 @@ function removeHover(e) {
 
 // ── Main Component ──
 export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) {
-  const { pages, activePage, setActivePage, removePage, user, platformIds } = usePlatform();
+  const { pages, activePage, setActivePage, removePage, updatePageConfig, user, platformIds } = usePlatform();
   const [homeConfig, setHomeConfig] = useState(() => loadHomeConfig());
   const [confirmDelete, setConfirmDelete] = useState(null);
 
@@ -237,6 +238,19 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
     }
     setConfirmDelete(null);
   }, [user, platformIds, removePage]);
+
+  // ── Rename Page ──
+  const handleRenamePage = useCallback((pageId, newName) => {
+    const page = pages.find((p) => p.id === pageId);
+    if (!page) return;
+    updatePageConfig(pageId, { name: newName });
+    if (user?.workerUrl && user?.notionKey && platformIds?.configDbId) {
+      savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
+        ...page,
+        name: newName,
+      }).catch((err) => console.error("[HomePage] Failed to persist page rename:", err));
+    }
+  }, [pages, updatePageConfig, user, platformIds]);
 
   const pinnedIds = homeConfig.pinned || [];
 
@@ -376,6 +390,7 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
                 onTogglePin={() => togglePin(page.id)}
                 onClick={() => setActivePage(page.id)}
                 onDelete={() => setConfirmDelete(page)}
+                onRename={(newName) => handleRenamePage(page.id, newName)}
               />
             ))}
           </div>
@@ -403,6 +418,7 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
                 onTogglePin={() => togglePin(page.id)}
                 onClick={() => setActivePage(page.id)}
                 onDelete={() => setConfirmDelete(page)}
+                onRename={(newName) => handleRenamePage(page.id, newName)}
               />
             ))}
           </div>
@@ -483,7 +499,7 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
 }
 
 // ── Page Card Sub-component ──
-function PageCard({ page, delay, isPinned, onTogglePin, onClick, onDelete }) {
+function PageCard({ page, delay, isPinned, onTogglePin, onClick, onDelete, onRename }) {
   const viewTypes = (page.views || []).map((v) => v.type);
   const uniqueTypes = [...new Set(viewTypes)];
 
@@ -526,7 +542,14 @@ function PageCard({ page, delay, isPinned, onTogglePin, onClick, onDelete }) {
         <IconTrash size={11} color={C.darkMuted} />
       </button>
 
-      <div style={hs.cardTitle}>{page.name || "Untitled"}</div>
+      <InlineEdit
+        value={page.name}
+        onCommit={onRename}
+        placeholder="Untitled"
+        fontSize={14}
+        fontWeight={600}
+        color={C.darkText}
+      />
 
       {/* View badges */}
       {uniqueTypes.length > 0 && (

@@ -13,6 +13,7 @@ import { IconDiamond, IconBolt, IconGear, IconStar, IconPlus, IconPage, IconClos
 import WasabiFlame from "./WasabiFlame.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
 import SheetUrlDialog from "./SheetUrlDialog.jsx";
+import InlineEdit from "./InlineEdit.jsx";
 
 // ── View type → human-readable label ──
 const VIEW_LABELS = {
@@ -238,6 +239,33 @@ export default function Navigation({
     setConfirmDelete(null);
   }, [currentPage, updatePageConfig, user, platformIds, activeView, onSetActiveView]);
 
+  // ── Rename Page ──
+  const handleRenamePage = useCallback((newName) => {
+    if (!currentPage) return;
+    updatePageConfig(currentPage.id, { name: newName });
+    if (user?.workerUrl && user?.notionKey && platformIds?.configDbId) {
+      savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
+        ...currentPage,
+        name: newName,
+      }).catch((err) => console.error("[Navigation] Failed to persist page rename:", err));
+    }
+  }, [currentPage, updatePageConfig, user, platformIds]);
+
+  // ── Rename View ──
+  const handleRenameView = useCallback((viewIdx, newName) => {
+    if (!currentPage || activePage === "automations") return;
+    const newViews = currentPage.views.map((v, i) =>
+      i === viewIdx ? { ...v, name: newName, label: newName } : v
+    );
+    updatePageConfig(currentPage.id, { views: newViews });
+    if (user?.workerUrl && user?.notionKey && platformIds?.configDbId) {
+      savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
+        ...currentPage,
+        views: newViews,
+      }).catch((err) => console.error("[Navigation] Failed to persist view rename:", err));
+    }
+  }, [currentPage, activePage, updatePageConfig, user, platformIds]);
+
   // Bottom button style helper
   const bottomBtnStyle = (isActive) => ({
     background: isActive ? C.accent : "none",
@@ -289,18 +317,30 @@ export default function Navigation({
             justifyContent: "space-between",
           }}
         >
-          <span
-            style={{
-              fontFamily: "'Outfit',sans-serif",
-              fontSize: 10,
-              fontWeight: 600,
-              letterSpacing: "0.2em",
-              textTransform: "uppercase",
-              color: C.darkMuted,
-            }}
-          >
-            {sectionLabel}
-          </span>
+          {currentPage ? (
+            <InlineEdit
+              value={currentPage.name}
+              onCommit={handleRenamePage}
+              placeholder="Untitled"
+              fontSize={10}
+              fontWeight={600}
+              color={C.darkMuted}
+              maxWidth="140px"
+            />
+          ) : (
+            <span
+              style={{
+                fontFamily: "'Outfit',sans-serif",
+                fontSize: 10,
+                fontWeight: 600,
+                letterSpacing: "0.2em",
+                textTransform: "uppercase",
+                color: C.darkMuted,
+              }}
+            >
+              {sectionLabel}
+            </span>
+          )}
           {currentPage && (
             <button
               onClick={() => setConfirmDelete({ type: "page", pageConfig: currentPage })}
@@ -429,7 +469,16 @@ export default function Navigation({
                   size={8}
                   color={isActive ? "#fff" : C.darkBorder}
                 />
-                {!collapsed && (
+                {!collapsed && activePage !== "automations" && currentPage ? (
+                  <InlineEdit
+                    value={item.label}
+                    onCommit={(newName) => handleRenameView(item.id, newName)}
+                    placeholder={item.label}
+                    fontSize={13}
+                    fontWeight={isActive ? 600 : 400}
+                    color={isActive ? "#fff" : C.darkMuted}
+                  />
+                ) : !collapsed && (
                   <span
                     style={{
                       fontSize: 13,
