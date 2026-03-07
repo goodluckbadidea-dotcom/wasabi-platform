@@ -122,7 +122,10 @@ export default function ChatUI({
             ) : (
               <div style={{ ...S.msgInner, maxWidth: maxMsgW }}>
                 {!compact && (
-                  <div style={S.avatarWrap}>
+                  <div style={{
+                    ...S.avatarWrap,
+                    ...(agentIcon ? { background: "transparent", overflow: "visible" } : {}),
+                  }}>
                     {agentIcon || agentName.charAt(0)}
                   </div>
                 )}
@@ -139,7 +142,10 @@ export default function ChatUI({
           <div style={{ ...S.msgOuter, animation: ANIM.fadeUp(), padding: compact ? "4px 12px" : "4px 20px" }}>
             <div style={{ ...S.msgInner, maxWidth: maxMsgW }}>
               {!compact && (
-                <div style={S.avatarWrap}>
+                <div style={{
+                  ...S.avatarWrap,
+                  ...(agentIcon ? { background: "transparent", overflow: "visible" } : {}),
+                }}>
                   {agentIcon || agentName.charAt(0)}
                 </div>
               )}

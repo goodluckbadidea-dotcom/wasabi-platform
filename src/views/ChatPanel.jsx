@@ -10,7 +10,7 @@ import { PAGE_TOOLS, WASABI_TOOLS } from "../agent/tools.js";
 import { buildPageAgentPrompt, buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createPageToolExecutor, createToolExecutor, createDelegateFunction } from "../agent/toolExecutor.js";
 import { C } from "../design/tokens.js";
-import WasabiFlame from "../core/WasabiFlame.jsx";
+import WasabiOrb from "../core/WasabiOrb.jsx";
 import { IconPage } from "../design/icons.jsx";
 
 export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
@@ -140,7 +140,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
   }, [handleSend]);
 
   const agentIcon = currentAgent === "wasabi" ? (
-    <WasabiFlame size={16} />
+    <WasabiOrb size={28} />
   ) : (
     <IconPage size={14} color={C.darkMuted} />
   );

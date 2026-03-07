@@ -9,6 +9,7 @@ import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { IconClose, IconLog, IconChat, IconBell, IconSend, IconPaperclip } from "../design/icons.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
+import WasabiOrb from "./WasabiOrb.jsx";
 import ChatUI from "./ChatUI.jsx";
 import { runAgent, extractChoices } from "../agent/runAgent.js";
 import { WASABI_TOOLS } from "../agent/tools.js";
@@ -504,7 +505,7 @@ export default function WasabiPanel({ onClose, isThinking }) {
             onChoice={handleChatChoice}
             allowFiles={true}
             agentName="Wasabi"
-            agentIcon={<WasabiFlame size={16} />}
+            agentIcon={<WasabiOrb size={28} />}
             placeholder="Ask Wasabi anything..."
             compact={true}
           />

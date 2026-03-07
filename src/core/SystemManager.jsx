@@ -12,7 +12,7 @@ import { SYSTEM_TOOLS } from "../agent/tools.js";
 import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createToolExecutor } from "../agent/toolExecutor.js";
 import { queryAll } from "../notion/pagination.js";
-import WasabiFlame from "./WasabiFlame.jsx";
+import WasabiOrb from "./WasabiOrb.jsx";
 import { IconGear } from "../design/icons.jsx";
 import { getSessionUsage, getUsageHistory, formatCost, formatTokens } from "../utils/costTracker.js";
 
@@ -971,7 +971,7 @@ export default function SystemManager() {
               onChoice={handleChatChoice}
               allowFiles={true}
               agentName="Wasabi"
-              agentIcon={<WasabiFlame size={16} />}
+              agentIcon={<WasabiOrb size={28} />}
               placeholder="System chat -- query KB, check configs..."
             />
           </div>

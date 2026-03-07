@@ -18,6 +18,7 @@ import Onboarding from "./core/Onboarding.jsx";
 import PageBuilder from "./core/PageBuilder.jsx";
 import PageShell from "./core/PageShell.jsx";
 import WasabiFlame from "./core/WasabiFlame.jsx";
+import WasabiOrb from "./core/WasabiOrb.jsx";
 import SystemManager from "./core/SystemManager.jsx";
 import AutomationBuilder from "./core/AutomationBuilder.jsx";
 import HomePage from "./core/HomePage.jsx";
@@ -175,20 +176,8 @@ function AppContent() {
   const sidebarW = sidebarCollapsed ? 48 : 220;
   const panelW = wasabiPanelOpen ? 320 : 0;
 
-  // Small flame icon for chat avatars
-  const WasabiFlameIcon = (
-    <div
-      style={{
-        width: 18,
-        height: 18,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <WasabiFlame size={18} />
-    </div>
-  );
+  // Orb icon for chat avatars
+  const WasabiFlameIcon = <WasabiOrb size={28} />;
 
   // Determine main content
   const renderContent = () => {

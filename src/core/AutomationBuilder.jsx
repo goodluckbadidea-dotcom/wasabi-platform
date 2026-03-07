@@ -13,7 +13,7 @@ import { createToolExecutor, createDelegateFunction } from "../agent/toolExecuto
 import { queryAll } from "../notion/pagination.js";
 import { readProp } from "../notion/properties.js";
 import { updatePage } from "../notion/client.js";
-import WasabiFlame from "./WasabiFlame.jsx";
+import WasabiOrb from "./WasabiOrb.jsx";
 
 // ─── Trigger type pill colors ───
 
@@ -468,7 +468,7 @@ ${rulesListStr}`;
           onChoice={handleChoice}
           allowFiles={true}
           agentName="Wasabi"
-          agentIcon={<WasabiFlame size={28} />}
+          agentIcon={<WasabiOrb size={28} />}
           placeholder="Describe an automation rule to create..."
         />
       </div>
