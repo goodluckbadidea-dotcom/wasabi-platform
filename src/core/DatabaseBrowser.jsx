@@ -8,6 +8,7 @@ import { S } from "../design/styles.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { detectSchema, classifyProperties } from "../notion/schema.js";
 import { createDatabase, createPage, ensurePageActive } from "../notion/client.js";
+import { getConnection } from "../lib/api.js";
 import { buildProp } from "../notion/properties.js";
 import { IconSearch, IconDatabase, IconCheck, IconPlus, IconClose, IconTrash, IconSheet } from "../design/icons.jsx";
 import { detectSheetType, validateSheetUrl } from "../sheets/sheetClient.js";
@@ -306,12 +307,16 @@ export default function DatabaseBrowser({
       setSearching(true);
       setSearchError(null);
       try {
+        const conn = getConnection();
+        const searchHeaders = {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${user.notionKey}`,
+        };
+        if (conn?.secret) searchHeaders["X-Wasabi-Key"] = conn.secret;
+
         const res = await fetch(`${user.workerUrl}/search`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${user.notionKey}`,
-          },
+          headers: searchHeaders,
           body: JSON.stringify({
             query: q || "",
             filter: { value: "database", property: "object" },

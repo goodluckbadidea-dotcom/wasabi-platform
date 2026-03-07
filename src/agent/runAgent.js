@@ -4,6 +4,7 @@
 
 import { sleep } from "../utils/helpers.js";
 import { recordUsage } from "../utils/costTracker.js";
+import { getConnection } from "../lib/api.js";
 
 const MAX_BACKOFF = 60000;
 
@@ -139,12 +140,16 @@ async function callClaude({
     if (abortRef?.current) throw new Error("Aborted");
 
     try {
+      const conn = getConnection();
+      const authHeaders = {
+        "Content-Type": "application/json",
+        "X-Claude-Key": claudeKey,
+      };
+      if (conn?.secret) authHeaders["X-Wasabi-Key"] = conn.secret;
+
       const res = await fetch(`${workerUrl}/claude`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Claude-Key": claudeKey,
-        },
+        headers: authHeaders,
         body: JSON.stringify(body),
       });
 

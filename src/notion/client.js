@@ -3,6 +3,14 @@
 // Every function takes workerUrl + notionKey (no globals).
 
 import { queryAll, queryLimited } from "./pagination.js";
+import { getConnection } from "../lib/api.js";
+
+/** Inject X-Wasabi-Key from stored connection into any headers object. */
+function withAuth(headers = {}) {
+  const conn = getConnection();
+  if (conn?.secret) headers["X-Wasabi-Key"] = conn.secret;
+  return headers;
+}
 
 /**
  * Query a database (full pagination).
@@ -14,7 +22,7 @@ export { queryAll, queryLimited };
  */
 export async function getPage(workerUrl, notionKey, pageId) {
   const res = await fetch(`${workerUrl}/page/${pageId}`, {
-    headers: { Authorization: `Bearer ${notionKey}` },
+    headers: withAuth({ Authorization: `Bearer ${notionKey}` }),
   });
   if (!res.ok) throw new Error(`Failed to get page (${res.status})`);
   return res.json();
@@ -32,10 +40,10 @@ export async function createPage(workerUrl, notionKey, databaseId, properties, c
 
   const res = await fetch(`${workerUrl}/page`, {
     method: "POST",
-    headers: {
+    headers: withAuth({
       "Content-Type": "application/json",
       Authorization: `Bearer ${notionKey}`,
-    },
+    }),
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -52,10 +60,10 @@ export async function createPage(workerUrl, notionKey, databaseId, properties, c
 export async function updatePage(workerUrl, notionKey, pageId, properties) {
   const res = await fetch(`${workerUrl}/page/${pageId}`, {
     method: "PATCH",
-    headers: {
+    headers: withAuth({
       "Content-Type": "application/json",
       Authorization: `Bearer ${notionKey}`,
-    },
+    }),
     body: JSON.stringify({ properties }),
   });
   if (!res.ok) {
@@ -71,10 +79,10 @@ export async function updatePage(workerUrl, notionKey, pageId, properties) {
 export async function archivePage(workerUrl, notionKey, pageId) {
   const res = await fetch(`${workerUrl}/page/${pageId}`, {
     method: "PATCH",
-    headers: {
+    headers: withAuth({
       "Content-Type": "application/json",
       Authorization: `Bearer ${notionKey}`,
-    },
+    }),
     body: JSON.stringify({ archived: true }),
   });
   if (!res.ok) throw new Error(`Failed to archive page (${res.status})`);
@@ -87,10 +95,10 @@ export async function archivePage(workerUrl, notionKey, pageId) {
 export async function unarchivePage(workerUrl, notionKey, pageId) {
   const res = await fetch(`${workerUrl}/page/${pageId}`, {
     method: "PATCH",
-    headers: {
+    headers: withAuth({
       "Content-Type": "application/json",
       Authorization: `Bearer ${notionKey}`,
-    },
+    }),
     body: JSON.stringify({ archived: false }),
   });
   if (!res.ok) throw new Error(`Failed to unarchive page (${res.status})`);
@@ -114,7 +122,7 @@ export async function ensurePageActive(workerUrl, notionKey, pageId) {
  */
 export async function getBlocks(workerUrl, notionKey, pageId) {
   const res = await fetch(`${workerUrl}/blocks/${pageId}`, {
-    headers: { Authorization: `Bearer ${notionKey}` },
+    headers: withAuth({ Authorization: `Bearer ${notionKey}` }),
   });
   if (!res.ok) throw new Error(`Failed to get blocks (${res.status})`);
   const data = await res.json();
@@ -128,10 +136,10 @@ export async function getBlocks(workerUrl, notionKey, pageId) {
 export async function appendBlocks(workerUrl, notionKey, parentId, children) {
   const res = await fetch(`${workerUrl}/blocks/${parentId}`, {
     method: "PATCH",
-    headers: {
+    headers: withAuth({
       "Content-Type": "application/json",
       Authorization: `Bearer ${notionKey}`,
-    },
+    }),
     body: JSON.stringify({ children }),
   });
   if (!res.ok) throw new Error(`Failed to append blocks (${res.status})`);
@@ -145,10 +153,10 @@ export async function appendBlocks(workerUrl, notionKey, parentId, children) {
 export async function updateBlock(workerUrl, notionKey, blockId, blockData) {
   const res = await fetch(`${workerUrl}/block/${blockId}`, {
     method: "PATCH",
-    headers: {
+    headers: withAuth({
       "Content-Type": "application/json",
       Authorization: `Bearer ${notionKey}`,
-    },
+    }),
     body: JSON.stringify(blockData),
   });
   if (!res.ok) throw new Error(`Failed to update block (${res.status})`);
@@ -162,7 +170,7 @@ export async function updateBlock(workerUrl, notionKey, blockId, blockData) {
 export async function deleteBlock(workerUrl, notionKey, blockId) {
   const res = await fetch(`${workerUrl}/block/${blockId}`, {
     method: "DELETE",
-    headers: { Authorization: `Bearer ${notionKey}` },
+    headers: withAuth({ Authorization: `Bearer ${notionKey}` }),
   });
   if (!res.ok) throw new Error(`Failed to delete block (${res.status})`);
   return res.json();
@@ -243,10 +251,10 @@ export async function createDatabase(workerUrl, notionKey, parentPageId, title, 
 
   const res = await fetch(`${workerUrl}/create-database`, {
     method: "POST",
-    headers: {
+    headers: withAuth({
       "Content-Type": "application/json",
       Authorization: `Bearer ${notionKey}`,
-    },
+    }),
     body: JSON.stringify({
       parent: { type: "page_id", page_id: parentPageId },
       title: [{ type: "text", text: { content: title } }],
@@ -267,7 +275,7 @@ export async function createDatabase(workerUrl, notionKey, parentPageId, title, 
  */
 export async function getDatabase(workerUrl, notionKey, databaseId) {
   const res = await fetch(`${workerUrl}/database/${databaseId}`, {
-    headers: { Authorization: `Bearer ${notionKey}` },
+    headers: withAuth({ Authorization: `Bearer ${notionKey}` }),
   });
   if (!res.ok) throw new Error(`Failed to get database (${res.status})`);
   return res.json();
@@ -280,10 +288,10 @@ export async function getDatabase(workerUrl, notionKey, databaseId) {
 export async function updateDatabase(workerUrl, notionKey, databaseId, payload) {
   const res = await fetch(`${workerUrl}/database/${databaseId}`, {
     method: "PATCH",
-    headers: {
+    headers: withAuth({
       "Content-Type": "application/json",
       Authorization: `Bearer ${notionKey}`,
-    },
+    }),
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
@@ -298,7 +306,7 @@ export async function updateDatabase(workerUrl, notionKey, databaseId, payload) 
  */
 export async function testConnection(workerUrl, notionKey) {
   const res = await fetch(`${workerUrl}/test`, {
-    headers: { Authorization: `Bearer ${notionKey}` },
+    headers: withAuth({ Authorization: `Bearer ${notionKey}` }),
   });
   if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
   const data = await res.json();
@@ -323,10 +331,10 @@ export async function createSubpage(workerUrl, notionKey, parentPageId, title, c
 
   const res = await fetch(`${workerUrl}/page`, {
     method: "POST",
-    headers: {
+    headers: withAuth({
       "Content-Type": "application/json",
       Authorization: `Bearer ${notionKey}`,
-    },
+    }),
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -345,10 +353,10 @@ export async function createSubpage(workerUrl, notionKey, parentPageId, title, c
 export async function searchDatabases(workerUrl, notionKey, query = "") {
   const res = await fetch(`${workerUrl}/search`, {
     method: "POST",
-    headers: {
+    headers: withAuth({
       "Content-Type": "application/json",
       Authorization: `Bearer ${notionKey}`,
-    },
+    }),
     body: JSON.stringify({
       query,
       filter: { value: "database", property: "object" },

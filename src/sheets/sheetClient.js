@@ -2,6 +2,8 @@
 // Client-side API for the Linked Sheet feature.
 // Pure functions — no React dependencies.
 
+import { getConnection } from "../lib/api.js";
+
 /**
  * Detect the type of sheet URL.
  * Returns: "google_sheets" | "csv" | "unsupported" | null
@@ -61,9 +63,13 @@ export function validateSheetUrl(url) {
  * Returns: { columns: string[], rows: string[][], cachedAt: number, sheetType: string, truncated?: boolean }
  */
 export async function fetchSheetData(workerUrl, sheetUrl) {
+  const conn = getConnection();
+  const headers = { "Content-Type": "application/json" };
+  if (conn?.secret) headers["X-Wasabi-Key"] = conn.secret;
+
   const res = await fetch(`${workerUrl}/sheets/fetch`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ url: sheetUrl }),
   });
   if (!res.ok) {

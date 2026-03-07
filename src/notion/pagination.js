@@ -1,6 +1,15 @@
 // ─── Notion Pagination Helper ───
 // Full cursor-based pagination for Notion database queries.
 
+import { getConnection } from "../lib/api.js";
+
+/** Inject X-Wasabi-Key from stored connection into any headers object. */
+function withAuth(headers = {}) {
+  const conn = getConnection();
+  if (conn?.secret) headers["X-Wasabi-Key"] = conn.secret;
+  return headers;
+}
+
 /**
  * Query a Notion database with full pagination.
  * Returns ALL matching results (no cap).
@@ -30,10 +39,10 @@ export async function queryAll(workerUrl, notionKey, databaseId, filter, sorts) 
 
     const res = await fetch(`${workerUrl}/query`, {
       method: "POST",
-      headers: {
+      headers: withAuth({
         "Content-Type": "application/json",
         Authorization: `Bearer ${notionKey}`,
-      },
+      }),
       body: JSON.stringify(body),
     });
 
@@ -70,10 +79,10 @@ export async function queryLimited(workerUrl, notionKey, databaseId, filter, sor
 
   const res = await fetch(`${workerUrl}/query`, {
     method: "POST",
-    headers: {
+    headers: withAuth({
       "Content-Type": "application/json",
       Authorization: `Bearer ${notionKey}`,
-    },
+    }),
     body: JSON.stringify(body),
   });
 
