@@ -74,7 +74,10 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
       setLoading(false);
       return;
     }
-    if (!user?.workerUrl || !user?.notionKey || !pageConfig.databaseIds?.length) return;
+    if (!user?.workerUrl || !user?.notionKey || !pageConfig.databaseIds?.length) {
+      setLoading(false);
+      return;
+    }
 
     try {
       // Fetch schemas for ALL connected databases
