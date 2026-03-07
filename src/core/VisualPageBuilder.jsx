@@ -398,22 +398,28 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
       setError("Page name is required");
       return;
     }
+    if (!user?.workerUrl || !user?.notionKey) {
+      setError("Notion credentials not configured. Complete setup first.");
+      return;
+    }
+    if (!platformIds?.rootPageId) {
+      setError("Platform root page not found. Complete setup in System Manager.");
+      return;
+    }
+    if (!platformIds?.configDbId) {
+      setError("Config database not found. Complete setup in System Manager.");
+      return;
+    }
 
     setSaving(true);
     try {
-      // Create a Notion subpage — try under root page, fallback to workspace level
-      let notionPage;
-      try {
-        await ensurePageActive(user.workerUrl, user.notionKey, platformIds.rootPageId);
-        notionPage = await createSubpage(
-          user.workerUrl, user.notionKey, platformIds.rootPageId, pageName.trim()
-        );
-      } catch {
-        console.warn("[PageBuilder] Root page unavailable, creating at workspace level");
-        notionPage = await createSubpage(
-          user.workerUrl, user.notionKey, null, pageName.trim()
-        );
-      }
+      // Ensure root page is accessible (auto-unarchive if needed)
+      await ensurePageActive(user.workerUrl, user.notionKey, platformIds.rootPageId);
+
+      // Create a Notion subpage under the root page
+      const notionPage = await createSubpage(
+        user.workerUrl, user.notionKey, platformIds.rootPageId, pageName.trim()
+      );
 
       // Build document page config
       const docConfig = {
@@ -434,7 +440,14 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
       addPage({ ...docConfig, id: configId });
       setSuccess(true);
     } catch (err) {
-      setError(err.message || "Failed to create document page");
+      const msg = err.message || "";
+      if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
+        setError("Cannot reach Notion API. Check your worker URL and network connection.");
+      } else if (msg.includes("unarchive") || msg.includes("404") || msg.includes("400")) {
+        setError("Root page is unavailable or deleted. Re-run setup in System Manager.");
+      } else {
+        setError(msg || "Failed to create document page");
+      }
     } finally {
       setSaving(false);
     }
