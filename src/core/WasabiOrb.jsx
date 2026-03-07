@@ -12,7 +12,7 @@ const VS = 64;
 const CX = VS / 2;
 const CY = VS / 2;
 const BASE_R = 22;
-const N_POINTS = 8;
+const N_POINTS = 12;
 const TWO_PI = Math.PI * 2;
 
 let _orbIdCounter = 0;
@@ -27,7 +27,7 @@ function buildBlobPath(cx, cy, radii, angles) {
       y: cy + Math.sin(angles[i]) * radii[i],
     });
   }
-  const tension = 0.33;
+  const tension = 0.45;
   let d = `M ${pts[0].x},${pts[0].y}`;
   for (let i = 0; i < n; i++) {
     const p0 = pts[(i - 1 + n) % n];
@@ -115,9 +115,9 @@ export default function WasabiOrb({ size = 32 }) {
     const harmonics = [];
     for (let i = 0; i < N_POINTS; i++) {
       harmonics.push({
-        f1: 0.4 + i * 0.07,  p1: i * 1.3 + 0.5,  a1: 3.2 + (i % 3) * 0.8,
-        f2: 0.9 + i * 0.11,  p2: i * 2.1 + 1.7,  a2: 1.5 + (i % 2) * 0.6,
-        f3: 0.12 + i * 0.025, p3: i * 0.9 + 3.1,  a3: 2.0 + (i % 4) * 0.5,
+        f1: 0.7 + i * 0.12,   p1: i * 1.1 + 0.5,  a1: 2.4 + (i % 3) * 0.5,
+        f2: 1.6 + i * 0.18,   p2: i * 1.7 + 1.7,  a2: 1.1 + (i % 2) * 0.4,
+        f3: 0.22 + i * 0.04,  p3: i * 0.7 + 3.1,  a3: 1.6 + (i % 4) * 0.35,
       });
     }
 
@@ -127,13 +127,13 @@ export default function WasabiOrb({ size = 32 }) {
       const E = 0.15;
 
       // Floating drift
-      const driftX = Math.sin(t * 0.3 + 1.0) * 1.2 + Math.sin(t * 0.7 + 2.5) * 0.6;
-      const driftY = Math.cos(t * 0.25 + 0.5) * 1.0 + Math.sin(t * 0.55 + 1.8) * 0.5;
+      const driftX = Math.sin(t * 0.5 + 1.0) * 1.2 + Math.sin(t * 1.1 + 2.5) * 0.6;
+      const driftY = Math.cos(t * 0.4 + 0.5) * 1.0 + Math.sin(t * 0.9 + 1.8) * 0.5;
       const cx = CX + driftX;
       const cy = CY + driftY;
 
       // Rotation drift
-      const rot = Math.sin(t * 0.15 + 0.3) * 0.25 + Math.sin(t * 0.4 + 2.0) * 0.1;
+      const rot = Math.sin(t * 0.25 + 0.3) * 0.25 + Math.sin(t * 0.65 + 2.0) * 0.1;
 
       // Deformed radii
       const radii = [];
