@@ -232,13 +232,22 @@ export default function WasabiPanel({ onClose, isThinking }) {
   );
 
   const handleChatSend = useCallback(
-    async ({ text }) => {
-      if (chatLoading || !text?.trim()) return;
-      setChatMessages((prev) => [...prev, { role: "user", content: text }]);
+    async ({ text, files }) => {
+      if (chatLoading || (!text?.trim() && !files?.length)) return;
+      setChatMessages((prev) => [...prev, { role: "user", content: text || "(files attached)" }]);
       setChatChoices([]);
       setChatLoading(true);
 
-      const newHistory = [...chatHistoryRef.current, { role: "user", content: text }];
+      // Build agent message with file contents
+      let agentText = text || "";
+      if (files?.length) {
+        const fileContents = files.map((f) =>
+          `[File: ${f.name} (${f.type}, ${f.size > 1024 ? (f.size / 1024).toFixed(1) + " KB" : f.size + " B"})]\n${f.text || "[binary]"}`
+        ).join("\n\n");
+        agentText += `\n\nUploaded Files:\n${fileContents}`;
+      }
+
+      const newHistory = [...chatHistoryRef.current, { role: "user", content: agentText }];
 
       try {
         const systemPrompt = buildWasabiPrompt({

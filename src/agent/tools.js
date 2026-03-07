@@ -259,6 +259,65 @@ const SEARCH_KNOWLEDGE_BASE = {
   },
 };
 
+// ─── FILE PROCESSING TOOLS ───
+
+const PROCESS_UPLOADED_FILES = {
+  name: "process_uploaded_files",
+  description: "Process uploaded files and propose actions. Parses file content, extracts structured data, and returns proposed operations (create records, update records, attach to existing). Use this after a user uploads files to analyze them and suggest next steps.",
+  input_schema: {
+    type: "object",
+    properties: {
+      files: {
+        type: "array",
+        description: "Array of file objects from the upload. Each has: name, type, text (content), size.",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            type: { type: "string" },
+            text: { type: "string" },
+          },
+          required: ["name", "text"],
+        },
+      },
+      target_database_id: {
+        type: "string",
+        description: "Optional: target database ID to create records in. If not provided, the agent will suggest a target.",
+      },
+      action: {
+        type: "string",
+        enum: ["analyze", "create_records", "index_to_kb"],
+        description: "Action to perform: 'analyze' to parse and summarize, 'create_records' to create Notion records from file data, 'index_to_kb' to save to knowledge base.",
+      },
+    },
+    required: ["files", "action"],
+  },
+};
+
+const SMART_MATCH_RECORDS = {
+  name: "smart_match_records",
+  description: "Search existing records in a database to find potential matches for uploaded data. Use this to avoid creating duplicates and to suggest linking files to existing records.",
+  input_schema: {
+    type: "object",
+    properties: {
+      database_id: {
+        type: "string",
+        description: "Database to search for matches.",
+      },
+      search_terms: {
+        type: "array",
+        items: { type: "string" },
+        description: "Terms to search for (e.g. extracted names, IDs, or key values from uploaded files).",
+      },
+      match_field: {
+        type: "string",
+        description: "Optional: specific property name to match against.",
+      },
+    },
+    required: ["database_id", "search_terms"],
+  },
+};
+
 // ─── PAGE AGENT TOOLS ───
 
 const ESCALATE_TO_WASABI = {
@@ -343,6 +402,8 @@ export const WASABI_TOOLS = [
   POST_NOTIFICATION,
   DELEGATE_TO_PAGE_AGENT,
   CREATE_AUTOMATION_RULE,
+  PROCESS_UPLOADED_FILES,
+  SMART_MATCH_RECORDS,
 ];
 
 export const PAGE_TOOLS = [
@@ -351,6 +412,8 @@ export const PAGE_TOOLS = [
   CREATE_PAGE,
   UPDATE_PAGE,
   POST_NOTIFICATION,
+  PROCESS_UPLOADED_FILES,
+  SMART_MATCH_RECORDS,
   ESCALATE_TO_WASABI,
 ];
 

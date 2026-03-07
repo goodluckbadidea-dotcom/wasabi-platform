@@ -67,21 +67,38 @@ export default function ChatUI({
     }
   }, [handleSend]);
 
+  const [fileWarnings, setFileWarnings] = useState([]);
+
+  const processFiles = useCallback(async (rawFiles) => {
+    const warnings = [];
+    const toProcess = [];
+    for (const f of rawFiles) {
+      if (f.size > 2 * 1024 * 1024) {
+        warnings.push(`${f.name} is ${(f.size / (1024 * 1024)).toFixed(1)}MB — large files may be slow to process`);
+      }
+      toProcess.push(f);
+    }
+    if (warnings.length) setFileWarnings(warnings);
+    else setFileWarnings([]);
+    const parsed = await Promise.all(toProcess.map(parseFile));
+    return parsed;
+  }, []);
+
   const handleFileDrop = useCallback(async (e) => {
     e.preventDefault();
     setDragOver(false);
     if (!allowFiles) return;
     const dropped = Array.from(e.dataTransfer?.files || []);
-    const parsed = await Promise.all(dropped.map(parseFile));
+    const parsed = await processFiles(dropped);
     setFiles((prev) => [...prev, ...parsed]);
-  }, [allowFiles]);
+  }, [allowFiles, processFiles]);
 
   const handleFileSelect = useCallback(async (e) => {
     const selected = Array.from(e.target.files || []);
-    const parsed = await Promise.all(selected.map(parseFile));
+    const parsed = await processFiles(selected);
     setFiles((prev) => [...prev, ...parsed]);
     if (fileInputRef.current) fileInputRef.current.value = "";
-  }, []);
+  }, [processFiles]);
 
   const removeFile = useCallback((idx) => {
     setFiles((prev) => prev.filter((_, i) => i !== idx));
@@ -203,6 +220,29 @@ export default function ChatUI({
         <div ref={messagesEndRef} />
       </div>
 
+      {/* File warnings */}
+      {fileWarnings.length > 0 && (
+        <div style={{
+          padding: compact ? "6px 12px" : "6px 20px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 4,
+        }}>
+          {fileWarnings.map((w, i) => (
+            <div key={i} style={{
+              fontSize: 11,
+              color: "#E0A030",
+              background: "rgba(224,160,48,0.08)",
+              border: "1px solid rgba(224,160,48,0.2)",
+              borderRadius: RADIUS.sm,
+              padding: "4px 8px",
+            }}>
+              {w}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* File attachments preview */}
       {files.length > 0 && (
         <div style={{
@@ -223,7 +263,12 @@ export default function ChatUI({
               gap: 6,
               border: `1px solid ${C.darkBorder}`,
             }}>
-              <span>{f.name}</span>
+              <span style={{ maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {f.name}
+              </span>
+              <span style={{ fontSize: 10, color: C.darkMuted, opacity: 0.6 }}>
+                {f.size > 1024 ? (f.size / 1024).toFixed(0) + "K" : f.size + "B"}
+              </span>
               <button
                 onClick={() => removeFile(i)}
                 style={{

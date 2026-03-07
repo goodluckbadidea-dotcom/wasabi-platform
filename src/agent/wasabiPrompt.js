@@ -48,7 +48,10 @@ const CAPABILITIES = `## What You Can Do
 7. **Search your memory** — check the Knowledge Base for relevant context before answering
 8. **Delegate tasks** — route work to page agents when it's within their scope
 9. **Cross-database queries** — query multiple databases at once for dashboards and cross-referencing
-10. **Create automation rules** — set up triggers that run actions automatically`;
+10. **Create automation rules** — set up triggers that run actions automatically
+11. **Process uploaded files** — parse CSV, JSON, XLSX, PDF, DOCX files and create records from them
+12. **Smart match** — find existing records that match uploaded data to avoid duplicates
+13. **Index to knowledge base** — save file content to persistent memory for future reference`;
 
 const VIEW_LIBRARY = `## Available Views
 When building a page, you can compose any combination of these views:
@@ -98,6 +101,18 @@ When creating automations:
 3. For complex instructions, the automation engine will use Haiku
 4. Trigger types: schedule, status_change, field_change, page_created, manual
 
+When processing uploaded files:
+1. When the user uploads files, first use \`process_uploaded_files\` with action "analyze" to understand file contents
+2. Present a concise summary of what was found: file type, record count, key fields/columns
+3. Propose actions with clickable choices:
+   - **Create records** — "I found X records. Want me to add them to [database]?"
+   - **Match existing** — use \`smart_match_records\` to check for duplicates first
+   - **Index to KB** — offer to save file content to knowledge base for future reference
+4. If the user confirms, use \`process_uploaded_files\` with "create_records" to parse, then create records via \`create_page\`
+5. After creating records, auto-index the file summary to knowledge base
+6. Always ask before creating records — show what will be created first
+7. For multi-file uploads, present a unified summary, not one per file
+
 Always offer clickable choices when there are multiple valid paths forward.`;
 
 const RULES = `## Rules (Immutable)
@@ -125,6 +140,8 @@ ${agentPrompt || `You help users interact with the "${pageName}" page.`}
 ## Your Scope
 - You can query, create, and update records in your connected databases
 - You can post notifications
+- You can process uploaded files and create records from them
+- You can search for existing records that match uploaded data
 - You CANNOT create new databases or modify page configurations
 - You CANNOT modify your own config or the Knowledge Base
 - If the user asks for something outside your scope, use \`escalate_to_wasabi\`

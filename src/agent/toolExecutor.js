@@ -167,6 +167,10 @@ export function createToolExecutor({
 
       // ─── Database Creation ───
       case "create_database": {
+        // Ensure root page is active (auto-unarchive if needed)
+        if (parentPageId) {
+          await client.ensurePageActive(workerUrl, notionKey, parentPageId);
+        }
         const db = await client.createDatabase(
           workerUrl, notionKey,
           parentPageId,
@@ -277,6 +281,168 @@ export function createToolExecutor({
         }
         const rulePage = await client.createPage(workerUrl, notionKey, rulesDbId, ruleProps);
         return JSON.stringify({ success: true, rule_id: rulePage.id, name: toolInput.name });
+      }
+
+      // ─── File Processing ───
+      case "process_uploaded_files": {
+        const { files: inputFiles, action, target_database_id } = toolInput;
+        if (!inputFiles?.length) {
+          return JSON.stringify({ error: "No files provided." });
+        }
+
+        if (action === "analyze") {
+          // Parse and summarize each file
+          const summaries = inputFiles.map((f) => {
+            const lines = (f.text || "").split("\n");
+            const isCSV = f.type === "csv" || f.type === "tsv" || f.name?.endsWith(".csv") || f.name?.endsWith(".tsv");
+            let summary = { name: f.name, type: f.type, lineCount: lines.length };
+
+            if (isCSV && lines.length > 0) {
+              // Parse CSV headers and sample data
+              const headers = lines[0].split(/[,\t]/);
+              summary.headers = headers.map((h) => h.trim().replace(/^"|"$/g, ""));
+              summary.rowCount = lines.length - 1;
+              summary.sampleRows = lines.slice(1, 4).map((row) => row.substring(0, 200));
+            } else if (f.type === "json") {
+              try {
+                const parsed = JSON.parse(f.text);
+                if (Array.isArray(parsed)) {
+                  summary.recordCount = parsed.length;
+                  summary.sampleKeys = parsed.length > 0 ? Object.keys(parsed[0]) : [];
+                } else {
+                  summary.keys = Object.keys(parsed);
+                }
+              } catch {
+                summary.parseError = true;
+              }
+            } else {
+              summary.preview = (f.text || "").substring(0, 500);
+            }
+
+            return summary;
+          });
+
+          return JSON.stringify({ action: "analyze", files: summaries });
+        }
+
+        if (action === "create_records" && target_database_id) {
+          // Parse CSV/JSON files into records
+          const created = [];
+          const errors = [];
+
+          for (const f of inputFiles) {
+            try {
+              const isCSV = f.type === "csv" || f.type === "tsv" || f.name?.endsWith(".csv") || f.name?.endsWith(".tsv");
+              let records = [];
+
+              if (isCSV) {
+                const lines = (f.text || "").split("\n").filter((l) => l.trim());
+                if (lines.length < 2) continue;
+                const sep = f.type === "tsv" || f.name?.endsWith(".tsv") ? "\t" : ",";
+                const headers = lines[0].split(sep).map((h) => h.trim().replace(/^"|"$/g, ""));
+                for (let i = 1; i < lines.length; i++) {
+                  const vals = lines[i].split(sep).map((v) => v.trim().replace(/^"|"$/g, ""));
+                  const record = {};
+                  headers.forEach((h, j) => { if (vals[j]) record[h] = vals[j]; });
+                  records.push(record);
+                }
+              } else if (f.type === "json") {
+                const parsed = JSON.parse(f.text);
+                records = Array.isArray(parsed) ? parsed : [parsed];
+              }
+
+              created.push({
+                file: f.name,
+                recordCount: records.length,
+                sampleRecord: records[0] || null,
+                records: records.slice(0, 50), // Cap for context window
+              });
+            } catch (err) {
+              errors.push({ file: f.name, error: err.message });
+            }
+          }
+
+          return JSON.stringify({
+            action: "create_records",
+            target_database_id,
+            parsed: created,
+            errors,
+            note: "Records parsed. Use create_page tool to insert each record into the target database.",
+          });
+        }
+
+        if (action === "index_to_kb") {
+          if (!kbDbId) {
+            return JSON.stringify({ error: "Knowledge base not configured." });
+          }
+
+          const indexed = [];
+          for (const f of inputFiles) {
+            const content = (f.text || "").substring(0, 1800); // KB entries have a size limit
+            try {
+              await writeKB(workerUrl, notionKey, kbDbId, {
+                key: `upload:${f.name}`,
+                category: "business_context",
+                content: `[Uploaded file: ${f.name}]\n${content}`,
+                source: "upload",
+              });
+              indexed.push(f.name);
+            } catch (err) {
+              indexed.push(`${f.name} (failed: ${err.message})`);
+            }
+          }
+
+          return JSON.stringify({ action: "index_to_kb", indexed });
+        }
+
+        return JSON.stringify({ error: `Unknown action: ${action}` });
+      }
+
+      // ─── Smart Match Records ───
+      case "smart_match_records": {
+        const { database_id, search_terms, match_field } = toolInput;
+        if (!database_id || !search_terms?.length) {
+          return JSON.stringify({ error: "database_id and search_terms are required." });
+        }
+
+        const matches = [];
+        for (const term of search_terms.slice(0, 10)) {
+          try {
+            // Query with a title-contains filter as primary search
+            const filter = match_field
+              ? { property: match_field, rich_text: { contains: term } }
+              : undefined;
+
+            const results = await queryAll(workerUrl, notionKey, database_id, filter);
+            const matched = results
+              .map((page) => {
+                const props = extractProperties(page);
+                // Score by how many fields contain the search term
+                const termLower = term.toLowerCase();
+                let score = 0;
+                for (const [, val] of Object.entries(props)) {
+                  if (String(val).toLowerCase().includes(termLower)) score++;
+                }
+                return { id: page.id, ...props, _matchScore: score };
+              })
+              .filter((r) => r._matchScore > 0)
+              .sort((a, b) => b._matchScore - a._matchScore)
+              .slice(0, 5);
+
+            if (matched.length > 0) {
+              matches.push({ term, matches: matched });
+            }
+          } catch (err) {
+            matches.push({ term, error: err.message });
+          }
+        }
+
+        return JSON.stringify({
+          search_terms,
+          database_id,
+          results: matches,
+          totalMatches: matches.reduce((sum, m) => sum + (m.matches?.length || 0), 0),
+        });
       }
 
       // ─── Delegation to Page Agent ───

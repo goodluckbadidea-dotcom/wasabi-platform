@@ -82,6 +82,34 @@ export async function archivePage(workerUrl, notionKey, pageId) {
 }
 
 /**
+ * Unarchive a page (restore from trash).
+ */
+export async function unarchivePage(workerUrl, notionKey, pageId) {
+  const res = await fetch(`${workerUrl}/page/${pageId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${notionKey}`,
+    },
+    body: JSON.stringify({ archived: false }),
+  });
+  if (!res.ok) throw new Error(`Failed to unarchive page (${res.status})`);
+  return res.json();
+}
+
+/**
+ * Ensure a page is active (not archived). Auto-unarchives if needed.
+ * Returns the page object.
+ */
+export async function ensurePageActive(workerUrl, notionKey, pageId) {
+  const page = await getPage(workerUrl, notionKey, pageId);
+  if (page.archived) {
+    return unarchivePage(workerUrl, notionKey, pageId);
+  }
+  return page;
+}
+
+/**
  * Get blocks (page content).
  */
 export async function getBlocks(workerUrl, notionKey, pageId) {

@@ -7,7 +7,7 @@ import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { detectSchema, classifyProperties } from "../notion/schema.js";
-import { createDatabase } from "../notion/client.js";
+import { createDatabase, ensurePageActive } from "../notion/client.js";
 import { IconSearch, IconDatabase, IconCheck, IconPlus, IconClose, IconTrash } from "../design/icons.jsx";
 
 // ── Styles ──
@@ -619,6 +619,9 @@ export default function DatabaseBrowser({
             setCreating(true);
             setCreateError(null);
             try {
+              // Ensure root page is active (auto-unarchive if needed)
+              await ensurePageActive(user.workerUrl, user.notionKey, platformIds.rootPageId);
+
               const result = await createDatabase(
                 user.workerUrl,
                 user.notionKey,
