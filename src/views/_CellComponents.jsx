@@ -192,7 +192,36 @@ export function CellEditor({ value, type, options, onCommit, onCancel }) {
 
 // ─── Cell Display Component ───
 
-export function CellDisplay({ value, type, fieldName, schema, onClick }) {
+export function CellDisplay({ value, type, fieldName, schema, onClick, linkInfo, linkedValue, onLinkClick }) {
+  // If this cell has an active link, display the linked value instead
+  const displayValue = linkInfo ? (linkedValue ?? value) : value;
+  const displayType = type;
+
+  // Link indicator wrapper
+  if (linkInfo) {
+    return (
+      <span style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 4, maxWidth: "100%" }}>
+        <CellDisplayInner value={displayValue} type={displayType} fieldName={fieldName} schema={schema} onClick={onClick} />
+        <span
+          title={`Linked from: ${linkInfo.sourceName || "Unknown"}`}
+          onClick={(e) => { e.stopPropagation(); onLinkClick?.(); }}
+          style={{
+            width: 6, height: 6, borderRadius: "50%",
+            background: linkInfo.stale ? "#FF6B3D" : C.accent,
+            flexShrink: 0, cursor: "pointer",
+            opacity: 0.8, transition: "opacity 0.15s",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.8"; }}
+        />
+      </span>
+    );
+  }
+
+  return <CellDisplayInner value={value} type={type} fieldName={fieldName} schema={schema} onClick={onClick} />;
+}
+
+function CellDisplayInner({ value, type, fieldName, schema, onClick }) {
   if (value === null || value === undefined || value === "") {
     return (
       <span

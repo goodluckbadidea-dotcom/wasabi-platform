@@ -6,6 +6,7 @@
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { PlatformProvider, usePlatform } from "./context/PlatformContext.jsx";
+import { LinksProvider } from "./context/LinksContext.jsx";
 import { injectAnimations } from "./design/animations.js";
 import { S } from "./design/styles.js";
 import { C } from "./design/tokens.js";
@@ -320,9 +321,11 @@ function AppContent() {
 export default function App() {
   return (
     <PlatformProvider>
-      <ErrorBoundary fallbackLabel="Wasabi Platform">
-        <AppContent />
-      </ErrorBoundary>
+      <LinksProvider>
+        <ErrorBoundary fallbackLabel="Wasabi Platform">
+          <AppContent />
+        </ErrorBoundary>
+      </LinksProvider>
     </PlatformProvider>
   );
 }

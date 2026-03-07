@@ -6,8 +6,11 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
+import { useLinks } from "../context/LinksContext.jsx";
 import { fetchSheetData, detectColumnTypes, getSourceLabel } from "../sheets/sheetClient.js";
 import { debounce, formatDate, truncate, timeAgo } from "../utils/helpers.js";
+import { IconConnect } from "../design/icons.jsx";
+import LinkPicker from "../core/LinkPicker.jsx";
 
 // ─── Styles (mirrors Table.jsx token usage) ───
 
@@ -192,8 +195,9 @@ const styles = {
 
 // ─── Component ───
 
-export default function LinkedSheet({ config = {} }) {
+export default function LinkedSheet({ config = {}, pageConfig }) {
   const { user } = usePlatform();
+  const { createLink } = useLinks();
   const { sheetUrl, sheetType } = config;
 
   // Data state
@@ -209,6 +213,16 @@ export default function LinkedSheet({ config = {} }) {
   const [sortDir, setSortDir] = useState(null); // "asc" | "desc" | null
   const [searchFocused, setSearchFocused] = useState(false);
   const [hoveredRow, setHoveredRow] = useState(null);
+
+  // Cell linking state
+  const [hoveredCell, setHoveredCell] = useState(null); // { rowIdx, colIdx }
+  const [linkPickerCell, setLinkPickerCell] = useState(null); // { rowIdx, colIdx, column, value }
+
+  // Compute view index for this linked sheet within the page
+  const viewIdx = useMemo(() => {
+    if (!pageConfig?.views) return 0;
+    return pageConfig.views.findIndex((v) => v.config?.sheetUrl === sheetUrl) ?? 0;
+  }, [pageConfig, sheetUrl]);
 
   // Debounced search
   const debouncedSetSearch = useRef(
@@ -514,17 +528,49 @@ export default function LinkedSheet({ config = {} }) {
                 onMouseEnter={() => setHoveredRow(rowIdx)}
                 onMouseLeave={() => setHoveredRow(null)}
               >
-                {columns.map((col, colIdx) => (
-                  <td
-                    key={colIdx}
-                    style={{
-                      ...styles.td,
-                      ...(columnTypes[col] === "number" ? { textAlign: "right" } : {}),
-                    }}
-                  >
-                    {renderCell(row[colIdx], col)}
-                  </td>
-                ))}
+                {columns.map((col, colIdx) => {
+                  const isCellHovered = hoveredCell?.rowIdx === rowIdx && hoveredCell?.colIdx === colIdx;
+                  return (
+                    <td
+                      key={colIdx}
+                      style={{
+                        ...styles.td,
+                        ...(columnTypes[col] === "number" ? { textAlign: "right" } : {}),
+                        position: "relative",
+                      }}
+                      onMouseEnter={() => setHoveredCell({ rowIdx, colIdx })}
+                      onMouseLeave={() => setHoveredCell(null)}
+                    >
+                      {renderCell(row[colIdx], col)}
+                      {/* Link icon on hover */}
+                      {isCellHovered && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLinkPickerCell({
+                              rowIdx,
+                              colIdx,
+                              column: col,
+                              value: String(row[colIdx] ?? ""),
+                            });
+                          }}
+                          title="Link this value to another table"
+                          style={{
+                            position: "absolute", top: 2, right: 2,
+                            background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
+                            borderRadius: 4, padding: 2, cursor: "pointer",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            opacity: 0.6, transition: "opacity 0.12s", zIndex: 2,
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.6"; }}
+                        >
+                          <IconConnect size={10} color={C.accent} />
+                        </button>
+                      )}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
             {processedRows.length === 0 && (
@@ -545,6 +591,37 @@ export default function LinkedSheet({ config = {} }) {
           </tbody>
         </table>
       </div>
+
+      {/* Cell Link Picker (target mode — sheet cell is the source, user picks a target) */}
+      {linkPickerCell && (
+        <LinkPicker
+          mode="target"
+          onCancel={() => setLinkPickerCell(null)}
+          onSelect={async (selection) => {
+            const { sourceRef: targetRef, sourcePageId: targetPageId, sourceViewIdx: targetViewIdx, sourceName } = selection;
+            // Build the sheet source ref
+            const sourceRef = {
+              type: "sheet",
+              sheetUrl,
+              rowIndex: linkPickerCell.rowIdx,
+              column: linkPickerCell.column,
+            };
+            const pageName = pageConfig?.name || "Untitled";
+            const viewName = pageConfig?.views?.[viewIdx]?.name || "Linked Sheet";
+            await createLink({
+              name: `${pageName} → ${viewName} → ${sourceName}`,
+              sourcePage: pageConfig?.id || "",
+              sourceView: viewIdx,
+              sourceRef,
+              targetPage: targetPageId,
+              targetView: targetViewIdx,
+              targetRef,
+              direction: "one_way",
+            });
+            setLinkPickerCell(null);
+          }}
+        />
+      )}
     </div>
   );
 }

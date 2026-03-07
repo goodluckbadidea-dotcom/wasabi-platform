@@ -8,9 +8,11 @@ import { S } from "../design/styles.js";
 import { ANIM, injectAnimations } from "../design/animations.js";
 import { readProp, buildProp, extractProperties, getPageTitle } from "../notion/properties.js";
 import { debounce, formatDate, truncate } from "../utils/helpers.js";
-import { IconTrash, IconExport, IconEyeOff, IconExpand, IconPlus } from "../design/icons.jsx";
+import { IconTrash, IconExport, IconEyeOff, IconExpand, IconPlus, IconConnect } from "../design/icons.jsx";
 import FilterChips, { applyChipFilters } from "./FilterChips.jsx";
 import RecordDetail from "./RecordDetail.jsx";
+import { useLinks } from "../context/LinksContext.jsx";
+import LinkPicker from "../core/LinkPicker.jsx";
 
 // ─── Constants ───
 
@@ -842,6 +844,21 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const [quickAddValues, setQuickAddValues] = useState({});
   const [quickAddSaving, setQuickAddSaving] = useState(false);
   const [quickAddError, setQuickAddError] = useState(null);
+
+  // ── Cell Linking ──
+  const { resolveLinksForView, createLink, removeLink, getLinksForTarget } = useLinks();
+  const [resolvedLinks, setResolvedLinks] = useState(new Map());
+  const [linkPickerCell, setLinkPickerCell] = useState(null); // { pageId, field }
+  const [hoveredCell, setHoveredCell] = useState(null); // { pageId, field }
+
+  // Resolve linked values for this view
+  const viewIdx = pageConfig?.views?.findIndex((v) => v === config) ?? 0;
+  useEffect(() => {
+    if (!pageConfig?.id) return;
+    resolveLinksForView(pageConfig.id, viewIdx)
+      .then(setResolvedLinks)
+      .catch(() => {});
+  }, [pageConfig?.id, viewIdx, resolveLinksForView]);
   const targetDatabaseId = config.databaseId || pageConfig?.databaseIds?.[0];
 
   // Inject animations on mount
@@ -1526,13 +1543,20 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                       const cellKey = `${pageId}:${col}`;
                       const isSaving = !!savingCells[cellKey];
                       const failMsg = failedCells[cellKey];
+                      const linkData = resolvedLinks.get(cellKey);
+                      const isHoveredCell = hoveredCell?.pageId === pageId && hoveredCell?.field === col;
 
                       return (
-                        <td key={col} style={{
-                          ...styles.td,
-                          ...(isSaving ? { opacity: 0.55 } : {}),
-                          ...(failMsg ? { background: "#E0525210" } : {}),
-                        }}>
+                        <td
+                          key={col}
+                          style={{
+                            ...styles.td,
+                            ...(isSaving ? { opacity: 0.55 } : {}),
+                            ...(failMsg ? { background: "#E0525210" } : {}),
+                          }}
+                          onMouseEnter={() => setHoveredCell({ pageId, field: col })}
+                          onMouseLeave={() => setHoveredCell(null)}
+                        >
                           {isEditing ? (
                             <CellEditor
                               value={value}
@@ -1548,6 +1572,9 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                 type={type}
                                 fieldName={col}
                                 schema={schema}
+                                linkInfo={linkData ? { sourceName: linkData.link?.name, stale: linkData.stale } : undefined}
+                                linkedValue={linkData?.value}
+                                onLinkClick={linkData ? () => removeLink(linkData.link.id) : undefined}
                                 onClick={
                                   type === "checkbox" && canEdit
                                     ? () => handleCheckboxToggle(pageId, col, value)
@@ -1556,6 +1583,24 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                       : undefined
                                 }
                               />
+                              {/* Link icon on hover */}
+                              {isHoveredCell && !isEditing && !linkData && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setLinkPickerCell({ pageId, field: col }); }}
+                                  title="Link cell value"
+                                  style={{
+                                    position: "absolute", top: -2, right: -2,
+                                    background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
+                                    borderRadius: 4, padding: 2, cursor: "pointer",
+                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                    opacity: 0.6, transition: "opacity 0.12s", zIndex: 2,
+                                  }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.6"; }}
+                                >
+                                  <IconConnect size={10} color={C.accent} />
+                                </button>
+                              )}
                               {failMsg && (
                                 <div style={{
                                   fontSize: 10,
@@ -1690,6 +1735,32 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
             for (const [fieldName, payload] of Object.entries(properties)) {
               await onUpdate(pageId, fieldName, payload);
             }
+          }}
+        />
+      )}
+
+      {/* Cell Link Picker */}
+      {linkPickerCell && (
+        <LinkPicker
+          onCancel={() => setLinkPickerCell(null)}
+          onSelect={async (selection) => {
+            const { sourceRef, sourcePageId, sourceViewIdx, sourceName, sourceIsReadOnly, previewValue } = selection;
+            const targetRef = { type: "notion", pageId: linkPickerCell.pageId, field: linkPickerCell.field };
+            await createLink({
+              name: sourceName,
+              sourcePage: sourcePageId,
+              sourceView: sourceViewIdx,
+              sourceRef,
+              targetPage: pageConfig?.id || "",
+              targetView: viewIdx,
+              targetRef,
+              direction: "one_way",
+            });
+            // Refresh resolved links
+            resolveLinksForView(pageConfig?.id, viewIdx)
+              .then(setResolvedLinks)
+              .catch(() => {});
+            setLinkPickerCell(null);
           }}
         />
       )}
