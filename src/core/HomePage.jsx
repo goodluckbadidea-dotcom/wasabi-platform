@@ -218,25 +218,23 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
 
   // ── Delete page ──
   const handleDeletePage = useCallback(async (pageConfig) => {
-    try {
-      if (user?.workerUrl && user?.notionKey) {
-        // Ensure root page is active before archiving children
+    // Always remove from local state first — Notion cleanup is best-effort
+    removePage(pageConfig.id);
+    setConfirmDelete(null);
+    if (user?.workerUrl && user?.notionKey) {
+      try {
         if (platformIds?.rootPageId) {
           await ensurePageActive(user.workerUrl, user.notionKey, platformIds.rootPageId);
         }
-        await archivePageConfig(user.workerUrl, user.notionKey, pageConfig.id);
-        for (const dbId of (pageConfig.databaseIds || [])) {
-          archivePage(user.workerUrl, user.notionKey, dbId).catch(() => {});
-        }
-        if (pageConfig.pageType === "document" && pageConfig.notionPageId) {
-          archivePage(user.workerUrl, user.notionKey, pageConfig.notionPageId).catch(() => {});
-        }
+      } catch {}
+      archivePageConfig(user.workerUrl, user.notionKey, pageConfig.id).catch(() => {});
+      for (const dbId of (pageConfig.databaseIds || [])) {
+        archivePage(user.workerUrl, user.notionKey, dbId).catch(() => {});
       }
-      removePage(pageConfig.id);
-    } catch (err) {
-      console.error("[HomePage] Failed to delete page:", err);
+      if (pageConfig.pageType === "document" && pageConfig.notionPageId) {
+        archivePage(user.workerUrl, user.notionKey, pageConfig.notionPageId).catch(() => {});
+      }
     }
-    setConfirmDelete(null);
   }, [user, platformIds, removePage]);
 
   // ── Rename Page ──
