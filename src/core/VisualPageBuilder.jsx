@@ -8,7 +8,7 @@ import { S } from "../design/styles.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { savePageConfig, createDocumentPageConfig } from "../config/pageConfig.js";
 import { autoDetectViews } from "../notion/schema.js";
-import { createSubpage } from "../notion/client.js";
+import { createSubpage, ensurePageActive } from "../notion/client.js";
 import DatabaseBrowser from "./DatabaseBrowser.jsx";
 import {
   IconPage, IconTable, IconKanban, IconChart, IconForm,
@@ -260,16 +260,23 @@ export default function VisualPageBuilder({ onCancel }) {
 
   // Handle connecting a Google Sheet / CSV as a Linked Sheet view
   const handleSheetConnect = useCallback(({ sheetUrl, sheetType }) => {
-    setViews((prev) => [
-      ...prev,
-      {
-        type: "linked_sheet",
-        label: "Linked Sheet",
-        position: "main",
-        config: { sheetUrl, sheetType },
-      },
-    ]);
-  }, []);
+    const newView = {
+      type: "linked_sheet",
+      label: "Linked Sheet",
+      position: "main",
+      config: { sheetUrl, sheetType },
+    };
+    setViews((prev) => {
+      // If no Notion databases connected and the only view is the default empty Table,
+      // replace it with the linked sheet instead of appending
+      const isDefaultTableOnly = connectedDbs.length === 0
+        && prev.length === 1
+        && prev[0].type === "table"
+        && Object.keys(prev[0].config || {}).length === 0;
+      if (isDefaultTableOnly) return [newView];
+      return [...prev, newView];
+    });
+  }, [connectedDbs]);
 
   // Apply auto-detected views — always ensure Table is first
   const applySuggestedViews = useCallback(() => {
@@ -383,6 +390,9 @@ export default function VisualPageBuilder({ onCancel }) {
 
     setSaving(true);
     try {
+      // Ensure root page is active (auto-unarchive if needed)
+      await ensurePageActive(user.workerUrl, user.notionKey, platformIds.rootPageId);
+
       // Create a Notion subpage under the root page
       const notionPage = await createSubpage(
         user.workerUrl,
