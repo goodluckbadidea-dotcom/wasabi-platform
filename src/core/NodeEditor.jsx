@@ -13,8 +13,9 @@ import {
   IconPlay, IconDatabase, IconCalendar, IconBolt, IconCondition,
   IconEdit, IconPlus, IconBell, IconTransform, IconTrash, IconClose,
 } from "../design/icons.jsx";
-import { loadCachedFlows, saveFlow, loadFlows, initFlowsDB } from "../config/flowStorage.js";
+import { loadCachedFlows, saveFlow, loadFlows, initFlowsDB, deleteFlow } from "../config/flowStorage.js";
 import { savePlatformIds, loadPlatformIds } from "../config/setup.js";
+import ConfirmDialog from "./ConfirmDialog.jsx";
 
 // ── Node Palette Definition ──
 
@@ -81,6 +82,7 @@ function getDefaultLabel(type, subtype) {
 // ── Flow List Sidebar ──
 
 function FlowListPanel({ flows, activeFlowId, onSelect, onNew, onDelete, collapsed }) {
+  const [hoveredId, setHoveredId] = useState(null);
   if (collapsed) return null;
 
   return (
@@ -147,44 +149,76 @@ function FlowListPanel({ flows, activeFlowId, onSelect, onNew, onDelete, collaps
         )}
         {flows.map((flow) => {
           const isActive = flow.id === activeFlowId;
+          const isHovered = hoveredId === flow.id;
           return (
-            <button
+            <div
               key={flow.id}
-              onClick={() => onSelect(flow.id)}
+              onMouseEnter={() => setHoveredId(flow.id)}
+              onMouseLeave={() => setHoveredId(null)}
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 8,
                 width: "calc(100% - 12px)",
                 margin: "2px 6px",
-                padding: "8px 12px",
-                background: isActive ? C.accent : "transparent",
-                border: "none",
                 borderRadius: RADIUS.md,
-                cursor: "pointer",
-                outline: "none",
-                fontFamily: FONT,
+                background: isActive ? C.accent : isHovered ? C.darkSurf2 : "transparent",
                 transition: "background 0.1s",
               }}
-              onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = isActive ? C.accent : "transparent"; }}
             >
-              <div style={{
-                width: 6, height: 6, borderRadius: "50%",
-                background: flow.enabled ? "#7DC143" : C.darkBorder,
-                flexShrink: 0,
-              }} />
-              <span style={{
-                fontSize: 12,
-                fontWeight: isActive ? 600 : 400,
-                color: isActive ? "#fff" : C.darkText,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}>
-                {flow.name || "Untitled Flow"}
-              </span>
-            </button>
+              <button
+                onClick={() => onSelect(flow.id)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  flex: 1,
+                  padding: "8px 12px",
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  outline: "none",
+                  fontFamily: FONT,
+                  minWidth: 0,
+                }}
+              >
+                <div style={{
+                  width: 6, height: 6, borderRadius: "50%",
+                  background: flow.enabled ? "#7DC143" : C.darkBorder,
+                  flexShrink: 0,
+                }} />
+                <span style={{
+                  fontSize: 12,
+                  fontWeight: isActive ? 600 : 400,
+                  color: isActive ? "#fff" : C.darkText,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}>
+                  {flow.name || "Untitled Flow"}
+                </span>
+              </button>
+              {isHovered && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onDelete(flow.id); }}
+                  title="Delete flow"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: "4px 8px 4px 0",
+                    opacity: 0.4,
+                    transition: "opacity 0.12s",
+                    outline: "none",
+                    display: "flex",
+                    alignItems: "center",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.4"; }}
+                >
+                  <IconTrash size={12} color={isActive ? "#fff" : C.darkMuted} />
+                </button>
+              )}
+            </div>
           );
         })}
       </div>
@@ -378,6 +412,7 @@ export default function NodeEditor({ automationEngine }) {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [saveStatus, setSaveStatus] = useState(null); // null | "saving" | "saved" | "error"
+  const [confirmDelete, setConfirmDelete] = useState(null); // flow id to confirm deletion
 
   const canvasRef = useRef(null);
 
@@ -638,6 +673,15 @@ export default function NodeEditor({ automationEngine }) {
 
   // ── Delete flow ──
   const handleDeleteFlow = useCallback(async (flowId) => {
+    // Archive in Notion if it's a persisted flow (not a temp ID)
+    const isNotion = flowId && !flowId.startsWith("flow_");
+    if (isNotion && user?.workerUrl && user?.notionKey) {
+      try {
+        await deleteFlow(user.workerUrl, user.notionKey, flowId);
+      } catch (err) {
+        console.error("[NodeEditor] Failed to archive flow:", err);
+      }
+    }
     setFlows((prev) => prev.filter((f) => f.id !== flowId));
     if (activeFlowId === flowId) {
       setActiveFlowId(null);
@@ -645,7 +689,8 @@ export default function NodeEditor({ automationEngine }) {
       setConnections([]);
       setSelectedNodeId(null);
     }
-  }, [activeFlowId]);
+    setConfirmDelete(null);
+  }, [activeFlowId, user]);
 
   // ── Keyboard shortcuts ──
   useEffect(() => {
@@ -678,9 +723,18 @@ export default function NodeEditor({ automationEngine }) {
           activeFlowId={activeFlowId}
           onSelect={setActiveFlowId}
           onNew={handleNewFlow}
-          onDelete={handleDeleteFlow}
+          onDelete={(id) => setConfirmDelete(id)}
         />
         <EmptyState onNew={handleNewFlow} />
+        {confirmDelete && (
+          <ConfirmDialog
+            title="Delete Flow"
+            message={`Are you sure you want to delete "${flows.find((f) => f.id === confirmDelete)?.name || "Untitled Flow"}"? This action cannot be undone.`}
+            confirmLabel="Delete"
+            onConfirm={() => handleDeleteFlow(confirmDelete)}
+            onCancel={() => setConfirmDelete(null)}
+          />
+        )}
       </div>
     );
   }
@@ -693,7 +747,7 @@ export default function NodeEditor({ automationEngine }) {
         activeFlowId={activeFlowId}
         onSelect={setActiveFlowId}
         onNew={handleNewFlow}
-        onDelete={handleDeleteFlow}
+        onDelete={(id) => setConfirmDelete(id)}
       />
 
       {/* Main canvas area */}
@@ -735,6 +789,17 @@ export default function NodeEditor({ automationEngine }) {
           onChange={handleUpdateNode}
           onDelete={handleDeleteNode}
           onClose={() => setSelectedNodeId(null)}
+        />
+      )}
+
+      {/* Confirm delete dialog */}
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Delete Flow"
+          message={`Are you sure you want to delete "${flows.find((f) => f.id === confirmDelete)?.name || "Untitled Flow"}"? This action cannot be undone.`}
+          confirmLabel="Delete"
+          onConfirm={() => handleDeleteFlow(confirmDelete)}
+          onCancel={() => setConfirmDelete(null)}
         />
       )}
     </div>

@@ -12,8 +12,10 @@ import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createToolExecutor, createDelegateFunction } from "../agent/toolExecutor.js";
 import { queryAll } from "../notion/pagination.js";
 import { readProp } from "../notion/properties.js";
-import { updatePage } from "../notion/client.js";
+import { updatePage, archivePage } from "../notion/client.js";
 import WasabiOrb from "./WasabiOrb.jsx";
+import ConfirmDialog from "./ConfirmDialog.jsx";
+import { IconTrash } from "../design/icons.jsx";
 
 // ─── Trigger type pill colors ───
 
@@ -126,6 +128,18 @@ const styles = {
     marginLeft: "auto",
     whiteSpace: "nowrap",
   },
+  deleteBtn: {
+    background: "transparent",
+    border: "none",
+    cursor: "pointer",
+    padding: "2px 4px",
+    opacity: 0.35,
+    transition: "opacity 0.12s",
+    outline: "none",
+    display: "flex",
+    alignItems: "center",
+    marginLeft: 4,
+  },
   toggle: (enabled) => ({
     display: "inline-block",
     width: 36,
@@ -186,6 +200,7 @@ export default function AutomationBuilder({ automationEngine }) {
   const [rules, setRules] = useState([]);
   const [rulesLoading, setRulesLoading] = useState(true);
   const [togglingIds, setTogglingIds] = useState(new Set());
+  const [confirmDelete, setConfirmDelete] = useState(null); // rule object to confirm deletion
 
   // ─── Fetch rules from Notion ───
 
@@ -262,6 +277,18 @@ export default function AutomationBuilder({ automationEngine }) {
       automationEngine.runRule(ruleId);
     }
   }, [automationEngine]);
+
+  // ─── Delete rule ───
+
+  const handleDeleteRule = useCallback(async (rule) => {
+    try {
+      await archivePage(user.workerUrl, user.notionKey, rule.id);
+    } catch (err) {
+      console.error("[AutomationBuilder] Failed to archive rule:", err);
+    }
+    setRules((prev) => prev.filter((r) => r.id !== rule.id));
+    setConfirmDelete(null);
+  }, [user.workerUrl, user.notionKey]);
 
   // ─── Tool executor ───
 
@@ -456,6 +483,15 @@ ${rulesListStr}`;
                     Test
                   </button>
                 )}
+                <button
+                  style={styles.deleteBtn}
+                  onClick={() => setConfirmDelete(rule)}
+                  title="Delete rule"
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.35"; }}
+                >
+                  <IconTrash size={11} color={C.darkMuted} />
+                </button>
               </div>
             </div>
           ))}
@@ -476,6 +512,17 @@ ${rulesListStr}`;
           placeholder="Describe an automation rule to create..."
         />
       </div>
+
+      {/* Confirm delete dialog */}
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Delete Rule"
+          message={`Are you sure you want to delete "${confirmDelete.name}"? This action cannot be undone.`}
+          confirmLabel="Delete"
+          onConfirm={() => handleDeleteRule(confirmDelete)}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
     </div>
   );
 }
