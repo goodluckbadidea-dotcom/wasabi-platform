@@ -212,7 +212,10 @@ function removeHover(e) {
 
 // ── Main Component ──
 export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) {
-  const { pages, activePage, setActivePage, removePage, updatePageConfig, user, platformIds } = usePlatform();
+  const {
+    pages, activePage, setActivePage, removePage, updatePageConfig, user, platformIds,
+    pageTree, setActiveFolder, folders,
+  } = usePlatform();
   const [homeConfig, setHomeConfig] = useState(() => loadHomeConfig());
   const [confirmDelete, setConfirmDelete] = useState(null);
 
@@ -274,15 +277,21 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
     });
   }, []);
 
+  // Exclude folders and sub-pages from card lists (they show via folder cards)
+  const visiblePages = useMemo(
+    () => pages.filter((p) => p.type !== "folder" && p.type !== "sub_page"),
+    [pages]
+  );
+
   // Split pages: pinned vs recent
   const pinnedPages = useMemo(
-    () => pages.filter((p) => pinnedIds.includes(p.id)),
-    [pages, pinnedIds]
+    () => visiblePages.filter((p) => pinnedIds.includes(p.id)),
+    [visiblePages, pinnedIds]
   );
 
   const recentPages = useMemo(
-    () => pages.filter((p) => !pinnedIds.includes(p.id)).slice(0, 8),
-    [pages, pinnedIds]
+    () => visiblePages.filter((p) => !pinnedIds.includes(p.id)).slice(0, 8),
+    [visiblePages, pinnedIds]
   );
 
   // Get greeting based on time of day
@@ -295,8 +304,8 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
 
   // Stats
   const totalViews = useMemo(
-    () => pages.reduce((sum, p) => sum + (p.views?.length || 0), 0),
-    [pages]
+    () => visiblePages.reduce((sum, p) => sum + (p.views?.length || 0), 0),
+    [visiblePages]
   );
 
   const viewTypeCounts = useMemo(() => {
@@ -321,15 +330,49 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
             {greeting}
           </div>
           <div style={{ ...hs.heroSub, animation: ANIM.fadeUp(0.06) }}>
-            {pages.length === 0
+            {visiblePages.length === 0
               ? "Welcome to Wasabi. Let's build your first page."
-              : `${pages.length} page${pages.length !== 1 ? "s" : ""} \u00b7 ${totalViews} view${totalViews !== 1 ? "s" : ""}`}
+              : `${folders.length} folder${folders.length !== 1 ? "s" : ""} \u00b7 ${visiblePages.length} page${visiblePages.length !== 1 ? "s" : ""} \u00b7 ${totalViews} view${totalViews !== 1 ? "s" : ""}`}
           </div>
         </div>
       </div>
 
+      {/* ── Folders ── */}
+      {pageTree.length > 0 && (
+        <div style={hs.section}>
+          <div style={hs.sectionHeader}>
+            <span style={hs.sectionTitle}>
+              <IconFolder size={11} color={C.darkMuted} /> Folders
+            </span>
+          </div>
+          <div style={hs.grid}>
+            {pageTree.map((folder, i) => (
+              <div
+                key={folder.id}
+                style={hs.card(i * 0.02)}
+                onClick={() => {
+                  setActiveFolder(folder.id);
+                  // If folder has pages, navigate to the first one
+                  if (folder.children?.length > 0) {
+                    setActivePage(folder.children[0].id);
+                  }
+                }}
+                onMouseEnter={applyHover}
+                onMouseLeave={removeHover}
+              >
+                <IconFolder size={18} color={C.accent} />
+                <div style={hs.cardTitle}>{folder.name}</div>
+                <div style={hs.cardMeta}>
+                  {folder.children?.length || 0} page{(folder.children?.length || 0) !== 1 ? "s" : ""}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Quick Start (always shown if < 6 pages, or if no pages) ── */}
-      {pages.length < 6 && (
+      {visiblePages.length < 6 && (
         <div style={hs.section}>
           <div style={hs.sectionHeader}>
             <span style={hs.sectionTitle}>Quick Start</span>
@@ -400,9 +443,9 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
         <div style={hs.section}>
           <div style={hs.sectionHeader}>
             <span style={hs.sectionTitle}>Pages</span>
-            {pages.length > 8 && (
+            {visiblePages.length > 8 && (
               <span style={{ fontSize: 11, color: C.accent, cursor: "pointer", fontWeight: 500 }}>
-                View all ({pages.length})
+                View all ({visiblePages.length})
               </span>
             )}
           </div>
@@ -424,27 +467,27 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
       )}
 
       {/* ── Stats Row ── */}
-      {pages.length > 0 && (
+      {visiblePages.length > 0 && (
         <div style={hs.section}>
           <div style={hs.sectionHeader}>
             <span style={hs.sectionTitle}>Overview</span>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12 }}>
             <div style={{ ...hs.statCard, animation: ANIM.fadeUp(0.1) }}>
-              <span style={hs.statValue}>{pages.length}</span>
-              <span style={hs.statLabel}>Pages</span>
+              <span style={hs.statValue}>{folders.length}</span>
+              <span style={hs.statLabel}>Folders</span>
             </div>
             <div style={{ ...hs.statCard, animation: ANIM.fadeUp(0.12) }}>
+              <span style={hs.statValue}>{visiblePages.length}</span>
+              <span style={hs.statLabel}>Pages</span>
+            </div>
+            <div style={{ ...hs.statCard, animation: ANIM.fadeUp(0.14) }}>
               <span style={hs.statValue}>{totalViews}</span>
               <span style={hs.statLabel}>Views</span>
             </div>
-            <div style={{ ...hs.statCard, animation: ANIM.fadeUp(0.14) }}>
-              <span style={hs.statValue}>{new Set(pages.flatMap((p) => p.databaseIds || [p.databaseId]).filter(Boolean)).size}</span>
-              <span style={hs.statLabel}>Databases</span>
-            </div>
             <div style={{ ...hs.statCard, animation: ANIM.fadeUp(0.16) }}>
-              <span style={hs.statValue}>{pinnedIds.length}</span>
-              <span style={hs.statLabel}>Pinned</span>
+              <span style={hs.statValue}>{new Set(visiblePages.flatMap((p) => p.databaseIds || [p.databaseId]).filter(Boolean)).size}</span>
+              <span style={hs.statLabel}>Databases</span>
             </div>
           </div>
         </div>

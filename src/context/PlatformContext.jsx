@@ -1,7 +1,7 @@
 // ─── Wasabi Platform Context ───
 // Central state provider for the entire application.
 
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { loadPlatformIds, savePlatformIds } from "../config/setup.js";
 import { loadCachedConfigs, loadPageConfigs, validatePageConfigs, archivePageConfig } from "../config/pageConfig.js";
 
@@ -33,7 +33,65 @@ export function PlatformProvider({ children }) {
 
   // ─── Pages ───
   const [pages, setPages] = useState(() => loadCachedConfigs());
-  const [activePage, setActivePage] = useState(null); // page id, "wasabi", "system", or null (onboarding)
+  const [activePage, setActivePage] = useState(null); // page id, "wasabi", "system", or null (home)
+  const [activeFolder, setActiveFolder] = useState(null); // folder id or null
+  const [activeSubPage, setActiveSubPage] = useState(null); // sub-page id or null (show parent)
+
+  // ─── Page tree (hierarchy) ───
+  const pageTree = useMemo(() => {
+    const folderList = pages.filter((p) => p.type === "folder");
+    const pageList = pages.filter((p) => p.type === "page" || !p.type);
+    const subList = pages.filter((p) => p.type === "sub_page");
+
+    const tree = folderList.map((folder) => ({
+      ...folder,
+      children: pageList
+        .filter((p) => p.parentId === folder.id)
+        .map((page) => ({
+          ...page,
+          children: subList.filter((sp) => sp.parentId === page.id),
+        })),
+    }));
+
+    // Orphan pages → virtual "Uncategorized" folder
+    const assigned = new Set(tree.flatMap((f) => f.children.map((p) => p.id)));
+    const orphans = pageList.filter((p) => !assigned.has(p.id));
+    if (orphans.length > 0) {
+      tree.push({
+        id: "__uncategorized__",
+        name: "Uncategorized",
+        icon: "folder",
+        type: "folder",
+        virtual: true,
+        children: orphans.map((p) => ({
+          ...p,
+          children: subList.filter((sp) => sp.parentId === p.id),
+        })),
+      });
+    }
+
+    return tree;
+  }, [pages]);
+
+  const folders = useMemo(() => pages.filter((p) => p.type === "folder"), [pages]);
+
+  const getFolderPages = useCallback(
+    (folderId) => {
+      if (folderId === "__uncategorized__") {
+        const folderIds = new Set(pages.filter((p) => p.type === "folder").map((p) => p.id));
+        return pages.filter(
+          (p) => (p.type === "page" || !p.type) && (!p.parentId || !folderIds.has(p.parentId))
+        );
+      }
+      return pages.filter((p) => p.parentId === folderId && p.type !== "sub_page" && p.type !== "folder");
+    },
+    [pages]
+  );
+
+  const getSubPages = useCallback(
+    (pageId) => pages.filter((p) => p.parentId === pageId && p.type === "sub_page"),
+    [pages]
+  );
 
   // ─── Global log (formerly batch queue) ───
   const [batchQueue, setBatchQueue] = useState([]);
@@ -95,8 +153,18 @@ export function PlatformProvider({ children }) {
       } catch {}
       return updated;
     });
-    // Navigate to the new page
-    setActivePage(pageConfig.id);
+    // Navigate based on type
+    if (pageConfig.type === "folder") {
+      // Enter the new folder (stay on home, sidebar shows folder contents)
+      setActiveFolder(pageConfig.id);
+      setActivePage(null);
+    } else if (pageConfig.type === "sub_page") {
+      // Don't navigate away — just show the new sub-page pill
+      setActiveSubPage(pageConfig.id);
+    } else {
+      // Regular page — navigate to it
+      setActivePage(pageConfig.id);
+    }
   }, []);
 
   const updatePageConfig = useCallback((id, updates) => {
@@ -111,13 +179,16 @@ export function PlatformProvider({ children }) {
 
   const removePage = useCallback((id) => {
     setPages((prev) => {
-      const updated = prev.filter((p) => p.id !== id);
+      // Also remove children (pages in folder, sub-pages in page)
+      const updated = prev.filter((p) => p.id !== id && p.parentId !== id);
       try {
         localStorage.setItem("wasabi_page_configs", JSON.stringify(updated));
       } catch {}
       return updated;
     });
     setActivePage((curr) => (curr === id ? null : curr));
+    setActiveFolder((curr) => (curr === id ? null : curr));
+    setActiveSubPage((curr) => (curr === id ? null : curr));
   }, []);
 
   const addToQueue = useCallback((item) => {
@@ -159,6 +230,16 @@ export function PlatformProvider({ children }) {
     addPage,
     updatePageConfig,
     removePage,
+
+    // Hierarchy
+    activeFolder,
+    setActiveFolder,
+    activeSubPage,
+    setActiveSubPage,
+    pageTree,
+    folders,
+    getFolderPages,
+    getSubPages,
 
     // Log (batch queue)
     batchQueue,

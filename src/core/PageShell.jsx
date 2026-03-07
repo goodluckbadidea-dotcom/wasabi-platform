@@ -12,6 +12,7 @@ import { updatePage, createPage, archivePage } from "../notion/client.js";
 import { savePageConfig } from "../config/pageConfig.js";
 import ViewRenderer from "../views/ViewRenderer.jsx";
 import ChatPanel from "../views/ChatPanel.jsx";
+import SubPageNav from "./SubPageNav.jsx";
 import DatabaseBrowser from "./DatabaseBrowser.jsx";
 import { ViewSkeleton } from "./ErrorBoundary.jsx";
 import { IconWarning, IconRefresh, IconPlus, IconDatabase, IconClose } from "../design/icons.jsx";
@@ -40,8 +41,26 @@ const refreshSelectStyle = {
   height: 26,
 };
 
-export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
-  const { user, platformIds, updatePageConfig } = usePlatform();
+export default function PageShell({
+  pageConfig,
+  activeViewIndex = 0,
+  onSetActiveView,
+  onAddSubPage,
+}) {
+  const {
+    user, platformIds, updatePageConfig,
+    activeSubPage, setActiveSubPage, getSubPages,
+  } = usePlatform();
+
+  // ── Sub-page awareness ──
+  const subPages = getSubPages(pageConfig.id);
+  const effectiveConfig = activeSubPage
+    ? subPages.find((sp) => sp.id === activeSubPage) || pageConfig
+    : pageConfig;
+  // Sub-pages inherit parent DBs if they don't specify their own
+  const effectiveDbs = effectiveConfig.databaseIds?.length
+    ? effectiveConfig.databaseIds
+    : pageConfig.databaseIds;
   const [data, setData] = useState([]);
   const [schema, setSchema] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -50,10 +69,10 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
   const [showAddDb, setShowAddDb] = useState(false);
 
   // Detect document pages (no database fetch needed)
-  const isDocumentPage = pageConfig.pageType === "document";
+  const isDocumentPage = effectiveConfig.pageType === "document";
 
-  // Get the active view config based on sidebar selection
-  const views = pageConfig.views || [];
+  // Get the active view config based on effective config (sub-page or parent)
+  const views = effectiveConfig.views || [];
   let activeView = views[activeViewIndex] || views[0];
 
   // For document pages, inject editable: true into the document view config
@@ -74,7 +93,7 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
       setLoading(false);
       return;
     }
-    if (!user?.workerUrl || !user?.notionKey || !pageConfig.databaseIds?.length) {
+    if (!user?.workerUrl || !user?.notionKey || !effectiveDbs?.length) {
       setLoading(false);
       return;
     }
@@ -82,7 +101,7 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
     try {
       // Fetch schemas for ALL connected databases
       const schemaMap = {};
-      for (const dbId of pageConfig.databaseIds) {
+      for (const dbId of effectiveDbs) {
         try {
           const dbSchema = await detectSchema(user.workerUrl, user.notionKey, dbId);
           schemaMap[dbId] = dbSchema;
@@ -93,12 +112,12 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
       setSchemas(schemaMap);
 
       // Use primary database schema as the main schema (backward compat)
-      const primaryDbId = pageConfig.databaseIds[0];
+      const primaryDbId = effectiveDbs[0];
       setSchema(schemaMap[primaryDbId] || null);
 
       // Fetch data from all databases
       const allData = [];
-      for (const dbId of pageConfig.databaseIds) {
+      for (const dbId of effectiveDbs) {
         const results = await queryAll(user.workerUrl, user.notionKey, dbId);
         allData.push(...results.map((r) => ({ ...r, _databaseId: dbId })));
       }
@@ -110,7 +129,7 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
     } finally {
       setLoading(false);
     }
-  }, [user, pageConfig]);
+  }, [user, effectiveDbs, isDocumentPage]);
 
   // Initial fetch
   useEffect(() => {
@@ -118,8 +137,8 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
     fetchData();
   }, [fetchData]);
 
-  // Periodic refresh — configurable per page via pageConfig.refreshInterval (ms)
-  const refreshMs = pageConfig.refreshInterval ?? DEFAULT_REFRESH_MS;
+  // Periodic refresh — configurable per page via effectiveConfig.refreshInterval (ms)
+  const refreshMs = effectiveConfig.refreshInterval ?? DEFAULT_REFRESH_MS;
   useEffect(() => {
     if (refreshMs <= 0) return; // 0 or negative disables auto-refresh
     refreshTimer.current = setInterval(fetchData, refreshMs);
@@ -196,36 +215,63 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
   // Handle refresh interval change
   const handleRefreshChange = useCallback(
     (val) => {
-      if (pageConfig?.id) {
-        updatePageConfig(pageConfig.id, { refreshInterval: val });
+      if (effectiveConfig?.id) {
+        updatePageConfig(effectiveConfig.id, { refreshInterval: val });
       }
     },
-    [pageConfig, updatePageConfig]
+    [effectiveConfig, updatePageConfig]
   );
 
+  // ── View management callbacks (for SubPageNav) ──
+  const handleRenameView = useCallback((viewIdx, newLabel) => {
+    const target = effectiveConfig;
+    const updatedViews = (target.views || []).map((v, i) =>
+      i === viewIdx ? { ...v, label: newLabel } : v
+    );
+    updatePageConfig(target.id, { views: updatedViews });
+    if (user?.workerUrl && user?.notionKey && platformIds?.configDbId) {
+      savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
+        ...target, views: updatedViews,
+      }).catch(() => {});
+    }
+  }, [effectiveConfig, updatePageConfig, user, platformIds]);
+
+  const handleDeleteView = useCallback((viewIdx) => {
+    const target = effectiveConfig;
+    const updatedViews = (target.views || []).filter((_, i) => i !== viewIdx);
+    updatePageConfig(target.id, { views: updatedViews });
+    if (user?.workerUrl && user?.notionKey && platformIds?.configDbId) {
+      savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
+        ...target, views: updatedViews,
+      }).catch(() => {});
+    }
+  }, [effectiveConfig, updatePageConfig, user, platformIds]);
+
   // Connected database IDs for the DatabaseBrowser
-  const connectedIds = useMemo(() => pageConfig.databaseIds || [], [pageConfig.databaseIds]);
+  const connectedIds = useMemo(() => effectiveDbs || [], [effectiveDbs]);
 
   // Handle adding a new database connection post-creation
+  // Operates on the effective config (could be a sub-page)
   const handleAddDatabase = useCallback(
     async ({ id, title, schema: newSchema }) => {
+      const targetConfig = effectiveConfig;
       // Skip duplicates
-      if (pageConfig.databaseIds?.includes(id)) {
+      if (targetConfig.databaseIds?.includes(id)) {
         setShowAddDb(false);
         return;
       }
 
-      const newDatabaseIds = [...(pageConfig.databaseIds || []), id];
+      const newDatabaseIds = [...(targetConfig.databaseIds || []), id];
       const newView = {
         type: "table",
         label: title || "New Table",
         position: "main",
         config: { databaseId: id },
       };
-      const newViews = [...(pageConfig.views || []), newView];
+      const newViews = [...(targetConfig.views || []), newView];
 
       // Update local state immediately
-      updatePageConfig(pageConfig.id, {
+      updatePageConfig(targetConfig.id, {
         databaseIds: newDatabaseIds,
         views: newViews,
       });
@@ -233,7 +279,7 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
       // Persist to Notion config database
       try {
         await savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
-          ...pageConfig,
+          ...targetConfig,
           databaseIds: newDatabaseIds,
           views: newViews,
         });
@@ -245,7 +291,7 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
       // Re-fetch to include the new database
       fetchData();
     },
-    [pageConfig, updatePageConfig, user, platformIds, fetchData]
+    [effectiveConfig, updatePageConfig, user, platformIds, fetchData]
   );
 
   if (loading && data.length === 0) {
@@ -343,7 +389,7 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
         </div>
 
         <ChatPanel
-          pageConfig={pageConfig}
+          pageConfig={effectiveConfig}
           schema={schema}
           data={data}
           onRefresh={fetchData}
@@ -358,6 +404,20 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Sub-page pills + view tabs */}
+      <SubPageNav
+        parentPage={pageConfig}
+        subPages={subPages}
+        activeSubPage={activeSubPage}
+        onSetActiveSubPage={setActiveSubPage}
+        activeViewIndex={activeViewIndex}
+        onSetActiveView={onSetActiveView}
+        onAddSubPage={() => onAddSubPage?.()}
+        onDeleteView={handleDeleteView}
+        onRenameView={handleRenameView}
+        onAddView={() => setShowAddDb(true)}
+      />
+
       {/* Header bar — simplified for document pages */}
       {isDocumentPage ? (
         <div
@@ -444,7 +504,7 @@ export default function PageShell({ pageConfig, activeViewIndex = 0 }) {
           onRefresh={fetchData}
           onCreate={handleCreate}
           onDelete={handleDelete}
-          pageConfig={pageConfig}
+          pageConfig={effectiveConfig}
         />
 
         {/* Add Database slide-out panel */}

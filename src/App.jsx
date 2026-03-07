@@ -41,6 +41,11 @@ function AppContent() {
     pages,
     activePage,
     setActivePage,
+    activeFolder,
+    setActiveFolder,
+    activeSubPage,
+    setActiveSubPage,
+    getFolderPages,
   } = usePlatform();
 
   // ── UI State ──
@@ -140,19 +145,21 @@ function AppContent() {
       shortcut: "mod+up",
       description: "Previous page",
       handler: () => {
-        const idx = pages.findIndex((p) => p.id === activePage);
-        if (idx > 0) setActivePage(pages[idx - 1].id);
+        const folderPages = activeFolder ? getFolderPages(activeFolder) : pages.filter((p) => p.type !== "folder" && p.type !== "sub_page");
+        const idx = folderPages.findIndex((p) => p.id === activePage);
+        if (idx > 0) setActivePage(folderPages[idx - 1].id);
       },
     },
     {
       shortcut: "mod+down",
       description: "Next page",
       handler: () => {
-        const idx = pages.findIndex((p) => p.id === activePage);
-        if (idx < pages.length - 1) setActivePage(pages[idx + 1].id);
+        const folderPages = activeFolder ? getFolderPages(activeFolder) : pages.filter((p) => p.type !== "folder" && p.type !== "sub_page");
+        const idx = folderPages.findIndex((p) => p.id === activePage);
+        if (idx < folderPages.length - 1) setActivePage(folderPages[idx + 1].id);
       },
     },
-  ], [handleAddPage, wasabiPanelOpen, activePage, pages]);
+  ], [handleAddPage, wasabiPanelOpen, activePage, pages, activeFolder, getFolderPages]);
 
   // Auth gate: show setup wizard if not connected
   if (!isAuthenticated || !isSetup) {
@@ -162,16 +169,18 @@ function AppContent() {
   // Find active page config
   const activePageConfig = pages.find((p) => p.id === activePage);
 
-  // Get/set active view for current page (or automations pseudo-page)
+  // Get/set active view for current page, sub-page, or automations pseudo-page
+  const viewKey = activeSubPage || (activePageConfig ? activePageConfig.id : null);
   const activeViewIndex = activePageConfig
-    ? viewStates[activePageConfig.id] ?? 0
+    ? viewStates[viewKey] ?? 0
     : activePage === "automations"
     ? viewStates["automations"] ?? 0
     : 0;
 
   const setActiveView = (idx) => {
     if (activePageConfig) {
-      setViewStates((prev) => ({ ...prev, [activePageConfig.id]: idx }));
+      const key = activeSubPage || activePageConfig.id;
+      setViewStates((prev) => ({ ...prev, [key]: idx }));
     } else if (activePage === "automations") {
       setViewStates((prev) => ({ ...prev, automations: idx }));
     }
@@ -206,12 +215,21 @@ function AppContent() {
       return <SystemManager />;
     }
 
+    // Folders are not pages — redirect to home
+    if (activePageConfig && activePageConfig.type === "folder") {
+      setActivePage(null);
+      setActiveFolder(activePageConfig.id);
+      return null;
+    }
+
     // User page
     if (activePageConfig) {
       return (
         <PageShell
           pageConfig={activePageConfig}
           activeViewIndex={activeViewIndex}
+          onSetActiveView={setActiveView}
+          onAddSubPage={() => handleAddPage()}
         />
       );
     }
@@ -296,9 +314,8 @@ function AppContent() {
           onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
           wasabiPanelOpen={wasabiPanelOpen}
           onToggleWasabiPanel={() => setWasabiPanelOpen((o) => !o)}
-          activeView={activeViewIndex}
-          onSetActiveView={setActiveView}
           isThinking={false}
+          onCreatePage={handleAddPage}
         />
 
         {/* Main Content */}

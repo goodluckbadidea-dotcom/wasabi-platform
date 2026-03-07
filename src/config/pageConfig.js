@@ -39,11 +39,14 @@ export async function loadPageConfigs(workerUrl, notionKey, configDbId) {
     const parentId = page.properties?.ParentPage?.rich_text?.map((t) => t.plain_text).join("") || null;
 
     const config = safeJSON(configStr, {});
+    // Migration: ensure type field exists (legacy pages default to "page")
+    const type = config.type || "page";
     return {
       id: page.id,
       name,
       icon,
       parentId: parentId || null,
+      type,
       ...config,
     };
   });
@@ -107,6 +110,20 @@ export function isDocumentPage(pageConfig) {
 }
 
 /**
+ * Create a folder config object (purely organizational, no views/DB).
+ */
+export function createFolderConfig(name, icon) {
+  return {
+    name,
+    icon: icon || "folder",
+    type: "folder",
+    databaseIds: [],
+    views: [],
+    refreshInterval: 0,
+  };
+}
+
+/**
  * Create a document-type page config object.
  */
 export function createDocumentPageConfig(name, icon, notionPageId) {
@@ -144,6 +161,8 @@ export async function archivePageConfig(workerUrl, notionKey, pageConfigId) {
 export async function validatePageConfigs(workerUrl, notionKey, configs) {
   const results = await Promise.allSettled(
     configs.map(async (config) => {
+      // Folders have no resources to validate
+      if (config.type === "folder") return config;
       if (config.pageType === "document") {
         // Document pages: check the Notion page from the document view
         const docView = config.views?.find((v) => v.type === "document");

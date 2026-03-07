@@ -6,7 +6,7 @@ import React, { useState, useCallback, useMemo } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { savePageConfig, createDocumentPageConfig } from "../config/pageConfig.js";
+import { savePageConfig, createDocumentPageConfig, createFolderConfig } from "../config/pageConfig.js";
 import { autoDetectViews } from "../notion/schema.js";
 import { createSubpage, ensurePageActive } from "../notion/client.js";
 import DatabaseBrowser from "./DatabaseBrowser.jsx";
@@ -211,10 +211,14 @@ const vs = {
 };
 
 // ── Main Component ──
-export default function VisualPageBuilder({ onCancel }) {
-  const { user, platformIds, addPage } = usePlatform();
+export default function VisualPageBuilder({ onCancel, parentFolderId, parentPageId }) {
+  const { user, platformIds, addPage, activeFolder } = usePlatform();
 
-  // ── Page Type Selection ── (null = show picker, "database" or "document")
+  // Resolve effective parent IDs (props override context)
+  const folderId = parentFolderId || activeFolder || null;
+  const subPageParent = parentPageId || null;
+
+  // ── Page Type Selection ── (null = show picker, "database", "document", or "folder")
   const [pageType, setPageType] = useState(null);
 
   // ── Page Config State ──
@@ -356,6 +360,8 @@ export default function VisualPageBuilder({ onCancel }) {
       const pageConfig = {
         name: pageName.trim(),
         icon: pageIcon,
+        type: subPageParent ? "sub_page" : "page",
+        parentId: subPageParent || folderId || null,
         pageType: "database",
         databaseIds: connectedDbs.map((db) => db.id),
         views,
@@ -402,7 +408,11 @@ export default function VisualPageBuilder({ onCancel }) {
       );
 
       // Build document page config
-      const docConfig = createDocumentPageConfig(pageName.trim(), pageIcon, notionPage.id);
+      const docConfig = {
+        ...createDocumentPageConfig(pageName.trim(), pageIcon, notionPage.id),
+        type: subPageParent ? "sub_page" : "page",
+        parentId: subPageParent || folderId || null,
+      };
 
       // Save to Notion config DB
       const configId = await savePageConfig(
@@ -422,16 +432,76 @@ export default function VisualPageBuilder({ onCancel }) {
     }
   }, [pageName, pageIcon, user, platformIds, addPage]);
 
+  // ── Save Folder ──
+  const handleSaveFolder = useCallback(async () => {
+    setError(null);
+    if (!pageName.trim()) {
+      setError("Folder name is required");
+      return;
+    }
+    setSaving(true);
+    try {
+      const config = createFolderConfig(pageName.trim(), pageIcon);
+      const configId = await savePageConfig(
+        user.workerUrl, user.notionKey, platformIds.configDbId, config
+      );
+      addPage({ ...config, id: configId });
+      setSuccess(true);
+    } catch (err) {
+      setError(err.message || "Failed to create folder");
+    } finally {
+      setSaving(false);
+    }
+  }, [pageName, pageIcon, user, platformIds, addPage]);
+
+  // ── Contextual header text ──
+  const contextLabel = subPageParent
+    ? "New Sub-page"
+    : folderId
+    ? "New Page"
+    : "Create New";
+
   // ── Page Type Selection Screen ──
   if (!pageType) {
+    // If creating a sub-page, skip folder option
+    const showFolderOption = !subPageParent && !folderId;
     return (
       <div style={vs.container}>
         <div style={vs.header}>
-          <div style={vs.headerTitle}>Create New Page</div>
+          <div style={vs.headerTitle}>{contextLabel}</div>
           <div style={vs.headerSub}>Choose what kind of page to create</div>
         </div>
         <div style={{ ...vs.body, alignItems: "center", justifyContent: "center" }}>
-          <div style={{ display: "flex", gap: 20, maxWidth: 560, width: "100%" }}>
+          <div style={{ display: "flex", gap: 20, maxWidth: showFolderOption ? 740 : 560, width: "100%" }}>
+            {/* Folder card (only at top level, not when creating inside a folder or as a sub-page) */}
+            {showFolderOption && (
+              <div
+                style={{
+                  flex: 1,
+                  padding: 28,
+                  background: C.darkSurf,
+                  border: `1px solid ${C.darkBorder}`,
+                  borderRadius: RADIUS.xl,
+                  cursor: "pointer",
+                  transition: "all 0.15s",
+                  textAlign: "center",
+                }}
+                onClick={() => setPageType("folder")}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.background = `${C.accent}08`; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; e.currentTarget.style.background = C.darkSurf; }}
+              >
+                <div style={{ marginBottom: 14 }}>
+                  <IconFolder size={32} color={C.accent} />
+                </div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: C.darkText, marginBottom: 8 }}>
+                  Folder
+                </div>
+                <div style={{ fontSize: 13, color: C.darkMuted, lineHeight: 1.5 }}>
+                  Organize your pages into groups. No database required.
+                </div>
+              </div>
+            )}
+
             {/* Database Page card */}
             <div
               style={{
@@ -493,6 +563,88 @@ export default function VisualPageBuilder({ onCancel }) {
             <button style={S.btnGhost} onClick={onCancel}>Cancel</button>
           )}
           <div style={{ flex: 1 }} />
+        </div>
+      </div>
+    );
+  }
+
+  // ── Folder Creation Flow ──
+  if (pageType === "folder") {
+    return (
+      <div style={vs.container}>
+        <div style={vs.header}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span
+              style={{ cursor: "pointer", display: "flex", alignItems: "center" }}
+              onClick={() => setPageType(null)}
+              title="Back to type selection"
+            >
+              <IconChevronLeft size={16} color={C.darkMuted} />
+            </span>
+            <div>
+              <div style={vs.headerTitle}>New Folder</div>
+              <div style={vs.headerSub}>Create an organizational folder for your pages</div>
+            </div>
+          </div>
+        </div>
+        <div style={vs.body}>
+          <div style={vs.section}>
+            <div style={vs.sectionTitle}>Folder Identity</div>
+            <div style={{ display: "flex", gap: 12, marginBottom: 14 }}>
+              <div>
+                <label style={vs.label}>Icon</label>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", maxWidth: 200 }}>
+                  {ICONS.map((ic) => {
+                    const Ic = ICON_MAP[ic];
+                    return (
+                      <span key={ic} style={vs.iconBtn(pageIcon === ic)} onClick={() => setPageIcon(ic)} title={ic}>
+                        <Ic size={16} color={pageIcon === ic ? C.accent : C.darkMuted} />
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={vs.label}>Folder Name</label>
+                <input
+                  style={vs.input}
+                  value={pageName}
+                  onChange={(e) => setPageName(e.target.value)}
+                  placeholder="e.g. Projects"
+                  autoFocus
+                />
+              </div>
+            </div>
+          </div>
+
+          <div style={{
+            padding: "12px 16px", background: `${C.accent}10`,
+            border: `1px solid ${C.accent}30`, borderRadius: RADIUS.md,
+            fontSize: 13, color: C.darkMuted, lineHeight: 1.5,
+          }}>
+            Folders are purely organizational. Add pages inside them after creation.
+          </div>
+
+          {error && <div style={vs.error}>{error}</div>}
+          {success && <div style={vs.success}>Folder created successfully!</div>}
+        </div>
+        <div style={vs.footer}>
+          <button style={S.btnGhost} onClick={() => setPageType(null)}>Back</button>
+          <div style={{ flex: 1 }} />
+          <button
+            style={{
+              ...S.btnPrimary,
+              padding: "10px 28px",
+              fontSize: 14,
+              fontWeight: 600,
+              opacity: saving ? 0.6 : 1,
+              cursor: saving ? "not-allowed" : "pointer",
+            }}
+            onClick={handleSaveFolder}
+            disabled={saving}
+          >
+            {saving ? "Creating..." : "Create Folder"}
+          </button>
         </div>
       </div>
     );

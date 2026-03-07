@@ -1,201 +1,74 @@
 // ─── Sidebar Navigation ───
-// Per-page sub-navigation sidebar. Shows sub-views for the active top-level page.
-// Flame character at bottom opens the Wasabi Panel.
-// Collapsible: 48px (icons) or 220px (full). Matches original app.
-// Includes: "+" button for adding views/documents, drag reorder, Docs section.
+// Folder → Page hierarchy navigation sidebar.
+// Shows folders at top level, pages within a folder when selected.
+// View tabs have moved to SubPageNav (in the main content area).
+// Collapsible: 48px (icons) or 220px (full).
 
-import React, { useState, useCallback, useRef, useMemo } from "react";
+import React, { useState, useCallback } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { savePageConfig, archivePageConfig } from "../config/pageConfig.js";
-import { createSubpage, archivePage, ensurePageActive } from "../notion/client.js";
-import { IconDiamond, IconBolt, IconGear, IconStar, IconPlus, IconPage, IconClose, IconTrash } from "../design/icons.jsx";
+import { savePageConfig, archivePageConfig, createFolderConfig } from "../config/pageConfig.js";
+import { archivePage, ensurePageActive } from "../notion/client.js";
+import {
+  IconBolt, IconGear, IconStar, IconPlus, IconPage, IconTrash,
+  IconFolder, IconChevronLeft, IconDiamond,
+} from "../design/icons.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
-import SheetUrlDialog from "./SheetUrlDialog.jsx";
 import InlineEdit from "./InlineEdit.jsx";
-
-// ── View type → human-readable label ──
-const VIEW_LABELS = {
-  table: "Table",
-  gantt: "Timeline",
-  calendar: "Calendar",
-  cardGrid: "Cards",
-  kanban: "Board",
-  charts: "Charts",
-  form: "Form",
-  summaryTiles: "Summary",
-  activityFeed: "Activity",
-  document: "Document",
-  notificationFeed: "Notifications",
-  chat: "Chat",
-  linked_sheet: "Linked Sheet",
-};
-
-// View types available for adding via "+" menu
-const ADDABLE_VIEW_TYPES = [
-  "table", "kanban", "cardGrid", "gantt", "calendar",
-  "charts", "form", "summaryTiles", "activityFeed", "chat",
-  "linked_sheet",
-];
-
-function getViewLabel(view) {
-  return view.name || VIEW_LABELS[view.type] || view.type;
-}
 
 export default function Navigation({
   collapsed,
   onToggleCollapse,
   wasabiPanelOpen,
   onToggleWasabiPanel,
-  activeView,
-  onSetActiveView,
   isThinking,
+  onCreatePage,  // opens builder in page-creation mode for current folder
 }) {
-  const { user, platformIds, pages, activePage, setActivePage, updatePageConfig, removePage } = usePlatform();
-  const [hoveredItem, setHoveredItem] = useState(null);
-  const [showAddMenu, setShowAddMenu] = useState(false);
-  const [showDocsExpanded, setShowDocsExpanded] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(null); // { type: 'page'|'view', pageConfig?, viewIdx? }
-  const [sheetDialogOpen, setSheetDialogOpen] = useState(false);
+  const {
+    user, platformIds, pages, activePage, setActivePage,
+    updatePageConfig, removePage, addPage,
+    activeFolder, setActiveFolder, pageTree, getFolderPages,
+  } = usePlatform();
 
-  // Drag reorder state
-  const dragIdxRef = useRef(null);
-  const [dropIndicatorIdx, setDropIndicatorIdx] = useState(null);
+  const [hoveredItem, setHoveredItem] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   const SIDEBAR_W = collapsed ? 48 : 220;
 
-  // Get current page's views for sub-nav
-  const currentPage = pages.find((p) => p.id === activePage);
+  // Get the active folder object from pageTree
+  const folderObj = activeFolder
+    ? pageTree.find((f) => f.id === activeFolder)
+    : null;
 
-  // Synthetic sub-items for the Automations pseudo-page
-  const AUTOMATION_SUB_ITEMS = [
-    { id: 0, label: "Node Editor", type: "nodeEditor" },
-    { id: 1, label: "Simple Rules", type: "simpleRules" },
-    { id: 2, label: "Upload", type: "upload" },
-  ];
+  // Pages in the current folder
+  const folderPages = activeFolder ? getFolderPages(activeFolder) : [];
 
-  const subItems = activePage === "automations"
-    ? AUTOMATION_SUB_ITEMS
-    : (currentPage?.views || []).map((view, idx) => ({
-        id: idx,
-        label: getViewLabel(view),
-        type: view.type,
-      }));
-
-  // Standalone document pages (for Docs section)
-  const standaloneDocPages = useMemo(() =>
-    pages.filter((p) => p.pageType === "document"),
-    [pages]
-  );
-
-  // Section label: current page name or section indicator
-  const sectionLabel = currentPage
-    ? currentPage.name
-    : activePage === "system"
-    ? "System Manager"
-    : activePage === "automations"
-    ? "Automations"
-    : activePage === "wasabi"
-    ? "New Page"
-    : "Home";
-
-  // ── Drag Reorder ──
-  const handleReorderViews = useCallback((fromIdx, toIdx) => {
-    if (!currentPage || fromIdx === toIdx) return;
-    const views = [...currentPage.views];
-    const [moved] = views.splice(fromIdx, 1);
-    views.splice(toIdx > fromIdx ? toIdx - 1 : toIdx, 0, moved);
-    updatePageConfig(currentPage.id, { views });
-    // Persist to Notion
-    if (user?.workerUrl && user?.notionKey && platformIds?.configDbId) {
-      savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
-        ...currentPage,
-        views,
-      }).catch((err) => console.error("Failed to persist view reorder:", err));
-    }
-  }, [currentPage, updatePageConfig, user, platformIds]);
-
-  // ── Add View ──
-  const handleAddView = useCallback((type) => {
-    if (!currentPage) return;
-    if (type === "linked_sheet") {
-      setSheetDialogOpen(true);
-      setShowAddMenu(false);
-      return;
-    }
-    const label = VIEW_LABELS[type] || type;
-    const newView = { type, label, position: "main", config: {} };
-    const newViews = [...(currentPage.views || []), newView];
-    updatePageConfig(currentPage.id, { views: newViews });
-    setShowAddMenu(false);
-    // Persist
-    if (user?.workerUrl && user?.notionKey && platformIds?.configDbId) {
-      savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
-        ...currentPage,
-        views: newViews,
-      }).catch((err) => console.error("Failed to persist new view:", err));
-    }
-    // Switch to new view
-    onSetActiveView(newViews.length - 1);
-  }, [currentPage, updatePageConfig, user, platformIds, onSetActiveView]);
-
-  // ── Create Document (sub-view of current page) ──
-  const handleCreateDocument = useCallback(async () => {
-    if (!currentPage || !user?.workerUrl || !user?.notionKey) return;
-    setShowAddMenu(false);
+  // ── Create Folder ──
+  const handleCreateFolder = useCallback(async () => {
+    if (!user?.workerUrl || !user?.notionKey || !platformIds?.configDbId) return;
+    const config = createFolderConfig("New Folder", "folder");
     try {
-      const notionPage = await createSubpage(
-        user.workerUrl,
-        user.notionKey,
-        platformIds.rootPageId,
-        `${currentPage.name} - Document`
-      );
-      const newView = {
-        type: "document",
-        label: "Document",
-        position: "main",
-        config: { pageId: notionPage.id, editable: true },
-      };
-      const newViews = [...(currentPage.views || []), newView];
-      updatePageConfig(currentPage.id, { views: newViews });
-      // Persist
-      if (platformIds?.configDbId) {
-        savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
-          ...currentPage,
-          views: newViews,
-        }).catch((err) => console.error("Failed to persist document view:", err));
-      }
-      onSetActiveView(newViews.length - 1);
+      const id = await savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, config);
+      addPage({ ...config, id });
     } catch (err) {
-      console.error("Failed to create document:", err);
+      console.error("[Navigation] Failed to create folder:", err);
     }
-  }, [currentPage, user, platformIds, updatePageConfig, onSetActiveView]);
+  }, [user, platformIds, addPage]);
 
-  // ── Link Sheet (confirm from SheetUrlDialog) ──
-  const handleSheetConfirm = useCallback(({ sheetUrl, sheetType }) => {
-    if (!currentPage) return;
-    const newView = {
-      type: "linked_sheet",
-      label: "Linked Sheet",
-      position: "main",
-      config: { sheetUrl, sheetType },
-    };
-    const newViews = [...(currentPage.views || []), newView];
-    updatePageConfig(currentPage.id, { views: newViews });
-    setSheetDialogOpen(false);
+  // ── Rename Folder / Page ──
+  const handleRename = useCallback((pageConfig, newName) => {
+    updatePageConfig(pageConfig.id, { name: newName });
     if (user?.workerUrl && user?.notionKey && platformIds?.configDbId) {
       savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
-        ...currentPage,
-        views: newViews,
-      }).catch((err) => console.error("Failed to persist linked sheet view:", err));
+        ...pageConfig,
+        name: newName,
+      }).catch((err) => console.error("[Navigation] Failed to persist rename:", err));
     }
-    onSetActiveView(newViews.length - 1);
-  }, [currentPage, updatePageConfig, user, platformIds, onSetActiveView]);
+  }, [updatePageConfig, user, platformIds]);
 
-  // ── Delete Page ──
-  const handleDeletePage = useCallback(async (pageConfig) => {
-    // Always remove from local state first — Notion cleanup is best-effort
+  // ── Delete Page / Folder ──
+  const handleDelete = useCallback(async (pageConfig) => {
     removePage(pageConfig.id);
     setConfirmDelete(null);
     if (user?.workerUrl && user?.notionKey) {
@@ -214,55 +87,12 @@ export default function Navigation({
     }
   }, [user, platformIds, removePage]);
 
-  // ── Delete View ──
-  const handleDeleteView = useCallback((viewIdx) => {
-    if (!currentPage) return;
-    const newViews = currentPage.views.filter((_, idx) => idx !== viewIdx);
-    updatePageConfig(currentPage.id, { views: newViews });
-    // Persist to Notion
-    if (user?.workerUrl && user?.notionKey && platformIds?.configDbId) {
-      savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
-        ...currentPage,
-        views: newViews,
-      }).catch((err) => console.error("[Navigation] Failed to persist view deletion:", err));
-    }
-    // Adjust active view
-    if (activeView === viewIdx) {
-      onSetActiveView(Math.max(0, viewIdx - 1));
-    } else if (activeView > viewIdx) {
-      onSetActiveView(activeView - 1);
-    }
-    setConfirmDelete(null);
-  }, [currentPage, updatePageConfig, user, platformIds, activeView, onSetActiveView]);
+  // ── Navigate to page (also set its folder) ──
+  const navigateToPage = useCallback((page) => {
+    setActivePage(page.id);
+  }, [setActivePage]);
 
-  // ── Rename Page ──
-  const handleRenamePage = useCallback((newName) => {
-    if (!currentPage) return;
-    updatePageConfig(currentPage.id, { name: newName });
-    if (user?.workerUrl && user?.notionKey && platformIds?.configDbId) {
-      savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
-        ...currentPage,
-        name: newName,
-      }).catch((err) => console.error("[Navigation] Failed to persist page rename:", err));
-    }
-  }, [currentPage, updatePageConfig, user, platformIds]);
-
-  // ── Rename View ──
-  const handleRenameView = useCallback((viewIdx, newName) => {
-    if (!currentPage || activePage === "automations") return;
-    const newViews = currentPage.views.map((v, i) =>
-      i === viewIdx ? { ...v, name: newName, label: newName } : v
-    );
-    updatePageConfig(currentPage.id, { views: newViews });
-    if (user?.workerUrl && user?.notionKey && platformIds?.configDbId) {
-      savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
-        ...currentPage,
-        views: newViews,
-      }).catch((err) => console.error("[Navigation] Failed to persist view rename:", err));
-    }
-  }, [currentPage, activePage, updatePageConfig, user, platformIds]);
-
-  // Bottom button style helper
+  // ── Style helpers ──
   const bottomBtnStyle = (isActive) => ({
     background: isActive ? C.accent : "none",
     border: "none",
@@ -286,6 +116,23 @@ export default function Navigation({
     letterSpacing: "0.02em",
   });
 
+  const itemStyle = (isActive, isHovered) => ({
+    width: collapsed ? "100%" : "calc(100% - 16px)",
+    margin: collapsed ? "0" : "3px 8px",
+    border: isActive ? "none" : `1px solid ${C.darkBorder}`,
+    cursor: "pointer",
+    outline: "none",
+    display: "flex",
+    alignItems: "center",
+    gap: collapsed ? 0 : 10,
+    justifyContent: collapsed ? "center" : "flex-start",
+    padding: collapsed ? "11px 0" : "9px 14px",
+    borderRadius: collapsed ? 0 : 999,
+    background: isActive ? C.accent : isHovered ? C.darkSurf2 : "transparent",
+    transition: "all 0.12s",
+    fontFamily: "'Outfit',sans-serif",
+  });
+
   return (
     <div
       style={{
@@ -301,383 +148,262 @@ export default function Navigation({
         overflow: "hidden",
       }}
     >
-      {/* Section label header */}
+      {/* ── Header: Folder navigation ── */}
       {!collapsed && (
         <div
           style={{
-            padding: "18px 20px 12px",
+            padding: "14px 16px 10px",
             borderBottom: `1px solid ${C.darkBorder}`,
             flexShrink: 0,
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
+            gap: 8,
           }}
         >
-          {currentPage ? (
-            <InlineEdit
-              value={currentPage.name}
-              onCommit={handleRenamePage}
-              placeholder="Untitled"
-              fontSize={10}
-              fontWeight={600}
-              color={C.darkMuted}
-              maxWidth="140px"
-            />
+          {activeFolder ? (
+            <>
+              {/* Back to folder list */}
+              <button
+                onClick={() => setActiveFolder(null)}
+                title="Back to folders"
+                style={{
+                  background: "none", border: "none", cursor: "pointer",
+                  padding: 4, display: "flex", alignItems: "center",
+                  outline: "none", flexShrink: 0,
+                }}
+              >
+                <IconChevronLeft size={14} color={C.darkMuted} />
+              </button>
+              {folderObj?.virtual ? (
+                <span style={{
+                  fontFamily: "'Outfit',sans-serif", fontSize: 11, fontWeight: 600,
+                  letterSpacing: "0.1em", textTransform: "uppercase", color: C.darkMuted,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }}>
+                  {folderObj.name}
+                </span>
+              ) : folderObj ? (
+                <InlineEdit
+                  value={folderObj.name}
+                  onCommit={(newName) => handleRename(folderObj, newName)}
+                  placeholder="Folder"
+                  fontSize={11}
+                  fontWeight={600}
+                  color={C.darkMuted}
+                  maxWidth="130px"
+                />
+              ) : null}
+              {/* Delete folder */}
+              {folderObj && !folderObj.virtual && (
+                <button
+                  onClick={() => setConfirmDelete({ type: "folder", pageConfig: folderObj })}
+                  title="Delete folder"
+                  style={{
+                    marginLeft: "auto", background: "none", border: "none",
+                    cursor: "pointer", padding: 4, display: "flex",
+                    alignItems: "center", opacity: 0.3, transition: "opacity 0.15s",
+                    outline: "none", flexShrink: 0,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.3"; }}
+                >
+                  <IconTrash size={11} color={C.darkMuted} />
+                </button>
+              )}
+            </>
           ) : (
-            <span
-              style={{
-                fontFamily: "'Outfit',sans-serif",
-                fontSize: 10,
-                fontWeight: 600,
-                letterSpacing: "0.2em",
-                textTransform: "uppercase",
-                color: C.darkMuted,
-              }}
-            >
-              {sectionLabel}
+            <span style={{
+              fontFamily: "'Outfit',sans-serif", fontSize: 10, fontWeight: 600,
+              letterSpacing: "0.2em", textTransform: "uppercase", color: C.darkMuted,
+            }}>
+              Folders
             </span>
-          )}
-          {currentPage && (
-            <button
-              onClick={() => setConfirmDelete({ type: "page", pageConfig: currentPage })}
-              title="Delete page"
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                padding: 4,
-                display: "flex",
-                alignItems: "center",
-                opacity: 0.3,
-                transition: "opacity 0.15s",
-                outline: "none",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.3"; }}
-            >
-              <IconTrash size={11} color={C.darkMuted} />
-            </button>
           )}
         </div>
       )}
       {collapsed && (
-        <div
-          style={{
-            height: 49,
-            borderBottom: `1px solid ${C.darkBorder}`,
-            flexShrink: 0,
-          }}
-        />
+        <div style={{ height: 45, borderBottom: `1px solid ${C.darkBorder}`, flexShrink: 0 }} />
       )}
 
-      {/* Sub-nav items (with drag reorder) */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          paddingTop: 8,
-          paddingBottom: 48,
-        }}
-      >
-        {subItems.length === 0 && !collapsed && (
-          <div
-            style={{
-              padding: "16px 20px",
-              fontFamily: "'Outfit',sans-serif",
-              fontSize: 11,
-              color: C.darkBorder,
-              letterSpacing: "0.04em",
-            }}
-          >
-            No sub-views
+      {/* ── Main list area ── */}
+      <div style={{ flex: 1, overflowY: "auto", paddingTop: 6, paddingBottom: 48 }}>
+        {/* ── Folder list (when no folder selected) ── */}
+        {!activeFolder && pageTree.map((folder) => {
+          const isHovered = hoveredItem === `folder_${folder.id}`;
+          return (
+            <button
+              key={folder.id}
+              onClick={() => setActiveFolder(folder.id)}
+              onMouseEnter={() => setHoveredItem(`folder_${folder.id}`)}
+              onMouseLeave={() => setHoveredItem(null)}
+              title={collapsed ? folder.name : undefined}
+              style={itemStyle(false, isHovered)}
+            >
+              <IconFolder
+                size={collapsed ? 14 : 12}
+                color={isHovered ? C.darkText : C.darkMuted}
+              />
+              {!collapsed && (
+                <span style={{
+                  fontSize: 13, fontWeight: 400, color: C.darkText,
+                  letterSpacing: "0.01em", whiteSpace: "nowrap",
+                  overflow: "hidden", textOverflow: "ellipsis",
+                  flex: 1,
+                }}>
+                  {folder.name}
+                </span>
+              )}
+              {!collapsed && (
+                <span style={{
+                  fontSize: 10, color: C.darkBorder, flexShrink: 0,
+                }}>
+                  {folder.children?.length || 0}
+                </span>
+              )}
+            </button>
+          );
+        })}
+
+        {/* ── "New Folder" button (when no folder selected) ── */}
+        {!activeFolder && !collapsed && (
+          <div style={{ padding: "4px 8px" }}>
+            <button
+              onClick={handleCreateFolder}
+              style={{
+                width: "100%", border: `1px dashed ${C.darkBorder}`,
+                background: "transparent", cursor: "pointer",
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "8px 14px", borderRadius: 999,
+                fontFamily: "'Outfit',sans-serif", fontSize: 12,
+                color: C.darkMuted, outline: "none", transition: "all 0.12s",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.color = C.accent; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; e.currentTarget.style.color = C.darkMuted; }}
+            >
+              <IconPlus size={10} color="currentColor" />
+              <span>New Folder</span>
+            </button>
           </div>
         )}
+        {!activeFolder && collapsed && (
+          <button
+            onClick={handleCreateFolder}
+            title="New Folder"
+            style={{
+              width: "100%", border: "none", background: "transparent",
+              cursor: "pointer", display: "flex", alignItems: "center",
+              justifyContent: "center", padding: "10px 0", outline: "none",
+            }}
+          >
+            <IconPlus size={12} color={C.darkMuted} />
+          </button>
+        )}
 
-        {subItems.map((item) => {
-          const isActive = activeView === item.id;
-          const isHovered = hoveredItem === item.id;
-          const showDropBefore = dropIndicatorIdx === item.id;
-
+        {/* ── Page list (when folder is selected) ── */}
+        {activeFolder && folderPages.map((page) => {
+          const isActive = activePage === page.id;
+          const isHovered = hoveredItem === `page_${page.id}`;
           return (
-            <React.Fragment key={item.id}>
-              {/* Drop indicator line */}
-              {showDropBefore && (
-                <div style={{
-                  height: 2,
-                  background: C.accent,
-                  margin: collapsed ? "0" : "0 8px",
-                  borderRadius: 1,
-                }} />
-              )}
+            <div
+              key={page.id}
+              style={{ display: "flex", alignItems: "center", position: "relative" }}
+            >
               <button
-                draggable={!collapsed}
-                onDragStart={(e) => {
-                  dragIdxRef.current = item.id;
-                  e.dataTransfer.effectAllowed = "move";
-                  // Make drag preview subtle
-                  e.dataTransfer.setData("text/plain", item.label);
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = "move";
-                  if (dragIdxRef.current !== item.id) {
-                    setDropIndicatorIdx(item.id);
-                  }
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  if (dragIdxRef.current != null && dragIdxRef.current !== item.id) {
-                    handleReorderViews(dragIdxRef.current, item.id);
-                  }
-                  dragIdxRef.current = null;
-                  setDropIndicatorIdx(null);
-                }}
-                onDragEnd={() => {
-                  dragIdxRef.current = null;
-                  setDropIndicatorIdx(null);
-                }}
-                onClick={() => onSetActiveView(item.id)}
-                onMouseEnter={() => setHoveredItem(item.id)}
+                onClick={() => navigateToPage(page)}
+                onMouseEnter={() => setHoveredItem(`page_${page.id}`)}
                 onMouseLeave={() => setHoveredItem(null)}
-                title={collapsed ? item.label : undefined}
+                title={collapsed ? page.name : undefined}
                 style={{
-                  width: collapsed ? "100%" : "calc(100% - 16px)",
-                  margin: collapsed ? "0" : "6px 8px",
-                  border: isActive ? "none" : `1px solid ${C.darkBorder}`,
-                  cursor: "pointer",
-                  outline: "none",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: collapsed ? 0 : 10,
-                  justifyContent: collapsed ? "center" : "flex-start",
-                  padding: collapsed ? "13px 0" : "10px 14px",
-                  borderRadius: collapsed ? 0 : 999,
-                  background: isActive
-                    ? C.accent
-                    : isHovered
-                    ? C.darkSurf2
-                    : "transparent",
-                  transition: "all 0.12s",
-                  fontFamily: "'Outfit',sans-serif",
+                  ...itemStyle(isActive, isHovered),
+                  flex: 1,
                 }}
               >
                 <IconDiamond
                   size={8}
                   color={isActive ? "#fff" : C.darkBorder}
                 />
-                {!collapsed && activePage !== "automations" && currentPage ? (
+                {!collapsed && (
                   <InlineEdit
-                    value={item.label}
-                    onCommit={(newName) => handleRenameView(item.id, newName)}
-                    placeholder={item.label}
+                    value={page.name}
+                    onCommit={(newName) => handleRename(page, newName)}
+                    placeholder="Untitled"
                     fontSize={13}
                     fontWeight={isActive ? 600 : 400}
-                    color={isActive ? "#fff" : C.darkMuted}
+                    color={isActive ? "#fff" : C.darkText}
                   />
-                ) : !collapsed && (
-                  <span
-                    style={{
-                      fontSize: 13,
-                      fontWeight: isActive ? 600 : 400,
-                      color: isActive ? "#fff" : C.darkMuted,
-                      letterSpacing: "0.01em",
-                      whiteSpace: "nowrap",
-                      transition: "color 0.12s",
-                    }}
-                  >
-                    {item.label}
-                  </span>
                 )}
-                {/* Hover: show delete X (only for real views, not automation tabs, and not the last view) */}
-                {isHovered && !collapsed && currentPage && activePage !== "automations" && subItems.length > 1 && (
+                {/* Active dot */}
+                {isActive && !collapsed && !isHovered && (
+                  <div style={{
+                    marginLeft: "auto", width: 5, height: 5,
+                    borderRadius: "50%", background: "#fff", flexShrink: 0,
+                    boxShadow: "0 0 4px rgba(255,255,255,0.4)",
+                  }} />
+                )}
+                {/* Delete on hover */}
+                {isHovered && !collapsed && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setConfirmDelete({ type: "view", viewIdx: item.id });
+                      setConfirmDelete({ type: "page", pageConfig: page });
                     }}
-                    title="Delete view"
+                    title="Delete page"
                     style={{
-                      marginLeft: "auto",
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      padding: 2,
-                      display: "flex",
-                      alignItems: "center",
-                      opacity: 0.5,
-                      transition: "opacity 0.12s",
-                      outline: "none",
-                      flexShrink: 0,
+                      marginLeft: "auto", background: "none", border: "none",
+                      cursor: "pointer", padding: 2, display: "flex",
+                      alignItems: "center", opacity: 0.5, transition: "opacity 0.12s",
+                      outline: "none", flexShrink: 0,
                     }}
                     onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
                   >
-                    <IconClose size={8} color={isActive ? "#fff" : C.darkMuted} />
+                    <IconTrash size={9} color={isActive ? "#fff" : C.darkMuted} />
                   </button>
                 )}
-                {/* Active dot (only when not hovered) */}
-                {isActive && !collapsed && !isHovered && (
-                  <div
-                    style={{
-                      marginLeft: "auto",
-                      width: 5,
-                      height: 5,
-                      borderRadius: "50%",
-                      background: "#fff",
-                      flexShrink: 0,
-                      boxShadow: "0 0 4px rgba(255,255,255,0.4)",
-                    }}
-                  />
-                )}
               </button>
-            </React.Fragment>
+            </div>
           );
         })}
 
-        {/* "+" Add button — below sub-items */}
-        {currentPage && !collapsed && (
-          <div style={{ padding: "4px 8px", position: "relative" }}>
+        {/* Empty folder message */}
+        {activeFolder && folderPages.length === 0 && !collapsed && (
+          <div style={{
+            padding: "16px 20px", fontFamily: "'Outfit',sans-serif",
+            fontSize: 11, color: C.darkBorder, letterSpacing: "0.04em",
+          }}>
+            No pages in this folder
+          </div>
+        )}
+
+        {/* ── "New Page" button (when inside a folder) ── */}
+        {activeFolder && !collapsed && (
+          <div style={{ padding: "4px 8px" }}>
             <button
-              onClick={() => setShowAddMenu(!showAddMenu)}
+              onClick={() => onCreatePage?.(activeFolder)}
               style={{
-                width: "calc(100% - 0px)",
-                border: `1px dashed ${C.darkBorder}`,
-                background: "transparent",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "8px 14px",
-                borderRadius: 999,
-                fontFamily: "'Outfit',sans-serif",
-                fontSize: 12,
-                color: C.darkMuted,
-                outline: "none",
-                transition: "all 0.12s",
+                width: "100%", border: `1px dashed ${C.darkBorder}`,
+                background: "transparent", cursor: "pointer",
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "8px 14px", borderRadius: 999,
+                fontFamily: "'Outfit',sans-serif", fontSize: 12,
+                color: C.darkMuted, outline: "none", transition: "all 0.12s",
               }}
               onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.color = C.accent; }}
               onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; e.currentTarget.style.color = C.darkMuted; }}
             >
               <IconPlus size={10} color="currentColor" />
-              <span>Add</span>
+              <span>New Page</span>
             </button>
-
-            {/* Add menu dropdown */}
-            {showAddMenu && (
-              <>
-                {/* Backdrop */}
-                <div
-                  onClick={() => setShowAddMenu(false)}
-                  style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 98 }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 8,
-                    top: "100%",
-                    marginTop: 4,
-                    background: C.darkSurf,
-                    border: `1px solid ${C.darkBorder}`,
-                    borderRadius: RADIUS.lg,
-                    boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
-                    zIndex: 99,
-                    padding: "4px 0",
-                    minWidth: 180,
-                    maxHeight: 320,
-                    overflowY: "auto",
-                  }}
-                >
-                  {/* Section: Add View */}
-                  <div style={{
-                    padding: "6px 12px 4px",
-                    fontSize: 10,
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.08em",
-                    color: C.darkMuted,
-                  }}>
-                    Add View
-                  </div>
-                  {ADDABLE_VIEW_TYPES.map((vt) => (
-                    <button
-                      key={vt}
-                      onClick={() => handleAddView(vt)}
-                      style={{
-                        display: "block",
-                        width: "100%",
-                        background: "none",
-                        border: "none",
-                        padding: "7px 14px",
-                        textAlign: "left",
-                        cursor: "pointer",
-                        color: C.darkText,
-                        fontFamily: "'Outfit',sans-serif",
-                        fontSize: 13,
-                        outline: "none",
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
-                    >
-                      {VIEW_LABELS[vt] || vt}
-                    </button>
-                  ))}
-
-                  {/* Divider */}
-                  <div style={{ height: 1, background: C.darkBorder, margin: "4px 0" }} />
-
-                  {/* Create Document */}
-                  <div style={{
-                    padding: "6px 12px 4px",
-                    fontSize: 10,
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.08em",
-                    color: C.darkMuted,
-                  }}>
-                    Create
-                  </div>
-                  <button
-                    onClick={handleCreateDocument}
-                    style={{
-                      display: "flex",
-                      width: "100%",
-                      background: "none",
-                      border: "none",
-                      padding: "7px 14px",
-                      textAlign: "left",
-                      cursor: "pointer",
-                      color: C.darkText,
-                      fontFamily: "'Outfit',sans-serif",
-                      fontSize: 13,
-                      outline: "none",
-                      alignItems: "center",
-                      gap: 8,
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
-                  >
-                    <IconPage size={14} color={C.darkMuted} />
-                    Document
-                  </button>
-                </div>
-              </>
-            )}
           </div>
         )}
-        {currentPage && collapsed && (
+        {activeFolder && collapsed && (
           <button
-            onClick={() => setShowAddMenu(!showAddMenu)}
-            title="Add view or document"
+            onClick={() => onCreatePage?.(activeFolder)}
+            title="New Page"
             style={{
-              width: "100%",
-              border: "none",
-              background: "transparent",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "10px 0",
-              outline: "none",
+              width: "100%", border: "none", background: "transparent",
+              cursor: "pointer", display: "flex", alignItems: "center",
+              justifyContent: "center", padding: "10px 0", outline: "none",
             }}
           >
             <IconPlus size={12} color={C.darkMuted} />
@@ -685,7 +411,7 @@ export default function Navigation({
         )}
       </div>
 
-      {/* Bottom action buttons */}
+      {/* ── Bottom action buttons ── */}
       <div
         style={{
           flexShrink: 0,
@@ -698,111 +424,19 @@ export default function Navigation({
           transition: "padding 0.25s",
         }}
       >
-        {/* Home button */}
+        {/* Home */}
         <button
-          onClick={() => setActivePage(null)}
+          onClick={() => { setActivePage(null); setActiveFolder(null); }}
           title="Home"
-          style={bottomBtnStyle(activePage === null)}
-          onMouseEnter={(e) => { if (activePage !== null) e.currentTarget.style.background = C.darkSurf2; }}
-          onMouseLeave={(e) => { if (activePage !== null) e.currentTarget.style.background = "transparent"; }}
+          style={bottomBtnStyle(activePage === null && !activeFolder)}
+          onMouseEnter={(e) => { if (activePage !== null || activeFolder) e.currentTarget.style.background = C.darkSurf2; }}
+          onMouseLeave={(e) => { if (activePage !== null || activeFolder) e.currentTarget.style.background = "transparent"; }}
         >
-          <IconStar size={collapsed ? 16 : 14} color={activePage === null ? "#fff" : C.darkMuted} />
-          {!collapsed && <span style={bottomLabelStyle(activePage === null)}>Home</span>}
+          <IconStar size={collapsed ? 16 : 14} color={(activePage === null && !activeFolder) ? "#fff" : C.darkMuted} />
+          {!collapsed && <span style={bottomLabelStyle(activePage === null && !activeFolder)}>Home</span>}
         </button>
 
-        {/* Docs button (only when standalone docs exist) */}
-        {standaloneDocPages.length > 0 && (
-          <>
-            <button
-              onClick={() => setShowDocsExpanded(!showDocsExpanded)}
-              title="Documents"
-              style={bottomBtnStyle(false)}
-              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-            >
-              <IconPage size={collapsed ? 16 : 14} color={C.darkMuted} />
-              {!collapsed && (
-                <span style={bottomLabelStyle(false)}>
-                  Docs
-                  <span style={{ fontSize: 10, marginLeft: 4, color: C.darkBorder }}>
-                    {standaloneDocPages.length}
-                  </span>
-                </span>
-              )}
-            </button>
-            {/* Expanded docs list */}
-            {showDocsExpanded && !collapsed && (
-              <div style={{ paddingLeft: 8, marginBottom: 4 }}>
-                {standaloneDocPages.map((doc) => {
-                  const isDocActive = activePage === doc.id;
-                  return (
-                    <div
-                      key={doc.id}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        position: "relative",
-                      }}
-                    >
-                      <button
-                        onClick={() => setActivePage(doc.id)}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 6,
-                          flex: 1,
-                          background: isDocActive ? C.accent : "transparent",
-                          border: "none",
-                          borderRadius: RADIUS.sm,
-                          padding: "5px 8px",
-                          cursor: "pointer",
-                          outline: "none",
-                          fontFamily: "'Outfit',sans-serif",
-                          fontSize: 11,
-                          color: isDocActive ? "#fff" : C.darkMuted,
-                          transition: "background 0.12s",
-                          minWidth: 0,
-                        }}
-                        onMouseEnter={(e) => { if (!isDocActive) e.currentTarget.style.background = C.darkSurf2; }}
-                        onMouseLeave={(e) => { if (!isDocActive) e.currentTarget.style.background = "transparent"; }}
-                      >
-                        <IconDiamond size={6} color={isDocActive ? "#fff" : C.darkBorder} />
-                        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {doc.name}
-                        </span>
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setConfirmDelete({ type: "page", pageConfig: doc });
-                        }}
-                        title="Delete document"
-                        style={{
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                          padding: 3,
-                          display: "flex",
-                          alignItems: "center",
-                          opacity: 0,
-                          transition: "opacity 0.12s",
-                          outline: "none",
-                          flexShrink: 0,
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.opacity = "0"; }}
-                      >
-                        <IconClose size={7} color={C.darkMuted} />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Automations button */}
+        {/* Automations */}
         <button
           onClick={() => setActivePage("automations")}
           title="Automations"
@@ -814,7 +448,7 @@ export default function Navigation({
           {!collapsed && <span style={bottomLabelStyle(activePage === "automations")}>Automations</span>}
         </button>
 
-        {/* System button */}
+        {/* System */}
         <button
           onClick={() => setActivePage("system")}
           title="System"
@@ -831,17 +465,12 @@ export default function Navigation({
           <button
             onClick={onToggleWasabiPanel}
             style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
+              background: "none", border: "none", cursor: "pointer",
+              display: "flex", alignItems: "center",
               gap: collapsed ? 0 : 10,
               padding: collapsed ? "6px 0" : "6px 8px",
-              borderRadius: RADIUS.lg,
-              transition: "background 0.15s",
-              outline: "none",
-              width: "100%",
+              borderRadius: RADIUS.lg, transition: "background 0.15s",
+              outline: "none", width: "100%",
               justifyContent: collapsed ? "center" : "flex-start",
               marginTop: 2,
             }}
@@ -851,15 +480,10 @@ export default function Navigation({
           >
             <WasabiFlame size={collapsed ? 26 : 30} isThinking={isThinking} />
             {!collapsed && (
-              <span
-                style={{
-                  fontFamily: "'Outfit',sans-serif",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  color: C.darkMuted,
-                  letterSpacing: "0.02em",
-                }}
-              >
+              <span style={{
+                fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: 500,
+                color: C.darkMuted, letterSpacing: "0.02em",
+              }}>
                 Wasabi
               </span>
             )}
@@ -867,26 +491,18 @@ export default function Navigation({
         )}
       </div>
 
-      {/* Collapse toggle tab — right edge */}
+      {/* ── Collapse toggle tab ── */}
       <button
         onClick={onToggleCollapse}
         title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         style={{
-          position: "absolute",
-          top: "50%",
-          right: -12,
+          position: "absolute", top: "50%", right: -12,
           transform: "translateY(-50%)",
-          width: 22,
-          height: 44,
-          background: C.darkSurf2,
-          border: `1px solid ${C.darkBorder}`,
+          width: 22, height: 44,
+          background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
           borderRadius: "0 8px 8px 0",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          cursor: "pointer",
-          outline: "none",
-          zIndex: 10,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          cursor: "pointer", outline: "none", zIndex: 10,
           transition: "background 0.12s",
         }}
         onMouseEnter={(e) => { e.currentTarget.style.background = "#363636"; }}
@@ -903,29 +519,21 @@ export default function Navigation({
         </svg>
       </button>
 
-      {/* Confirm dialogs */}
+      {/* ── Confirm dialogs ── */}
       {confirmDelete?.type === "page" && (
         <ConfirmDialog
           title="Delete Page"
           message={`Are you sure you want to delete "${confirmDelete.pageConfig.name}"? This action cannot be undone.`}
-          onConfirm={() => handleDeletePage(confirmDelete.pageConfig)}
+          onConfirm={() => handleDelete(confirmDelete.pageConfig)}
           onCancel={() => setConfirmDelete(null)}
         />
       )}
-      {confirmDelete?.type === "view" && (
+      {confirmDelete?.type === "folder" && (
         <ConfirmDialog
-          title="Delete View"
-          message="Are you sure you want to delete this view? This action cannot be undone."
-          onConfirm={() => handleDeleteView(confirmDelete.viewIdx)}
+          title="Delete Folder"
+          message={`Are you sure you want to delete "${confirmDelete.pageConfig.name}" and all pages inside it? This action cannot be undone.`}
+          onConfirm={() => handleDelete(confirmDelete.pageConfig)}
           onCancel={() => setConfirmDelete(null)}
-        />
-      )}
-
-      {/* Sheet URL dialog */}
-      {sheetDialogOpen && (
-        <SheetUrlDialog
-          onConfirm={handleSheetConfirm}
-          onCancel={() => setSheetDialogOpen(false)}
         />
       )}
     </div>

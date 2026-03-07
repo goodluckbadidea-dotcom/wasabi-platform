@@ -5,17 +5,18 @@
 import React, { useState, useRef, useEffect } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { IconGear, IconChevronDown, IconPage, IconPlus, IconDiamond } from "../design/icons.jsx";
+import { IconGear, IconChevronDown, IconPage, IconPlus, IconDiamond, IconFolder } from "../design/icons.jsx";
 
 // ── NavGlyph: icon for each page type in dropdown ──
 function NavGlyph({ type, size = 14, color }) {
   if (type === "system") return <IconGear size={size} color={color} />;
   if (type === "add") return <IconPlus size={size} color={color} />;
+  if (type === "folder") return <IconFolder size={size} color={color} />;
   return <IconPage size={size} color={color} />;
 }
 
 export default function TopHeader({ onAddPage }) {
-  const { pages, activePage, setActivePage } = usePlatform();
+  const { pages, activePage, setActivePage, pageTree, setActiveFolder } = usePlatform();
   const [dropOpen, setDropOpen] = useState(false);
   const pillRef = useRef(null);
   const dropRef = useRef(null);
@@ -35,16 +36,19 @@ export default function TopHeader({ onAddPage }) {
     return () => document.removeEventListener("mousedown", handler);
   }, [dropOpen]);
 
-  // Build nav sections from pages + system
-  const topLevelPages = pages.filter((p) => !p.parentId);
-  const currentPage = topLevelPages.find((p) => p.id === activePage);
+  // Build nav sections: use pageTree for folder-grouped view
+  const currentPage = pages.find((p) => p.id === activePage);
+  // Find folder name for breadcrumb
+  const parentFolder = currentPage?.parentId
+    ? pages.find((p) => p.id === currentPage.parentId && p.type === "folder")
+    : null;
   const currentLabel = currentPage
-    ? currentPage.name
+    ? (parentFolder ? `${parentFolder.name} / ${currentPage.name}` : currentPage.name)
     : activePage === "system"
     ? "System Manager"
     : activePage === "wasabi"
     ? "New Page"
-    : topLevelPages.length > 0
+    : pages.filter((p) => p.type !== "sub_page").length > 0
     ? "Select Page"
     : "Home";
 
@@ -179,69 +183,99 @@ export default function TopHeader({ onAddPage }) {
                   background: `linear-gradient(90deg, ${C.dark}, ${C.accent}, ${C.dark})`,
                 }}
               />
-              <div style={{ padding: "6px 0 8px" }}>
-                {/* User pages */}
-                {topLevelPages.map((page) => {
-                  const isActive = activePage === page.id;
-                  return (
-                    <button
-                      key={page.id}
-                      onClick={() => {
-                        setActivePage(page.id);
-                        setDropOpen(false);
-                      }}
-                      style={{
-                        width: "100%",
-                        border: "none",
-                        cursor: "pointer",
-                        outline: "none",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 12,
-                        padding: "10px 18px",
-                        textAlign: "left",
-                        background: isActive ? C.accent + "18" : "transparent",
-                        transition: "background 0.1s",
-                        fontFamily: "'Outfit',sans-serif",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isActive) e.currentTarget.style.background = C.darkSurf2;
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = isActive
-                          ? C.accent + "18"
-                          : "transparent";
-                      }}
-                    >
-                      <NavGlyph type="page" size={14} color={isActive ? C.accent : "#888"} />
-                      <span
-                        style={{
-                          fontSize: 13,
-                          fontWeight: isActive ? 600 : 400,
-                          color: isActive ? C.accent : "#E8E8E8",
-                          letterSpacing: "0.01em",
-                        }}
-                      >
-                        {page.name}
-                      </span>
-                      {isActive && (
-                        <div
-                          style={{
-                            marginLeft: "auto",
-                            width: 6,
-                            height: 6,
-                            borderRadius: "50%",
-                            background: C.accent,
-                            flexShrink: 0,
+              <div style={{ padding: "6px 0 8px", maxHeight: 400, overflowY: "auto" }}>
+                {/* Folder-grouped pages */}
+                {pageTree.map((folder) => (
+                  <React.Fragment key={folder.id}>
+                    {/* Folder header (non-clickable label) */}
+                    <div style={{
+                      padding: "8px 18px 4px",
+                      fontSize: 10,
+                      fontWeight: 600,
+                      letterSpacing: "0.1em",
+                      textTransform: "uppercase",
+                      color: C.darkMuted,
+                      fontFamily: "'Outfit',sans-serif",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}>
+                      <IconFolder size={10} color={C.darkBorder} />
+                      {folder.name}
+                    </div>
+                    {/* Pages in folder */}
+                    {(folder.children || []).map((page) => {
+                      const isActive = activePage === page.id;
+                      return (
+                        <button
+                          key={page.id}
+                          onClick={() => {
+                            setActivePage(page.id);
+                            setActiveFolder(folder.id);
+                            setDropOpen(false);
                           }}
-                        />
-                      )}
-                    </button>
-                  );
-                })}
+                          style={{
+                            width: "100%",
+                            border: "none",
+                            cursor: "pointer",
+                            outline: "none",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 12,
+                            padding: "8px 18px 8px 32px",
+                            textAlign: "left",
+                            background: isActive ? C.accent + "18" : "transparent",
+                            transition: "background 0.1s",
+                            fontFamily: "'Outfit',sans-serif",
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isActive) e.currentTarget.style.background = C.darkSurf2;
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = isActive
+                              ? C.accent + "18"
+                              : "transparent";
+                          }}
+                        >
+                          <NavGlyph type="page" size={14} color={isActive ? C.accent : "#888"} />
+                          <span
+                            style={{
+                              fontSize: 13,
+                              fontWeight: isActive ? 600 : 400,
+                              color: isActive ? C.accent : "#E8E8E8",
+                              letterSpacing: "0.01em",
+                            }}
+                          >
+                            {page.name}
+                          </span>
+                          {isActive && (
+                            <div
+                              style={{
+                                marginLeft: "auto",
+                                width: 6,
+                                height: 6,
+                                borderRadius: "50%",
+                                background: C.accent,
+                                flexShrink: 0,
+                              }}
+                            />
+                          )}
+                        </button>
+                      );
+                    })}
+                    {(folder.children || []).length === 0 && (
+                      <div style={{
+                        padding: "4px 18px 4px 32px", fontSize: 11, color: C.darkBorder,
+                        fontFamily: "'Outfit',sans-serif",
+                      }}>
+                        No pages
+                      </div>
+                    )}
+                  </React.Fragment>
+                ))}
 
                 {/* Separator */}
-                {topLevelPages.length > 0 && (
+                {pageTree.length > 0 && (
                   <div
                     style={{
                       height: 1,
