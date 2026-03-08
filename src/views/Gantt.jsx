@@ -30,21 +30,32 @@ const DAY_MS = 86400000;
 
 // ─── Date Helpers ───
 
+// Parse a date string as local time (avoids UTC off-by-one)
+function toLocalDate(str) {
+  if (!str) return null;
+  const parts = str.split("T")[0].split("-");
+  if (parts.length !== 3) return new Date(str);
+  return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+}
+
 function parseDate(v) {
   if (!v) return null;
-  if (typeof v === "object" && v.start) return new Date(v.start);
-  if (typeof v === "string") return new Date(v);
+  if (typeof v === "object" && v.start) return toLocalDate(v.start);
+  if (typeof v === "string") return toLocalDate(v);
   return null;
 }
 
 function parseDateEnd(v) {
   if (!v) return null;
-  if (typeof v === "object" && v.end) return new Date(v.end);
+  if (typeof v === "object" && v.end) return toLocalDate(v.end);
   return null;
 }
 
 function formatDateISO(d) {
-  return d.toISOString().split("T")[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function addDays(d, n) {

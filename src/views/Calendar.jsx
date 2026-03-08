@@ -42,6 +42,12 @@ function toDateStr(year, month, day) {
 
 function parseDateStr(str) {
   if (!str) return null;
+  // Parse as local date to avoid UTC off-by-one
+  const parts = str.split("T")[0].split("-");
+  if (parts.length === 3) {
+    const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    return isNaN(d.getTime()) ? null : d;
+  }
   const d = new Date(str);
   return isNaN(d.getTime()) ? null : d;
 }

@@ -436,32 +436,50 @@ export default function Navigation({
         )}
       </div>
 
-      {/* ── Collapse toggle tab ── */}
+      {/* ── Collapse toggle tab (peeking Wasabi) ── */}
       <button
         onClick={onToggleCollapse}
         title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         style={{
-          position: "absolute", top: "50%", right: -12,
+          position: "absolute", top: "50%", right: -16,
           transform: "translateY(-50%)",
-          width: 22, height: 44,
-          background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-          borderRadius: "0 8px 8px 0",
-          display: "flex", alignItems: "center", justifyContent: "center",
+          width: 16, height: 40,
+          background: C.accent,
+          border: "none",
+          borderRadius: "0 10px 10px 0",
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
           cursor: "pointer", outline: "none", zIndex: 10,
-          transition: "background 0.12s",
+          transition: "background 0.12s, width 0.12s",
+          gap: 6,
+          padding: 0,
         }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = C.darkBorder; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = C.accentDim; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = C.accent; }}
       >
-        <svg width="8" height="12" viewBox="0 0 8 12" fill="none">
-          <path
-            d={collapsed ? "M2 2L6 6L2 10" : "M6 2L2 6L6 10"}
-            stroke={C.darkMuted}
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
+        {/* Left eye */}
+        <div style={{
+          width: 5, height: 5, borderRadius: "50%",
+          background: "#0d1f06", position: "relative",
+          flexShrink: 0,
+        }}>
+          <div style={{
+            position: "absolute", top: 0, right: 0,
+            width: 2, height: 2, borderRadius: "50%",
+            background: "rgba(255,255,255,0.85)",
+          }} />
+        </div>
+        {/* Right eye */}
+        <div style={{
+          width: 5, height: 5, borderRadius: "50%",
+          background: "#0d1f06", position: "relative",
+          flexShrink: 0,
+        }}>
+          <div style={{
+            position: "absolute", top: 0, right: 0,
+            width: 2, height: 2, borderRadius: "50%",
+            background: "rgba(255,255,255,0.85)",
+          }} />
+        </div>
       </button>
 
       {/* ── Context Menu ── */}
