@@ -473,6 +473,37 @@ export function createToolExecutor({
         });
       }
 
+      // ─── Neuron Operations ───
+
+      case "query_neurons": {
+        try {
+          if (toolInput.node_id) {
+            const res = await api.getNeuronsByNode(toolInput.node_id);
+            return JSON.stringify({
+              count: (res.neurons || []).length,
+              neurons: res.neurons || [],
+            });
+          }
+          const res = await api.getNeuronGraph();
+          return JSON.stringify({
+            count: (res.neurons || []).length,
+            neurons: (res.neurons || []).slice(0, 50),
+            truncated: (res.neurons || []).length > 50,
+          });
+        } catch (err) {
+          return JSON.stringify({ error: err.message });
+        }
+      }
+
+      case "create_neuron": {
+        try {
+          const res = await api.createNeuronAPI(toolInput.name || "", toolInput.nodes || []);
+          return JSON.stringify({ success: true, neuron_id: res.id, node_count: (toolInput.nodes || []).length });
+        } catch (err) {
+          return JSON.stringify({ error: err.message });
+        }
+      }
+
       default:
         return JSON.stringify({ error: `Unknown tool: ${toolName}` });
     }

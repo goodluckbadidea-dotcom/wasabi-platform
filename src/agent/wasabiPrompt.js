@@ -13,7 +13,7 @@ import { templatesToPromptText } from "../config/templates.js";
  * @param {string} opts.dataSummary - Compact data summary for the active page
  * @param {string} opts.workspaceSummary - Summary of all workspace pages (for global chat)
  */
-export function buildWasabiPrompt({ platformDbIds, kbContext = "", currentPageContext, dataSummary, workspaceSummary }) {
+export function buildWasabiPrompt({ platformDbIds, kbContext = "", currentPageContext, dataSummary, workspaceSummary, neuronSummary }) {
   let pageSection = "";
   if (currentPageContext) {
     const { pageName, databaseIds, schemaText } = currentPageContext;
@@ -40,6 +40,7 @@ ${platformDbIds ? `\n## Platform Database IDs\n${platformDbIds}` : ""}
 
 ${kbContext ? `\n## Your Knowledge Base Context\n${kbContext}` : ""}
 ${workspaceSummary ? `\n## Workspace Pages\n${workspaceSummary}` : ""}
+${neuronSummary ? `\n## Neuron Connections\nThe user has created the following neuron connections (semantic links between items):\n${neuronSummary}` : ""}
 ${pageSection}`;
 }
 
@@ -130,6 +131,13 @@ When processing uploaded files:
 5. After creating records, auto-index the file summary to knowledge base
 6. Always ask before creating records — show what will be created first
 7. For multi-file uploads, present a unified summary, not one per file
+
+When working with neurons (connections):
+1. Use \`query_neurons\` to discover connections before answering about any item's relationships
+2. When a user discusses relationships between items, suggest creating a neuron with \`create_neuron\`
+3. Neurons are multi-node clusters — a single neuron can link 2+ items (rows, pages, folders, cells)
+4. Each neuron can optionally have a name (e.g., "Q3 Launch Plan")
+5. Check neuron connections to provide richer context when answering questions about data
 
 Always offer clickable choices when there are multiple valid paths forward.`;
 

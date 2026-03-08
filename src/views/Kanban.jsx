@@ -8,6 +8,8 @@ import { buildProp } from "../notion/properties.js";
 import { cellStyles, CellDisplay } from "./_CellComponents.jsx";
 import FilterChips, { applyChipFilters } from "./FilterChips.jsx";
 import RecordDetail from "./RecordDetail.jsx";
+import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
+import NeuronBadge from "../neurons/NeuronBadge.jsx";
 
 export default function Kanban({ data = [], schema, config = {}, onUpdate, onRefresh, onViewConfigChange, pageConfig }) {
   const [dragState, setDragState] = useState(null); // { pageId, fromCol, startX, startY, isDragging }
@@ -329,7 +331,18 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
                   return (
                     <div
                       key={page.id}
-                      onMouseDown={(e) => handleDragStart(e, page.id, col.name, page)}
+                      data-neuron-node={`row:${page.id}`}
+                      onMouseDown={(e) => {
+                        if ((e.metaKey || e.ctrlKey) && isNeuronsMode()) return; // let onClick handle it
+                        handleDragStart(e, page.id, col.name, page);
+                      }}
+                      onClick={(e) => {
+                        if ((e.metaKey || e.ctrlKey) && isNeuronsMode()) {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          dispatchNeuronSelect({ node_type: "row", node_id: page.id, node_label: title || "Untitled" });
+                        }
+                      }}
                       style={{
                         background: C.darkSurf2,
                         border: `1px solid ${C.darkBorder}`,
@@ -350,8 +363,12 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
                         color: C.darkText,
                         marginBottom: previewFields.length > 0 ? 6 : 0,
                         lineHeight: 1.35,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
                       }}>
-                        {title || "Untitled"}
+                        <span style={{ flex: 1 }}>{title || "Untitled"}</span>
+                        <NeuronBadge nodeId={page.id} />
                       </div>
 
                       {/* Preview fields */}

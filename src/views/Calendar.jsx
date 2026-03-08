@@ -7,6 +7,7 @@ import { C, FONT, RADIUS, SHADOW, getSolidPillColor } from "../design/tokens.js"
 import { readProp } from "../notion/properties.js";
 import { IconChevronLeft, IconChevronRight } from "../design/icons.jsx";
 import RecordDetail from "./RecordDetail.jsx";
+import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 
 // ── Helpers ──
 
@@ -454,7 +455,15 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
               <div
                 key={i}
                 style={{ ...cal.popItem, cursor: "pointer", borderRadius: RADIUS.md, padding: "6px 4px" }}
-                onClick={() => { setDetailPage(ev.page); setPopover(null); }}
+                onClick={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && isNeuronsMode()) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dispatchNeuronSelect({ node_type: "row", node_id: ev.page?.id, node_label: ev.title || "Untitled" });
+                    return;
+                  }
+                  setDetailPage(ev.page); setPopover(null);
+                }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
               >

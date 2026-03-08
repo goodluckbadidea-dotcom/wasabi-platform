@@ -229,7 +229,7 @@ export default function WasabiFlame({ size = 80, isThinking = false, energy: ene
         const eyeBodyY = leaderY + (baseY - leaderY) * 0.72 - VH;
         const eyeBodyX = leaderX - VH;
         const mouthTargetX = eyeBodyX;
-        const mouthTargetY = eyeBodyY + 7.5;
+        const mouthTargetY = eyeBodyY + 10;
 
         const eyeDistFromBase = baseY - (leaderY + (baseY - leaderY) * 0.72);
         const maxDist = VS * 0.55;

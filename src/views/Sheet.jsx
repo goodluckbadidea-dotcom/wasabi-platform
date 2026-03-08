@@ -7,6 +7,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
 import { getSheet, updateSheet, sheetFormula, resizeSheet } from "../lib/api.js";
 import FormulaBar from "../components/FormulaBar.jsx";
+import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 
 // ─── Helpers ───
 
@@ -440,7 +441,13 @@ export default function Sheet({ pageConfig }) {
                         fontFamily: typeof display === "number" ? MONO : FONT,
                         textAlign: typeof display === "number" ? "right" : "left",
                       }}
-                      onClick={() => {
+                      onClick={(e) => {
+                        if ((e.metaKey || e.ctrlKey) && isNeuronsMode()) {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          dispatchNeuronSelect({ node_type: "cell", node_id: `${config?.id || "sheet"}:${key}`, node_label: `Cell ${key}` });
+                          return;
+                        }
                         if (editingCell && editingCell !== key) commitEdit();
                         setSelectedCell(key);
                       }}

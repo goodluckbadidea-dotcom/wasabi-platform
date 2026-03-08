@@ -17,6 +17,8 @@ import ConfirmDialog from "./ConfirmDialog.jsx";
 import InlineEdit from "./InlineEdit.jsx";
 import FolderDropdown from "./FolderDropdown.jsx";
 import ContextMenu, { MoveToMenu } from "./ContextMenu.jsx";
+import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
+import NeuronBadge from "../neurons/NeuronBadge.jsx";
 
 export default function Navigation({
   collapsed,
@@ -241,7 +243,15 @@ export default function Navigation({
               }}
             >
               <button
-                onClick={() => navigateToPage(page)}
+                onClick={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && isNeuronsMode()) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dispatchNeuronSelect({ node_type: "page", node_id: page.id, node_label: page.name || "Untitled" });
+                    return;
+                  }
+                  navigateToPage(page);
+                }}
                 onContextMenu={(e) => handleContextMenu(e, page)}
                 onMouseEnter={() => setHoveredItem(`page_${page.id}`)}
                 onMouseLeave={() => setHoveredItem(null)}
@@ -265,6 +275,7 @@ export default function Navigation({
                     color={isActive ? "#fff" : C.darkText}
                   />
                 )}
+                {!collapsed && <NeuronBadge nodeId={page.id} />}
                 {/* Active dot */}
                 {isActive && !collapsed && !isHovered && (
                   <div style={{

@@ -7,6 +7,7 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { PlatformProvider, usePlatform } from "./context/PlatformContext.jsx";
 import { LinksProvider } from "./context/LinksContext.jsx";
+import { NeuronsProvider } from "./neurons/NeuronsContext.jsx";
 import { ThemeProvider, useTheme } from "./context/ThemeContext.jsx";
 import { injectAnimations, ANIM, TRANSITION } from "./design/animations.js";
 import { S } from "./design/styles.js";
@@ -29,6 +30,9 @@ import { ErrorBoundary } from "./core/ErrorBoundary.jsx";
 import { createAutomationEngine } from "./agent/automations.js";
 import { useKeyboardShortcuts } from "./utils/useKeyboardShortcuts.js";
 import CommandPalette from "./core/CommandPalette.jsx";
+import NeuronOverlay from "./neurons/NeuronOverlay.jsx";
+import NeuronLines from "./neurons/NeuronLines.jsx";
+import { useNeurons } from "./neurons/NeuronsContext.jsx";
 import { IconGear } from "./design/icons.jsx";
 
 // Inject CSS animations on app load
@@ -50,6 +54,7 @@ function AppContent() {
   } = usePlatform();
 
   const { theme } = useTheme();
+  const { toggleOverlay: toggleNeurons } = useNeurons();
 
   // ── UI State ──
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -147,6 +152,11 @@ function AppContent() {
       when: () => wasabiPanelOpen,
     },
     {
+      shortcut: "mod+j",
+      description: "Toggle Neurons overlay",
+      handler: () => toggleNeurons(),
+    },
+    {
       shortcut: "mod+h",
       description: "Home",
       handler: () => setActivePage(null),
@@ -169,7 +179,7 @@ function AppContent() {
         if (idx < folderPages.length - 1) setActivePage(folderPages[idx + 1].id);
       },
     },
-  ], [handleAddPage, wasabiPanelOpen, activePage, pages, activeFolder, getFolderPages]);
+  ], [handleAddPage, wasabiPanelOpen, activePage, pages, activeFolder, getFolderPages, toggleNeurons]);
 
   // Auth gate: show setup wizard if not connected
   if (!isAuthenticated || !isSetup) {
@@ -302,6 +312,10 @@ function AppContent() {
       {/* ── Top Header Bar ── */}
       <TopHeader pageControls={pageControls} />
 
+      {/* ── Neuron Overlay (glass pane for selection mode) ── */}
+      <NeuronOverlay />
+      <NeuronLines />
+
       {/* ── Main Row: [Wasabi Panel] [Sidebar] [Content] ── */}
       <div
         style={{
@@ -378,9 +392,11 @@ export default function App() {
     <ThemeProvider>
       <PlatformProvider>
         <LinksProvider>
-          <ErrorBoundary fallbackLabel="Wasabi Platform">
-            <AppContent />
-          </ErrorBoundary>
+          <NeuronsProvider>
+            <ErrorBoundary fallbackLabel="Wasabi Platform">
+              <AppContent />
+            </ErrorBoundary>
+          </NeuronsProvider>
         </LinksProvider>
       </PlatformProvider>
     </ThemeProvider>

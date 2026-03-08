@@ -361,3 +361,41 @@ export async function createRecordComment(recordId, pageConfigId, content) {
 export async function deleteRecordComment(recordId, commentId) {
   return apiFetch(`/records/${recordId}/comments/${commentId}`, { method: "DELETE" });
 }
+
+// ─── Neurons ───
+
+export async function listNeurons() {
+  return apiFetch("/neurons", { method: "GET" });
+}
+
+export async function getNeuron(id) {
+  return apiFetch(`/neurons/${id}`, { method: "GET" });
+}
+
+export async function createNeuronAPI(name, nodes) {
+  return apiFetch("/neurons", { method: "POST", body: { name, nodes } });
+}
+
+export async function updateNeuronAPI(id, updates) {
+  return apiFetch(`/neurons/${id}`, { method: "PATCH", body: updates });
+}
+
+export async function deleteNeuronAPI(id) {
+  return apiFetch(`/neurons/${id}`, { method: "DELETE" });
+}
+
+export async function addNeuronNode(neuronId, node) {
+  return apiFetch(`/neurons/${neuronId}/nodes`, { method: "POST", body: node });
+}
+
+export async function removeNeuronNode(neuronId, nodeId) {
+  return apiFetch(`/neurons/${neuronId}/nodes/${nodeId}`, { method: "DELETE" });
+}
+
+export async function getNeuronsByNode(nodeId) {
+  return apiFetch(`/neurons/by-node/${encodeURIComponent(nodeId)}`, { method: "GET" });
+}
+
+export async function getNeuronGraph() {
+  return apiFetch("/neurons/graph", { method: "GET" });
+}

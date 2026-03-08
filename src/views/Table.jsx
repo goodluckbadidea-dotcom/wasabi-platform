@@ -13,6 +13,8 @@ import FilterChips, { applyChipFilters } from "./FilterChips.jsx";
 import RecordDetail from "./RecordDetail.jsx";
 import { useLinks } from "../context/LinksContext.jsx";
 import LinkPicker from "../core/LinkPicker.jsx";
+import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
+import NeuronBadge from "../neurons/NeuronBadge.jsx";
 
 // ─── Constants ───
 
@@ -1537,6 +1539,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                 return (
                   <tr
                     key={pageId}
+                    data-neuron-node={`row:${pageId}`}
                     style={{
                       ...styles.row,
                       ...(isHovered ? styles.rowHover : {}),
@@ -1545,6 +1548,13 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                     }}
                     onMouseEnter={() => setHoveredRow(pageId)}
                     onMouseLeave={() => setHoveredRow(null)}
+                    onClick={(e) => {
+                      if ((e.metaKey || e.ctrlKey) && isNeuronsMode()) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        dispatchNeuronSelect({ node_type: "row", node_id: pageId, node_label: getPageTitle(page) || "Untitled" });
+                      }
+                    }}
                     onDoubleClick={() => setDetailPage(page)}
                   >
                     {/* Row checkbox + expand */}
@@ -1556,6 +1566,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                         >
                           {isSelected ? "\u2713" : ""}
                         </span>
+                        <NeuronBadge nodeId={pageId} />
                         {isHovered && (
                           <span
                             style={{ cursor: "pointer", opacity: 0.5, display: "flex", alignItems: "center", transition: "opacity 0.1s" }}

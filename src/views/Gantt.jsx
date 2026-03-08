@@ -7,6 +7,7 @@ import { C, FONT, RADIUS, TIMELINE_PALETTE, VIEW_PALETTE, getStatusColor, getSol
 import { readField, getFieldType, getOptionNames, resolveField } from "./_viewHelpers.js";
 import { buildProp } from "../notion/properties.js";
 import RecordDetail from "./RecordDetail.jsx";
+import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 
 // ─── Constants ───
 
@@ -649,7 +650,16 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
             {rows.map((row, i) => (
               <div
                 key={row.pageId}
-                onClick={() => setSelectedRowIdx(i)}
+                data-neuron-node={`row:${row.pageId}`}
+                onClick={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && isNeuronsMode()) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dispatchNeuronSelect({ node_type: "row", node_id: row.pageId, node_label: row.label || "Untitled" });
+                    return;
+                  }
+                  setSelectedRowIdx(i);
+                }}
                 onDoubleClick={() => setDetailPage(row.page)}
                 style={{
                   height: dynamicRowHeight,

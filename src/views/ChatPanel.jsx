@@ -13,6 +13,7 @@ import { getConnection } from "../lib/api.js";
 import { C } from "../design/tokens.js";
 import WasabiOrb from "../core/WasabiOrb.jsx";
 import { readField, getFieldOptions } from "./_viewHelpers.js";
+import { loadCachedNeurons } from "../neurons/neuronStorage.js";
 
 // ── Smart model routing ──
 function pickModel(text) {
@@ -160,6 +161,14 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
     const newHistory = [...historyRef.current, userMsg];
 
     try {
+      // Build neuron summary from cached data
+      const cachedNeurons = loadCachedNeurons();
+      const neuronSummary = cachedNeurons.length > 0
+        ? cachedNeurons.slice(0, 20).map((n) =>
+            `- ${n.name || "(unnamed)"} (${n.node_count || 0} nodes, id: ${n.id})`
+          ).join("\n")
+        : "";
+
       // Build Wasabi prompt with page context + data summary
       const systemPrompt = buildWasabiPrompt({
         platformDbIds: Object.entries(platformIds || {}).map(([k, v]) => `${k}: ${v}`).join("\n"),
@@ -169,6 +178,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
           schemaText: schema ? JSON.stringify(schema, null, 2) : "",
         },
         dataSummary,
+        neuronSummary,
       });
 
       // Smart model routing

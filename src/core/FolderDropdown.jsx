@@ -6,6 +6,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { C, FONT, RADIUS, SHADOW, VIEW_PALETTE } from "../design/tokens.js";
 import { IconPlus, IconFolder, IconChevronDown, IconStar } from "../design/icons.jsx";
+import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 
 // ── Folder color helper ──
 function getFolderColor(folder) {
@@ -110,7 +111,13 @@ function FolderTreeItem({ folder, depth, activeFolder, activePage, onSelect, onR
         )}
 
         <button
-          onClick={() => {
+          onClick={(e) => {
+            if ((e.metaKey || e.ctrlKey) && isNeuronsMode()) {
+              e.preventDefault();
+              e.stopPropagation();
+              dispatchNeuronSelect({ node_type: "folder", node_id: folder.id, node_label: folder.name || "Untitled Folder" });
+              return;
+            }
             if (clickTimer.current) {
               clearTimeout(clickTimer.current);
               clickTimer.current = null;

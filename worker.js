@@ -148,6 +148,24 @@ CREATE TABLE IF NOT EXISTS record_comments (
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS neurons (
+  id TEXT PRIMARY KEY,
+  name TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS neuron_nodes (
+  id TEXT PRIMARY KEY,
+  neuron_id TEXT NOT NULL,
+  node_type TEXT NOT NULL,
+  node_id TEXT NOT NULL,
+  node_label TEXT DEFAULT '',
+  page_config_id TEXT DEFAULT '',
+  meta TEXT DEFAULT '{}',
+  created_at TEXT DEFAULT (datetime('now'))
+);
 `;
 
 const D1_INDEXES = `
@@ -155,6 +173,8 @@ CREATE INDEX IF NOT EXISTS idx_rows_table ON table_rows(table_id, archived);
 CREATE INDEX IF NOT EXISTS idx_notif_status ON notifications(status);
 CREATE INDEX IF NOT EXISTS idx_record_notes_lookup ON record_notes(record_id, page_config_id);
 CREATE INDEX IF NOT EXISTS idx_record_comments_lookup ON record_comments(record_id, page_config_id);
+CREATE INDEX IF NOT EXISTS idx_nn_neuron ON neuron_nodes(neuron_id);
+CREATE INDEX IF NOT EXISTS idx_nn_nodeid ON neuron_nodes(node_id);
 `;
 
 // ─── Auth Middleware ───
@@ -448,6 +468,105 @@ export default {
       if (path === "/d1/kb/search" && request.method === "POST") {
         const body = await request.json();
         return await handleSearchKB(env, body);
+      }
+
+      // ─── Neurons CRUD ───
+
+      // GET /neurons/graph — full dump for Wasabi agent
+      if (path === "/neurons/graph" && request.method === "GET") {
+        const { results: neurons } = await env.DB.prepare("SELECT * FROM neurons ORDER BY updated_at DESC").all();
+        const { results: nodes } = await env.DB.prepare("SELECT * FROM neuron_nodes ORDER BY neuron_id, created_at").all();
+        const nodesByNeuron = {};
+        for (const node of nodes) {
+          if (!nodesByNeuron[node.neuron_id]) nodesByNeuron[node.neuron_id] = [];
+          nodesByNeuron[node.neuron_id].push(node);
+        }
+        return jsonResponse({ neurons: neurons.map(n => ({ ...n, nodes: nodesByNeuron[n.id] || [] })) });
+      }
+
+      // GET /neurons/by-node/:nodeId — find neurons containing a specific node
+      if (path.startsWith("/neurons/by-node/") && request.method === "GET") {
+        const nodeId = decodeURIComponent(path.slice(17));
+        const { results } = await env.DB.prepare(`
+          SELECT n.id, n.name, n.created_at, n.updated_at, COUNT(nn2.id) as node_count
+          FROM neuron_nodes nn
+          JOIN neurons n ON nn.neuron_id = n.id
+          LEFT JOIN neuron_nodes nn2 ON nn2.neuron_id = n.id
+          WHERE nn.node_id = ?
+          GROUP BY n.id
+        `).bind(nodeId).all();
+        return jsonResponse({ neurons: results });
+      }
+
+      // POST /neurons/:id/nodes — add a node to an existing neuron
+      const addNodeMatch = path.match(/^\/neurons\/([^/]+)\/nodes$/);
+      if (addNodeMatch && request.method === "POST") {
+        const neuronId = addNodeMatch[1];
+        const node = await request.json();
+        const nodeRowId = crypto.randomUUID();
+        await env.DB.prepare(
+          "INSERT INTO neuron_nodes (id, neuron_id, node_type, node_id, node_label, page_config_id, meta) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        ).bind(nodeRowId, neuronId, node.node_type, node.node_id, node.node_label || "", node.page_config_id || "", JSON.stringify(node.meta || {})).run();
+        await env.DB.prepare("UPDATE neurons SET updated_at = datetime('now') WHERE id = ?").bind(neuronId).run();
+        return jsonResponse({ id: nodeRowId }, 201);
+      }
+
+      // DELETE /neurons/:id/nodes/:nodeId — remove a node from a neuron
+      const removeNodeMatch = path.match(/^\/neurons\/([^/]+)\/nodes\/([^/]+)$/);
+      if (removeNodeMatch && request.method === "DELETE") {
+        const [, neuronId, nodeRowId] = removeNodeMatch;
+        await env.DB.prepare("DELETE FROM neuron_nodes WHERE id = ? AND neuron_id = ?").bind(nodeRowId, neuronId).run();
+        await env.DB.prepare("UPDATE neurons SET updated_at = datetime('now') WHERE id = ?").bind(neuronId).run();
+        return jsonResponse({ ok: true });
+      }
+
+      // Single neuron routes: GET/PATCH/DELETE /neurons/:id
+      const neuronMatch = path.match(/^\/neurons\/([^/]+)$/);
+      if (neuronMatch) {
+        const id = neuronMatch[1];
+        if (request.method === "GET") {
+          const neuron = await env.DB.prepare("SELECT * FROM neurons WHERE id = ?").bind(id).first();
+          if (!neuron) return jsonResponse({ _error: "Neuron not found" }, 404);
+          const { results: nodes } = await env.DB.prepare("SELECT * FROM neuron_nodes WHERE neuron_id = ? ORDER BY created_at").bind(id).all();
+          return jsonResponse({ ...neuron, nodes });
+        }
+        if (request.method === "PATCH") {
+          const body = await request.json();
+          await env.DB.prepare("UPDATE neurons SET name = ?, updated_at = datetime('now') WHERE id = ?").bind(body.name || "", id).run();
+          return jsonResponse({ ok: true });
+        }
+        if (request.method === "DELETE") {
+          await env.DB.prepare("DELETE FROM neuron_nodes WHERE neuron_id = ?").bind(id).run();
+          await env.DB.prepare("DELETE FROM neurons WHERE id = ?").bind(id).run();
+          return jsonResponse({ ok: true });
+        }
+      }
+
+      // GET /neurons — list all with node counts
+      if (path === "/neurons" && request.method === "GET") {
+        const { results } = await env.DB.prepare(`
+          SELECT n.id, n.name, n.created_at, n.updated_at, COUNT(nn.id) as node_count
+          FROM neurons n LEFT JOIN neuron_nodes nn ON n.id = nn.neuron_id
+          GROUP BY n.id ORDER BY n.updated_at DESC
+        `).all();
+        return jsonResponse({ neurons: results });
+      }
+
+      // POST /neurons — create with initial nodes
+      if (path === "/neurons" && request.method === "POST") {
+        const { name, nodes } = await request.json();
+        if (!nodes || !Array.isArray(nodes) || nodes.length === 0) {
+          return jsonResponse({ _error: "At least one node is required" }, 400);
+        }
+        const neuronId = crypto.randomUUID();
+        await env.DB.prepare("INSERT INTO neurons (id, name) VALUES (?, ?)").bind(neuronId, name || "").run();
+        for (const node of nodes) {
+          const nodeRowId = crypto.randomUUID();
+          await env.DB.prepare(
+            "INSERT INTO neuron_nodes (id, neuron_id, node_type, node_id, node_label, page_config_id, meta) VALUES (?, ?, ?, ?, ?, ?, ?)"
+          ).bind(nodeRowId, neuronId, node.node_type, node.node_id, node.node_label || "", node.page_config_id || "", JSON.stringify(node.meta || {})).run();
+        }
+        return jsonResponse({ id: neuronId, name: name || "", node_count: nodes.length }, 201);
       }
 
       // ─── Notion Sync Routes ───

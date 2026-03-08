@@ -6,6 +6,7 @@ import { C, FONT, RADIUS, getStatusColor } from "../design/tokens.js";
 import { readField, getFieldType, getFieldOptions, getOptionNames, displayValue, searchableText, resolveField } from "./_viewHelpers.js";
 import { cellStyles, CellDisplay } from "./_CellComponents.jsx";
 import RecordDetail from "./RecordDetail.jsx";
+import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 
 export default function CardGrid({ data = [], schema, config = {}, onUpdate, onRefresh, onViewConfigChange, pageConfig }) {
   const [search, setSearch] = useState("");
@@ -202,6 +203,7 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
               return (
                 <div
                   key={page.id}
+                  data-neuron-node={`row:${page.id}`}
                   style={{
                     background: C.darkSurf,
                     border: `1px solid ${C.darkBorder}`,
@@ -212,7 +214,15 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
                     animation: `fadeUp 0.3s ease ${idx * 0.03}s both`,
                     cursor: "pointer",
                   }}
-                  onClick={() => setDetailPage(page)}
+                  onClick={(e) => {
+                    if ((e.metaKey || e.ctrlKey) && isNeuronsMode()) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      dispatchNeuronSelect({ node_type: "row", node_id: page.id, node_label: title || "Untitled" });
+                      return;
+                    }
+                    setDetailPage(page);
+                  }}
                   onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent + "66"; }}
                   onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
                 >

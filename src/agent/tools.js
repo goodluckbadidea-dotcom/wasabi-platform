@@ -385,6 +385,51 @@ const CREATE_AUTOMATION_RULE = {
   },
 };
 
+// ─── Neuron Tools ───
+
+const QUERY_NEURONS = {
+  name: "query_neurons",
+  description: "Query the neuron connection graph. Returns all neurons and their connected nodes, or neurons connected to a specific node. Use this to discover relationships between items (rows, pages, folders, cells) before answering questions about context or connections.",
+  input_schema: {
+    type: "object",
+    properties: {
+      node_id: {
+        type: "string",
+        description: "Optional. If provided, returns only neurons connected to this specific node ID (a page ID, row ID, folder ID, etc.). If omitted, returns the full neuron graph.",
+      },
+    },
+    required: [],
+  },
+};
+
+const CREATE_NEURON = {
+  name: "create_neuron",
+  description: "Create a new neuron connection linking multiple items together. A neuron represents a semantic relationship between 2+ items (rows, pages, folders, cells). Suggest creating neurons when users discuss relationships between items.",
+  input_schema: {
+    type: "object",
+    properties: {
+      name: {
+        type: "string",
+        description: "Optional name for the neuron (e.g., 'Q3 Launch Plan'). Leave empty for anonymous connections.",
+      },
+      nodes: {
+        type: "array",
+        description: "Array of nodes to connect. Each node needs node_type, node_id, and node_label.",
+        items: {
+          type: "object",
+          properties: {
+            node_type: { type: "string", description: "Type: 'row', 'page', 'folder', 'cell', 'column', or 'document'." },
+            node_id: { type: "string", description: "The unique identifier for this node." },
+            node_label: { type: "string", description: "Human-readable label for this node." },
+          },
+          required: ["node_type", "node_id", "node_label"],
+        },
+      },
+    },
+    required: ["nodes"],
+  },
+};
+
 // ─── TOOL SETS ───
 
 export const WASABI_TOOLS = [
@@ -404,6 +449,8 @@ export const WASABI_TOOLS = [
   CREATE_AUTOMATION_RULE,
   PROCESS_UPLOADED_FILES,
   SMART_MATCH_RECORDS,
+  QUERY_NEURONS,
+  CREATE_NEURON,
 ];
 
 export const PAGE_TOOLS = [
@@ -414,6 +461,8 @@ export const PAGE_TOOLS = [
   POST_NOTIFICATION,
   PROCESS_UPLOADED_FILES,
   SMART_MATCH_RECORDS,
+  QUERY_NEURONS,
+  CREATE_NEURON,
 ];
 
 export const AUTO_TOOLS = [

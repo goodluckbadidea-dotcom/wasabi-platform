@@ -7,6 +7,7 @@ import { S } from "../design/styles.js";
 import { ANIM } from "../design/animations.js";
 import { IconEdit, IconRefresh, IconSun, IconMoon } from "../design/icons.jsx";
 import { useTheme } from "../context/ThemeContext.jsx";
+import { useNeurons } from "../neurons/NeuronsContext.jsx";
 
 const REFRESH_OPTIONS = [
   { label: "15s", value: 15000 },
@@ -21,6 +22,7 @@ export default function TopHeader({
   pageControls,
 }) {
   const { themeMode, toggleMode } = useTheme();
+  const { overlayActive, toggleOverlay, selection } = useNeurons();
   const controls = pageControls || {};
   const showControls = !!pageControls;
 
@@ -150,6 +152,67 @@ export default function TopHeader({
             )}
           </div>
         )}
+
+        {/* Neurons toggle */}
+        <button
+          onClick={toggleOverlay}
+          title={overlayActive ? "Exit Neurons mode (Esc)" : "Enter Neurons mode"}
+          style={{
+            background: overlayActive ? C.accent + "22" : "transparent",
+            border: `1px solid ${overlayActive ? C.accent : C.darkBorder}`,
+            borderRadius: RADIUS.pill,
+            padding: "5px 10px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            transition: "background 0.15s, border-color 0.15s",
+            color: overlayActive ? C.accent : C.darkMuted,
+            fontSize: 11,
+            fontFamily: FONT,
+            fontWeight: 500,
+            outline: "none",
+          }}
+          onMouseEnter={(e) => {
+            if (!overlayActive) {
+              e.currentTarget.style.borderColor = C.darkMuted;
+              e.currentTarget.style.background = C.darkSurf2;
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!overlayActive) {
+              e.currentTarget.style.borderColor = C.darkBorder;
+              e.currentTarget.style.background = "transparent";
+            }
+          }}
+        >
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+            <circle cx="4" cy="4" r="2" fill={overlayActive ? C.accent : C.darkMuted} />
+            <circle cx="12" cy="4" r="2" fill={overlayActive ? C.accent : C.darkMuted} />
+            <circle cx="8" cy="12" r="2" fill={overlayActive ? C.accent : C.darkMuted} />
+            <line x1="4" y1="4" x2="12" y2="4" stroke={overlayActive ? C.accent : C.darkMuted} strokeWidth="1" />
+            <line x1="4" y1="4" x2="8" y2="12" stroke={overlayActive ? C.accent : C.darkMuted} strokeWidth="1" />
+            <line x1="12" y1="4" x2="8" y2="12" stroke={overlayActive ? C.accent : C.darkMuted} strokeWidth="1" />
+          </svg>
+          Neurons
+          {overlayActive && selection.length > 0 && (
+            <span
+              style={{
+                background: C.accent,
+                color: "#fff",
+                borderRadius: 999,
+                fontSize: 9,
+                fontWeight: 700,
+                padding: "1px 5px",
+                minWidth: 14,
+                textAlign: "center",
+                lineHeight: "14px",
+              }}
+            >
+              {selection.length}
+            </span>
+          )}
+        </button>
 
         {/* Theme toggle */}
         <button
