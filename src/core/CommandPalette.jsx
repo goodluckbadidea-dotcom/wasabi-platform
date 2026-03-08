@@ -4,8 +4,31 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
-import { IconSearch, IconGear, IconBolt, IconPlus, IconPage } from "../design/icons.jsx";
+import {
+  IconSearch, IconGear, IconBolt, IconPlus, IconPage,
+  IconTable, IconKanban, IconChart, IconForm, IconCalendar,
+  IconFolder, IconStar, IconUsers, IconInbox, IconBell, IconSheet,
+} from "../design/icons.jsx";
 import { SHORTCUT_MAP, formatShortcut } from "../utils/useKeyboardShortcuts.js";
+
+// Map page icon string identifiers → actual icon components
+const PAGE_ICON_MAP = {
+  page: IconPage,
+  table: IconTable,
+  kanban: IconKanban,
+  chart: IconChart,
+  form: IconForm,
+  list: IconForm,
+  calendar: IconCalendar,
+  folder: IconFolder,
+  star: IconStar,
+  bolt: IconBolt,
+  users: IconUsers,
+  inbox: IconInbox,
+  bell: IconBell,
+  gear: IconGear,
+  sheet: IconSheet,
+};
 
 // Static system entries
 const SYSTEM_ITEMS = [
@@ -181,7 +204,7 @@ export default function CommandPalette({ open, onClose, pages = [], setActivePag
           )}
           {results.map((item, i) => {
             const isActive = i === selectedIndex;
-            const ItemIcon = item.icon;
+            const ResolvedIcon = (item.pageIcon && PAGE_ICON_MAP[item.pageIcon]) || item.icon;
             return (
               <div
                 key={item.id}
@@ -198,10 +221,8 @@ export default function CommandPalette({ open, onClose, pages = [], setActivePag
                 }}
               >
                 {/* Icon */}
-                {item.pageIcon ? (
-                  <span style={{ fontSize: 16, width: 20, textAlign: "center" }}>{item.pageIcon}</span>
-                ) : ItemIcon ? (
-                  <ItemIcon size={16} color={isActive ? C.accent : C.darkMuted} />
+                {ResolvedIcon ? (
+                  <ResolvedIcon size={16} color={isActive ? C.accent : C.darkMuted} />
                 ) : (
                   <span style={{ width: 16 }} />
                 )}
