@@ -12,6 +12,7 @@ import { SYSTEM_TOOLS } from "../agent/tools.js";
 import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createToolExecutor } from "../agent/toolExecutor.js";
 import WasabiOrb from "./WasabiOrb.jsx";
+import ConfirmDialog from "./ConfirmDialog.jsx";
 import { IconGear } from "../design/icons.jsx";
 import { getSessionUsage, getUsageHistory, formatCost, formatTokens } from "../utils/costTracker.js";
 import * as api from "../lib/api.js";
@@ -883,6 +884,31 @@ export default function SystemManager() {
 
 function SettingsTab() {
   const { themeName, themeMode, setThemeName, toggleMode } = useTheme();
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetting, setResetting] = useState(false);
+
+  const handleFactoryReset = useCallback(async () => {
+    setResetting(true);
+    try {
+      // Try to delete connections from D1
+      for (const key of ["notion", "claude", "monday"]) {
+        try { await apiDeleteConnection(key); } catch (_) {}
+      }
+    } catch (_) {}
+
+    // Clear all wasabi localStorage keys
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith("wasabi") || k.startsWith("wasabi-"))) {
+        keysToRemove.push(k);
+      }
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+
+    // Hard reload to reset all state
+    window.location.reload();
+  }, []);
 
   return (
     <div style={{ padding: "20px 24px" }}>
@@ -1070,6 +1096,76 @@ function SettingsTab() {
           Light
         </button>
       </div>
+
+      {/* ── Factory Reset ── */}
+      <div
+        style={{
+          fontSize: 10,
+          color: C.darkMuted,
+          fontFamily: FONT,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          marginTop: 40,
+          marginBottom: 14,
+        }}
+      >
+        Danger Zone
+      </div>
+
+      <div
+        style={{
+          background: C.darkSurf,
+          border: `1px solid #E0525233`,
+          borderRadius: RADIUS.lg,
+          padding: "16px 18px",
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+        }}
+      >
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.darkText, fontFamily: FONT, marginBottom: 4 }}>
+            Factory Reset
+          </div>
+          <div style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT, lineHeight: 1.4 }}>
+            Erase all user data, connections, and pages. Resets the app to its original state.
+          </div>
+        </div>
+        <button
+          onClick={() => setShowResetConfirm(true)}
+          disabled={resetting}
+          style={{
+            background: "transparent",
+            border: `1px solid #E05252`,
+            borderRadius: RADIUS.pill,
+            color: "#E05252",
+            fontFamily: FONT,
+            fontSize: 12,
+            fontWeight: 600,
+            padding: "7px 18px",
+            cursor: resetting ? "default" : "pointer",
+            outline: "none",
+            transition: "background 0.14s",
+            opacity: resetting ? 0.5 : 1,
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+          }}
+          onMouseEnter={(e) => { if (!resetting) { e.currentTarget.style.background = "#E0525218"; } }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+        >
+          {resetting ? "Resetting..." : "Reset"}
+        </button>
+      </div>
+
+      {showResetConfirm && (
+        <ConfirmDialog
+          title="Factory Reset"
+          message="This will erase ALL your data including pages, folders, connections, and settings. The app will reload to its original state. This cannot be undone."
+          confirmLabel="Reset Everything"
+          onConfirm={handleFactoryReset}
+          onCancel={() => setShowResetConfirm(false)}
+        />
+      )}
     </div>
   );
 }

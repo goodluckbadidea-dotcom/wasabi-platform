@@ -20,15 +20,18 @@ function containsActiveFolder(folder, activeFolderId) {
 }
 
 // ── Recursive folder tree renderer ──
-function FolderTreeItem({ folder, depth, activeFolder, activePage, onSelect, onRename, collapsed }) {
+function FolderTreeItem({ folder, depth, activeFolder, activePage, onSelect, onRename, onDelete, collapsed }) {
   const isActive = activeFolder === folder.id;
   const color = getFolderColor(folder);
   const indent = depth * 18;
   const hasChildren = (folder.childFolders || []).length > 0;
   const [editing, setEditing] = React.useState(false);
   const [editName, setEditName] = React.useState(folder.name || "");
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [hovered, setHovered] = React.useState(false);
   const editRef = React.useRef(null);
   const clickTimer = React.useRef(null);
+  const menuRef = React.useRef(null);
 
   // Auto-expand if this branch contains the active folder
   const [expanded, setExpanded] = React.useState(
@@ -58,9 +61,23 @@ function FolderTreeItem({ folder, depth, activeFolder, activePage, onSelect, onR
     setEditing(false);
   };
 
+  // Close menu on outside click
+  React.useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menuOpen]);
+
   return (
     <>
-      <div style={{ display: "flex", alignItems: "center" }}>
+      <div
+        style={{ display: "flex", alignItems: "center", position: "relative" }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+      >
         {/* Expand/collapse chevron (only if has child folders) */}
         {hasChildren ? (
           <button
@@ -186,12 +203,116 @@ function FolderTreeItem({ folder, depth, activeFolder, activePage, onSelect, onR
             </span>
           )}
           {/* Page count badge */}
-          {!collapsed && !editing && (
+          {!collapsed && !editing && !hovered && (
             <span style={{ fontSize: 10, color: C.darkBorder, flexShrink: 0 }}>
               {folder.children?.filter((c) => c.type !== "folder").length || 0}
             </span>
           )}
         </button>
+
+        {/* Three-dot menu button (visible on hover) */}
+        {hovered && !editing && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setMenuOpen((o) => !o);
+            }}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              outline: "none",
+              padding: "4px 8px",
+              display: "flex",
+              alignItems: "center",
+              flexShrink: 0,
+              opacity: 0.6,
+              transition: "opacity 0.1s",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.opacity = 1; }}
+            onMouseLeave={(e) => { e.currentTarget.style.opacity = 0.6; }}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <circle cx="2" cy="6" r="1.2" fill={C.darkMuted} />
+              <circle cx="6" cy="6" r="1.2" fill={C.darkMuted} />
+              <circle cx="10" cy="6" r="1.2" fill={C.darkMuted} />
+            </svg>
+          </button>
+        )}
+
+        {/* Folder action menu */}
+        {menuOpen && (
+          <div
+            ref={menuRef}
+            style={{
+              position: "absolute",
+              top: "100%",
+              right: 4,
+              background: C.darkSurf,
+              border: `1px solid ${C.darkBorder}`,
+              borderRadius: RADIUS.lg,
+              boxShadow: SHADOW.dropdown,
+              zIndex: 400,
+              minWidth: 120,
+              padding: "4px 0",
+              marginTop: 2,
+            }}
+          >
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen(false);
+                setEditName(folder.name || "");
+                setEditing(true);
+              }}
+              style={{
+                width: "100%",
+                border: "none",
+                cursor: "pointer",
+                outline: "none",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "7px 12px",
+                background: "transparent",
+                fontFamily: FONT,
+                fontSize: 12,
+                color: C.darkText,
+                transition: "background 0.1s",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            >
+              Rename
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen(false);
+                onDelete?.(folder);
+              }}
+              style={{
+                width: "100%",
+                border: "none",
+                cursor: "pointer",
+                outline: "none",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "7px 12px",
+                background: "transparent",
+                fontFamily: FONT,
+                fontSize: 12,
+                color: "#E05252",
+                transition: "background 0.1s",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            >
+              Delete
+            </button>
+          </div>
+        )}
       </div>
       {/* Nested child folders (expanded) */}
       {expanded && (folder.childFolders || []).map((child) => (
@@ -203,6 +324,7 @@ function FolderTreeItem({ folder, depth, activeFolder, activePage, onSelect, onR
           activePage={activePage}
           onSelect={onSelect}
           onRename={onRename}
+          onDelete={onDelete}
           collapsed={collapsed}
         />
       ))}
@@ -227,6 +349,7 @@ export default function FolderDropdown({
   onSelectDashboard,
   onCreateFolder,
   onRenameFolder,
+  onDeleteFolder,
   pageTree,
   collapsed,
   onExpandSidebar,
@@ -444,6 +567,10 @@ export default function FolderDropdown({
                     setOpen(false);
                   }}
                   onRename={onRenameFolder}
+                  onDelete={(folder) => {
+                    onDeleteFolder?.(folder);
+                    setOpen(false);
+                  }}
                   collapsed={false}
                 />
               ))}

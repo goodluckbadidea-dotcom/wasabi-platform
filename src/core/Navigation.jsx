@@ -200,6 +200,7 @@ export default function Navigation({
         onSelectDashboard={handleSelectDashboard}
         onCreateFolder={handleCreateFolder}
         onRenameFolder={(folderId, newName) => updatePageConfig(folderId, { name: newName })}
+        onDeleteFolder={(folder) => setConfirmDelete({ type: "folder", pageConfig: folder })}
         pageTree={pageTree}
         collapsed={collapsed}
         onExpandSidebar={onExpandSidebar}
@@ -516,6 +517,14 @@ export default function Navigation({
         <ConfirmDialog
           title="Delete Page"
           message={`Are you sure you want to delete "${confirmDelete.pageConfig.name}"? This action cannot be undone.`}
+          onConfirm={() => handleDelete(confirmDelete.pageConfig)}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
+      {confirmDelete?.type === "folder" && (
+        <ConfirmDialog
+          title="Delete Folder"
+          message={`Are you sure you want to delete "${confirmDelete.pageConfig.name}" and all its contents? This action cannot be undone.`}
           onConfirm={() => handleDelete(confirmDelete.pageConfig)}
           onCancel={() => setConfirmDelete(null)}
         />
