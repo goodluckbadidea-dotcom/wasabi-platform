@@ -46,26 +46,20 @@ export default function Navigation({
 
   // ── Create Folder ──
   const handleCreateFolder = useCallback(async () => {
-    if (!user?.workerUrl || !user?.notionKey || !platformIds?.configDbId) return;
     const config = createFolderConfig("New Folder", "folder");
     try {
-      const id = await savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, config);
+      const id = await savePageConfig(config);
       addPage({ ...config, id });
     } catch (err) {
       console.error("[Navigation] Failed to create folder:", err);
     }
-  }, [user, platformIds, addPage]);
+  }, [addPage]);
 
   // ── Rename Folder / Page ──
   const handleRename = useCallback((pageConfig, newName) => {
+    // updatePageConfig now auto-persists to D1
     updatePageConfig(pageConfig.id, { name: newName });
-    if (user?.workerUrl && user?.notionKey && platformIds?.configDbId) {
-      savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
-        ...pageConfig,
-        name: newName,
-      }).catch((err) => console.error("[Navigation] Failed to persist rename:", err));
-    }
-  }, [updatePageConfig, user, platformIds]);
+  }, [updatePageConfig]);
 
   // ── Delete Page / Folder ──
   const handleDelete = useCallback(async (pageConfig) => {

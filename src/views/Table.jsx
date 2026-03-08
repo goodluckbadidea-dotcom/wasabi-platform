@@ -814,8 +814,8 @@ function QuickAddForm({ schema, columns, quickAddValues, setQuickAddValues, quic
 
 export default function Table({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onSaveFilters }) {
   const [search, setSearch] = useState("");
-  const [sortField, setSortField] = useState(config.sort?.field || null);
-  const [sortDir, setSortDir] = useState(config.sort?.direction || null); // "asc" | "desc" | null
+  const [sortField, setSortField] = useState(config.sort?.field || config.sortField || null);
+  const [sortDir, setSortDir] = useState(config.sort?.direction || config.sortDir || (config.sortField ? "asc" : null)); // "asc" | "desc" | null
   const [filters, setFilters] = useState(config.filters || {}); // { fieldName: value }
 
   // ── Chip Filters (multi-select, persisted) ──
@@ -883,6 +883,18 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     () => resolveColumns(schema, config.columns, config.fieldMappings),
     [schema, config.columns, config.fieldMappings]
   );
+
+  // Seed hidden columns from config.visibleFields (once, when allColumns first resolves)
+  const visibleFieldsApplied = useRef(false);
+  useEffect(() => {
+    if (visibleFieldsApplied.current) return;
+    const vf = config.visibleFields;
+    if (!Array.isArray(vf) || vf.length === 0 || allColumns.length === 0) return;
+    const visibleSet = new Set(vf);
+    const hidden = new Set(allColumns.filter((c) => !visibleSet.has(c)));
+    setHiddenColumns(hidden);
+    visibleFieldsApplied.current = true;
+  }, [allColumns, config.visibleFields]);
 
   // Visible columns (filtered by hiddenColumns)
   const columns = useMemo(

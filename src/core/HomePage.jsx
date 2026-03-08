@@ -246,16 +246,9 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
 
   // ── Rename Page ──
   const handleRenamePage = useCallback((pageId, newName) => {
-    const page = pages.find((p) => p.id === pageId);
-    if (!page) return;
+    // updatePageConfig now auto-persists to D1
     updatePageConfig(pageId, { name: newName });
-    if (user?.workerUrl && user?.notionKey && platformIds?.configDbId) {
-      savePageConfig(user.workerUrl, user.notionKey, platformIds.configDbId, {
-        ...page,
-        name: newName,
-      }).catch((err) => console.error("[HomePage] Failed to persist page rename:", err));
-    }
-  }, [pages, updatePageConfig, user, platformIds]);
+  }, [updatePageConfig]);
 
   const pinnedIds = homeConfig.pinned || [];
 

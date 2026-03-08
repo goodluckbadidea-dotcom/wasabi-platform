@@ -172,6 +172,16 @@ async function getClaudeKey(request, body, env) {
   }
 }
 
+// ─── Get Monday.com key: from D1 connections ───
+async function getMondayKey(env) {
+  try {
+    const row = await env.DB.prepare("SELECT value FROM connections WHERE key = 'monday'").first();
+    return row?.value || null;
+  } catch {
+    return null;
+  }
+}
+
 export default {
   async fetch(request, env) {
     // CORS preflight
@@ -418,6 +428,26 @@ export default {
       if (syncDeleteMatch && request.method === "DELETE") {
         const tableId = syncDeleteMatch[1];
         return await handleSyncDelete(env, tableId);
+      }
+
+      // ─── Monday.com Proxy ───
+      if (path === "/monday/graphql" && request.method === "POST") {
+        const body = await request.json();
+        const mondayKey = body.mondayKey || await getMondayKey(env);
+        if (!mondayKey) {
+          return jsonResponse({ _error: "Monday.com API key not configured" }, 400);
+        }
+        const mondayRes = await fetch("https://api.monday.com/v2", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": mondayKey,
+            "API-Version": "2024-10",
+          },
+          body: JSON.stringify({ query: body.query, variables: body.variables }),
+        });
+        const mondayData = await mondayRes.json();
+        return jsonResponse(mondayData, mondayRes.ok ? 200 : mondayRes.status);
       }
 
       // ─── Notion Routes ───

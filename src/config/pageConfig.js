@@ -170,6 +170,29 @@ export function createLinkedNotionConfig(name, icon, notionDbId) {
 }
 
 /**
+ * Create a linked Monday.com board config.
+ */
+export function createLinkedMondayConfig(name, icon, mondayBoardId) {
+  return {
+    name,
+    icon: icon || "database",
+    type: "page",
+    page_type: "linked_monday",
+    pageType: "linked_monday",
+    mondayBoardId,
+    databaseIds: [],
+    views: [
+      {
+        type: "table",
+        label: "All Records",
+        position: "main",
+      },
+    ],
+    refreshInterval: 30000,
+  };
+}
+
+/**
  * Create a document-type page config (Notion-backed for legacy).
  */
 export function createDocumentPageConfig(name, icon, notionPageId) {

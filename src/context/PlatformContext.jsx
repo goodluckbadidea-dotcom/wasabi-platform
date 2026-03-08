@@ -4,7 +4,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { loadPlatformIds, savePlatformIds } from "../config/setup.js";
-import { loadCachedConfigs, loadPageConfigs, validatePageConfigs, archivePageConfig } from "../config/pageConfig.js";
+import { loadCachedConfigs, loadPageConfigs, validatePageConfigs, archivePageConfig, savePageConfig } from "../config/pageConfig.js";
 import { getConnection, saveConnection, getConnections } from "../lib/api.js";
 
 const PlatformContext = createContext(null);
@@ -269,6 +269,9 @@ export function PlatformProvider({ children }) {
       try {
         localStorage.setItem("wasabi_page_configs", JSON.stringify(updated));
       } catch {}
+      // Auto-persist to D1
+      const changed = updated.find((p) => p.id === id);
+      if (changed) savePageConfig(changed).catch((err) => console.error("[PlatformContext] Failed to persist config:", err));
       return updated;
     });
   }, []);

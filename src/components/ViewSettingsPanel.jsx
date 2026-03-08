@@ -1,5 +1,5 @@
 // ─── View Settings Panel ───
-// Per-view configuration panel for color coding, visible properties, and bar labels.
+// Per-view configuration panel for color coding, visible properties, sort, card size, and bar labels.
 // Shared across all view types — sections render conditionally based on viewType.
 
 import React, { useState, useMemo, useCallback } from "react";
@@ -78,6 +78,79 @@ function FieldToggle({ label, checked, onChange }) {
   );
 }
 
+// ─── Toggle Button Pair ───
+
+function ToggleButtons({ options, value, onChange }) {
+  return (
+    <div style={{ display: "flex", gap: 4 }}>
+      {options.map((opt) => (
+        <button
+          key={opt.key}
+          onClick={() => onChange(opt.key)}
+          style={{
+            flex: 1,
+            padding: "6px 10px",
+            fontSize: 11,
+            fontWeight: value === opt.key ? 600 : 400,
+            fontFamily: FONT,
+            border: `1px solid ${value === opt.key ? C.accent : C.darkBorder}`,
+            borderRadius: RADIUS.md,
+            background: value === opt.key ? C.accent + "22" : "transparent",
+            color: value === opt.key ? C.accent : C.darkMuted,
+            cursor: "pointer",
+            transition: "all 0.12s",
+          }}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─── Styled Select ───
+
+function StyledSelect({ value, onChange, children, placeholder }) {
+  return (
+    <select
+      value={value || ""}
+      onChange={(e) => onChange(e.target.value || null)}
+      style={{
+        width: "100%",
+        padding: "6px 10px",
+        fontSize: 12,
+        fontFamily: FONT,
+        border: `1px solid ${C.darkBorder}`,
+        borderRadius: RADIUS.md,
+        background: C.darkSurf2,
+        color: C.darkText,
+        cursor: "pointer",
+        outline: "none",
+      }}
+    >
+      {placeholder && <option value="">{placeholder}</option>}
+      {children}
+    </select>
+  );
+}
+
+// ─── Field List Box ───
+
+function FieldListBox({ children, maxHeight = 180 }) {
+  return (
+    <div style={{
+      background: C.dark,
+      borderRadius: RADIUS.lg,
+      padding: "6px 12px",
+      border: `1px solid ${C.edgeLine}`,
+      maxHeight,
+      overflowY: "auto",
+    }}>
+      {children}
+    </div>
+  );
+}
+
 // ─── Main Panel ───
 
 export default function ViewSettingsPanel({
@@ -89,6 +162,10 @@ export default function ViewSettingsPanel({
   const viewType = viewConfig?.type;
   const config = viewConfig?.config || {};
   const isGantt = viewType === "gantt";
+  const isCardGrid = viewType === "cardGrid";
+  const isKanban = viewType === "kanban";
+  const isTable = viewType === "table";
+  const showVisibleProps = isCardGrid || isKanban || isTable;
 
   // Collect select/status/multi_select fields for color source dropdown
   const colorableFields = useMemo(() => {
@@ -100,13 +177,16 @@ export default function ViewSettingsPanel({
     return fields;
   }, [schema]);
 
-  // Collect all displayable fields for sidebar/bar field toggles
+  // Collect all displayable fields
   const allFields = useMemo(() => {
     if (!schema) return [];
     return (schema.allFields || []).filter(
       (f) => f.type !== "relation" && f.type !== "rollup" && f.type !== "files" && f.type !== "created_by" && f.type !== "last_edited_by"
     );
   }, [schema]);
+
+  // Sortable fields (all fields)
+  const sortableFields = allFields;
 
   // Current color field's options
   const colorField = config.colorField || null;
@@ -118,6 +198,10 @@ export default function ViewSettingsPanel({
   const colorMapping = config.colorMapping || {};
   const sidebarFields = config.sidebarFields || [];
   const barFields = config.barFields || [];
+  const visibleFields = config.visibleFields || [];
+  const sortField = config.sortField || null;
+  const sortDir = config.sortDir || "asc";
+  const cardSize = config.cardSize || "standard";
 
   // ─── Handlers ───
 
@@ -148,6 +232,25 @@ export default function ViewSettingsPanel({
       : barFields.filter((f) => f !== fieldName);
     onConfigChange({ barFields: updated });
   }, [onConfigChange, barFields]);
+
+  const toggleVisibleField = useCallback((fieldName, checked) => {
+    const updated = checked
+      ? [...visibleFields.filter((f) => f !== fieldName), fieldName]
+      : visibleFields.filter((f) => f !== fieldName);
+    onConfigChange({ visibleFields: updated });
+  }, [onConfigChange, visibleFields]);
+
+  const handleSortFieldChange = useCallback((field) => {
+    onConfigChange({ sortField: field });
+  }, [onConfigChange]);
+
+  const handleSortDirChange = useCallback((dir) => {
+    onConfigChange({ sortDir: dir });
+  }, [onConfigChange]);
+
+  const handleCardSizeChange = useCallback((size) => {
+    onConfigChange({ cardSize: size });
+  }, [onConfigChange]);
 
   return (
     <>
@@ -191,6 +294,9 @@ export default function ViewSettingsPanel({
             <span style={{ fontSize: 13, fontWeight: 600, color: C.darkText }}>
               View Settings
             </span>
+            <span style={{ fontSize: 10, color: C.darkMuted, fontWeight: 400 }}>
+              {viewConfig?.label || viewType}
+            </span>
           </div>
           <button
             style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex" }}
@@ -203,62 +309,101 @@ export default function ViewSettingsPanel({
         {/* Content */}
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 16px 24px" }}>
 
-          {/* ─── Color Mode (Gantt only) ─── */}
-          {isGantt && (
+          {/* ─── Visible Properties (CardGrid, Kanban, Table) ─── */}
+          {showVisibleProps && allFields.length > 0 && (
             <>
-              <SectionLabel>Color Mode</SectionLabel>
-              <div style={{ display: "flex", gap: 4 }}>
-                {[
-                  { key: "dateField", label: "By Date Field" },
-                  { key: "property", label: "By Property" },
-                ].map((opt) => (
-                  <button
-                    key={opt.key}
-                    onClick={() => handleColorModeChange(opt.key)}
-                    style={{
-                      flex: 1,
-                      padding: "6px 10px",
-                      fontSize: 11,
-                      fontWeight: colorMode === opt.key ? 600 : 400,
-                      fontFamily: FONT,
-                      border: `1px solid ${colorMode === opt.key ? C.accent : C.darkBorder}`,
-                      borderRadius: RADIUS.md,
-                      background: colorMode === opt.key ? C.accent + "22" : "transparent",
-                      color: colorMode === opt.key ? C.accent : C.darkMuted,
-                      cursor: "pointer",
-                      transition: "all 0.12s",
-                    }}
-                  >
-                    {opt.label}
-                  </button>
+              <SectionLabel>Visible Properties</SectionLabel>
+              <p style={{ fontSize: 10, color: C.darkMuted, margin: "0 0 6px" }}>
+                Choose which fields appear on cards/rows. Empty = auto-detect.
+              </p>
+              <FieldListBox maxHeight={200}>
+                {allFields.map((f) => (
+                  <FieldToggle
+                    key={f.name}
+                    label={`${f.name} (${f.type})`}
+                    checked={visibleFields.includes(f.name)}
+                    onChange={(checked) => toggleVisibleField(f.name, checked)}
+                  />
                 ))}
+              </FieldListBox>
+            </>
+          )}
+
+          {/* ─── Sort (all views) ─── */}
+          {sortableFields.length > 0 && (
+            <>
+              <SectionLabel>Sort</SectionLabel>
+              <div style={{ display: "flex", gap: 6 }}>
+                <div style={{ flex: 2 }}>
+                  <StyledSelect
+                    value={sortField}
+                    onChange={handleSortFieldChange}
+                    placeholder="No sort"
+                  >
+                    {sortableFields.map((f) => (
+                      <option key={f.name} value={f.name}>{f.name}</option>
+                    ))}
+                  </StyledSelect>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <ToggleButtons
+                    options={[
+                      { key: "asc", label: "A-Z" },
+                      { key: "desc", label: "Z-A" },
+                    ]}
+                    value={sortDir}
+                    onChange={handleSortDirChange}
+                  />
+                </div>
               </div>
             </>
           )}
 
+          {/* ─── Card Size (CardGrid only) ─── */}
+          {isCardGrid && (
+            <>
+              <SectionLabel>Card Size</SectionLabel>
+              <ToggleButtons
+                options={[
+                  { key: "compact", label: "Compact" },
+                  { key: "standard", label: "Standard" },
+                ]}
+                value={cardSize}
+                onChange={handleCardSizeChange}
+              />
+            </>
+          )}
+
+          {/* ─── Color Mode (Gantt only) ─── */}
+          {isGantt && (
+            <>
+              <SectionLabel>Color Mode</SectionLabel>
+              <ToggleButtons
+                options={[
+                  { key: "dateField", label: "By Date Field" },
+                  { key: "property", label: "By Property" },
+                ]}
+                value={colorMode}
+                onChange={handleColorModeChange}
+              />
+            </>
+          )}
+
           {/* ─── Color Source ─── */}
-          <SectionLabel>Color Source</SectionLabel>
-          <select
-            value={colorField || ""}
-            onChange={(e) => handleColorFieldChange(e.target.value || null)}
-            style={{
-              width: "100%",
-              padding: "6px 10px",
-              fontSize: 12,
-              fontFamily: FONT,
-              border: `1px solid ${C.darkBorder}`,
-              borderRadius: RADIUS.md,
-              background: C.darkSurf2,
-              color: C.darkText,
-              cursor: "pointer",
-              outline: "none",
-            }}
-          >
-            <option value="">Auto-detect</option>
-            {colorableFields.map((f) => (
-              <option key={f.name} value={f.name}>{f.name} ({f.type})</option>
-            ))}
-          </select>
+          {colorableFields.length > 0 && (
+            <>
+              <SectionLabel>Color Source</SectionLabel>
+              <StyledSelect
+                value={colorField}
+                onChange={handleColorFieldChange}
+                placeholder="Auto-detect"
+              >
+                {colorableFields.map((f) => (
+                  <option key={f.name} value={f.name}>{f.name} ({f.type})</option>
+                ))}
+              </StyledSelect>
+            </>
+          )}
 
           {/* ─── Color Mapping ─── */}
           {colorOptions.length > 0 && (colorMode === "property" || !isGantt) && (
@@ -313,14 +458,7 @@ export default function ViewSettingsPanel({
           {isGantt && allFields.length > 0 && (
             <>
               <SectionLabel>Sidebar Badges</SectionLabel>
-              <div style={{
-                background: C.dark,
-                borderRadius: RADIUS.lg,
-                padding: "6px 12px",
-                border: `1px solid ${C.edgeLine}`,
-                maxHeight: 180,
-                overflowY: "auto",
-              }}>
+              <FieldListBox>
                 {allFields.map((f) => (
                   <FieldToggle
                     key={f.name}
@@ -329,7 +467,7 @@ export default function ViewSettingsPanel({
                     onChange={(checked) => toggleSidebarField(f.name, checked)}
                   />
                 ))}
-              </div>
+              </FieldListBox>
             </>
           )}
 
@@ -340,14 +478,7 @@ export default function ViewSettingsPanel({
               <p style={{ fontSize: 10, color: C.darkMuted, margin: "0 0 6px" }}>
                 Properties shown as text inside Gantt bars. Bars resize vertically to fit.
               </p>
-              <div style={{
-                background: C.dark,
-                borderRadius: RADIUS.lg,
-                padding: "6px 12px",
-                border: `1px solid ${C.edgeLine}`,
-                maxHeight: 180,
-                overflowY: "auto",
-              }}>
+              <FieldListBox>
                 {allFields.map((f) => (
                   <FieldToggle
                     key={f.name}
@@ -356,7 +487,7 @@ export default function ViewSettingsPanel({
                     onChange={(checked) => toggleBarField(f.name, checked)}
                   />
                 ))}
-              </div>
+              </FieldListBox>
             </>
           )}
         </div>

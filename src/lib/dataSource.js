@@ -10,6 +10,8 @@ import { queryAll } from "../notion/pagination.js";
 import { detectSchema } from "../notion/schema.js";
 import { updatePage, createPage, archivePage } from "../notion/client.js";
 import { listRows, createRows, updateRow, deleteRow, queryTable, getTableSchema, getConnection } from "./api.js";
+import { fetchBoardItems, fetchBoardColumns } from "../monday/client.js";
+import { mondayColumnsToSchema, mondayItemToPage } from "../monday/schema.js";
 
 // ─── Main entry: fetch data + schema from any source ───
 
@@ -21,6 +23,8 @@ export async function fetchDataSource(pageConfig, user) {
       return await fetchD1Table(pageConfig);
     case "notion":
       return await fetchNotionDb(pageConfig, user);
+    case "monday":
+      return await fetchMondayBoard(pageConfig, user);
     case "linked_sheet":
     case "document":
     case "folder":
@@ -36,6 +40,7 @@ export function resolveSourceType(pageConfig) {
   const pt = pageConfig.page_type || pageConfig.pageType;
   if (pt === "database") return "d1";
   if (pt === "linked_notion") return "notion";
+  if (pt === "linked_monday") return "monday";
   if (pt === "linked_sheet") return "linked_sheet";
   if (pt === "document") return "document";
   if (pt === "folder") return "folder";
@@ -93,6 +98,31 @@ async function fetchNotionDb(pageConfig, user) {
   }
 
   return { data: allData, schema: primarySchema, schemas };
+}
+
+// ─── Monday.com Board ───
+
+async function fetchMondayBoard(pageConfig, user) {
+  const mondayKey = user?.mondayKey || "";
+  const boardId = pageConfig.mondayBoardId;
+  if (!boardId || !mondayKey) {
+    return { data: [], schema: null, schemas: {} };
+  }
+
+  try {
+    const [columns, items] = await Promise.all([
+      fetchBoardColumns(mondayKey, boardId),
+      fetchBoardItems(mondayKey, boardId),
+    ]);
+
+    const schema = mondayColumnsToSchema(boardId, pageConfig.name || "Monday Board", columns);
+    const data = items.map((item) => mondayItemToPage(item, columns));
+
+    return { data, schema, schemas: { [`monday_${boardId}`]: schema } };
+  } catch (err) {
+    console.warn(`[DataSource] Monday.com fetch failed for board ${boardId}:`, err.message);
+    return { data: [], schema: null, schemas: {} };
+  }
 }
 
 // ─── Update a record in any source ───

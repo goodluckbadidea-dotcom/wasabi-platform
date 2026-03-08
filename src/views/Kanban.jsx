@@ -16,13 +16,15 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
   // Resolve fields
   const columnField = resolveField(schema, config.columnField, ["statuses", "selects"]);
   const titleField = resolveField(schema, config.titleField, ["title"]);
-  const previewFields = config.previewFields || (() => {
-    if (!schema) return [];
-    const fields = [];
-    for (const f of schema.richTexts || []) { if (fields.length < 1) fields.push(f.name); }
-    for (const f of schema.dates || []) { if (fields.length < 2) fields.push(f.name); }
-    return fields;
-  })();
+  const previewFields = (config.visibleFields && config.visibleFields.length > 0)
+    ? config.visibleFields
+    : config.previewFields || (() => {
+      if (!schema) return [];
+      const fields = [];
+      for (const f of schema.richTexts || []) { if (fields.length < 1) fields.push(f.name); }
+      for (const f of schema.dates || []) { if (fields.length < 2) fields.push(f.name); }
+      return fields;
+    })();
 
   // Get column options
   const columnOptions = useMemo(() => {
@@ -67,8 +69,25 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
       });
     }
 
+    // Sort cards within each column by config.sortField
+    if (config.sortField) {
+      const dir = config.sortDir === "desc" ? -1 : 1;
+      for (const col of cols) {
+        col.pages.sort((a, b) => {
+          const va = readField(a, config.sortField);
+          const vb = readField(b, config.sortField);
+          if (va == null && vb == null) return 0;
+          if (va == null) return 1;
+          if (vb == null) return -1;
+          if (va < vb) return -1 * dir;
+          if (va > vb) return 1 * dir;
+          return 0;
+        });
+      }
+    }
+
     return cols;
-  }, [data, columnField, columnOptions, optionNames]);
+  }, [data, columnField, columnOptions, optionNames, config.sortField, config.sortDir]);
 
   // ─── Drag handlers ───
 

@@ -13,7 +13,7 @@ import ChatPanel from "../views/ChatPanel.jsx";
 import SubPageNav from "./SubPageNav.jsx";
 import DatabaseBrowser from "./DatabaseBrowser.jsx";
 import { ViewSkeleton } from "./ErrorBoundary.jsx";
-import { IconWarning, IconRefresh, IconPlus, IconDatabase, IconClose } from "../design/icons.jsx";
+import { IconWarning, IconRefresh, IconPlus, IconDatabase, IconClose, IconEdit } from "../design/icons.jsx";
 import SyncPanel from "../components/SyncPanel.jsx";
 import ViewSettingsPanel from "../components/ViewSettingsPanel.jsx";
 
@@ -455,9 +455,9 @@ export default function PageShell({
             {data.length} record{data.length !== 1 ? "s" : ""}
           </span>
           <div style={{ flex: 1 }} />
-          {/* Add Database button */}
+          {/* Customize view button */}
           <button
-            onClick={() => setShowAddDb(true)}
+            onClick={() => setShowViewSettings(true)}
             style={{
               ...S.btnGhost,
               fontSize: 11,
@@ -466,10 +466,9 @@ export default function PageShell({
               alignItems: "center",
               gap: 4,
             }}
-            title="Connect another database"
+            title="Customize view"
           >
-            <IconPlus size={10} color={C.darkMuted} />
-            <IconDatabase size={12} color={C.darkMuted} />
+            <IconEdit size={12} color={C.darkMuted} />
           </button>
           <select
             style={refreshSelectStyle}

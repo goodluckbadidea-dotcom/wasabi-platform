@@ -13,17 +13,23 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
   // Resolve fields from config or auto-detect
   const titleField = resolveField(schema, config.titleField, ["title"]);
   const badgeField = resolveField(schema, config.badgeField, ["statuses", "selects"]);
-  const bodyFields = config.bodyFields || (() => {
-    if (!schema) return [];
-    const fields = [];
-    for (const f of schema.richTexts || []) { if (fields.length < 2) fields.push(f.name); }
-    for (const f of schema.dates || []) { if (fields.length < 3) fields.push(f.name); }
-    return fields;
-  })();
-  const metricFields = config.metricFields || (() => {
-    if (!schema) return [];
-    return (schema.numbers || []).slice(0, 2).map((f) => f.name);
-  })();
+  // When visibleFields is set, split by type: numbers → metricFields, rest → bodyFields
+  const visibleFields = config.visibleFields;
+  const bodyFields = (visibleFields && visibleFields.length > 0)
+    ? visibleFields.filter((f) => getFieldType(schema, f) !== "number")
+    : config.bodyFields || (() => {
+        if (!schema) return [];
+        const fields = [];
+        for (const f of schema.richTexts || []) { if (fields.length < 2) fields.push(f.name); }
+        for (const f of schema.dates || []) { if (fields.length < 3) fields.push(f.name); }
+        return fields;
+      })();
+  const metricFields = (visibleFields && visibleFields.length > 0)
+    ? visibleFields.filter((f) => getFieldType(schema, f) === "number")
+    : config.metricFields || (() => {
+        if (!schema) return [];
+        return (schema.numbers || []).slice(0, 2).map((f) => f.name);
+      })();
 
   // Filter-able select/status fields
   const filterFields = useMemo(() => {
@@ -57,8 +63,24 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
       });
     }
 
+    // Apply sort
+    if (config.sortField) {
+      const dir = config.sortDir || "asc";
+      result = [...result].sort((a, b) => {
+        const va = readField(a, config.sortField);
+        const vb = readField(b, config.sortField);
+        if (va == null && vb == null) return 0;
+        if (va == null) return 1;
+        if (vb == null) return -1;
+        const cmp = typeof va === "number" && typeof vb === "number"
+          ? va - vb
+          : String(va).localeCompare(String(vb));
+        return dir === "desc" ? -cmp : cmp;
+      });
+    }
+
     return result;
-  }, [data, search, filters, titleField, badgeField, bodyFields, metricFields, schema]);
+  }, [data, search, filters, titleField, badgeField, bodyFields, metricFields, schema, config.sortField, config.sortDir]);
 
   if (!schema) {
     return (
@@ -154,7 +176,9 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
         ) : (
           <div style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+            gridTemplateColumns: config.cardSize === "compact"
+              ? "repeat(auto-fill, minmax(220px, 1fr))"
+              : "repeat(auto-fill, minmax(300px, 1fr))",
             gap: 16,
           }}>
             {processedData.map((page, idx) => {
@@ -198,7 +222,7 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
                   )}
 
                   {/* Card body */}
-                  <div style={{ padding: "14px 16px 16px" }}>
+                  <div style={{ padding: config.cardSize === "compact" ? "10px 12px 12px" : "14px 16px 16px" }}>
                     {/* Title */}
                     <div style={{
                       fontSize: 15,

@@ -6,8 +6,23 @@ import { templatesToPromptText } from "../config/templates.js";
 
 /**
  * Build Wasabi's system prompt, optionally injecting KB context.
+ * @param {object} opts
+ * @param {string} opts.platformDbIds - Platform infrastructure DB IDs
+ * @param {string} opts.kbContext - Knowledge base context
+ * @param {object} opts.currentPageContext - Current page the user is viewing
+ * @param {string} opts.dataSummary - Compact data summary for the active page
  */
-export function buildWasabiPrompt({ platformDbIds, kbContext = "" }) {
+export function buildWasabiPrompt({ platformDbIds, kbContext = "", currentPageContext, dataSummary }) {
+  let pageSection = "";
+  if (currentPageContext) {
+    const { pageName, databaseIds, schemaText } = currentPageContext;
+    pageSection = `\n## Current Page Context
+You are currently viewing the "${pageName}" page.
+${databaseIds.length ? `Connected databases: ${databaseIds.join(", ")}` : "No databases connected."}
+${schemaText ? `\n### Database Schema\n\`\`\`json\n${schemaText}\n\`\`\`` : ""}
+${dataSummary ? `\n${dataSummary}` : ""}`;
+  }
+
   return `${IDENTITY}
 
 ${CAPABILITIES}
@@ -22,7 +37,8 @@ ${RULES}
 
 ${platformDbIds ? `\n## Platform Database IDs\n${platformDbIds}` : ""}
 
-${kbContext ? `\n## Your Knowledge Base Context\n${kbContext}` : ""}`;
+${kbContext ? `\n## Your Knowledge Base Context\n${kbContext}` : ""}
+${pageSection}`;
 }
 
 const IDENTITY = `# You are Wasabi

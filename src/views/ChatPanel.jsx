@@ -1,42 +1,121 @@
-// ─── Chat Panel (Page Agent) ───
-// Scoped chat for a page's agent. Handles escalation to Wasabi.
-// No emojis — all SVG icons.
+// ─── Chat Panel (Wasabi Agent) ───
+// Single global Wasabi agent with smart model routing.
+// Injects data summary for immediate awareness. No escalation needed.
 
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useMemo } from "react";
 import ChatUI from "../core/ChatUI.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { runAgent, extractChoices } from "../agent/runAgent.js";
-import { PAGE_TOOLS, WASABI_TOOLS } from "../agent/tools.js";
-import { buildPageAgentPrompt, buildWasabiPrompt } from "../agent/wasabiPrompt.js";
-import { createPageToolExecutor, createToolExecutor, createDelegateFunction } from "../agent/toolExecutor.js";
+import { WASABI_TOOLS } from "../agent/tools.js";
+import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
+import { createToolExecutor, createDelegateFunction } from "../agent/toolExecutor.js";
 import { getConnection } from "../lib/api.js";
 import { C } from "../design/tokens.js";
 import WasabiOrb from "../core/WasabiOrb.jsx";
-import { IconPage } from "../design/icons.jsx";
+import { readField, getFieldOptions } from "./_viewHelpers.js";
+
+// ── Smart model routing ──
+function pickModel(text) {
+  const isComplex = text.length > 200
+    || /\b(build|create|automat|multi|workflow|setup|design|refactor|update database|modify|schema)\b/i.test(text)
+    || /\b(and then|also|after that|step by step)\b/i.test(text);
+  return isComplex ? "claude-sonnet-4-20250514" : "claude-haiku-4-5-20251001";
+}
+
+// ── Build compact data summary for the agent ──
+function buildDataSummary(data, schema) {
+  if (!data?.length || !schema) return "";
+
+  const lines = [];
+  lines.push(`## Current Data Summary (${data.length} records)`);
+
+  // Title field
+  const titleField = schema.title?.name;
+
+  // Property distributions for select/status fields
+  const catFields = [...(schema.statuses || []), ...(schema.selects || [])];
+  for (const field of catFields.slice(0, 5)) {
+    const counts = {};
+    for (const page of data) {
+      const val = readField(page, field.name);
+      if (val) counts[val] = (counts[val] || 0) + 1;
+    }
+    if (Object.keys(counts).length > 0) {
+      const dist = Object.entries(counts)
+        .sort((a, b) => b[1] - a[1])
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(", ");
+      lines.push(`- **${field.name}**: ${dist}`);
+    }
+  }
+
+  // Number summaries
+  for (const field of (schema.numbers || []).slice(0, 4)) {
+    const vals = data.map((p) => readField(p, field.name)).filter((v) => v != null && !isNaN(v));
+    if (vals.length > 0) {
+      const sum = vals.reduce((a, b) => a + Number(b), 0);
+      const min = Math.min(...vals);
+      const max = Math.max(...vals);
+      const avg = (sum / vals.length).toFixed(1);
+      lines.push(`- **${field.name}**: min=${min}, max=${max}, avg=${avg}, total=${sum} (${vals.length} values)`);
+    }
+  }
+
+  // Date ranges
+  for (const field of (schema.dates || []).slice(0, 3)) {
+    const dates = data.map((p) => {
+      const val = readField(p, field.name);
+      if (!val) return null;
+      return typeof val === "object" ? val.start : val;
+    }).filter(Boolean).sort();
+    if (dates.length > 0) {
+      lines.push(`- **${field.name}**: ${dates[0]} to ${dates[dates.length - 1]} (${dates.length} values)`);
+    }
+  }
+
+  // First 15 records as compact table
+  if (titleField) {
+    // Pick 3 most useful fields for the table
+    const keyFields = [];
+    if (catFields.length > 0) keyFields.push(catFields[0].name);
+    if (schema.numbers?.length > 0) keyFields.push(schema.numbers[0].name);
+    if (schema.dates?.length > 0) keyFields.push(schema.dates[0].name);
+    if (keyFields.length === 0 && schema.richTexts?.length > 0) keyFields.push(schema.richTexts[0].name);
+
+    const headers = [titleField, ...keyFields.slice(0, 3)];
+    lines.push("");
+    lines.push(`### Sample Records`);
+    lines.push(`| ${headers.join(" | ")} |`);
+    lines.push(`| ${headers.map(() => "---").join(" | ")} |`);
+
+    for (const page of data.slice(0, 15)) {
+      const cells = headers.map((h) => {
+        const val = readField(page, h);
+        if (val === null || val === undefined) return "";
+        if (typeof val === "object" && val.start) return val.start;
+        return String(val).slice(0, 40);
+      });
+      lines.push(`| ${cells.join(" | ")} |`);
+    }
+
+    if (data.length > 15) {
+      lines.push(`\n*...and ${data.length - 15} more records. Use \`query_database\` for full data.*`);
+    }
+  }
+
+  return lines.join("\n");
+}
 
 export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
   const { user, platformIds, addPage } = usePlatform();
   const [displayMessages, setDisplayMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [choices, setChoices] = useState([]);
-  const [currentAgent, setCurrentAgent] = useState("page"); // "page" or "wasabi"
   const historyRef = useRef([]);
   const abortRef = useRef(false);
 
-  const pageToolExecutor = useCallback((toolName, toolInput) => {
-    const conn = getConnection();
-    const wUrl = user?.workerUrl || conn?.workerUrl;
-    const executor = createPageToolExecutor({
-      workerUrl: wUrl,
-      notionKey: user?.notionKey || "",
-      notifDbId: platformIds?.notifDbId,
-      kbDbId: platformIds?.kbDbId,
-      scopedDatabaseIds: pageConfig.databaseIds,
-    });
-    return executor(toolName, toolInput);
-  }, [user, platformIds, pageConfig]);
-
-  const wasabiToolExecutor = useCallback((toolName, toolInput) => {
+  // Single Wasabi executor — full tool access, no scoping
+  const toolExecutor = useCallback((toolName, toolInput) => {
     const conn = getConnection();
     const wUrl = user?.workerUrl || conn?.workerUrl;
     const delegate = createDelegateFunction({
@@ -61,6 +140,9 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
     return executor(toolName, toolInput);
   }, [user, platformIds, addPage]);
 
+  // Pre-compute data summary
+  const dataSummary = useMemo(() => buildDataSummary(data, schema), [data, schema]);
+
   const handleSend = useCallback(async ({ text, files }) => {
     if (isLoading) return;
 
@@ -78,42 +160,30 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
     const newHistory = [...historyRef.current, userMsg];
 
     try {
-      const isWasabi = currentAgent === "wasabi";
+      // Build Wasabi prompt with page context + data summary
+      const systemPrompt = buildWasabiPrompt({
+        platformDbIds: Object.entries(platformIds || {}).map(([k, v]) => `${k}: ${v}`).join("\n"),
+        currentPageContext: {
+          pageName: pageConfig.name,
+          databaseIds: pageConfig.databaseIds || [],
+          schemaText: schema ? JSON.stringify(schema, null, 2) : "",
+        },
+        dataSummary,
+      });
 
-      const systemPrompt = isWasabi
-        ? buildWasabiPrompt({ platformDbIds: Object.entries(platformIds).map(([k, v]) => `${k}: ${v}`).join("\n") })
-        : buildPageAgentPrompt({
-            pageName: pageConfig.name,
-            agentPrompt: pageConfig.agentConfig?.prompt,
-            databaseIds: pageConfig.databaseIds || [],
-            schemaText: schema ? JSON.stringify(schema, null, 2) : "",
-          });
+      // Smart model routing
+      const model = pickModel(agentText);
 
       const conn = getConnection();
       const wUrl = user?.workerUrl || conn?.workerUrl;
       const { text: reply, history } = await runAgent({
         messages: newHistory,
         systemPrompt,
-        tools: isWasabi ? WASABI_TOOLS : PAGE_TOOLS,
-        model: isWasabi ? "claude-sonnet-4-20250514" : "claude-haiku-4-5-20251001",
+        tools: WASABI_TOOLS,
+        model,
         workerUrl: wUrl,
         claudeKey: user?.claudeKey || "",
-        executeTool: isWasabi ? wasabiToolExecutor : pageToolExecutor,
-        onToolCall: (name, input, result) => {
-          // Check for escalation
-          if (name === "escalate_to_wasabi") {
-            try {
-              const parsed = JSON.parse(result);
-              if (parsed._escalate) {
-                setCurrentAgent("wasabi");
-                setDisplayMessages((prev) => [
-                  ...prev,
-                  { role: "system", content: `Wasabi is stepping in to help. Reason: ${parsed.reason}` },
-                ]);
-              }
-            } catch {}
-          }
-        },
+        executeTool: toolExecutor,
         abortRef,
         maxTokens: 2048,
       });
@@ -140,21 +210,15 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, currentAgent, user, platformIds, pageConfig, schema, pageToolExecutor, wasabiToolExecutor]);
+  }, [isLoading, user, platformIds, pageConfig, schema, dataSummary, toolExecutor]);
 
   const handleChoice = useCallback((choice) => {
     handleSend({ text: typeof choice === "string" ? choice : choice.label });
   }, [handleSend]);
 
-  const agentIcon = currentAgent === "wasabi" ? (
-    <WasabiOrb size={28} />
-  ) : (
-    <IconPage size={14} color={C.darkMuted} />
-  );
-
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      {/* Agent indicator */}
+      {/* Wasabi agent indicator */}
       <div style={{
         padding: "8px 16px",
         borderBottom: `1px solid ${C.darkBorder}`,
@@ -165,29 +229,10 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
         gap: 6,
         background: C.darkSurf,
       }}>
-        {currentAgent === "wasabi" ? (
-          <><WasabiFlame size={14} /> <span>Wasabi</span></>
-        ) : (
-          <><IconPage size={12} color={C.darkMuted} /> <span>{pageConfig.name}</span></>
-        )}
-        {currentAgent === "wasabi" && (
-          <button
-            onClick={() => setCurrentAgent("page")}
-            style={{
-              marginLeft: "auto",
-              background: "transparent",
-              border: `1px solid ${C.darkBorder}`,
-              borderRadius: 999,
-              padding: "2px 10px",
-              fontSize: 10,
-              cursor: "pointer",
-              color: C.darkMuted,
-              fontFamily: "inherit",
-            }}
-          >
-            Return to page agent
-          </button>
-        )}
+        <WasabiOrb size={18} />
+        <span>Wasabi</span>
+        <span style={{ opacity: 0.4 }}>&middot;</span>
+        <span style={{ opacity: 0.6 }}>{pageConfig.name}</span>
       </div>
 
       <ChatUI
@@ -197,9 +242,9 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
         choices={choices}
         onChoice={handleChoice}
         allowFiles={true}
-        agentName={currentAgent === "wasabi" ? "Wasabi" : pageConfig.name}
-        agentIcon={agentIcon}
-        placeholder={`Ask ${currentAgent === "wasabi" ? "Wasabi" : pageConfig.name}...`}
+        agentName="Wasabi"
+        agentIcon={<WasabiOrb size={28} />}
+        placeholder={`Ask Wasabi about ${pageConfig.name}...`}
       />
     </div>
   );

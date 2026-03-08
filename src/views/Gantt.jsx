@@ -673,27 +673,8 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                   {row.label}
                 </span>
 
-                {/* Status pill — solid fill */}
-                {row.colorVal && (
-                  <span style={{
-                    fontSize: 9,
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                    color: row.pillText || "#fff",
-                    background: row.statusColor,
-                    borderRadius: RADIUS.pill,
-                    padding: "2px 8px",
-                    whiteSpace: "nowrap",
-                    flexShrink: 0,
-                  }}>
-                    {row.colorVal}
-                  </span>
-                )}
-
                 {/* Sidebar badges from config.sidebarFields */}
                 {(config.sidebarFields || []).map((fieldName) => {
-                  if (fieldName === colorField) return null; // already shown as main pill
                   const val = readField(row.page, fieldName);
                   if (!val) return null;
                   const schemaField = (schema.statuses || []).concat(schema.selects || [], schema.multiSelects || []).find((f) => f.name === fieldName);
