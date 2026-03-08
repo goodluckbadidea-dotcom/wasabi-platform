@@ -189,7 +189,6 @@ export default function Navigation({
         transition: TRANSITION.sidebar,
         position: "relative",
         boxShadow: "2px 0 8px rgba(0,0,0,0.2)",
-        overflow: "hidden",
       }}
     >
       {/* ── Folder Dropdown (top of sidebar) ── */}
