@@ -7,7 +7,7 @@ import { C, FONT, RADIUS } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import * as api from "../lib/api.js";
 
-const styles = {
+function buildSyncStyles() { return {
   container: {
     background: C.darkSurf,
     border: `1px solid ${C.darkBorder}`,
@@ -118,9 +118,10 @@ const styles = {
     color: "#FF6B3D",
     marginTop: 8,
   },
-};
+}; }
 
 export default function SyncPanel({ tableId }) {
+  const styles = buildSyncStyles();
   const { user } = usePlatform();
 
   const [syncConfig, setSyncConfig] = useState(null);

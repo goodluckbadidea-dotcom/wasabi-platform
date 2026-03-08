@@ -7,27 +7,31 @@ import React from "react";
 import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
 
 // ── Status dot color map ──
-const STATUS_DOT = {
-  pending:    C.accent,      // #7DC143
-  processing: "#C8960A",     // amber
-  actioned:   C.darkMuted,   // #888888
-};
+function getStatusDot() {
+  return {
+    pending:    C.accent,
+    processing: "#C8960A",
+    actioned:   C.darkMuted,
+  };
+}
 
 // ── Status row background / border ──
-const STATUS_ROW = {
-  pending: {
-    bg: C.darkSurf2,
-    border: `1px solid ${C.darkBorder}`,
-  },
-  processing: {
-    bg: "rgba(200,150,10,0.06)",
-    border: "1px solid rgba(200,150,10,0.3)",
-  },
-  actioned: {
-    bg: "#1A1A1A",
-    border: `1px solid ${C.darkBorder}`,
-  },
-};
+function getStatusRow() {
+  return {
+    pending: {
+      bg: C.darkSurf2,
+      border: `1px solid ${C.darkBorder}`,
+    },
+    processing: {
+      bg: "rgba(200,150,10,0.06)",
+      border: "1px solid rgba(200,150,10,0.3)",
+    },
+    actioned: {
+      bg: "#1A1A1A",
+      border: `1px solid ${C.darkBorder}`,
+    },
+  };
+}
 
 export default function BatchQueue({
   items = [],
@@ -37,6 +41,8 @@ export default function BatchQueue({
   isProcessing = false,
   processProgress = null, // { current, total }
 }) {
+  const STATUS_DOT = getStatusDot();
+  const STATUS_ROW = getStatusRow();
   const pendingCount = items.filter((i) => i.status === "pending").length;
   const showProcessBtn = pendingCount > 0 && !isProcessing;
 

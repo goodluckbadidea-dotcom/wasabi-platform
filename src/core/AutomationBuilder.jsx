@@ -33,7 +33,7 @@ function getTriggerStyle(trigger) {
 
 // ─── Styles ───
 
-const styles = {
+function buildAutoStyles() { return {
   container: {
     display: "flex",
     height: "100%",
@@ -181,11 +181,12 @@ const styles = {
     color: C.darkMuted,
     fontSize: 12,
   },
-};
+}; }
 
 // ─── Component ───
 
 export default function AutomationBuilder({ automationEngine }) {
+  const styles = buildAutoStyles();
   const { user, platformIds, addPage } = usePlatform();
 
   // Chat state

@@ -199,6 +199,7 @@ export default function Navigation({
         onSelectFolder={setActiveFolder}
         onSelectDashboard={handleSelectDashboard}
         onCreateFolder={handleCreateFolder}
+        onRenameFolder={(folderId, newName) => updatePageConfig(folderId, { name: newName })}
         pageTree={pageTree}
         collapsed={collapsed}
         onExpandSidebar={onExpandSidebar}

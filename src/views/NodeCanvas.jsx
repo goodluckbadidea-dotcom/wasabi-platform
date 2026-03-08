@@ -327,7 +327,7 @@ export default function NodeCanvas({
       >
         <button
           onClick={() => onZoomChange(Math.max(MIN_ZOOM, zoom - ZOOM_STEP * 2))}
-          style={zoomBtnStyle}
+          style={getZoomBtnStyle()}
           title="Zoom out"
         >
           −
@@ -346,14 +346,14 @@ export default function NodeCanvas({
         </span>
         <button
           onClick={() => onZoomChange(Math.min(MAX_ZOOM, zoom + ZOOM_STEP * 2))}
-          style={zoomBtnStyle}
+          style={getZoomBtnStyle()}
           title="Zoom in"
         >
           +
         </button>
         <button
           onClick={() => { onZoomChange(1); onPanChange({ x: 0, y: 0 }); }}
-          style={{ ...zoomBtnStyle, fontSize: 10, padding: "4px 8px" }}
+          style={{ ...getZoomBtnStyle(), fontSize: 10, padding: "4px 8px" }}
           title="Reset view"
         >
           ⟳
@@ -366,14 +366,16 @@ export default function NodeCanvas({
   );
 }
 
-const zoomBtnStyle = {
-  background: "transparent",
-  border: "none",
-  color: C.darkText,
-  fontSize: 14,
-  cursor: "pointer",
-  padding: "4px 10px",
-  borderRadius: 4,
-  fontFamily: "Outfit, sans-serif",
-  outline: "none",
-};
+function getZoomBtnStyle() {
+  return {
+    background: "transparent",
+    border: "none",
+    color: C.darkText,
+    fontSize: 14,
+    cursor: "pointer",
+    padding: "4px 10px",
+    borderRadius: 4,
+    fontFamily: "Outfit, sans-serif",
+    outline: "none",
+  };
+}

@@ -49,7 +49,7 @@ const VIEW_ICON_MAP = {
 };
 
 // ── Styles ──
-const hs = {
+function buildHomeStyles() { return {
   wrapper: {
     display: "flex",
     flexDirection: "column",
@@ -196,7 +196,7 @@ const hs = {
     textTransform: "uppercase",
     letterSpacing: "0.06em",
   },
-};
+}; }
 
 // ── Hover helper ──
 function applyHover(e) {
@@ -212,6 +212,7 @@ function removeHover(e) {
 
 // ── Main Component ──
 export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) {
+  const hs = buildHomeStyles();
   const {
     pages, activePage, setActivePage, removePage, updatePageConfig, user, platformIds,
     pageTree, setActiveFolder, folders,
@@ -538,6 +539,7 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
 
 // ── Page Card Sub-component ──
 function PageCard({ page, delay, isPinned, onTogglePin, onClick, onDelete, onRename }) {
+  const hs = buildHomeStyles();
   const viewTypes = (page.views || []).map((v) => v.type);
   const uniqueTypes = [...new Set(viewTypes)];
 

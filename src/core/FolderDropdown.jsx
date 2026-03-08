@@ -20,11 +20,14 @@ function containsActiveFolder(folder, activeFolderId) {
 }
 
 // ── Recursive folder tree renderer ──
-function FolderTreeItem({ folder, depth, activeFolder, activePage, onSelect, collapsed }) {
+function FolderTreeItem({ folder, depth, activeFolder, activePage, onSelect, onRename, collapsed }) {
   const isActive = activeFolder === folder.id;
   const color = getFolderColor(folder);
   const indent = depth * 18;
   const hasChildren = (folder.childFolders || []).length > 0;
+  const [editing, setEditing] = React.useState(false);
+  const [editName, setEditName] = React.useState(folder.name || "");
+  const editRef = React.useRef(null);
 
   // Auto-expand if this branch contains the active folder
   const [expanded, setExpanded] = React.useState(
@@ -37,6 +40,22 @@ function FolderTreeItem({ folder, depth, activeFolder, activePage, onSelect, col
       setExpanded(true);
     }
   }, [activeFolder, folder, hasChildren]);
+
+  // Focus input when entering edit mode
+  React.useEffect(() => {
+    if (editing && editRef.current) {
+      editRef.current.focus();
+      editRef.current.select();
+    }
+  }, [editing]);
+
+  const commitRename = () => {
+    const trimmed = editName.trim();
+    if (trimmed && trimmed !== folder.name && onRename) {
+      onRename(folder.id, trimmed);
+    }
+    setEditing(false);
+  };
 
   return (
     <>
@@ -74,6 +93,11 @@ function FolderTreeItem({ folder, depth, activeFolder, activePage, onSelect, col
 
         <button
           onClick={() => onSelect(folder.id)}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            setEditName(folder.name || "");
+            setEditing(true);
+          }}
           style={{
             flex: 1,
             border: "none",
@@ -105,22 +129,49 @@ function FolderTreeItem({ folder, depth, activeFolder, activePage, onSelect, col
               flexShrink: 0,
             }}
           />
-          <span
-            style={{
-              fontSize: 13,
-              fontWeight: isActive ? 600 : 400,
-              color: isActive ? C.accent : C.darkText,
-              letterSpacing: "0.01em",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              flex: 1,
-            }}
-          >
-            {folder.name || "Untitled"}
-          </span>
+          {editing ? (
+            <input
+              ref={editRef}
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onBlur={commitRename}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitRename();
+                if (e.key === "Escape") setEditing(false);
+              }}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                flex: 1,
+                fontSize: 13,
+                fontWeight: 600,
+                color: C.darkText,
+                background: C.dark,
+                border: `1px solid ${C.accent}`,
+                borderRadius: RADIUS.sm,
+                padding: "1px 6px",
+                outline: "none",
+                fontFamily: FONT,
+                minWidth: 0,
+              }}
+            />
+          ) : (
+            <span
+              style={{
+                fontSize: 13,
+                fontWeight: isActive ? 600 : 400,
+                color: isActive ? C.accent : C.darkText,
+                letterSpacing: "0.01em",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                flex: 1,
+              }}
+            >
+              {folder.name || "Untitled"}
+            </span>
+          )}
           {/* Page count badge */}
-          {!collapsed && (
+          {!collapsed && !editing && (
             <span style={{ fontSize: 10, color: C.darkBorder, flexShrink: 0 }}>
               {folder.children?.filter((c) => c.type !== "folder").length || 0}
             </span>
@@ -136,6 +187,7 @@ function FolderTreeItem({ folder, depth, activeFolder, activePage, onSelect, col
           activeFolder={activeFolder}
           activePage={activePage}
           onSelect={onSelect}
+          onRename={onRename}
           collapsed={collapsed}
         />
       ))}
@@ -159,6 +211,7 @@ export default function FolderDropdown({
   onSelectFolder,
   onSelectDashboard,
   onCreateFolder,
+  onRenameFolder,
   pageTree,
   collapsed,
   onExpandSidebar,
@@ -375,6 +428,7 @@ export default function FolderDropdown({
                     onSelectFolder?.(id);
                     setOpen(false);
                   }}
+                  onRename={onRenameFolder}
                   collapsed={false}
                 />
               ))}

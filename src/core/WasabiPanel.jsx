@@ -29,22 +29,24 @@ const tabBtn = (active) => ({
   fontFamily: FONT,
   fontSize: 10,
   background: active ? C.accent : "transparent",
-  color: active ? "#fff" : "#888",
+  color: active ? "#fff" : C.darkMuted,
   borderRadius: 999,
   transition: "background 0.14s, color 0.14s",
   outline: "none",
 });
 
-// ── Log entry status colors ──
-const STATUS_COL = {
-  pending: { border: "1px solid #333", bg: "#2A2A2A", dot: C.accent },
-  processing: {
-    border: "1px solid rgba(255,180,0,0.3)",
-    bg: "rgba(255,180,0,0.06)",
-    dot: "#C8960A",
-  },
-  actioned: { border: "1px solid #333", bg: "#1A1A1A", dot: "#2A6B38" },
-};
+// ── Log entry status colors (function for theme support) ──
+function getStatusCol() {
+  return {
+    pending: { border: `1px solid ${C.darkBorder}`, bg: C.darkSurf2, dot: C.accent },
+    processing: {
+      border: "1px solid rgba(255,180,0,0.3)",
+      bg: "rgba(255,180,0,0.06)",
+      dot: "#C8960A",
+    },
+    actioned: { border: `1px solid ${C.darkBorder}`, bg: C.dark, dot: "#2A6B38" },
+  };
+}
 
 export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
   const { user, platformIds, pages, batchQueue, addToQueue, updateQueueItem, removeQueueItem, addPage } =
@@ -392,7 +394,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
             display: "flex",
             gap: 3,
             marginBottom: 12,
-            background: "#222222",
+            background: C.darkSurf,
             borderRadius: 999,
             padding: 3,
           }}
@@ -593,8 +595,8 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
                 style={{
                   marginBottom: 8,
                   borderRadius: 8,
-                  border: `1px solid ${notif.read ? "#333" : C.accent + "44"}`,
-                  background: notif.read ? "#1A1A1A" : "#2A2A2A",
+                  border: `1px solid ${notif.read ? C.darkBorder : C.accent + "44"}`,
+                  background: notif.read ? C.dark : C.darkSurf2,
                   padding: "9px 10px",
                 }}
               >

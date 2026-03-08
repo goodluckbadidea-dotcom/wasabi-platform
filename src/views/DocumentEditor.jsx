@@ -278,37 +278,51 @@ function editorBlockToR2(block) {
   return r2;
 }
 
-// ─── Styles ───
+// ─── Styles (built at render time for theme support) ───
 
-const toolbarStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: 2,
-  padding: "6px 12px",
-  borderBottom: `1px solid ${C.darkBorder}`,
-  background: C.darkSurf,
-  flexShrink: 0,
-  flexWrap: "wrap",
-};
-
-const toolBtnBase = {
-  background: "none",
-  border: `1px solid transparent`,
-  borderRadius: RADIUS.sm,
-  padding: "4px 8px",
-  cursor: "pointer",
-  color: C.darkMuted,
-  fontFamily: FONT,
-  fontSize: 12,
-  fontWeight: 600,
-  lineHeight: 1,
-  transition: "all 0.1s",
-  outline: "none",
-};
+function buildEditorStyles() {
+  return {
+    toolbar: {
+      display: "flex",
+      alignItems: "center",
+      gap: 2,
+      padding: "6px 12px",
+      borderBottom: `1px solid ${C.darkBorder}`,
+      background: C.darkSurf,
+      flexShrink: 0,
+      flexWrap: "wrap",
+    },
+    toolBtnBase: {
+      background: "none",
+      border: `1px solid transparent`,
+      borderRadius: RADIUS.sm,
+      padding: "4px 8px",
+      cursor: "pointer",
+      color: C.darkMuted,
+      fontFamily: FONT,
+      fontSize: 12,
+      fontWeight: 600,
+      lineHeight: 1,
+      transition: "all 0.1s",
+      outline: "none",
+    },
+    listBullet: {
+      position: "absolute",
+      left: 4,
+      top: 5,
+      fontSize: 14,
+      color: C.darkMuted,
+      pointerEvents: "none",
+      userSelect: "none",
+      lineHeight: 1.7,
+    },
+  };
+}
 
 function toolBtn(active) {
+  const base = buildEditorStyles().toolBtnBase;
   return {
-    ...toolBtnBase,
+    ...base,
     background: active ? C.darkSurf2 : "none",
     color: active ? C.darkText : C.darkMuted,
     borderColor: active ? C.darkBorder : "transparent",
@@ -373,17 +387,6 @@ function blockStyle(type) {
       return { ...base, fontSize: 14 };
   }
 }
-
-const listBulletStyle = {
-  position: "absolute",
-  left: 4,
-  top: 5,
-  fontSize: 14,
-  color: C.darkMuted,
-  pointerEvents: "none",
-  userSelect: "none",
-  lineHeight: 1.7,
-};
 
 // ─── Slash Command Menu ───
 
@@ -827,9 +830,9 @@ const EditableBlock = React.memo(function EditableBlock({
   // ── Default: paragraph, headings, lists, code ──
   return (
     <div style={blockWrapBase}>
-      {showBullet && <span style={listBulletStyle}>•</span>}
+      {showBullet && <span style={buildEditorStyles().listBullet}>•</span>}
       {showNumber && (
-        <span style={listBulletStyle}>{(block._listIndex || 1)}.</span>
+        <span style={buildEditorStyles().listBullet}>{(block._listIndex || 1)}.</span>
       )}
       {editableDiv({})}
     </div>
@@ -864,6 +867,7 @@ function isAtEnd(el, range) {
 // ─── Main Editor Component ───
 
 export default function DocumentEditor({ pageId: legacyPageId, config, pageConfig }) {
+  const es = buildEditorStyles();
   const { user } = usePlatform();
 
   // Determine standalone vs Notion-backed mode
@@ -1426,7 +1430,7 @@ export default function DocumentEditor({ pageId: legacyPageId, config, pageConfi
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", fontFamily: FONT }}>
       {/* Toolbar */}
-      <div style={toolbarStyle}>
+      <div style={es.toolbar}>
         {/* Save indicator */}
         <span style={{
           fontSize: 11,

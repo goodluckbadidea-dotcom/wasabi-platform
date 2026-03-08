@@ -8,7 +8,7 @@ import { C, FONT, RADIUS, getSolidPillColor } from "../design/tokens.js";
 import { IconClose } from "../design/icons.jsx";
 
 // ── Styles ──
-const cs = {
+function buildFilterStyles() { return {
   container: {
     display: "flex",
     flexDirection: "column",
@@ -73,7 +73,7 @@ const cs = {
     flexShrink: 0,
     transition: "all 0.15s",
   },
-};
+}; }
 
 // ── Extract chip-eligible fields from schema ──
 function getChipFields(schema, data) {
@@ -144,6 +144,7 @@ export default function FilterChips({
   activeFilters = {},     // { fieldName: ["value1", "value2"] }
   onFilterChange,         // (newFilters) => void
 }) {
+  const cs = buildFilterStyles();
   const chipFields = useMemo(() => getChipFields(schema, data), [schema, data]);
 
   const hasActiveFilters = useMemo(

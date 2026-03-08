@@ -1,9 +1,10 @@
 // ─── Wasabi Platform Design Tokens ───
 // Ported from production-pm-agent.jsx — canonical source of truth
 
-// Color system: dark chrome + warm content areas
-export const C = {
-  // Light mode (content areas)
+// ── Theme Token Sets ──
+// Only tokens that change between themes are listed here.
+// Accent/orange/green stay the same across themes.
+const DARK_TOKENS = {
   bg:         "#F4EFE6",
   surface:    "#ECE6DC",
   surfaceAlt: "#E4DDD3",
@@ -13,19 +14,6 @@ export const C = {
   textMid:    "#5A5048",
   muted:      "#9A8E82",
   white:      "#FBF8F3",
-
-  // Wasabi green
-  accent:     "#7DC143",
-  accentDim:  "#619932",
-  accentPale: "#E6F5D5",
-  green:      "#2A6B38",
-
-  // Orange
-  orange:     "#FF4800",
-  orangeDim:  "#D93C00",
-  orangePale: "#FFF0E8",
-
-  // Dark mode (chrome / sidebar / header)
   dark:       "#181818",
   darkSurf:   "#222222",
   darkSurf2:  "#2A2A2A",
@@ -33,7 +21,63 @@ export const C = {
   darkMuted:  "#888888",
   darkText:   "#F0F0F0",
   edgeLine:   "#2E2E2E",
+  codeBlockBg: "#111111",
+  overlayBg:  "rgba(0,0,0,0.55)",
 };
+
+// Light theme — TE-inspired warm cream / grey / charcoal
+const LIGHT_TOKENS = {
+  bg:         "#FAF7F2",
+  surface:    "#F5F1EB",
+  surfaceAlt: "#EDE8E0",
+  border:     "#D4CCC0",
+  border2:    "#C8BFB3",
+  text:       "#2C2824",
+  textMid:    "#6B6058",
+  muted:      "#9A9088",
+  white:      "#FFFFFF",
+  dark:       "#F5F1EB",
+  darkSurf:   "#EDE8E0",
+  darkSurf2:  "#E5DFD6",
+  darkBorder: "#D4CCC0",
+  darkMuted:  "#8A8078",
+  darkText:   "#2C2824",
+  edgeLine:   "#DDD7CE",
+  codeBlockBg: "#F0ECE6",
+  overlayBg:  "rgba(0,0,0,0.25)",
+};
+
+// Resolve initial theme from localStorage
+let _currentTheme = (typeof localStorage !== "undefined" && localStorage.getItem("wasabi-theme")) || "dark";
+const initialTokens = _currentTheme === "light" ? LIGHT_TOKENS : DARK_TOKENS;
+
+// Color system: mutable token object, updated by applyTheme()
+export const C = {
+  // Theme-dependent tokens (initialized from persisted theme)
+  ...initialTokens,
+
+  // Wasabi green (unchanged across themes)
+  accent:     "#7DC143",
+  accentDim:  "#619932",
+  accentPale: "#E6F5D5",
+  green:      "#2A6B38",
+
+  // Orange — TE highlight color (unchanged across themes)
+  orange:     "#FF4800",
+  orangeDim:  "#D93C00",
+  orangePale: "#FFF0E8",
+};
+
+/** Get the current theme name */
+export function getTheme() { return _currentTheme; }
+
+/** Apply a theme by name ('dark' | 'light'). Mutates C in place. */
+export function applyTheme(name) {
+  _currentTheme = name;
+  const tokens = name === "light" ? LIGHT_TOKENS : DARK_TOKENS;
+  Object.assign(C, tokens);
+  if (typeof localStorage !== "undefined") localStorage.setItem("wasabi-theme", name);
+}
 
 // Typography
 export const FONT = "'Outfit','DM Sans',sans-serif";

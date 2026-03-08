@@ -818,6 +818,14 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const [sortDir, setSortDir] = useState(config.sort?.direction || config.sortDir || (config.sortField ? "asc" : null)); // "asc" | "desc" | null
   const [filters, setFilters] = useState(config.filters || {}); // { fieldName: value }
 
+  // Sync sort state from external config changes (e.g. ViewSettingsPanel)
+  useEffect(() => {
+    const extSort = config.sortField ?? null;
+    const extDir = config.sortDir ?? "asc";
+    if (extSort !== undefined) setSortField(extSort);
+    if (config.sortDir !== undefined) setSortDir(extDir);
+  }, [config.sortField, config.sortDir]);
+
   // ── Chip Filters (multi-select, persisted) ──
   const [chipFilters, setChipFilters] = useState(
     () => config.activeFilters || pageConfig?.activeFilters || {}
@@ -884,16 +892,24 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     [schema, config.columns, config.fieldMappings]
   );
 
-  // Seed hidden columns from config.visibleFields (once, when allColumns first resolves)
-  const visibleFieldsApplied = useRef(false);
+  // Sync hidden columns from config.visibleFields (updates when ViewSettingsPanel changes)
+  const prevVisibleFields = useRef(config.visibleFields);
   useEffect(() => {
-    if (visibleFieldsApplied.current) return;
     const vf = config.visibleFields;
     if (!Array.isArray(vf) || vf.length === 0 || allColumns.length === 0) return;
-    const visibleSet = new Set(vf);
-    const hidden = new Set(allColumns.filter((c) => !visibleSet.has(c)));
-    setHiddenColumns(hidden);
-    visibleFieldsApplied.current = true;
+    // Only update if visibleFields actually changed (avoids resetting manual column toggles)
+    if (prevVisibleFields.current !== vf) {
+      const visibleSet = new Set(vf);
+      const hidden = new Set(allColumns.filter((c) => !visibleSet.has(c)));
+      setHiddenColumns(hidden);
+      prevVisibleFields.current = vf;
+    } else if (!prevVisibleFields.current) {
+      // First load: seed from config
+      const visibleSet = new Set(vf);
+      const hidden = new Set(allColumns.filter((c) => !visibleSet.has(c)));
+      setHiddenColumns(hidden);
+      prevVisibleFields.current = vf;
+    }
   }, [allColumns, config.visibleFields]);
 
   // Visible columns (filtered by hiddenColumns)

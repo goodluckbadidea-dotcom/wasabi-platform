@@ -13,69 +13,70 @@ const FORMULA_FUNCTIONS = [
   { fn: "MAX", label: "↑", title: "Maximum value" },
 ];
 
-const barStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: 6,
-  padding: "4px 8px",
-  borderBottom: `1px solid ${C.edgeLine}`,
-  background: C.darkSurf,
-  flexShrink: 0,
-  minHeight: 32,
-};
-
-const cellRefStyle = {
-  width: 56,
-  textAlign: "center",
-  fontSize: 11,
-  fontWeight: 600,
-  fontFamily: MONO,
-  color: C.darkMuted,
-  background: C.darkSurf2,
-  border: `1px solid ${C.darkBorder}`,
-  borderRadius: RADIUS.sm,
-  padding: "3px 6px",
-  flexShrink: 0,
-};
-
-const valueInputStyle = {
-  flex: 1,
-  background: C.dark,
-  border: `1px solid ${C.darkBorder}`,
-  borderRadius: RADIUS.sm,
-  padding: "3px 8px",
-  fontSize: 12,
-  fontFamily: FONT,
-  color: C.darkText,
-  outline: "none",
-  minHeight: 22,
-};
-
-const formulaBtnStyle = {
-  background: "none",
-  border: `1px solid ${C.darkBorder}`,
-  borderRadius: RADIUS.sm,
-  padding: "3px 8px",
-  fontSize: 12,
-  fontWeight: 700,
-  fontFamily: MONO,
-  color: C.darkMuted,
-  cursor: "pointer",
-  transition: "all 0.1s",
-  lineHeight: 1,
-  height: 24,
-  minWidth: 28,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-};
-
-const activeBtnStyle = {
-  ...formulaBtnStyle,
-  background: `${C.accent}18`,
-  borderColor: C.accent,
-  color: C.accent,
-};
+function buildFormulaStyles() {
+  const formulaBtn = {
+    background: "none",
+    border: `1px solid ${C.darkBorder}`,
+    borderRadius: RADIUS.sm,
+    padding: "3px 8px",
+    fontSize: 12,
+    fontWeight: 700,
+    fontFamily: MONO,
+    color: C.darkMuted,
+    cursor: "pointer",
+    transition: "all 0.1s",
+    lineHeight: 1,
+    height: 24,
+    minWidth: 28,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  };
+  return {
+    bar: {
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      padding: "4px 8px",
+      borderBottom: `1px solid ${C.edgeLine}`,
+      background: C.darkSurf,
+      flexShrink: 0,
+      minHeight: 32,
+    },
+    cellRef: {
+      width: 56,
+      textAlign: "center",
+      fontSize: 11,
+      fontWeight: 600,
+      fontFamily: MONO,
+      color: C.darkMuted,
+      background: C.darkSurf2,
+      border: `1px solid ${C.darkBorder}`,
+      borderRadius: RADIUS.sm,
+      padding: "3px 6px",
+      flexShrink: 0,
+    },
+    valueInput: {
+      flex: 1,
+      background: C.dark,
+      border: `1px solid ${C.darkBorder}`,
+      borderRadius: RADIUS.sm,
+      padding: "3px 8px",
+      fontSize: 12,
+      fontFamily: FONT,
+      color: C.darkText,
+      outline: "none",
+      minHeight: 22,
+    },
+    formulaBtn,
+    activeBtn: {
+      ...formulaBtn,
+      background: `${C.accent}18`,
+      borderColor: C.accent,
+      color: C.accent,
+    },
+  };
+}
 
 export default function FormulaBar({
   selectedCell,
@@ -85,6 +86,7 @@ export default function FormulaBar({
   onChange,
   onCommit,
 }) {
+  const fs = buildFormulaStyles();
   const [showFormulaPanel, setShowFormulaPanel] = useState(false);
   const [formulaRange, setFormulaRange] = useState("");
   const [activeFn, setActiveFn] = useState(null);
@@ -110,9 +112,9 @@ export default function FormulaBar({
 
   return (
     <div style={{ flexShrink: 0 }}>
-      <div style={barStyle}>
+      <div style={fs.bar}>
         {/* Cell reference */}
-        <div style={cellRefStyle}>
+        <div style={fs.cellRef}>
           {selectedCell || "—"}
         </div>
 
@@ -133,7 +135,7 @@ export default function FormulaBar({
 
         {/* Value / formula display */}
         <input
-          style={valueInputStyle}
+          style={fs.valueInput}
           value={value || ""}
           onChange={(e) => onChange?.(e.target.value)}
           onKeyDown={(e) => {
@@ -153,7 +155,7 @@ export default function FormulaBar({
         {FORMULA_FUNCTIONS.map((ff) => (
           <button
             key={ff.fn}
-            style={activeFn === ff.fn ? activeBtnStyle : formulaBtnStyle}
+            style={activeFn === ff.fn ? fs.activeBtn : fs.formulaBtn}
             onClick={() => handleFormulaClick(ff.fn)}
             title={ff.title}
             onMouseEnter={(e) => {
@@ -195,7 +197,7 @@ export default function FormulaBar({
             onChange={(e) => setFormulaRange(e.target.value.toUpperCase())}
             placeholder="e.g. A2:A10"
             style={{
-              ...valueInputStyle,
+              ...fs.valueInput,
               maxWidth: 120,
               fontFamily: MONO,
               fontSize: 12,

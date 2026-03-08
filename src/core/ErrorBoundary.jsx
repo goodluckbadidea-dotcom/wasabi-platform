@@ -104,19 +104,21 @@ export class ErrorBoundary extends Component {
 
 // ── Shimmer bar helper ──────────────────────────────────────────────────────
 
-const shimmerBg = {
-  background: `linear-gradient(90deg, ${C.darkSurf2} 25%, ${C.darkBorder} 50%, ${C.darkSurf2} 75%)`,
-  backgroundSize: "200% 100%",
-  animation: "shimmer 1.8s ease-in-out infinite",
-  borderRadius: RADIUS.md,
-};
+function getShimmerBg() {
+  return {
+    background: `linear-gradient(90deg, ${C.darkSurf2} 25%, ${C.darkBorder} 50%, ${C.darkSurf2} 75%)`,
+    backgroundSize: "200% 100%",
+    animation: "shimmer 1.8s ease-in-out infinite",
+    borderRadius: RADIUS.md,
+  };
+}
 
 function ShimmerBar({ width = "100%", height = 10, style = {} }) {
-  return <div style={{ ...shimmerBg, width, height, ...style }} />;
+  return <div style={{ ...getShimmerBg(), width, height, ...style }} />;
 }
 
 function ShimmerRect({ width = "100%", height = 80, style = {} }) {
-  return <div style={{ ...shimmerBg, width, height, borderRadius: RADIUS.lg, ...style }} />;
+  return <div style={{ ...getShimmerBg(), width, height, borderRadius: RADIUS.lg, ...style }} />;
 }
 
 // ── View Skeleton ───────────────────────────────────────────────────────────

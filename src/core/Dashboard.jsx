@@ -358,13 +358,13 @@ function WidgetPickerInline({ onClose, onAddWidget }) {
           <div style={{ display: "flex", gap: 8 }}>
             <button
               onClick={() => onAddWidget({ type: "shortcut", label: "Shortcut" })}
-              style={quickBtnStyle}
+              style={getQuickBtnStyle()}
             >
               <IconBolt size={12} color={C.darkMuted} /> Shortcut
             </button>
             <button
               onClick={() => onAddWidget({ type: "text", label: "Note", content: "" })}
-              style={quickBtnStyle}
+              style={getQuickBtnStyle()}
             >
               <IconForm size={12} color={C.darkMuted} /> Text Block
             </button>
@@ -437,16 +437,18 @@ function WidgetPickerInline({ onClose, onAddWidget }) {
   );
 }
 
-const quickBtnStyle = {
-  background: "transparent",
-  border: `1px solid ${C.darkBorder}`,
-  borderRadius: RADIUS.md,
-  padding: "8px 14px",
-  cursor: "pointer",
-  fontFamily: FONT,
-  fontSize: 11,
-  fontWeight: 500,
-  color: C.darkMuted,
-  transition: "all 0.12s",
-  outline: "none",
-};
+function getQuickBtnStyle() {
+  return {
+    background: "transparent",
+    border: `1px solid ${C.darkBorder}`,
+    borderRadius: RADIUS.md,
+    padding: "8px 14px",
+    cursor: "pointer",
+    fontFamily: FONT,
+    fontSize: 11,
+    fontWeight: 500,
+    color: C.darkMuted,
+    transition: "all 0.12s",
+    outline: "none",
+  };
+}

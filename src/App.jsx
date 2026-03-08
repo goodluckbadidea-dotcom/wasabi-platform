@@ -7,6 +7,7 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { PlatformProvider, usePlatform } from "./context/PlatformContext.jsx";
 import { LinksProvider } from "./context/LinksContext.jsx";
+import { ThemeProvider, useTheme } from "./context/ThemeContext.jsx";
 import { injectAnimations, ANIM, TRANSITION } from "./design/animations.js";
 import { S } from "./design/styles.js";
 import { C } from "./design/tokens.js";
@@ -47,6 +48,8 @@ function AppContent() {
     getFolderPages,
     globalDashboard,
   } = usePlatform();
+
+  const { theme } = useTheme();
 
   // ── UI State ──
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -372,12 +375,14 @@ function AppContent() {
 
 export default function App() {
   return (
-    <PlatformProvider>
-      <LinksProvider>
-        <ErrorBoundary fallbackLabel="Wasabi Platform">
-          <AppContent />
-        </ErrorBoundary>
-      </LinksProvider>
-    </PlatformProvider>
+    <ThemeProvider>
+      <PlatformProvider>
+        <LinksProvider>
+          <ErrorBoundary fallbackLabel="Wasabi Platform">
+            <AppContent />
+          </ErrorBoundary>
+        </LinksProvider>
+      </PlatformProvider>
+    </ThemeProvider>
   );
 }

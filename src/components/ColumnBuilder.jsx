@@ -22,26 +22,30 @@ const COLUMN_TYPES = [
 
 const DEFAULT_STATUS_OPTIONS = ["Not Started", "In Progress", "Done"];
 
-const inputStyle = {
-  ...S.input,
-  background: C.darkSurf2,
-  border: `1px solid ${C.darkBorder}`,
-  color: C.darkText,
-  padding: "8px 12px",
-  fontSize: 13,
-  borderRadius: RADIUS.md,
-  fontFamily: FONT,
-};
-
-const selectStyle = {
-  ...inputStyle,
-  cursor: "pointer",
-  appearance: "none",
-  paddingRight: 28,
-  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%23888' fill='none' stroke-width='1.5'/%3E%3C/svg%3E")`,
-  backgroundRepeat: "no-repeat",
-  backgroundPosition: "right 10px center",
-};
+function buildColumnStyles() {
+  const input = {
+    ...S.input,
+    background: C.darkSurf2,
+    border: `1px solid ${C.darkBorder}`,
+    color: C.darkText,
+    padding: "8px 12px",
+    fontSize: 13,
+    borderRadius: RADIUS.md,
+    fontFamily: FONT,
+  };
+  return {
+    input,
+    select: {
+      ...input,
+      cursor: "pointer",
+      appearance: "none",
+      paddingRight: 28,
+      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%23888' fill='none' stroke-width='1.5'/%3E%3C/svg%3E")`,
+      backgroundRepeat: "no-repeat",
+      backgroundPosition: "right 10px center",
+    },
+  };
+}
 
 /**
  * ColumnBuilder — lets users define table columns.
@@ -50,6 +54,7 @@ const selectStyle = {
  *   onChange: (columns) => void
  */
 export default function ColumnBuilder({ columns, onChange }) {
+  const { input: inputStyle, select: selectStyle } = buildColumnStyles();
   const [expandedCol, setExpandedCol] = useState(null);
 
   const addColumn = useCallback(() => {
@@ -135,6 +140,7 @@ export default function ColumnBuilder({ columns, onChange }) {
 }
 
 function ColumnRow({ col, index, total, expanded, onToggle, onUpdate, onRemove, onMoveUp, onMoveDown, isFirst }) {
+  const { input: inputStyle, select: selectStyle } = buildColumnStyles();
   const typeInfo = COLUMN_TYPES.find((t) => t.value === col.type) || COLUMN_TYPES[0];
   const hasOptions = ["select", "multi_select", "status"].includes(col.type);
 
@@ -294,6 +300,7 @@ function ColumnRow({ col, index, total, expanded, onToggle, onUpdate, onRemove, 
 }
 
 function OptionsEditor({ options, onChange }) {
+  const { input: inputStyle } = buildColumnStyles();
   const [newOption, setNewOption] = useState("");
 
   const addOption = () => {

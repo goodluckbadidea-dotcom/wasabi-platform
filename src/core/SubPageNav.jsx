@@ -25,7 +25,7 @@ const VIEW_TYPE_LABELS = {
 };
 
 // ── Styles ──
-const ns = {
+function buildNavStyles() { return {
   wrapper: {
     flexShrink: 0,
     borderBottom: `1px solid ${C.edgeLine}`,
@@ -70,7 +70,7 @@ const ns = {
     outline: "none",
     flexShrink: 0,
   },
-};
+}; }
 
 export default function SubPageNav({
   views = [],
@@ -81,6 +81,7 @@ export default function SubPageNav({
   onAddView,
   onReorderViews,
 }) {
+  const ns = buildNavStyles();
   const [hoveredTab, setHoveredTab] = useState(null);
   const [dragIdx, setDragIdx] = useState(null);
   const [overIdx, setOverIdx] = useState(null);
