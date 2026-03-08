@@ -449,7 +449,7 @@ export default function Navigation({
           cursor: "pointer", outline: "none", zIndex: 10,
           transition: "background 0.12s",
         }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = "#363636"; }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = C.darkBorder; }}
         onMouseLeave={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
       >
         <svg width="8" height="12" viewBox="0 0 8 12" fill="none">

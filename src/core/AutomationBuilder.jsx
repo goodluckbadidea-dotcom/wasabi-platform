@@ -19,16 +19,16 @@ import InlineEdit from "./InlineEdit.jsx";
 
 // ─── Trigger type pill colors ───
 
-const TRIGGER_COLORS = {
+const TRIGGER_COLORS_FIXED = {
   schedule:       { bg: "#1C5C8A33", text: "#5BA8E0" },
   status_change:  { bg: "#FF480033", text: "#FF8C42" },
   field_change:   { bg: "#8B6FBE33", text: "#B09ADB" },
   page_created:   { bg: "#2A6B3833", text: "#7DC143" },
-  manual:         { bg: "#88888833", text: "#AAAAAA" },
 };
 
 function getTriggerStyle(trigger) {
-  return TRIGGER_COLORS[trigger] || TRIGGER_COLORS.manual;
+  if (TRIGGER_COLORS_FIXED[trigger]) return TRIGGER_COLORS_FIXED[trigger];
+  return { bg: C.darkMuted + "33", text: C.darkMuted };
 }
 
 // ─── Styles ───

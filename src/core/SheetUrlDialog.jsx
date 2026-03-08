@@ -162,7 +162,7 @@ export default function SheetUrlDialog({ onConfirm, onCancel }) {
               outline: "none",
               transition: "background 0.12s",
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "#363636"; }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = C.darkBorder; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
           >
             Cancel

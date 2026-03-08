@@ -87,7 +87,7 @@ export default function ConfirmDialog({
               transition: "background 0.12s",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#363636";
+              e.currentTarget.style.background = C.darkBorder;
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = C.darkSurf2;

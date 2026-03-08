@@ -28,6 +28,7 @@ function FolderTreeItem({ folder, depth, activeFolder, activePage, onSelect, onR
   const [editing, setEditing] = React.useState(false);
   const [editName, setEditName] = React.useState(folder.name || "");
   const editRef = React.useRef(null);
+  const clickTimer = React.useRef(null);
 
   // Auto-expand if this branch contains the active folder
   const [expanded, setExpanded] = React.useState(
@@ -92,9 +93,23 @@ function FolderTreeItem({ folder, depth, activeFolder, activePage, onSelect, onR
         )}
 
         <button
-          onClick={() => onSelect(folder.id)}
+          onClick={() => {
+            if (clickTimer.current) {
+              clearTimeout(clickTimer.current);
+              clickTimer.current = null;
+              return;
+            }
+            clickTimer.current = setTimeout(() => {
+              clickTimer.current = null;
+              onSelect(folder.id);
+            }, 250);
+          }}
           onDoubleClick={(e) => {
             e.stopPropagation();
+            if (clickTimer.current) {
+              clearTimeout(clickTimer.current);
+              clickTimer.current = null;
+            }
             setEditName(folder.name || "");
             setEditing(true);
           }}
@@ -346,7 +361,7 @@ export default function FolderDropdown({
               left: collapsed ? 0 : 8,
               right: collapsed ? "auto" : 8,
               minWidth: collapsed ? 220 : undefined,
-              background: "#2D2D2D",
+              background: C.darkSurf2,
               borderRadius: 12,
               border: `1px solid ${C.darkBorder}`,
               boxShadow: SHADOW.dropdown,

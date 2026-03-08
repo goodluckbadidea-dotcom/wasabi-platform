@@ -121,7 +121,7 @@ export default function DashboardWidget({
         top: widget.y,
         width: widget.w,
         height: widget.h,
-        background: "#1E1E1E",
+        background: C.darkSurf,
         border: `1px solid ${C.darkBorder}`,
         borderRadius: RADIUS.lg,
         boxShadow: SHADOW.card,
@@ -145,7 +145,7 @@ export default function DashboardWidget({
           alignItems: "center",
           padding: "0 8px",
           gap: 6,
-          background: "#252525",
+          background: C.darkSurf2,
           borderBottom: `1px solid ${C.darkBorder}`,
           cursor: editMode ? "grab" : "default",
         }}

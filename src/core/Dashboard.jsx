@@ -235,7 +235,7 @@ export default function Dashboard({
             if (editMode) setWidgetPickerOpen(false);
           }}
           style={{
-            background: editMode ? C.accent : "#2D2D2D",
+            background: editMode ? C.accent : C.darkSurf2,
             color: editMode ? "#fff" : C.darkMuted,
             border: `1px solid ${editMode ? C.accent : C.darkBorder}`,
             borderRadius: RADIUS.pill,
@@ -259,7 +259,7 @@ export default function Dashboard({
           <button
             onClick={() => setWidgetPickerOpen(true)}
             style={{
-              background: "#2D2D2D",
+              background: C.darkSurf2,
               color: C.darkMuted,
               border: `1px solid ${C.darkBorder}`,
               borderRadius: RADIUS.pill,
@@ -322,7 +322,7 @@ function WidgetPickerInline({ onClose, onAddWidget }) {
         right: 0,
         bottom: 0,
         width: 380,
-        background: "#2D2D2D",
+        background: C.darkSurf2,
         borderLeft: `1px solid ${C.darkBorder}`,
         boxShadow: SHADOW.dropdown,
         zIndex: 300,

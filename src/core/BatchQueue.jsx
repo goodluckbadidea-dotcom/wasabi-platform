@@ -27,7 +27,7 @@ function getStatusRow() {
       border: "1px solid rgba(200,150,10,0.3)",
     },
     actioned: {
-      bg: "#1A1A1A",
+      bg: C.dark,
       border: `1px solid ${C.darkBorder}`,
     },
   };

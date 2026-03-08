@@ -323,7 +323,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
         width: 320,
         flexShrink: 0,
         borderRight: `1px solid ${C.darkBorder}`,
-        background: "#1E1E1E",
+        background: C.darkSurf,
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
@@ -336,8 +336,8 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
         style={{
           padding: "14px 14px 0",
           flexShrink: 0,
-          borderBottom: `1px solid #333`,
-          background: "#1A1A1A",
+          borderBottom: `1px solid ${C.darkBorder}`,
+          background: C.dark,
         }}
       >
         {/* Character + close */}
@@ -369,7 +369,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
               background: "none",
               border: "none",
               cursor: "pointer",
-              color: "#888",
+              color: C.darkMuted,
               padding: 4,
               display: "flex",
               alignItems: "center",
@@ -381,7 +381,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
               e.currentTarget.style.color = C.darkText;
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.color = "#888";
+              e.currentTarget.style.color = C.darkMuted;
             }}
           >
             <IconClose size={12} color="currentColor" />
@@ -442,7 +442,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
                 display: "flex",
                 alignItems: "flex-end",
                 gap: 10,
-                background: "#1A1A1A",
+                background: C.dark,
                 border: "none",
                 borderRadius: 999,
                 padding: "10px 16px",
@@ -468,7 +468,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
                   background: "transparent",
                   border: "none",
                   outline: "none",
-                  color: "#E8E8E8",
+                  color: C.darkText,
                   fontFamily: FONT,
                   fontSize: 13,
                   lineHeight: 1.6,
@@ -487,7 +487,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
                   border: "none",
                   borderRadius: "50%",
                   cursor: logInput.trim() ? "pointer" : "default",
-                  background: logInput.trim() ? C.accent : "#333",
+                  background: logInput.trim() ? C.accent : C.darkBorder,
                   color: "#fff",
                   display: "flex",
                   alignItems: "center",
@@ -563,7 +563,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
             </div>
 
             {notifLoading && (
-              <div style={{ textAlign: "center", color: "#888", fontSize: 10, marginTop: 20 }}>
+              <div style={{ textAlign: "center", color: C.darkMuted, fontSize: 10, marginTop: 20 }}>
                 Loading notifications...
               </div>
             )}
@@ -572,7 +572,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
               <div
                 style={{
                   textAlign: "center",
-                  color: "#888",
+                  color: C.darkMuted,
                   fontSize: 10,
                   marginTop: 40,
                   lineHeight: 2,
@@ -580,7 +580,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
                   textTransform: "uppercase",
                 }}
               >
-                <IconBell size={22} color="#888" style={{ marginBottom: 8 }} />
+                <IconBell size={22} color={C.darkMuted} style={{ marginBottom: 8 }} />
                 <br />
                 No notifications
                 <br />
@@ -605,7 +605,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
                     <div style={{ width: 6, height: 6, borderRadius: 3, background: C.accent, marginTop: 5, flexShrink: 0 }} />
                   )}
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12, color: "#E8E8E8", lineHeight: 1.55 }}>
+                    <div style={{ fontSize: 12, color: C.darkText, lineHeight: 1.55 }}>
                       {notif.text || notif.content}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
@@ -615,7 +615,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
                         </span>
                       )}
                       {notif.timestamp && (
-                        <span style={{ fontSize: 9, color: "#666", fontFamily: MONO }}>
+                        <span style={{ fontSize: 9, color: C.darkMuted, fontFamily: MONO }}>
                           {timeAgo(notif.timestamp)}
                         </span>
                       )}
@@ -626,9 +626,9 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
                       onClick={() => markNotifRead(notif.id)}
                       style={{
                         background: "none",
-                        border: `1px solid #444`,
+                        border: `1px solid ${C.darkBorder}`,
                         borderRadius: 4,
-                        color: "#888",
+                        color: C.darkMuted,
                         fontSize: 9,
                         cursor: "pointer",
                         padding: "2px 6px",
