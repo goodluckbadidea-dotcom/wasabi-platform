@@ -157,8 +157,9 @@ const KEYFRAMES = `
 }
 
 @keyframes contentSwap {
-  0%   { opacity: 0; transform: translateY(4px); }
-  100% { opacity: 1; transform: translateY(0); }
+  0%   { opacity: 0; transform: translateY(8px) scale(0.995); }
+  60%  { opacity: 1; transform: translateY(-1px) scale(1.002); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 `;
 
@@ -211,7 +212,7 @@ export const ANIM = {
   settleIn:    (delay = 0) => `settleIn 0.28s ${SETTLE_EASE} ${delay}s both`,
   modalPop:    (delay = 0) => `modalPop 0.35s ${SETTLE_EASE} ${delay}s both`,
   backdropFade: "backdropFade 0.2s ease both",
-  contentSwap: (delay = 0) => `contentSwap 0.22s ease ${delay}s both`,
+  contentSwap: (delay = 0) => `contentSwap 0.38s ${SETTLE_EASE} ${delay}s both`,
 
   // Staggered list item entrance (bouncy)
   listItem:    (idx = 0) => `settleIn 0.28s ${SETTLE_EASE} ${idx * 0.03}s both`,
@@ -223,8 +224,8 @@ export const TRANSITION = {
   hover: "all 0.18s cubic-bezier(0.4, 0, 0.2, 1)",
   // Snappy size/position transitions
   snap: "all 0.25s cubic-bezier(0.22, 1.2, 0.36, 1)",
-  // Sidebar collapse/expand
-  sidebar: "width 0.28s cubic-bezier(0.22, 1.2, 0.36, 1), padding 0.28s cubic-bezier(0.22, 1.2, 0.36, 1)",
+  // Sidebar collapse/expand — smooth deceleration, no overshoot (avoids content jitter)
+  sidebar: "width 0.32s cubic-bezier(0.25, 1, 0.5, 1), padding 0.32s cubic-bezier(0.25, 1, 0.5, 1)",
   // Panel slide
   panel: "transform 0.3s cubic-bezier(0.22, 1.2, 0.36, 1), opacity 0.25s ease",
   // Color/background fade

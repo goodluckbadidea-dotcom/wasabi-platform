@@ -161,6 +161,7 @@ export default function FolderDropdown({
   onCreateFolder,
   pageTree,
   collapsed,
+  onExpandSidebar,
 }) {
   const [open, setOpen] = useState(false);
   const pillRef = useRef(null);
@@ -199,7 +200,13 @@ export default function FolderDropdown({
       {/* ── Pill button ── */}
       <button
         ref={pillRef}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          if (collapsed && onExpandSidebar) {
+            onExpandSidebar();
+          } else {
+            setOpen((o) => !o);
+          }
+        }}
         style={{
           display: "flex",
           alignItems: "center",

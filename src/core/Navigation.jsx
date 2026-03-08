@@ -21,6 +21,7 @@ import ContextMenu, { MoveToMenu } from "./ContextMenu.jsx";
 export default function Navigation({
   collapsed,
   onToggleCollapse,
+  onExpandSidebar,
   wasabiPanelOpen,
   onToggleWasabiPanel,
   isThinking,
@@ -200,6 +201,7 @@ export default function Navigation({
         onCreateFolder={handleCreateFolder}
         pageTree={pageTree}
         collapsed={collapsed}
+        onExpandSidebar={onExpandSidebar}
       />
 
       {/* ── Main list area ── */}

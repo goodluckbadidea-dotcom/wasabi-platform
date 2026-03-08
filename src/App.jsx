@@ -7,7 +7,7 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { PlatformProvider, usePlatform } from "./context/PlatformContext.jsx";
 import { LinksProvider } from "./context/LinksContext.jsx";
-import { injectAnimations, ANIM } from "./design/animations.js";
+import { injectAnimations, ANIM, TRANSITION } from "./design/animations.js";
 import { S } from "./design/styles.js";
 import { C } from "./design/tokens.js";
 
@@ -310,7 +310,11 @@ function AppContent() {
       >
         {/* Wasabi Panel (collapsible, left of sidebar) */}
         {wasabiPanelOpen && (
-          <div style={{ animation: ANIM.snapInLeft() }}>
+          <div style={{
+            animation: ANIM.snapInLeft(0.02),
+            display: "flex",
+            flexShrink: 0,
+          }}>
             <WasabiPanel
               onClose={() => setWasabiPanelOpen(false)}
               isThinking={false}
@@ -331,7 +335,7 @@ function AppContent() {
               zIndex: 1,
               pointerEvents: "none",
               background: `linear-gradient(180deg, ${C.edgeLine}00 0%, ${C.edgeLine} 30%, ${C.accent}44 60%, ${C.edgeLine} 85%, ${C.edgeLine}00 100%)`,
-              transition: "left 0.25s cubic-bezier(0.4,0,0.2,1)",
+              transition: "left 0.32s cubic-bezier(0.25, 1, 0.5, 1)",
             }}
           />
         )}
@@ -340,6 +344,7 @@ function AppContent() {
         <Navigation
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
+          onExpandSidebar={() => setSidebarCollapsed(false)}
           wasabiPanelOpen={wasabiPanelOpen}
           onToggleWasabiPanel={() => setWasabiPanelOpen((o) => !o)}
           isThinking={false}
