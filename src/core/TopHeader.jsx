@@ -20,7 +20,7 @@ const REFRESH_OPTIONS = [
 export default function TopHeader({
   pageControls,
 }) {
-  const { theme, toggleTheme } = useTheme();
+  const { themeMode, toggleMode } = useTheme();
   const controls = pageControls || {};
   const showControls = !!pageControls;
 
@@ -153,7 +153,7 @@ export default function TopHeader({
 
         {/* Theme toggle */}
         <button
-          onClick={toggleTheme}
+          onClick={toggleMode}
           style={{
             background: "transparent",
             border: `1px solid ${C.darkBorder}`,
@@ -169,13 +169,13 @@ export default function TopHeader({
             fontFamily: FONT,
             fontWeight: 500,
           }}
-          title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          title={themeMode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
         >
-          {theme === "dark"
+          {themeMode === "dark"
             ? <IconSun size={13} color={C.darkMuted} />
             : <IconMoon size={13} color={C.darkMuted} />
           }
-          {theme === "dark" ? "Light" : "Dark"}
+          {themeMode === "dark" ? "Light" : "Dark"}
         </button>
       </div>
     </header>

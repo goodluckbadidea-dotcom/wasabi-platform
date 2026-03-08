@@ -3,7 +3,8 @@
 // No emojis. Dark theme. Inline CSS-in-JS.
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
+import { C, FONT, MONO, RADIUS, THEME_LIST, THEMES } from "../design/tokens.js";
+import { useTheme } from "../context/ThemeContext.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import ChatUI from "./ChatUI.jsx";
 import { runAgent, extractChoices } from "../agent/runAgent.js";
@@ -523,6 +524,12 @@ export default function SystemManager() {
           >
             Chat
           </button>
+          <button
+            style={tabBtn(tab === "settings")}
+            onClick={() => setTab("settings")}
+          >
+            Settings
+          </button>
         </div>
       </div>
 
@@ -862,6 +869,206 @@ export default function SystemManager() {
             />
           </div>
         )}
+
+        {/* ═══ SETTINGS TAB ═══ */}
+        {tab === "settings" && <SettingsTab />}
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Settings Tab (theme picker)
+// ════════════════════════════════════════════════════════════════════════════
+
+function SettingsTab() {
+  const { themeName, themeMode, setThemeName, toggleMode } = useTheme();
+
+  return (
+    <div style={{ padding: "20px 24px" }}>
+      {/* Section: Appearance */}
+      <div
+        style={{
+          fontSize: 10,
+          color: C.darkMuted,
+          fontFamily: FONT,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          marginBottom: 14,
+        }}
+      >
+        Appearance
+      </div>
+
+      {/* Label: Color Theme */}
+      <div
+        style={{
+          fontSize: 11,
+          color: C.darkMuted,
+          fontFamily: FONT,
+          fontWeight: 600,
+          marginBottom: 10,
+        }}
+      >
+        Color Theme
+      </div>
+
+      {/* Theme cards grid */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))",
+          gap: 10,
+          marginBottom: 28,
+        }}
+      >
+        {THEME_LIST.map((t) => {
+          const isActive = themeName === t.key;
+          const theme = THEMES[t.key];
+          const darkBg = theme.dark.darkSurf;
+          const lightBg = theme.light.surface;
+          return (
+            <button
+              key={t.key}
+              onClick={() => setThemeName(t.key)}
+              style={{
+                position: "relative",
+                background: C.darkSurf,
+                border: `2px solid ${isActive ? t.accent : C.darkBorder}`,
+                borderRadius: RADIUS.lg,
+                padding: 0,
+                cursor: "pointer",
+                outline: "none",
+                overflow: "hidden",
+                transition: "border-color 0.15s, box-shadow 0.15s",
+                boxShadow: isActive ? `0 0 0 2px ${t.accent}33` : "none",
+                fontFamily: FONT,
+              }}
+            >
+              {/* Accent bar */}
+              <div style={{ height: 6, background: t.accent }} />
+
+              {/* Preview swatches */}
+              <div
+                style={{
+                  display: "flex",
+                  gap: 4,
+                  padding: "10px 10px 6px",
+                  justifyContent: "center",
+                }}
+              >
+                <div
+                  style={{
+                    width: 24, height: 24, borderRadius: 4,
+                    background: darkBg,
+                    border: `1px solid ${C.darkBorder}`,
+                  }}
+                />
+                <div
+                  style={{
+                    width: 24, height: 24, borderRadius: 4,
+                    background: lightBg,
+                    border: `1px solid ${C.darkBorder}`,
+                  }}
+                />
+                <div
+                  style={{
+                    width: 24, height: 24, borderRadius: "50%",
+                    background: t.accent,
+                  }}
+                />
+              </div>
+
+              {/* Label + check */}
+              <div
+                style={{
+                  padding: "4px 10px 10px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: isActive ? 600 : 400,
+                    color: isActive ? t.accent : C.darkText,
+                  }}
+                >
+                  {t.label}
+                </span>
+                {isActive && (
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <circle cx="6" cy="6" r="6" fill={t.accent} />
+                    <path d="M3.5 6L5.5 8L8.5 4.5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Label: Mode */}
+      <div
+        style={{
+          fontSize: 11,
+          color: C.darkMuted,
+          fontFamily: FONT,
+          fontWeight: 600,
+          marginBottom: 10,
+        }}
+      >
+        Mode
+      </div>
+
+      {/* Dark / Light toggle */}
+      <div
+        style={{
+          display: "inline-flex",
+          background: C.darkSurf,
+          borderRadius: RADIUS.pill,
+          padding: 3,
+          gap: 2,
+        }}
+      >
+        <button
+          onClick={() => { if (themeMode !== "dark") toggleMode(); }}
+          style={{
+            padding: "7px 20px",
+            border: "none",
+            cursor: "pointer",
+            fontFamily: FONT,
+            fontSize: 12,
+            fontWeight: 500,
+            background: themeMode === "dark" ? C.accent : "transparent",
+            color: themeMode === "dark" ? "#fff" : C.darkMuted,
+            borderRadius: RADIUS.pill,
+            transition: "background 0.14s, color 0.14s",
+            outline: "none",
+          }}
+        >
+          Dark
+        </button>
+        <button
+          onClick={() => { if (themeMode !== "light") toggleMode(); }}
+          style={{
+            padding: "7px 20px",
+            border: "none",
+            cursor: "pointer",
+            fontFamily: FONT,
+            fontSize: 12,
+            fontWeight: 500,
+            background: themeMode === "light" ? C.accent : "transparent",
+            color: themeMode === "light" ? "#fff" : C.darkMuted,
+            borderRadius: RADIUS.pill,
+            transition: "background 0.14s, color 0.14s",
+            outline: "none",
+          }}
+        >
+          Light
+        </button>
       </div>
     </div>
   );

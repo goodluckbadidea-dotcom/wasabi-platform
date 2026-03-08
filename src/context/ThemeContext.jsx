@@ -1,24 +1,47 @@
 // ─── Theme Context ───
-// Provides theme toggle + forces full re-render when theme changes.
+// Provides theme name + mode toggle, forces full re-render when theme changes.
 
 import React, { createContext, useContext, useState, useCallback } from "react";
-import { getTheme, applyTheme } from "../design/tokens.js";
+import { getThemeName, getThemeMode, applyTheme } from "../design/tokens.js";
 import { rebuildStyles } from "../design/styles.js";
 
-const ThemeContext = createContext({ theme: "dark", toggleTheme: () => {} });
+const ThemeContext = createContext({
+  themeName: "wasabi",
+  themeMode: "dark",
+  setThemeName: () => {},
+  toggleMode: () => {},
+  // Backward compat aliases
+  theme: "dark",
+  toggleTheme: () => {},
+});
 
 export function ThemeProvider({ children }) {
-  const [theme, setTheme] = useState(getTheme);
+  const [themeName, _setThemeName] = useState(getThemeName);
+  const [themeMode, _setThemeMode] = useState(getThemeMode);
 
-  const toggleTheme = useCallback(() => {
-    const next = theme === "dark" ? "light" : "dark";
-    applyTheme(next);
+  const setThemeName = useCallback((name) => {
+    applyTheme(name, themeMode);
     rebuildStyles();
-    setTheme(next);
-  }, [theme]);
+    _setThemeName(name);
+  }, [themeMode]);
+
+  const toggleMode = useCallback(() => {
+    const next = themeMode === "dark" ? "light" : "dark";
+    applyTheme(themeName, next);
+    rebuildStyles();
+    _setThemeMode(next);
+  }, [themeName, themeMode]);
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeContext.Provider value={{
+      themeName,
+      themeMode,
+      setThemeName,
+      toggleMode,
+      // Backward compat
+      theme: themeMode,
+      toggleTheme: toggleMode,
+    }}>
       {children}
     </ThemeContext.Provider>
   );
