@@ -33,7 +33,7 @@ export default function ConfirmDialog({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        animation: ANIM.fadeIn(),
+        animation: ANIM.backdropFade,
       }}
     >
       <div
@@ -46,7 +46,7 @@ export default function ConfirmDialog({
           maxWidth: 400,
           width: "90vw",
           boxShadow: SHADOW.dropdown,
-          animation: ANIM.scaleIn(),
+          animation: ANIM.modalPop(),
           fontFamily: FONT,
         }}
       >

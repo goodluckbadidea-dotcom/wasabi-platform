@@ -34,7 +34,7 @@ export default function Onboarding({ WasabiFlame, onStartBlank, onStartTemplate 
     }}>
       {/* Wasabi Flame */}
       <div style={{
-        animation: ANIM.fadeUp(0),
+        animation: ANIM.popIn(0),
         marginBottom: 24,
       }}>
         {WasabiFlame ? (
@@ -60,7 +60,7 @@ export default function Onboarding({ WasabiFlame, onStartBlank, onStartTemplate 
         color: C.darkText,
         letterSpacing: "-0.03em",
         marginBottom: 6,
-        animation: ANIM.fadeUp(0.05),
+        animation: ANIM.snapUp(0.05),
         textAlign: "center",
       }}>
         What do you want to build?
@@ -70,7 +70,7 @@ export default function Onboarding({ WasabiFlame, onStartBlank, onStartTemplate 
         fontSize: 14,
         color: C.darkMuted,
         marginBottom: 36,
-        animation: ANIM.fadeUp(0.1),
+        animation: ANIM.snapUp(0.08),
         textAlign: "center",
         maxWidth: 420,
         lineHeight: 1.5,
@@ -102,7 +102,7 @@ export default function Onboarding({ WasabiFlame, onStartBlank, onStartTemplate 
                 textAlign: "left",
                 transition: "all 0.15s",
                 fontFamily: FONT,
-                animation: ANIM.fadeUp(0.1 + i * 0.03),
+                animation: ANIM.settleIn(0.1 + i * 0.03),
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.borderColor = C.accent;
@@ -143,7 +143,7 @@ export default function Onboarding({ WasabiFlame, onStartBlank, onStartTemplate 
           fontFamily: FONT,
           cursor: "pointer",
           transition: "all 0.15s",
-          animation: ANIM.fadeUp(0.3),
+          animation: ANIM.settleIn(0.32),
         }}
         onMouseEnter={(e) => {
           e.target.style.background = C.accent + "14";

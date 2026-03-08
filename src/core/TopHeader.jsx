@@ -1,56 +1,41 @@
 // ─── Top Header Bar ───
-// WASABI branding left, centered page dropdown pill, matches original app header.
-// No emojis — all SVG icons.
+// Slim header: WASABI wordmark left, page-level controls right.
+// Page controls (edit, refresh rate, refresh) are passed in from App via PageShell.
 
-import React, { useState, useRef, useEffect } from "react";
+import React from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
-import { usePlatform } from "../context/PlatformContext.jsx";
-import { IconGear, IconChevronDown, IconPage, IconPlus, IconDiamond, IconFolder } from "../design/icons.jsx";
+import { S } from "../design/styles.js";
+import { ANIM } from "../design/animations.js";
+import { IconEdit, IconRefresh } from "../design/icons.jsx";
 
-// ── NavGlyph: icon for each page type in dropdown ──
-function NavGlyph({ type, size = 14, color }) {
-  if (type === "system") return <IconGear size={size} color={color} />;
-  if (type === "add") return <IconPlus size={size} color={color} />;
-  if (type === "folder") return <IconFolder size={size} color={color} />;
-  return <IconPage size={size} color={color} />;
-}
+const REFRESH_OPTIONS = [
+  { label: "15s", value: 15000 },
+  { label: "30s", value: 30000 },
+  { label: "1m", value: 60000 },
+  { label: "2m", value: 120000 },
+  { label: "5m", value: 300000 },
+  { label: "Manual", value: 0 },
+];
 
-export default function TopHeader({ onAddPage }) {
-  const { pages, activePage, setActivePage, pageTree, setActiveFolder } = usePlatform();
-  const [dropOpen, setDropOpen] = useState(false);
-  const pillRef = useRef(null);
-  const dropRef = useRef(null);
+const refreshSelectStyle = {
+  background: C.darkSurf2,
+  border: `1px solid ${C.darkBorder}`,
+  borderRadius: RADIUS.md,
+  padding: "3px 8px",
+  fontSize: 11,
+  fontFamily: FONT,
+  color: C.darkMuted,
+  cursor: "pointer",
+  outline: "none",
+  height: 26,
+};
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    if (!dropOpen) return;
-    const handler = (e) => {
-      if (
-        pillRef.current && !pillRef.current.contains(e.target) &&
-        dropRef.current && !dropRef.current.contains(e.target)
-      ) {
-        setDropOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [dropOpen]);
-
-  // Build nav sections: use pageTree for folder-grouped view
-  const currentPage = pages.find((p) => p.id === activePage);
-  // Find folder name for breadcrumb
-  const parentFolder = currentPage?.parentId
-    ? pages.find((p) => p.id === currentPage.parentId && p.type === "folder")
-    : null;
-  const currentLabel = currentPage
-    ? (parentFolder ? `${parentFolder.name} / ${currentPage.name}` : currentPage.name)
-    : activePage === "system"
-    ? "System Manager"
-    : activePage === "wasabi"
-    ? "New Page"
-    : pages.filter((p) => p.type !== "sub_page").length > 0
-    ? "Select Page"
-    : "Home";
+export default function TopHeader({
+  // Page controls (lifted from PageShell)
+  pageControls, // { recordCount, refreshMs, onRefreshChange, onRefresh, onOpenViewSettings, isStandaloneTable, showSync, onToggleSync }
+}) {
+  const controls = pageControls || {};
+  const showControls = !!pageControls;
 
   return (
     <header
@@ -82,317 +67,91 @@ export default function TopHeader({ onAddPage }) {
         </span>
       </div>
 
-      {/* Center: Section nav pill dropdown */}
-      <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)" }}>
-        <button
-          ref={pillRef}
-          onClick={() => setDropOpen((o) => !o)}
+      {/* Spacer */}
+      <div style={{ flex: 1 }} />
+
+      {/* Right: Page controls (only when viewing a page) */}
+      {showControls && (
+        <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 9,
-            background: C.darkSurf2,
-            border: `1px solid ${C.darkBorder}`,
-            borderRadius: 999,
-            padding: "7px 18px 7px 14px",
-            cursor: "pointer",
-            outline: "none",
-            userSelect: "none",
-            fontFamily: "'Outfit',sans-serif",
-            transition: "border-color 0.15s",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = C.darkMuted;
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = C.darkBorder;
+            gap: 10,
+            animation: ANIM.snapInRight(0.05),
           }}
         >
-          {/* Green indicator dot */}
-          <div
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              background: C.accent,
-              flexShrink: 0,
-            }}
-          />
-          <span
-            style={{
-              fontFamily: "'Outfit',sans-serif",
-              fontSize: 13,
-              fontWeight: 500,
-              color: C.darkText,
-              letterSpacing: "0.02em",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {currentLabel}
-          </span>
-          <svg
-            width="10"
-            height="6"
-            viewBox="0 0 10 6"
-            fill="none"
-            style={{
-              marginLeft: 2,
-              transition: "transform 0.15s",
-              transform: dropOpen ? "rotate(180deg)" : "rotate(0deg)",
-            }}
-          >
-            <path
-              d="M1 1L5 5L9 1"
-              stroke={C.darkMuted}
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-          </svg>
-        </button>
+          {/* Record count */}
+          {controls.recordCount != null && (
+            <span style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>
+              {controls.recordCount} record{controls.recordCount !== 1 ? "s" : ""}
+            </span>
+          )}
 
-        {/* Dropdown */}
-        {dropOpen && (
-          <>
-            {/* Backdrop */}
-            <div
-              onClick={() => setDropOpen(false)}
-              style={{ position: "fixed", inset: 0, zIndex: 299 }}
-            />
-            <div
-              ref={dropRef}
+          {/* Customize view */}
+          {controls.onOpenViewSettings && (
+            <button
+              onClick={controls.onOpenViewSettings}
               style={{
-                position: "absolute",
-                top: "calc(100% + 8px)",
-                left: "50%",
-                transform: "translateX(-50%)",
-                background: "#2D2D2D",
-                borderRadius: 16,
-                border: "1px solid #333",
-                boxShadow:
-                  "0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.10)",
-                minWidth: 220,
-                overflow: "hidden",
-                zIndex: 300,
-                animation: "navDrop 0.18s cubic-bezier(0.16,1,0.3,1)",
+                ...S.btnGhost,
+                fontSize: 11,
+                padding: "3px 8px",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
               }}
+              title="Customize view"
             >
-              {/* Wasabi gradient edge */}
-              <div
-                style={{
-                  height: 3,
-                  background: `linear-gradient(90deg, ${C.dark}, ${C.accent}, ${C.dark})`,
-                }}
-              />
-              <div style={{ padding: "6px 0 8px", maxHeight: 400, overflowY: "auto" }}>
-                {/* Folder-grouped pages */}
-                {pageTree.map((folder) => (
-                  <React.Fragment key={folder.id}>
-                    {/* Folder header (non-clickable label) */}
-                    <div style={{
-                      padding: "8px 18px 4px",
-                      fontSize: 10,
-                      fontWeight: 600,
-                      letterSpacing: "0.1em",
-                      textTransform: "uppercase",
-                      color: C.darkMuted,
-                      fontFamily: "'Outfit',sans-serif",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                    }}>
-                      <IconFolder size={10} color={C.darkBorder} />
-                      {folder.name}
-                    </div>
-                    {/* Pages in folder */}
-                    {(folder.children || []).map((page) => {
-                      const isActive = activePage === page.id;
-                      return (
-                        <button
-                          key={page.id}
-                          onClick={() => {
-                            setActivePage(page.id);
-                            setActiveFolder(folder.id);
-                            setDropOpen(false);
-                          }}
-                          style={{
-                            width: "100%",
-                            border: "none",
-                            cursor: "pointer",
-                            outline: "none",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 12,
-                            padding: "8px 18px 8px 32px",
-                            textAlign: "left",
-                            background: isActive ? C.accent + "18" : "transparent",
-                            transition: "background 0.1s",
-                            fontFamily: "'Outfit',sans-serif",
-                          }}
-                          onMouseEnter={(e) => {
-                            if (!isActive) e.currentTarget.style.background = C.darkSurf2;
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = isActive
-                              ? C.accent + "18"
-                              : "transparent";
-                          }}
-                        >
-                          <NavGlyph type="page" size={14} color={isActive ? C.accent : "#888"} />
-                          <span
-                            style={{
-                              fontSize: 13,
-                              fontWeight: isActive ? 600 : 400,
-                              color: isActive ? C.accent : "#E8E8E8",
-                              letterSpacing: "0.01em",
-                            }}
-                          >
-                            {page.name}
-                          </span>
-                          {isActive && (
-                            <div
-                              style={{
-                                marginLeft: "auto",
-                                width: 6,
-                                height: 6,
-                                borderRadius: "50%",
-                                background: C.accent,
-                                flexShrink: 0,
-                              }}
-                            />
-                          )}
-                        </button>
-                      );
-                    })}
-                    {(folder.children || []).length === 0 && (
-                      <div style={{
-                        padding: "4px 18px 4px 32px", fontSize: 11, color: C.darkBorder,
-                        fontFamily: "'Outfit',sans-serif",
-                      }}>
-                        No pages
-                      </div>
-                    )}
-                  </React.Fragment>
-                ))}
+              <IconEdit size={12} color={C.darkMuted} />
+            </button>
+          )}
 
-                {/* Separator */}
-                {pageTree.length > 0 && (
-                  <div
-                    style={{
-                      height: 1,
-                      background: C.darkBorder,
-                      margin: "6px 14px",
-                    }}
-                  />
-                )}
+          {/* Refresh rate */}
+          {controls.refreshMs != null && (
+            <select
+              style={refreshSelectStyle}
+              value={controls.refreshMs}
+              onChange={(e) => controls.onRefreshChange?.(Number(e.target.value))}
+            >
+              {REFRESH_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          )}
 
-                {/* Add page */}
-                <button
-                  onClick={() => {
-                    onAddPage?.();
-                    setDropOpen(false);
-                  }}
-                  style={{
-                    width: "100%",
-                    border: "none",
-                    cursor: "pointer",
-                    outline: "none",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: "10px 18px",
-                    textAlign: "left",
-                    background: "transparent",
-                    transition: "background 0.1s",
-                    fontFamily: "'Outfit',sans-serif",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = C.darkSurf2;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "transparent";
-                  }}
-                >
-                  <IconPlus size={14} color={C.darkMuted} />
-                  <span
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 400,
-                      color: C.darkMuted,
-                      letterSpacing: "0.01em",
-                    }}
-                  >
-                    New Page
-                  </span>
-                </button>
+          {/* Sync button (standalone D1 tables only) */}
+          {controls.isStandaloneTable && controls.onToggleSync && (
+            <button
+              onClick={controls.onToggleSync}
+              style={{
+                ...S.btnGhost,
+                fontSize: 10,
+                padding: "3px 8px",
+                background: controls.showSync ? C.accent + "22" : "transparent",
+                border: controls.showSync ? `1px solid ${C.accent}44` : "1px solid transparent",
+                color: controls.showSync ? C.accent : C.darkMuted,
+              }}
+              title="Notion sync settings"
+            >
+              Sync
+            </button>
+          )}
 
-                {/* System */}
-                <button
-                  onClick={() => {
-                    setActivePage("system");
-                    setDropOpen(false);
-                  }}
-                  style={{
-                    width: "100%",
-                    border: "none",
-                    cursor: "pointer",
-                    outline: "none",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: "10px 18px",
-                    textAlign: "left",
-                    background:
-                      activePage === "system" ? C.accent + "18" : "transparent",
-                    transition: "background 0.1s",
-                    fontFamily: "'Outfit',sans-serif",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (activePage !== "system")
-                      e.currentTarget.style.background = C.darkSurf2;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background =
-                      activePage === "system"
-                        ? C.accent + "18"
-                        : "transparent";
-                  }}
-                >
-                  <IconGear
-                    size={14}
-                    color={activePage === "system" ? C.accent : "#888"}
-                  />
-                  <span
-                    style={{
-                      fontSize: 13,
-                      fontWeight: activePage === "system" ? 600 : 400,
-                      color:
-                        activePage === "system" ? C.accent : "#E8E8E8",
-                      letterSpacing: "0.01em",
-                    }}
-                  >
-                    System Manager
-                  </span>
-                  {activePage === "system" && (
-                    <div
-                      style={{
-                        marginLeft: "auto",
-                        width: 6,
-                        height: 6,
-                        borderRadius: "50%",
-                        background: C.accent,
-                        flexShrink: 0,
-                      }}
-                    />
-                  )}
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Right spacer */}
-      <div style={{ marginLeft: "auto" }} />
+          {/* Refresh */}
+          {controls.onRefresh && (
+            <button
+              onClick={controls.onRefresh}
+              style={{
+                ...S.btnGhost,
+                fontSize: 12,
+                padding: "4px 8px",
+              }}
+              title="Refresh"
+            >
+              <IconRefresh size={14} color={C.darkMuted} />
+            </button>
+          )}
+        </div>
+      )}
     </header>
   );
 }

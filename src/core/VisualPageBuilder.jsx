@@ -5,8 +5,9 @@
 import React, { useState, useCallback, useMemo } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { S } from "../design/styles.js";
+import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { savePageConfig, createDocumentPageConfig, createFolderConfig, createTableConfig, createLinkedNotionConfig, createStandaloneDocConfig, createSheetConfig } from "../config/pageConfig.js";
+import { savePageConfig, createDocumentPageConfig, createFolderConfig, createTableConfig, createLinkedNotionConfig, createStandaloneDocConfig, createSheetConfig, createLinkedMondayConfig } from "../config/pageConfig.js";
 import { autoDetectViews } from "../notion/schema.js";
 import { createSubpage, ensurePageActive } from "../notion/client.js";
 import DatabaseBrowser from "./DatabaseBrowser.jsx";
@@ -287,6 +288,21 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
       return [...prev, newView];
     });
   }, [connectedDbs]);
+
+  // Handle connecting a Monday.com board — creates and saves page immediately
+  const handleMondayConnect = useCallback(async ({ boardId, name, columns }) => {
+    try {
+      const config = {
+        ...createLinkedMondayConfig(name || "Monday Board", pageIcon, boardId),
+        parentId: subPageParent || folderId || null,
+      };
+      const pageId = await savePageConfig(config);
+      addPage({ ...config, id: pageId });
+      setSuccess(true);
+    } catch (err) {
+      setError(err.message || "Failed to link Monday board");
+    }
+  }, [pageIcon, addPage, subPageParent, folderId]);
 
   // Apply auto-detected views — always ensure Table is first
   const applySuggestedViews = useCallback(() => {
@@ -574,7 +590,7 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
         </div>
         <div style={{ ...vs.body, alignItems: "center", justifyContent: "center" }}>
           <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fill, minmax(180px, 1fr))`, gap: 16, maxWidth: 960, width: "100%" }}>
-            {typeCards.map((card) => {
+            {typeCards.map((card, cardIdx) => {
               const CardIcon = card.icon;
               return (
                 <div
@@ -587,6 +603,7 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
                     cursor: "pointer",
                     transition: "all 0.15s",
                     textAlign: "center",
+                    animation: ANIM.snapUp(cardIdx * 0.04),
                   }}
                   onClick={() => setPageType(card.type)}
                   onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.background = `${C.accent}08`; }}
@@ -1086,6 +1103,7 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
           <DatabaseBrowser
             onConnect={handleDbConnect}
             onConnectSheet={handleSheetConnect}
+            onConnectMonday={handleMondayConnect}
             connectedIds={connectedIds}
             multi={true}
           />

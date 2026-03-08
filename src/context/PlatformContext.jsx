@@ -4,7 +4,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { loadPlatformIds, savePlatformIds } from "../config/setup.js";
-import { loadCachedConfigs, loadPageConfigs, validatePageConfigs, archivePageConfig, savePageConfig } from "../config/pageConfig.js";
+import { loadCachedConfigs, loadPageConfigs, validatePageConfigs, archivePageConfig, savePageConfig, createDashboardConfig } from "../config/pageConfig.js";
 import { getConnection, saveConnection, getConnections, initDatabase } from "../lib/api.js";
 
 const PlatformContext = createContext(null);
@@ -38,29 +38,40 @@ export function PlatformProvider({ children }) {
 
   // ─── Pages ───
   const [pages, setPages] = useState(() => loadCachedConfigs());
-  const [activePage, setActivePage] = useState(null); // page id, "wasabi", "system", or null (home)
+  const [activePage, setActivePage] = useState(null); // page id, "wasabi", "system", "dashboard", or null (home)
   const [activeFolder, setActiveFolder] = useState(null); // folder id or null
-  const [activeSubPage, setActiveSubPage] = useState(null); // sub-page id or null (show parent)
 
-  // ─── Page tree (hierarchy) ───
+  // ─── Page tree (hierarchy, max 3 levels of folders) ───
   const pageTree = useMemo(() => {
     const folderList = pages.filter((p) => p.type === "folder");
-    const pageList = pages.filter((p) => p.type === "page" || !p.type);
-    const subList = pages.filter((p) => p.type === "sub_page");
+    const pageList = pages.filter((p) => (p.type === "page" || !p.type) && p.page_type !== "dashboard" && p.pageType !== "dashboard");
+    const folderIdSet = new Set(folderList.map((f) => f.id));
 
-    const tree = folderList.map((folder) => ({
-      ...folder,
-      children: pageList
-        .filter((p) => p.parentId === folder.id)
-        .map((page) => ({
-          ...page,
-          children: subList.filter((sp) => sp.parentId === page.id),
-        })),
-    }));
+    // Build recursive folder tree (max 3 levels)
+    function buildFolderTree(parentId, depth) {
+      if (depth >= 3) return [];
+      return folderList
+        .filter((f) => (parentId ? f.parentId === parentId : !f.parentId || !folderIdSet.has(f.parentId)))
+        .map((folder) => ({
+          ...folder,
+          depth,
+          children: pageList.filter((p) => p.parentId === folder.id),
+          childFolders: buildFolderTree(folder.id, depth + 1),
+        }));
+    }
+
+    const tree = buildFolderTree(null, 0);
 
     // Orphan pages → virtual "Uncategorized" folder
-    const assigned = new Set(tree.flatMap((f) => f.children.map((p) => p.id)));
-    const orphans = pageList.filter((p) => !assigned.has(p.id));
+    const allAssignedPageIds = new Set();
+    function collectAssigned(nodes) {
+      for (const node of nodes) {
+        for (const child of (node.children || [])) allAssignedPageIds.add(child.id);
+        collectAssigned(node.childFolders || []);
+      }
+    }
+    collectAssigned(tree);
+    const orphans = pageList.filter((p) => !allAssignedPageIds.has(p.id));
     if (orphans.length > 0) {
       tree.push({
         id: "__uncategorized__",
@@ -68,10 +79,9 @@ export function PlatformProvider({ children }) {
         icon: "folder",
         type: "folder",
         virtual: true,
-        children: orphans.map((p) => ({
-          ...p,
-          children: subList.filter((sp) => sp.parentId === p.id),
-        })),
+        depth: 0,
+        children: orphans,
+        childFolders: [],
       });
     }
 
@@ -79,6 +89,12 @@ export function PlatformProvider({ children }) {
   }, [pages]);
 
   const folders = useMemo(() => pages.filter((p) => p.type === "folder"), [pages]);
+
+  // Global dashboard config
+  const globalDashboard = useMemo(
+    () => pages.find((p) => (p.page_type === "dashboard" || p.pageType === "dashboard") && p.isGlobal) || null,
+    [pages]
+  );
 
   const getFolderPages = useCallback(
     (folderId) => {
@@ -88,13 +104,8 @@ export function PlatformProvider({ children }) {
           (p) => (p.type === "page" || !p.type) && (!p.parentId || !folderIds.has(p.parentId))
         );
       }
-      return pages.filter((p) => p.parentId === folderId && p.type !== "sub_page" && p.type !== "folder");
+      return pages.filter((p) => p.parentId === folderId && p.type !== "folder");
     },
-    [pages]
-  );
-
-  const getSubPages = useCallback(
-    (pageId) => pages.filter((p) => p.parentId === pageId && p.type === "sub_page"),
     [pages]
   );
 
@@ -131,6 +142,7 @@ export function PlatformProvider({ children }) {
 
         const notionConn = connections.find((c) => c.key === "notion");
         const claudeConn = connections.find((c) => c.key === "claude");
+        const mondayConn = connections.find((c) => c.key === "monday");
 
         setUser((prev) => {
           const updated = { ...(prev || { workerUrl: workerConnection.workerUrl }) };
@@ -142,6 +154,10 @@ export function PlatformProvider({ children }) {
           }
           if (claudeConn?.value && updated.claudeKey !== claudeConn.value) {
             updated.claudeKey = claudeConn.value;
+            changed = true;
+          }
+          if (mondayConn?.value && updated.mondayKey !== mondayConn.value) {
+            updated.mondayKey = mondayConn.value;
             changed = true;
           }
           // Ensure workerUrl is always set
@@ -171,26 +187,42 @@ export function PlatformProvider({ children }) {
 
     loadPageConfigs()
       .then(async (configs) => {
-        if (configs.length > 0) {
-          setPages(configs);
+        let finalConfigs = configs.length > 0 ? configs : [];
 
-          // Background validation: detect and remove stale Notion-linked pages
-          if (user?.workerUrl && user?.notionKey) {
-            try {
-              const { valid, stale } = await validatePageConfigs(user.workerUrl, user.notionKey, configs);
-              if (stale.length > 0) {
-                setPages(valid);
-                try { localStorage.setItem("wasabi_page_configs", JSON.stringify(valid)); } catch {}
-                for (const s of stale) {
-                  archivePageConfig(s.id).catch(() => {});
-                }
-                console.log(`[Platform] Cleaned up ${stale.length} stale page config(s)`);
+        // Background validation: detect and remove stale Notion-linked pages
+        if (finalConfigs.length > 0 && user?.workerUrl && user?.notionKey) {
+          try {
+            const { valid, stale } = await validatePageConfigs(user.workerUrl, user.notionKey, finalConfigs);
+            if (stale.length > 0) {
+              finalConfigs = valid;
+              try { localStorage.setItem("wasabi_page_configs", JSON.stringify(valid)); } catch {}
+              for (const s of stale) {
+                archivePageConfig(s.id).catch(() => {});
               }
-            } catch (err) {
-              console.warn("[Platform] Page validation failed:", err);
+              console.log(`[Platform] Cleaned up ${stale.length} stale page config(s)`);
             }
+          } catch (err) {
+            console.warn("[Platform] Page validation failed:", err);
           }
         }
+
+        // Auto-create global dashboard if one doesn't exist
+        const hasGlobalDashboard = finalConfigs.some(
+          (c) => (c.page_type === "dashboard" || c.pageType === "dashboard") && c.isGlobal
+        );
+        if (!hasGlobalDashboard) {
+          try {
+            const dashConfig = createDashboardConfig("Dashboard", true);
+            const id = await savePageConfig(dashConfig);
+            const newDash = { ...dashConfig, id };
+            finalConfigs = [...finalConfigs, newDash];
+            console.log("[Platform] Auto-created global dashboard");
+          } catch (err) {
+            console.warn("[Platform] Failed to auto-create global dashboard:", err);
+          }
+        }
+
+        setPages(finalConfigs);
       })
       .catch((err) => {
         console.warn("Failed to sync page configs:", err);
@@ -250,6 +282,12 @@ export function PlatformProvider({ children }) {
         saveUserKeys(updated);
         return updated;
       });
+    } else if (key === "monday") {
+      setUser((prev) => {
+        const updated = { ...prev, mondayKey: value };
+        saveUserKeys(updated);
+        return updated;
+      });
     }
   }, []);
 
@@ -266,9 +304,6 @@ export function PlatformProvider({ children }) {
       // Enter the new folder (stay on home, sidebar shows folder contents)
       setActiveFolder(pageConfig.id);
       setActivePage(null);
-    } else if (pageConfig.type === "sub_page") {
-      // Don't navigate away — just show the new sub-page pill
-      setActiveSubPage(pageConfig.id);
     } else {
       // Regular page — navigate to it
       setActivePage(pageConfig.id);
@@ -290,8 +325,22 @@ export function PlatformProvider({ children }) {
 
   const removePage = useCallback((id) => {
     setPages((prev) => {
-      // Also remove children (pages in folder, sub-pages in page)
-      const updated = prev.filter((p) => p.id !== id && p.parentId !== id);
+      // Also remove children (pages in folder)
+      let updated = prev.filter((p) => p.id !== id && p.parentId !== id);
+
+      // Clean up dashboard widgets that reference the deleted page
+      updated = updated.map((p) => {
+        if ((p.page_type === "dashboard" || p.pageType === "dashboard") && p.widgets?.length) {
+          const cleanedWidgets = p.widgets.filter((w) => w.pageId !== id);
+          if (cleanedWidgets.length !== p.widgets.length) {
+            const cleaned = { ...p, widgets: cleanedWidgets };
+            savePageConfig(cleaned).catch(() => {});
+            return cleaned;
+          }
+        }
+        return p;
+      });
+
       try {
         localStorage.setItem("wasabi_page_configs", JSON.stringify(updated));
       } catch {}
@@ -299,7 +348,6 @@ export function PlatformProvider({ children }) {
     });
     setActivePage((curr) => (curr === id ? null : curr));
     setActiveFolder((curr) => (curr === id ? null : curr));
-    setActiveSubPage((curr) => (curr === id ? null : curr));
   }, []);
 
   const addToQueue = useCallback((item) => {
@@ -355,12 +403,10 @@ export function PlatformProvider({ children }) {
     // Hierarchy
     activeFolder,
     setActiveFolder,
-    activeSubPage,
-    setActiveSubPage,
     pageTree,
     folders,
     getFolderPages,
-    getSubPages,
+    globalDashboard,
 
     // Log (batch queue)
     batchQueue,

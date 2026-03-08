@@ -101,7 +101,7 @@ export default function SheetUrlDialog({ onConfirm, onCancel }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        animation: ANIM.fadeIn(),
+        animation: ANIM.backdropFade,
       }}
     >
       <div
@@ -114,7 +114,7 @@ export default function SheetUrlDialog({ onConfirm, onCancel }) {
           maxWidth: 480,
           width: "90vw",
           boxShadow: SHADOW.dropdown,
-          animation: ANIM.scaleIn(),
+          animation: ANIM.modalPop(),
           fontFamily: FONT,
         }}
       >

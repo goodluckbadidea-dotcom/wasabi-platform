@@ -118,7 +118,7 @@ export default function ChatUI({
             ...S.msgOuter,
             padding: compact ? "4px 12px" : "4px 20px",
             justifyContent: msg.role === "user" ? "flex-end" : "center",
-            animation: ANIM.fadeUp(0.05),
+            animation: ANIM.settleIn(0.05),
           }}>
             {msg.role === "user" ? (
               <div style={{ maxWidth: maxMsgW, width: "100%", display: "flex", justifyContent: "flex-end" }}>
@@ -156,7 +156,7 @@ export default function ChatUI({
 
         {/* Thinking indicator */}
         {isLoading && (
-          <div style={{ ...S.msgOuter, animation: ANIM.fadeUp(), padding: compact ? "4px 12px" : "4px 20px" }}>
+          <div style={{ ...S.msgOuter, animation: ANIM.settleIn(), padding: compact ? "4px 12px" : "4px 20px" }}>
             <div style={{ ...S.msgInner, maxWidth: maxMsgW }}>
               {!compact && (
                 <div style={{
@@ -183,7 +183,7 @@ export default function ChatUI({
           <div style={{
             ...S.msgOuter,
             padding: compact ? "4px 12px" : "4px 20px",
-            animation: ANIM.fadeUp(0.1),
+            animation: ANIM.settleIn(0.1),
           }}>
             <div style={{
               maxWidth: maxMsgW,
@@ -199,7 +199,7 @@ export default function ChatUI({
                   onClick={() => onChoice?.(choice)}
                   style={{
                     ...S.btnChoice,
-                    animation: ANIM.fadeUp(0.05 + i * 0.03),
+                    animation: ANIM.settleIn(0.05 + i * 0.03),
                   }}
                   onMouseEnter={(e) => {
                     e.target.style.background = C.accent + "28";

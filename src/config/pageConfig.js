@@ -241,6 +241,24 @@ export function createStandaloneDocConfig(name, icon) {
 }
 
 /**
+ * Create a dashboard page config (dot-grid widget layout).
+ */
+export function createDashboardConfig(name, isGlobal = false) {
+  return {
+    name: name || "Dashboard",
+    icon: "dashboard",
+    type: "page",
+    page_type: "dashboard",
+    pageType: "dashboard",
+    isGlobal,
+    databaseIds: [],
+    views: [],
+    widgets: [],
+    refreshInterval: 0,
+  };
+}
+
+/**
  * Create a sheet (spreadsheet grid) page config.
  */
 export function createSheetConfig(name, icon, colCount = 26, rowCount = 100) {
@@ -290,7 +308,7 @@ function d1ToFrontend(d1Page) {
     parentId: d1Page.parent_id || null,
     type,
     page_type: pt,
-    pageType: ["document", "linked_sheet", "database", "linked_notion", "sheet"].includes(pt) ? pt : undefined,
+    pageType: ["document", "linked_sheet", "database", "linked_notion", "sheet", "dashboard"].includes(pt) ? pt : undefined,
     sort_order: d1Page.sort_order || 0,
     ...config,
   };

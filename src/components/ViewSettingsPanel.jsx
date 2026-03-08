@@ -5,6 +5,7 @@
 import React, { useState, useMemo, useCallback } from "react";
 import { C, FONT, RADIUS, SHADOW, VIEW_PALETTE } from "../design/tokens.js";
 import { IconClose, IconGear } from "../design/icons.jsx";
+import { ANIM } from "../design/animations.js";
 
 // ─── Section Header ───
 
@@ -262,6 +263,7 @@ export default function ViewSettingsPanel({
           top: 0, left: 0, right: 0, bottom: 0,
           background: "rgba(0,0,0,0.35)",
           zIndex: 199,
+          animation: ANIM.backdropFade,
         }}
       />
 
@@ -279,6 +281,7 @@ export default function ViewSettingsPanel({
         flexDirection: "column",
         boxShadow: SHADOW.dropdown,
         fontFamily: FONT,
+        animation: ANIM.snapInRight(),
       }}>
         {/* Header */}
         <div style={{

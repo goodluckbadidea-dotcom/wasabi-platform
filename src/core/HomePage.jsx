@@ -109,7 +109,7 @@ const hs = {
     cursor: "pointer",
     transition: "all 0.15s",
     fontFamily: FONT,
-    animation: ANIM.fadeUp(delay),
+    animation: ANIM.settleIn(delay),
     position: "relative",
     display: "flex",
     flexDirection: "column",
@@ -168,7 +168,7 @@ const hs = {
     cursor: "pointer",
     transition: "all 0.15s",
     fontFamily: FONT,
-    animation: ANIM.fadeUp(delay),
+    animation: ANIM.settleIn(delay),
     display: "flex",
     alignItems: "center",
     gap: 12,
@@ -319,14 +319,14 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
     <div style={hs.wrapper}>
       {/* ── Hero ── */}
       <div style={hs.hero}>
-        <div style={{ animation: ANIM.fadeUp(0) }}>
+        <div style={{ animation: ANIM.popIn(0) }}>
           <WasabiFlame size={56} />
         </div>
         <div style={hs.heroText}>
-          <div style={{ ...hs.heroTitle, animation: ANIM.fadeUp(0.03) }}>
+          <div style={{ ...hs.heroTitle, animation: ANIM.snapUp(0.03) }}>
             {greeting}
           </div>
-          <div style={{ ...hs.heroSub, animation: ANIM.fadeUp(0.06) }}>
+          <div style={{ ...hs.heroSub, animation: ANIM.snapUp(0.06) }}>
             {visiblePages.length === 0
               ? "Welcome to Wasabi. Let's build your first page."
               : `${folders.length} folder${folders.length !== 1 ? "s" : ""} \u00b7 ${visiblePages.length} page${visiblePages.length !== 1 ? "s" : ""} \u00b7 ${totalViews} view${totalViews !== 1 ? "s" : ""}`}
@@ -470,19 +470,19 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
             <span style={hs.sectionTitle}>Overview</span>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12 }}>
-            <div style={{ ...hs.statCard, animation: ANIM.fadeUp(0.1) }}>
+            <div style={{ ...hs.statCard, animation: ANIM.settleIn(0.1) }}>
               <span style={hs.statValue}>{folders.length}</span>
               <span style={hs.statLabel}>Folders</span>
             </div>
-            <div style={{ ...hs.statCard, animation: ANIM.fadeUp(0.12) }}>
+            <div style={{ ...hs.statCard, animation: ANIM.settleIn(0.13) }}>
               <span style={hs.statValue}>{visiblePages.length}</span>
               <span style={hs.statLabel}>Pages</span>
             </div>
-            <div style={{ ...hs.statCard, animation: ANIM.fadeUp(0.14) }}>
+            <div style={{ ...hs.statCard, animation: ANIM.settleIn(0.16) }}>
               <span style={hs.statValue}>{totalViews}</span>
               <span style={hs.statLabel}>Views</span>
             </div>
-            <div style={{ ...hs.statCard, animation: ANIM.fadeUp(0.16) }}>
+            <div style={{ ...hs.statCard, animation: ANIM.settleIn(0.19) }}>
               <span style={hs.statValue}>{new Set(visiblePages.flatMap((p) => p.databaseIds || [p.databaseId]).filter(Boolean)).size}</span>
               <span style={hs.statLabel}>Databases</span>
             </div>
@@ -496,7 +496,7 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
           display: "flex",
           gap: 16,
           flexWrap: "wrap",
-          animation: ANIM.fadeUp(0.2),
+          animation: ANIM.settleIn(0.22),
         }}>
           {[
             { keys: "\u2318K", label: "Search" },

@@ -10,8 +10,9 @@ import { detectSchema, classifyProperties } from "../notion/schema.js";
 import { createDatabase, createPage, ensurePageActive } from "../notion/client.js";
 import { getConnection } from "../lib/api.js";
 import { buildProp } from "../notion/properties.js";
-import { IconSearch, IconDatabase, IconCheck, IconPlus, IconClose, IconTrash, IconSheet } from "../design/icons.jsx";
+import { IconSearch, IconDatabase, IconCheck, IconPlus, IconClose, IconTrash, IconSheet, IconBolt } from "../design/icons.jsx";
 import { detectSheetType, validateSheetUrl } from "../sheets/sheetClient.js";
+import { fetchBoards } from "../monday/client.js";
 
 // ── Styles ──
 const ds = {
@@ -256,11 +257,12 @@ function parseSearchResults(results) {
 export default function DatabaseBrowser({
   onConnect,
   onConnectSheet,
+  onConnectMonday,
   connectedIds = [],
   multi = true,
 }) {
   const { user, platformIds } = usePlatform();
-  const [mode, setMode] = useState("browse"); // "browse" | "paste" | "create"
+  const [mode, setMode] = useState("browse"); // "browse" | "paste" | "create" | "monday"
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -286,6 +288,11 @@ export default function DatabaseBrowser({
   const [uploadError, setUploadError] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(null); // { done, total }
   const [dragOver, setDragOver] = useState(false);
+
+  // Monday mode
+  const [mondayBoards, setMondayBoards] = useState([]);
+  const [mondayLoading, setMondayLoading] = useState(false);
+  const [mondayError, setMondayError] = useState(null);
 
   // Schema preview
   const [previewDb, setPreviewDb] = useState(null); // { id, title, schema }
@@ -341,6 +348,29 @@ export default function DatabaseBrowser({
       searchDatabases("");
     }
   }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch Monday boards when switching to monday tab
+  useEffect(() => {
+    if (mode !== "monday") return;
+    const mondayKey = user?.mondayKey;
+    if (!mondayKey) {
+      setMondayError("No Monday.com API key configured. Add it in System Manager → Connections.");
+      setMondayBoards([]);
+      return;
+    }
+    setMondayLoading(true);
+    setMondayError(null);
+    fetchBoards(mondayKey)
+      .then((boards) => {
+        setMondayBoards(boards || []);
+        if (boards.length === 0) setMondayError("No boards found. Check your Monday.com API key permissions.");
+      })
+      .catch((err) => {
+        setMondayError(err.message || "Failed to fetch Monday.com boards");
+        setMondayBoards([]);
+      })
+      .finally(() => setMondayLoading(false));
+  }, [mode, user?.mondayKey]);
 
   // Debounced search as user types
   const searchTimeout = useRef(null);
@@ -463,6 +493,9 @@ export default function DatabaseBrowser({
         </button>
         <button style={ds.tab(mode === "upload")} onClick={() => setMode("upload")}>
           Upload File
+        </button>
+        <button style={ds.tab(mode === "monday")} onClick={() => setMode("monday")}>
+          Monday.com
         </button>
       </div>
 
@@ -770,6 +803,67 @@ export default function DatabaseBrowser({
             }
           }}
         />
+      )}
+
+      {/* ── Monday.com Mode ── */}
+      {mode === "monday" && (
+        <>
+          {mondayLoading && (
+            <div style={ds.emptyState}>Loading Monday.com boards...</div>
+          )}
+
+          {!mondayLoading && mondayError && (
+            <div style={ds.emptyState}>
+              <div style={{ color: "#E05252", marginBottom: 8 }}>{mondayError}</div>
+              {!user?.mondayKey && (
+                <div style={{ fontSize: 11, color: C.darkMuted, lineHeight: 1.5 }}>
+                  Go to <strong>System Manager → Connections</strong> to add your Monday.com API key.
+                </div>
+              )}
+            </div>
+          )}
+
+          {!mondayLoading && !mondayError && mondayBoards.length === 0 && (
+            <div style={ds.emptyState}>No boards found.</div>
+          )}
+
+          {!mondayLoading && mondayBoards.length > 0 && (
+            <div style={ds.resultsArea}>
+              {mondayBoards.map((board) => {
+                const colCount = board.columns?.length || 0;
+                return (
+                  <div
+                    key={board.id}
+                    style={ds.dbCard(false)}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.darkMuted; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
+                  >
+                    <div style={ds.dbIcon}>
+                      <IconBolt size={18} color={C.accent} />
+                    </div>
+                    <div style={ds.dbInfo}>
+                      <div style={ds.dbTitle}>{board.name}</div>
+                      <div style={ds.dbMeta}>{colCount} columns</div>
+                    </div>
+                    <button
+                      style={ds.connectBtn}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onConnectMonday) {
+                          onConnectMonday({ boardId: board.id, name: board.name, columns: board.columns });
+                        }
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.85"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}
+                    >
+                      Connect Board
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
       {/* ── Create Mode ── */}

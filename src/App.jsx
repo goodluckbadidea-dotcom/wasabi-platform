@@ -1,13 +1,13 @@
 // ─── Wasabi Platform App Shell ───
 // Root component: auth gate → layout → routing.
 // Layout: TopHeader + [WasabiPanel | Sidebar | Content]
-// Matches original app: top header with page dropdown, left sidebar with sub-nav,
-// collapsible Wasabi panel (Log/Chat/Notifications), flame at sidebar bottom.
+// Top header: WASABI wordmark + page-level controls (right side).
+// Sidebar: FolderDropdown at top, page list, bottom actions.
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { PlatformProvider, usePlatform } from "./context/PlatformContext.jsx";
 import { LinksProvider } from "./context/LinksContext.jsx";
-import { injectAnimations } from "./design/animations.js";
+import { injectAnimations, ANIM } from "./design/animations.js";
 import { S } from "./design/styles.js";
 import { C } from "./design/tokens.js";
 
@@ -23,6 +23,7 @@ import WasabiOrb from "./core/WasabiOrb.jsx";
 import SystemManager from "./core/SystemManager.jsx";
 import AutomationPage from "./core/AutomationPage.jsx";
 import HomePage from "./core/HomePage.jsx";
+import Dashboard from "./core/Dashboard.jsx";
 import { ErrorBoundary } from "./core/ErrorBoundary.jsx";
 import { createAutomationEngine } from "./agent/automations.js";
 import { useKeyboardShortcuts } from "./utils/useKeyboardShortcuts.js";
@@ -43,9 +44,8 @@ function AppContent() {
     setActivePage,
     activeFolder,
     setActiveFolder,
-    activeSubPage,
-    setActiveSubPage,
     getFolderPages,
+    globalDashboard,
   } = usePlatform();
 
   // ── UI State ──
@@ -54,6 +54,16 @@ function AppContent() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [viewStates, setViewStates] = useState({}); // { [pageId]: activeViewIndex }
   const [builderTemplate, setBuilderTemplate] = useState(null);
+  const [pageControls, setPageControls] = useState(null); // lifted from PageShell for TopHeader
+
+  // ── Clear page controls when navigating away ──
+  const prevActivePage = useRef(activePage);
+  useEffect(() => {
+    if (prevActivePage.current !== activePage) {
+      setPageControls(null);
+      prevActivePage.current = activePage;
+    }
+  }, [activePage]);
 
   // ── Automation Engine ──
   const engineRef = useRef(null);
@@ -142,7 +152,7 @@ function AppContent() {
       shortcut: "mod+up",
       description: "Previous page",
       handler: () => {
-        const folderPages = activeFolder ? getFolderPages(activeFolder) : pages.filter((p) => p.type !== "folder" && p.type !== "sub_page");
+        const folderPages = activeFolder ? getFolderPages(activeFolder) : pages.filter((p) => p.type !== "folder");
         const idx = folderPages.findIndex((p) => p.id === activePage);
         if (idx > 0) setActivePage(folderPages[idx - 1].id);
       },
@@ -151,7 +161,7 @@ function AppContent() {
       shortcut: "mod+down",
       description: "Next page",
       handler: () => {
-        const folderPages = activeFolder ? getFolderPages(activeFolder) : pages.filter((p) => p.type !== "folder" && p.type !== "sub_page");
+        const folderPages = activeFolder ? getFolderPages(activeFolder) : pages.filter((p) => p.type !== "folder");
         const idx = folderPages.findIndex((p) => p.id === activePage);
         if (idx < folderPages.length - 1) setActivePage(folderPages[idx + 1].id);
       },
@@ -166,18 +176,16 @@ function AppContent() {
   // Find active page config
   const activePageConfig = pages.find((p) => p.id === activePage);
 
-  // Get/set active view for current page, sub-page, or automations pseudo-page
-  const viewKey = activeSubPage || (activePageConfig ? activePageConfig.id : null);
+  // Get/set active view for current page
   const activeViewIndex = activePageConfig
-    ? viewStates[viewKey] ?? 0
+    ? viewStates[activePageConfig.id] ?? 0
     : activePage === "automations"
     ? viewStates["automations"] ?? 0
     : 0;
 
   const setActiveView = (idx) => {
     if (activePageConfig) {
-      const key = activeSubPage || activePageConfig.id;
-      setViewStates((prev) => ({ ...prev, [key]: idx }));
+      setViewStates((prev) => ({ ...prev, [activePageConfig.id]: idx }));
     } else if (activePage === "automations") {
       setViewStates((prev) => ({ ...prev, automations: idx }));
     }
@@ -198,6 +206,26 @@ function AppContent() {
         <PageBuilder
           initialTemplate={builderTemplate}
           WasabiFlameIcon={WasabiFlameIcon}
+        />
+      );
+    }
+
+    // Global dashboard
+    if (activePage === "dashboard" && globalDashboard) {
+      return (
+        <Dashboard
+          dashboardConfig={globalDashboard}
+          isGlobal
+        />
+      );
+    }
+
+    // Dashboard page type (folder-level dashboards)
+    if (activePageConfig && (activePageConfig.page_type === "dashboard" || activePageConfig.pageType === "dashboard")) {
+      return (
+        <Dashboard
+          dashboardConfig={activePageConfig}
+          isGlobal={!!activePageConfig.isGlobal}
         />
       );
     }
@@ -226,7 +254,7 @@ function AppContent() {
           pageConfig={activePageConfig}
           activeViewIndex={activeViewIndex}
           onSetActiveView={setActiveView}
-          onAddSubPage={() => handleAddPage()}
+          onRegisterControls={setPageControls}
         />
       );
     }
@@ -269,7 +297,7 @@ function AppContent() {
       )}
 
       {/* ── Top Header Bar ── */}
-      <TopHeader onAddPage={handleAddPage} />
+      <TopHeader pageControls={pageControls} />
 
       {/* ── Main Row: [Wasabi Panel] [Sidebar] [Content] ── */}
       <div
@@ -282,11 +310,13 @@ function AppContent() {
       >
         {/* Wasabi Panel (collapsible, left of sidebar) */}
         {wasabiPanelOpen && (
-          <WasabiPanel
-            onClose={() => setWasabiPanelOpen(false)}
-            isThinking={false}
-            activePageConfig={activePageConfig}
-          />
+          <div style={{ animation: ANIM.snapInLeft() }}>
+            <WasabiPanel
+              onClose={() => setWasabiPanelOpen(false)}
+              isThinking={false}
+              activePageConfig={activePageConfig}
+            />
+          </div>
         )}
 
         {/* Gradient bridge line between sidebar and content */}
@@ -318,12 +348,14 @@ function AppContent() {
 
         {/* Main Content */}
         <div
+          key={activePage || "__home__"}
           style={{
             flex: 1,
             display: "flex",
             flexDirection: "column",
             overflow: "hidden",
             minWidth: 0,
+            animation: ANIM.contentSwap(),
           }}
         >
           {renderContent()}

@@ -152,14 +152,14 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
     overlay: {
       position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 200,
       display: "flex", alignItems: "center", justifyContent: "center",
-      animation: ANIM.fadeIn(),
+      animation: ANIM.backdropFade,
     },
     card: {
       background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
       borderRadius: RADIUS.xl, boxShadow: SHADOW.dropdown,
       width: "90vw", maxWidth: 860, maxHeight: "80vh",
       display: "flex", flexDirection: "column",
-      animation: ANIM.scaleIn(), fontFamily: FONT, overflow: "hidden",
+      animation: ANIM.modalPop(), fontFamily: FONT, overflow: "hidden",
     },
     header: {
       display: "flex", alignItems: "center", justifyContent: "space-between",

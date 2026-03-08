@@ -139,6 +139,7 @@ export default function CommandPalette({ open, onClose, pages = [], setActivePag
         display: "flex",
         justifyContent: "center",
         paddingTop: "15vh",
+        animation: ANIM.backdropFade,
       }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
@@ -151,7 +152,7 @@ export default function CommandPalette({ open, onClose, pages = [], setActivePag
           borderRadius: RADIUS.xl,
           boxShadow: SHADOW.dropdown,
           overflow: "hidden",
-          animation: ANIM.scaleIn(0),
+          animation: ANIM.modalPop(),
           maxHeight: "60vh",
           display: "flex",
           flexDirection: "column",

@@ -5,6 +5,7 @@
 import React, { useState, useCallback } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { S } from "../design/styles.js";
+import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { saveConnection, checkHealth, initDatabase } from "../lib/api.js";
 import WasabiFlame from "./WasabiFlame.jsx";
@@ -107,6 +108,7 @@ export default function SetupWizard() {
         width: 440,
         maxWidth: "92vw",
         boxShadow: SHADOW.dropdown,
+        animation: ANIM.modalPop(0.1),
       }}>
         {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: 32 }}>
