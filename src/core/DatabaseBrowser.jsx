@@ -303,18 +303,17 @@ export default function DatabaseBrowser({
   // ── Search databases ──
   const searchDatabases = useCallback(
     async (q) => {
-      if (!user?.workerUrl || !user?.notionKey) return;
+      const conn = getConnection();
+      const workerUrl = user?.workerUrl || conn?.workerUrl;
+      if (!workerUrl) return;
       setSearching(true);
       setSearchError(null);
       try {
-        const conn = getConnection();
-        const searchHeaders = {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${user.notionKey}`,
-        };
+        const searchHeaders = { "Content-Type": "application/json" };
+        if (user?.notionKey) searchHeaders["Authorization"] = `Bearer ${user.notionKey}`;
         if (conn?.secret) searchHeaders["X-Wasabi-Key"] = conn.secret;
 
-        const res = await fetch(`${user.workerUrl}/search`, {
+        const res = await fetch(`${workerUrl}/search`, {
           method: "POST",
           headers: searchHeaders,
           body: JSON.stringify({

@@ -152,12 +152,14 @@ export default function WasabiPanel({ onClose, isThinking }) {
             : "",
         });
 
+        const bConn = api.getConnection();
+        const bUrl = user?.workerUrl || bConn?.workerUrl;
         const delegate = createDelegateFunction({
-          workerUrl: user.workerUrl, notionKey: user.notionKey, claudeKey: user.claudeKey,
+          workerUrl: bUrl, notionKey: user?.notionKey || "", claudeKey: user?.claudeKey || "",
           kbDbId: platformIds?.kbDbId, notifDbId: platformIds?.notifDbId, configDbId: platformIds?.configDbId,
         });
         const executor = createToolExecutor({
-          workerUrl: user.workerUrl, notionKey: user.notionKey,
+          workerUrl: bUrl, notionKey: user?.notionKey || "",
           parentPageId: platformIds?.rootPageId, kbDbId: platformIds?.kbDbId,
           notifDbId: platformIds?.notifDbId, configDbId: platformIds?.configDbId,
           rulesDbId: platformIds?.rulesDbId, onPageCreated: addPage,
@@ -169,8 +171,8 @@ export default function WasabiPanel({ onClose, isThinking }) {
           systemPrompt,
           tools: WASABI_TOOLS,
           model: "claude-sonnet-4-20250514",
-          workerUrl: user.workerUrl,
-          claudeKey: user.claudeKey,
+          workerUrl: bUrl,
+          claudeKey: user?.claudeKey || "",
           executeTool: (name, input) => executor(name, input),
           maxTokens: 1024,
           maxIterations: 6,
@@ -190,18 +192,20 @@ export default function WasabiPanel({ onClose, isThinking }) {
   // ── Chat: send message to Wasabi ──
   const toolExecutor = useCallback(
     (toolName, toolInput) => {
-      if (!user?.workerUrl || !user?.notionKey) return Promise.resolve("{}");
+      const conn = api.getConnection();
+      const wUrl = user?.workerUrl || conn?.workerUrl;
+      if (!wUrl) return Promise.resolve("{}");
       const delegate = createDelegateFunction({
-        workerUrl: user.workerUrl,
-        notionKey: user.notionKey,
-        claudeKey: user.claudeKey,
+        workerUrl: wUrl,
+        notionKey: user?.notionKey || "",
+        claudeKey: user?.claudeKey || "",
         kbDbId: platformIds?.kbDbId,
         notifDbId: platformIds?.notifDbId,
         configDbId: platformIds?.configDbId,
       });
       const executor = createToolExecutor({
-        workerUrl: user.workerUrl,
-        notionKey: user.notionKey,
+        workerUrl: wUrl,
+        notionKey: user?.notionKey || "",
         parentPageId: platformIds?.rootPageId,
         kbDbId: platformIds?.kbDbId,
         notifDbId: platformIds?.notifDbId,
@@ -242,13 +246,15 @@ export default function WasabiPanel({ onClose, isThinking }) {
             : "",
         });
 
+        const conn = api.getConnection();
+        const wUrl = user?.workerUrl || conn?.workerUrl;
         const { text: reply, history } = await runAgent({
           messages: newHistory,
           systemPrompt,
           tools: WASABI_TOOLS,
           model: "claude-sonnet-4-20250514",
-          workerUrl: user.workerUrl,
-          claudeKey: user.claudeKey,
+          workerUrl: wUrl,
+          claudeKey: user?.claudeKey || "",
           executeTool: toolExecutor,
           abortRef: chatAbortRef,
           maxTokens: 2048,

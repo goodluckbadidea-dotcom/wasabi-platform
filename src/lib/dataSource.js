@@ -9,7 +9,7 @@
 import { queryAll } from "../notion/pagination.js";
 import { detectSchema } from "../notion/schema.js";
 import { updatePage, createPage, archivePage } from "../notion/client.js";
-import { listRows, createRows, updateRow, deleteRow, queryTable, getTableSchema } from "./api.js";
+import { listRows, createRows, updateRow, deleteRow, queryTable, getTableSchema, getConnection } from "./api.js";
 
 // ─── Main entry: fetch data + schema from any source ───
 
@@ -66,7 +66,10 @@ async function fetchD1Table(pageConfig) {
 // ─── Notion Linked Database ───
 
 async function fetchNotionDb(pageConfig, user) {
-  if (!user?.workerUrl || !user?.notionKey) {
+  const conn = getConnection();
+  const workerUrl = user?.workerUrl || conn?.workerUrl;
+  const notionKey = user?.notionKey || ""; // worker falls back to D1 if empty
+  if (!workerUrl) {
     return { data: [], schema: null, schemas: {} };
   }
 
@@ -76,7 +79,7 @@ async function fetchNotionDb(pageConfig, user) {
   const schemas = {};
   for (const dbId of dbIds) {
     try {
-      schemas[dbId] = await detectSchema(user.workerUrl, user.notionKey, dbId);
+      schemas[dbId] = await detectSchema(workerUrl, notionKey, dbId);
     } catch (err) {
       console.warn(`Schema fetch failed for ${dbId}:`, err.message);
     }
@@ -85,7 +88,7 @@ async function fetchNotionDb(pageConfig, user) {
   const primarySchema = schemas[dbIds[0]] || null;
   const allData = [];
   for (const dbId of dbIds) {
-    const results = await queryAll(user.workerUrl, user.notionKey, dbId);
+    const results = await queryAll(workerUrl, notionKey, dbId);
     allData.push(...results.map((r) => ({ ...r, _databaseId: dbId })));
   }
 
@@ -111,9 +114,14 @@ export async function updateRecord(pageConfig, recordId, fieldName, propPayload,
   }
 
   // Notion: propPayload is already a Notion property object
-  if (user?.workerUrl && user?.notionKey) {
-    await updatePage(user.workerUrl, user.notionKey, recordId, { [fieldName]: propPayload });
-    return true;
+  {
+    const conn = getConnection();
+    const wUrl = user?.workerUrl || conn?.workerUrl;
+    const nKey = user?.notionKey || "";
+    if (wUrl) {
+      await updatePage(wUrl, nKey, recordId, { [fieldName]: propPayload });
+      return true;
+    }
   }
 
   throw new Error("Cannot update: no connection available");
@@ -142,11 +150,16 @@ export async function createRecord(pageConfig, properties, user) {
   }
 
   // Notion: properties are already Notion-formatted
-  if (user?.workerUrl && user?.notionKey) {
-    const dbId = pageConfig.databaseIds?.[0];
-    if (!dbId) throw new Error("No database connected");
-    const page = await createPage(user.workerUrl, user.notionKey, dbId, properties);
-    return page.id;
+  {
+    const conn = getConnection();
+    const wUrl = user?.workerUrl || conn?.workerUrl;
+    const nKey = user?.notionKey || "";
+    if (wUrl) {
+      const dbId = pageConfig.databaseIds?.[0];
+      if (!dbId) throw new Error("No database connected");
+      const page = await createPage(wUrl, nKey, dbId, properties);
+      return page.id;
+    }
   }
 
   throw new Error("Cannot create: no connection available");
@@ -166,11 +179,16 @@ export async function deleteRecords(pageConfig, recordIds, user) {
   }
 
   // Notion: archive pages
-  if (user?.workerUrl && user?.notionKey) {
-    for (const id of recordIds) {
-      await archivePage(user.workerUrl, user.notionKey, id);
+  {
+    const conn = getConnection();
+    const wUrl = user?.workerUrl || conn?.workerUrl;
+    const nKey = user?.notionKey || "";
+    if (wUrl) {
+      for (const id of recordIds) {
+        await archivePage(wUrl, nKey, id);
+      }
+      return true;
     }
-    return true;
   }
 
   throw new Error("Cannot delete: no connection available");

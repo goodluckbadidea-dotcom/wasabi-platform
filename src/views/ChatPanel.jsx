@@ -9,6 +9,7 @@ import { runAgent, extractChoices } from "../agent/runAgent.js";
 import { PAGE_TOOLS, WASABI_TOOLS } from "../agent/tools.js";
 import { buildPageAgentPrompt, buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createPageToolExecutor, createToolExecutor, createDelegateFunction } from "../agent/toolExecutor.js";
+import { getConnection } from "../lib/api.js";
 import { C } from "../design/tokens.js";
 import WasabiOrb from "../core/WasabiOrb.jsx";
 import { IconPage } from "../design/icons.jsx";
@@ -23,33 +24,37 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
   const abortRef = useRef(false);
 
   const pageToolExecutor = useCallback((toolName, toolInput) => {
+    const conn = getConnection();
+    const wUrl = user?.workerUrl || conn?.workerUrl;
     const executor = createPageToolExecutor({
-      workerUrl: user.workerUrl,
-      notionKey: user.notionKey,
-      notifDbId: platformIds.notifDbId,
-      kbDbId: platformIds.kbDbId,
+      workerUrl: wUrl,
+      notionKey: user?.notionKey || "",
+      notifDbId: platformIds?.notifDbId,
+      kbDbId: platformIds?.kbDbId,
       scopedDatabaseIds: pageConfig.databaseIds,
     });
     return executor(toolName, toolInput);
   }, [user, platformIds, pageConfig]);
 
   const wasabiToolExecutor = useCallback((toolName, toolInput) => {
+    const conn = getConnection();
+    const wUrl = user?.workerUrl || conn?.workerUrl;
     const delegate = createDelegateFunction({
-      workerUrl: user.workerUrl,
-      notionKey: user.notionKey,
-      claudeKey: user.claudeKey,
-      kbDbId: platformIds.kbDbId,
-      notifDbId: platformIds.notifDbId,
-      configDbId: platformIds.configDbId,
+      workerUrl: wUrl,
+      notionKey: user?.notionKey || "",
+      claudeKey: user?.claudeKey || "",
+      kbDbId: platformIds?.kbDbId,
+      notifDbId: platformIds?.notifDbId,
+      configDbId: platformIds?.configDbId,
     });
     const executor = createToolExecutor({
-      workerUrl: user.workerUrl,
-      notionKey: user.notionKey,
-      parentPageId: platformIds.rootPageId,
-      kbDbId: platformIds.kbDbId,
-      notifDbId: platformIds.notifDbId,
-      configDbId: platformIds.configDbId,
-      rulesDbId: platformIds.rulesDbId,
+      workerUrl: wUrl,
+      notionKey: user?.notionKey || "",
+      parentPageId: platformIds?.rootPageId,
+      kbDbId: platformIds?.kbDbId,
+      notifDbId: platformIds?.notifDbId,
+      configDbId: platformIds?.configDbId,
+      rulesDbId: platformIds?.rulesDbId,
       onPageCreated: addPage,
       delegateToPageAgent: delegate,
     });
@@ -84,13 +89,15 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
             schemaText: schema ? JSON.stringify(schema, null, 2) : "",
           });
 
+      const conn = getConnection();
+      const wUrl = user?.workerUrl || conn?.workerUrl;
       const { text: reply, history } = await runAgent({
         messages: newHistory,
         systemPrompt,
         tools: isWasabi ? WASABI_TOOLS : PAGE_TOOLS,
         model: isWasabi ? "claude-sonnet-4-20250514" : "claude-haiku-4-5-20251001",
-        workerUrl: user.workerUrl,
-        claudeKey: user.claudeKey,
+        workerUrl: wUrl,
+        claudeKey: user?.claudeKey || "",
         executeTool: isWasabi ? wasabiToolExecutor : pageToolExecutor,
         onToolCall: (name, input, result) => {
           // Check for escalation

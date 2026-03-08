@@ -5,7 +5,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { loadPlatformIds, savePlatformIds } from "../config/setup.js";
 import { loadCachedConfigs, loadPageConfigs, validatePageConfigs, archivePageConfig } from "../config/pageConfig.js";
-import { getConnection, saveConnection } from "../lib/api.js";
+import { getConnection, saveConnection, getConnections } from "../lib/api.js";
 
 const PlatformContext = createContext(null);
 
@@ -104,6 +104,52 @@ export function PlatformProvider({ children }) {
   // ─── Loading states ───
   const [isLoading, setIsLoading] = useState(false);
   const [setupError, setSetupError] = useState(null);
+
+  // ─── Sync connection keys from D1 on mount ───
+  // Ensures user.notionKey and user.claudeKey are populated even if
+  // they were only saved to D1 (not in legacy localStorage).
+  const hasLoadedConnections = useRef(false);
+  useEffect(() => {
+    if (!workerConnection?.workerUrl || hasLoadedConnections.current) return;
+    hasLoadedConnections.current = true;
+
+    getConnections()
+      .then(({ connections }) => {
+        if (!connections || connections.length === 0) return;
+
+        const notionConn = connections.find((c) => c.key === "notion");
+        const claudeConn = connections.find((c) => c.key === "claude");
+
+        setUser((prev) => {
+          const updated = { ...(prev || { workerUrl: workerConnection.workerUrl }) };
+          let changed = false;
+
+          if (notionConn?.value && updated.notionKey !== notionConn.value) {
+            updated.notionKey = notionConn.value;
+            changed = true;
+          }
+          if (claudeConn?.value && updated.claudeKey !== claudeConn.value) {
+            updated.claudeKey = claudeConn.value;
+            changed = true;
+          }
+          // Ensure workerUrl is always set
+          if (!updated.workerUrl && workerConnection.workerUrl) {
+            updated.workerUrl = workerConnection.workerUrl;
+            changed = true;
+          }
+
+          if (changed) {
+            saveUserKeys(updated);
+            console.log("[Platform] Synced connection keys from D1");
+            return updated;
+          }
+          return prev;
+        });
+      })
+      .catch((err) => {
+        console.warn("[Platform] Failed to sync connections from D1:", err);
+      });
+  }, [workerConnection]);
 
   // ─── Sync pages from D1 on mount ───
   const hasSynced = useRef(false);

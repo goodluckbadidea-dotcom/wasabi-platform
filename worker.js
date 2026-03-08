@@ -654,12 +654,13 @@ async function handleInit(env) {
 async function handleGetConnections(env) {
   try {
     const rows = await env.DB.prepare(
-      "SELECT key, metadata, updated_at FROM connections ORDER BY key"
+      "SELECT key, value, metadata, updated_at FROM connections ORDER BY key"
     ).all();
-    // Never expose actual API key values — just metadata
+    // Values included — endpoint is auth-protected by X-Wasabi-Key
     return jsonResponse({
       connections: rows.results.map((r) => ({
         key: r.key,
+        value: r.value,
         metadata: JSON.parse(r.metadata || "{}"),
         updated_at: r.updated_at,
         connected: true,

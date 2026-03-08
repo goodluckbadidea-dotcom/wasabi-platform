@@ -98,8 +98,8 @@ export default function PageShell({
       return;
     }
 
-    // For Notion sources, check we have credentials
-    if (sourceType === "notion" && (!user?.workerUrl || !user?.notionKey)) {
+    // For Notion sources, check we have a worker URL (keys fetched from D1 if needed)
+    if (sourceType === "notion" && !user?.workerUrl) {
       setLoading(false);
       return;
     }
