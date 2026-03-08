@@ -99,6 +99,57 @@ export const PHASE_COLORS = {
   shipping:   { color: "#2A6B38", bg: "#E6F4E9" },
 };
 
+// ── Global View Palette ──
+// Canonical 10-color palette used by all views for property-driven coloring.
+// Index-based: view configs store palette indices (0-9) in colorMapping.
+export const VIEW_PALETTE = [
+  { key: "slate",  hex: "#6B7280", text: "#fff" },   // 0
+  { key: "gray",   hex: "#9CA3AF", text: "#fff" },   // 1
+  { key: "brown",  hex: "#92704F", text: "#fff" },   // 2
+  { key: "orange", hex: "#FF6B35", text: "#fff" },   // 3
+  { key: "yellow", hex: "#F5B724", text: "#1A1812" }, // 4
+  { key: "green",  hex: "#7DC143", text: "#fff" },   // 5
+  { key: "blue",   hex: "#3B82F6", text: "#fff" },   // 6
+  { key: "purple", hex: "#8B6FBE", text: "#fff" },   // 7
+  { key: "pink",   hex: "#E87CA0", text: "#fff" },   // 8
+  { key: "red",    hex: "#E05252", text: "#fff" },   // 9
+];
+
+// Map Notion color names → palette index for auto-mapping
+const NOTION_TO_PALETTE_IDX = {
+  default: 0, gray: 1, brown: 2, orange: 3, yellow: 4,
+  green: 5, blue: 6, purple: 7, pink: 8, red: 9,
+};
+
+/**
+ * Resolve a property value to a palette color entry.
+ * Priority: explicit user mapping → Notion schema color → palette fallback.
+ * Returns: { hex: string, text: string }
+ */
+export function resolveViewColor(value, colorMapping, schemaOptions) {
+  // 1. Explicit user mapping (config.colorMapping: { "High": 9 })
+  if (colorMapping && colorMapping[value] !== undefined) {
+    const idx = colorMapping[value];
+    return VIEW_PALETTE[idx] || VIEW_PALETTE[0];
+  }
+  // 2. Notion schema color → palette
+  if (schemaOptions) {
+    const opt = schemaOptions.find((o) => o.name === value);
+    if (opt?.color && NOTION_TO_PALETTE_IDX[opt.color] !== undefined) {
+      return VIEW_PALETTE[NOTION_TO_PALETTE_IDX[opt.color]];
+    }
+  }
+  // 3. Fallback: hash to a palette index
+  if (value) {
+    let hash = 0;
+    for (let i = 0; i < value.length; i++) {
+      hash = value.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return VIEW_PALETTE[Math.abs(hash) % VIEW_PALETTE.length];
+  }
+  return VIEW_PALETTE[0];
+}
+
 // ── Wasabi Color Palette ──
 // 10 solid-fill colors reinterpreting Notion's palette.
 export const WASABI_COLORS = {

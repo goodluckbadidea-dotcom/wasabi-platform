@@ -3,7 +3,7 @@
 // Schema-agnostic — works with any database that has date fields.
 
 import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { C, FONT, RADIUS, TIMELINE_PALETTE, getStatusColor, getSolidPillColor } from "../design/tokens.js";
+import { C, FONT, RADIUS, TIMELINE_PALETTE, VIEW_PALETTE, getStatusColor, getSolidPillColor, resolveViewColor } from "../design/tokens.js";
 import { readField, getFieldType, getOptionNames, resolveField } from "./_viewHelpers.js";
 import { buildProp } from "../notion/properties.js";
 
@@ -157,6 +157,15 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
 
       // Extract date bars (one per dateField, or start/end pair from first field)
       const bars = [];
+      const colorMode = config.colorMode || "dateField";
+
+      // Pre-resolve property color for the row (used when colorMode === "property")
+      let propertyColor = null;
+      if (colorMode === "property" && colorVal && colorField) {
+        const schemaField = (schema.statuses || []).concat(schema.selects || [], schema.multiSelects || []).find((f) => f.name === colorField);
+        const resolved = resolveViewColor(colorVal, config.colorMapping, schemaField?.options);
+        propertyColor = resolved.hex;
+      }
 
       for (let fi = 0; fi < dateFields.length; fi++) {
         const fieldName = dateFields[fi];
@@ -167,12 +176,14 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
         const end = parseDateEnd(raw) || (start ? addDays(start, 1) : null);
 
         if (start) {
-          const palette = TIMELINE_PALETTE[fi % TIMELINE_PALETTE.length];
+          const barColor = (colorMode === "property" && propertyColor)
+            ? propertyColor
+            : TIMELINE_PALETTE[fi % TIMELINE_PALETTE.length].color;
           bars.push({
             fieldName,
             start: startOfDay(start),
             end: startOfDay(end || addDays(start, 1)),
-            color: palette.color,
+            color: barColor,
             fieldIndex: fi,
           });
         }
@@ -193,6 +204,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
 
       result.push({
         pageId: page.id,
+        page,
         label: label || "Untitled",
         colorVal,
         statusColor: pillFill,
@@ -209,7 +221,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
     });
 
     return result;
-  }, [data, schema, dateFields, labelField, colorField, colorOptionNames, search]);
+  }, [data, schema, dateFields, labelField, colorField, colorOptionNames, search, config.colorMode, config.colorMapping]);
 
   // ─── Compute timeline origin + bounds ───
 
@@ -335,8 +347,8 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
     if (selectedRowIdx < 0) return;
     const sidebar = wrapperRef.current?.querySelector(".gantt-sidebar-scroll");
     if (!sidebar) return;
-    const rowTop = selectedRowIdx * ROW_HEIGHT;
-    const rowBottom = rowTop + ROW_HEIGHT;
+    const rowTop = selectedRowIdx * dynamicRowHeight;
+    const rowBottom = rowTop + dynamicRowHeight;
     if (rowTop < sidebar.scrollTop) {
       sidebar.scrollTop = rowTop;
     } else if (rowBottom > sidebar.scrollTop + sidebar.clientHeight) {
@@ -346,7 +358,13 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
 
   // ─── Bar dimensions ───
 
-  const barHeight = zoom.pxPerDay >= 20 ? BAR_HEIGHT_WIDE : BAR_HEIGHT_NARROW;
+  const barFieldCount = (config.barFields || []).length;
+  const LABEL_LINE_H = 14;
+  const baseBarHeight = zoom.pxPerDay >= 20 ? BAR_HEIGHT_WIDE : BAR_HEIGHT_NARROW;
+  const barHeight = zoom.pxPerDay >= 20
+    ? BAR_HEIGHT_WIDE + (barFieldCount * LABEL_LINE_H)
+    : BAR_HEIGHT_NARROW;
+  const dynamicRowHeight = Math.max(ROW_HEIGHT, barHeight + 16);
   const showBarLabels = zoom.pxPerDay >= 20;
 
   // ─── Scroll to today on mount ───
@@ -482,7 +500,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
     );
   }
 
-  const contentHeight = rows.length * ROW_HEIGHT;
+  const contentHeight = rows.length * dynamicRowHeight;
 
   return (
     <div
@@ -555,17 +573,32 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
           }}
         />
 
-        {/* Date field legend */}
-        <div style={{ display: "flex", gap: 10, marginLeft: 8 }}>
-          {dateFields.map((fname, i) => {
-            const palette = TIMELINE_PALETTE[i % TIMELINE_PALETTE.length];
-            return (
-              <span key={fname} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: C.darkMuted }}>
-                <span style={{ width: 8, height: 8, borderRadius: "50%", background: palette.color, display: "inline-block" }} />
-                {fname}
-              </span>
-            );
-          })}
+        {/* Legend — switches based on color mode */}
+        <div style={{ display: "flex", gap: 10, marginLeft: 8, flexWrap: "wrap" }}>
+          {(config.colorMode === "property" && colorField) ? (
+            // Property-based legend: show each option value with its mapped color
+            colorOptionNames.slice(0, 8).map((optName) => {
+              const schemaField = (schema?.statuses || []).concat(schema?.selects || [], schema?.multiSelects || []).find((f) => f.name === colorField);
+              const resolved = resolveViewColor(optName, config.colorMapping, schemaField?.options);
+              return (
+                <span key={optName} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: C.darkMuted }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: resolved.hex, display: "inline-block" }} />
+                  {optName}
+                </span>
+              );
+            })
+          ) : (
+            // Date field legend (default)
+            dateFields.map((fname, i) => {
+              const palette = TIMELINE_PALETTE[i % TIMELINE_PALETTE.length];
+              return (
+                <span key={fname} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: C.darkMuted }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: palette.color, display: "inline-block" }} />
+                  {fname}
+                </span>
+              );
+            })
+          )}
         </div>
 
         <span style={{ fontSize: 11, color: C.darkMuted }}>
@@ -605,7 +638,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                 key={row.pageId}
                 onClick={() => setSelectedRowIdx(i)}
                 style={{
-                  height: ROW_HEIGHT,
+                  height: dynamicRowHeight,
                   display: "flex",
                   alignItems: "center",
                   padding: "0 12px",
@@ -615,6 +648,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                   background: i === selectedRowIdx ? `${C.accent}14` : "transparent",
                   cursor: "pointer",
                   transition: "background 0.12s",
+                  flexWrap: "wrap",
                 }}
               >
                 {/* Status dot */}
@@ -634,6 +668,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
                   flex: 1,
+                  minWidth: 0,
                 }}>
                   {row.label}
                 </span>
@@ -655,6 +690,31 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                     {row.colorVal}
                   </span>
                 )}
+
+                {/* Sidebar badges from config.sidebarFields */}
+                {(config.sidebarFields || []).map((fieldName) => {
+                  if (fieldName === colorField) return null; // already shown as main pill
+                  const val = readField(row.page, fieldName);
+                  if (!val) return null;
+                  const schemaField = (schema.statuses || []).concat(schema.selects || [], schema.multiSelects || []).find((f) => f.name === fieldName);
+                  const resolved = resolveViewColor(String(val), config.colorMapping, schemaField?.options);
+                  return (
+                    <span key={fieldName} style={{
+                      fontSize: 8,
+                      fontWeight: 600,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.04em",
+                      color: resolved.text,
+                      background: resolved.hex,
+                      borderRadius: RADIUS.pill,
+                      padding: "1px 6px",
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
+                    }}>
+                      {String(val)}
+                    </span>
+                  );
+                })}
               </div>
             ))}
 
@@ -761,18 +821,18 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                     {i === selectedRowIdx && (
                       <rect
                         x={0}
-                        y={i * ROW_HEIGHT}
+                        y={i * dynamicRowHeight}
                         width={totalWidth}
-                        height={ROW_HEIGHT}
+                        height={dynamicRowHeight}
                         fill={C.accent}
                         opacity={0.06}
                       />
                     )}
                     <line
                       x1={0}
-                      y1={(i + 1) * ROW_HEIGHT}
+                      y1={(i + 1) * dynamicRowHeight}
                       x2={totalWidth}
-                      y2={(i + 1) * ROW_HEIGHT}
+                      y2={(i + 1) * dynamicRowHeight}
                       stroke={C.edgeLine}
                       strokeWidth={1}
                     />
@@ -803,7 +863,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
 
                 {/* ─── Bars ─── */}
                 {rows.map((row, rowIdx) => {
-                  const y = rowIdx * ROW_HEIGHT + (ROW_HEIGHT - barHeight) / 2;
+                  const y = rowIdx * dynamicRowHeight + (dynamicRowHeight - barHeight) / 2;
 
                   return row.bars.map((bar, barIdx) => {
                     const { x, w } = getBarRect(row, bar);
@@ -852,7 +912,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                         {showBarLabels && w > 60 && (
                           <text
                             x={x + 8}
-                            y={y + barHeight / 2}
+                            y={y + (barFieldCount > 0 ? 14 : barHeight / 2)}
                             dominantBaseline="middle"
                             fill="#fff"
                             fontSize={11}
@@ -863,6 +923,26 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                             {row.label.length > Math.floor(w / 7) ? row.label.slice(0, Math.floor(w / 7) - 2) + "…" : row.label}
                           </text>
                         )}
+
+                        {/* Bar property labels (from config.barFields) */}
+                        {showBarLabels && w > 60 && (config.barFields || []).map((fieldName, idx) => {
+                          const val = readField(row.page, fieldName);
+                          if (!val) return null;
+                          return (
+                            <text
+                              key={fieldName}
+                              x={x + 8}
+                              y={y + 14 + ((idx + 1) * LABEL_LINE_H)}
+                              dominantBaseline="middle"
+                              fill="rgba(255,255,255,0.8)"
+                              fontSize={9}
+                              fontFamily={FONT}
+                              style={{ pointerEvents: "none" }}
+                            >
+                              {String(val).slice(0, Math.floor(w / 6))}
+                            </text>
+                          );
+                        })}
 
                         {/* Resize handles at wide zoom */}
                         {showBarLabels && onUpdate && w > 20 && (

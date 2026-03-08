@@ -15,6 +15,7 @@ import DatabaseBrowser from "./DatabaseBrowser.jsx";
 import { ViewSkeleton } from "./ErrorBoundary.jsx";
 import { IconWarning, IconRefresh, IconPlus, IconDatabase, IconClose } from "../design/icons.jsx";
 import SyncPanel from "../components/SyncPanel.jsx";
+import ViewSettingsPanel from "../components/ViewSettingsPanel.jsx";
 
 const DEFAULT_REFRESH_MS = 30000; // 30 seconds
 
@@ -67,6 +68,7 @@ export default function PageShell({
   const refreshTimer = useRef(null);
   const [showAddDb, setShowAddDb] = useState(false);
   const [showSync, setShowSync] = useState(false);
+  const [showViewSettings, setShowViewSettings] = useState(false);
 
   // Detect page types that don't need data fetching
   const sourceType = resolveSourceType(effectiveConfig);
@@ -231,6 +233,18 @@ export default function PageShell({
     updatePageConfig(target.id, { views: newViews });
     savePageConfig({ ...target, views: newViews }).catch(() => {});
   }, [effectiveConfig, updatePageConfig]);
+
+  // Handle per-view config changes from ViewSettingsPanel
+  const handleViewConfigChange = useCallback((configUpdates) => {
+    const target = effectiveConfig;
+    const updatedViews = (target.views || []).map((v, i) =>
+      i === activeViewIndex
+        ? { ...v, config: { ...v.config, ...configUpdates } }
+        : v
+    );
+    updatePageConfig(target.id, { views: updatedViews });
+    savePageConfig({ ...target, views: updatedViews }).catch(() => {});
+  }, [effectiveConfig, activeViewIndex, updatePageConfig]);
 
   // Connected database IDs for the DatabaseBrowser
   const connectedIds = useMemo(() => effectiveDbs || [], [effectiveDbs]);
@@ -402,6 +416,7 @@ export default function PageShell({
         onRenameView={handleRenameView}
         onReorderViews={handleReorderViews}
         onAddView={() => setShowAddDb(true)}
+        onOpenSettings={() => setShowViewSettings(true)}
       />
 
       {/* Header bar — simplified for document, sheet, and linked-sheet-only pages */}
@@ -515,6 +530,16 @@ export default function PageShell({
           onDelete={handleDelete}
           pageConfig={effectiveConfig}
         />
+
+        {/* View Settings slide-out panel */}
+        {showViewSettings && activeView && (
+          <ViewSettingsPanel
+            viewConfig={activeView}
+            schema={schema}
+            onConfigChange={handleViewConfigChange}
+            onClose={() => setShowViewSettings(false)}
+          />
+        )}
 
         {/* Add Database slide-out panel */}
         {showAddDb && (
