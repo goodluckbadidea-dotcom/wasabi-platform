@@ -128,11 +128,33 @@ CREATE TABLE IF NOT EXISTS sync_configs (
   enabled INTEGER DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS record_notes (
+  id TEXT PRIMARY KEY,
+  record_id TEXT NOT NULL,
+  page_config_id TEXT NOT NULL,
+  content TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS record_comments (
+  id TEXT PRIMARY KEY,
+  record_id TEXT NOT NULL,
+  page_config_id TEXT NOT NULL,
+  user_id TEXT DEFAULT 'default',
+  user_name TEXT DEFAULT 'User',
+  content TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
 `;
 
 const D1_INDEXES = `
 CREATE INDEX IF NOT EXISTS idx_rows_table ON table_rows(table_id, archived);
 CREATE INDEX IF NOT EXISTS idx_notif_status ON notifications(status);
+CREATE INDEX IF NOT EXISTS idx_record_notes_lookup ON record_notes(record_id, page_config_id);
+CREATE INDEX IF NOT EXISTS idx_record_comments_lookup ON record_comments(record_id, page_config_id);
 `;
 
 // ─── Auth Middleware ───
@@ -280,6 +302,39 @@ export default {
         const tableId = queryMatch[1];
         const body = await request.json();
         return await handleQueryTable(env, tableId, body);
+      }
+
+      // ─── Record Notes & Comments ───
+      const noteMatch = path.match(/^\/records\/([^/]+)\/notes$/);
+      if (noteMatch) {
+        const recordId = noteMatch[1];
+        if (request.method === "GET") {
+          const pageConfigId = url.searchParams.get("page_config_id");
+          return await handleGetNote(env, recordId, pageConfigId);
+        }
+        if (request.method === "PUT") {
+          const body = await request.json();
+          return await handleSaveNote(env, recordId, body);
+        }
+      }
+
+      const commentDeleteMatch = path.match(/^\/records\/([^/]+)\/comments\/([^/]+)$/);
+      if (commentDeleteMatch && request.method === "DELETE") {
+        const [, recordId, commentId] = commentDeleteMatch;
+        return await handleDeleteComment(env, recordId, commentId);
+      }
+
+      const commentMatch = path.match(/^\/records\/([^/]+)\/comments$/);
+      if (commentMatch) {
+        const recordId = commentMatch[1];
+        if (request.method === "GET") {
+          const pageConfigId = url.searchParams.get("page_config_id");
+          return await handleListComments(env, recordId, pageConfigId);
+        }
+        if (request.method === "POST") {
+          const body = await request.json();
+          return await handleCreateComment(env, recordId, body);
+        }
       }
 
       // ─── Sheet Routes ───
@@ -1043,6 +1098,70 @@ async function handleQueryTable(env, tableId, body) {
     }
 
     return jsonResponse({ rows: parsed, total: parsed.length });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// ─── Record Notes & Comments Handlers ───
+
+async function handleGetNote(env, recordId, pageConfigId) {
+  try {
+    const note = await env.DB.prepare(
+      "SELECT * FROM record_notes WHERE record_id = ? AND page_config_id = ?"
+    ).bind(recordId, pageConfigId || "").first();
+    return jsonResponse({ note: note || { record_id: recordId, page_config_id: pageConfigId, content: "" } });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleSaveNote(env, recordId, body) {
+  try {
+    const { page_config_id, content } = body;
+    if (!page_config_id) return jsonResponse({ _error: "page_config_id required" }, 400);
+    const id = `${recordId}:${page_config_id}`;
+    await env.DB.prepare(
+      `INSERT INTO record_notes (id, record_id, page_config_id, content, updated_at)
+       VALUES (?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET content = excluded.content, updated_at = datetime('now')`
+    ).bind(id, recordId, page_config_id, content || "").run();
+    return jsonResponse({ ok: true });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleListComments(env, recordId, pageConfigId) {
+  try {
+    const results = await env.DB.prepare(
+      "SELECT * FROM record_comments WHERE record_id = ? AND page_config_id = ? ORDER BY created_at ASC"
+    ).bind(recordId, pageConfigId || "").all();
+    return jsonResponse({ comments: results.results || [] });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleCreateComment(env, recordId, body) {
+  try {
+    const { page_config_id, content, user_id, user_name } = body;
+    if (!page_config_id || !content) return jsonResponse({ _error: "page_config_id and content required" }, 400);
+    const id = crypto.randomUUID();
+    await env.DB.prepare(
+      `INSERT INTO record_comments (id, record_id, page_config_id, user_id, user_name, content)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).bind(id, recordId, page_config_id, user_id || "default", user_name || "User", content).run();
+    return jsonResponse({ id, ok: true });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleDeleteComment(env, recordId, commentId) {
+  try {
+    await env.DB.prepare("DELETE FROM record_comments WHERE id = ? AND record_id = ?").bind(commentId, recordId).run();
+    return jsonResponse({ ok: true });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
   }

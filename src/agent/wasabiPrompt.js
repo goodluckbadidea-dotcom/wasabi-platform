@@ -11,8 +11,9 @@ import { templatesToPromptText } from "../config/templates.js";
  * @param {string} opts.kbContext - Knowledge base context
  * @param {object} opts.currentPageContext - Current page the user is viewing
  * @param {string} opts.dataSummary - Compact data summary for the active page
+ * @param {string} opts.workspaceSummary - Summary of all workspace pages (for global chat)
  */
-export function buildWasabiPrompt({ platformDbIds, kbContext = "", currentPageContext, dataSummary }) {
+export function buildWasabiPrompt({ platformDbIds, kbContext = "", currentPageContext, dataSummary, workspaceSummary }) {
   let pageSection = "";
   if (currentPageContext) {
     const { pageName, databaseIds, schemaText } = currentPageContext;
@@ -38,6 +39,7 @@ ${RULES}
 ${platformDbIds ? `\n## Platform Database IDs\n${platformDbIds}` : ""}
 
 ${kbContext ? `\n## Your Knowledge Base Context\n${kbContext}` : ""}
+${workspaceSummary ? `\n## Workspace Pages\n${workspaceSummary}` : ""}
 ${pageSection}`;
 }
 

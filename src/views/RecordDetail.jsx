@@ -7,6 +7,11 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from "react"
 import { C, FONT, RADIUS, SHADOW, getSolidPillColor } from "../design/tokens.js";
 import { readProp, buildProp } from "../notion/properties.js";
 import { IconClose, IconEdit, IconExpand } from "../design/icons.jsx";
+import {
+  getRecordNote, saveRecordNote,
+  listRecordComments, createRecordComment, deleteRecordComment,
+} from "../lib/api.js";
+import { timeAgo } from "../utils/helpers.js";
 
 // ── Property type labels ──
 const TYPE_LABELS = {
@@ -161,6 +166,110 @@ const ds = {
     cursor: "pointer",
     whiteSpace: "nowrap",
   }),
+  tabBar: {
+    display: "flex",
+    gap: 4,
+    padding: "8px 20px",
+    borderBottom: `1px solid ${C.edgeLine}`,
+    flexShrink: 0,
+  },
+  tab: (active) => ({
+    padding: "5px 14px",
+    borderRadius: RADIUS.pill,
+    fontSize: 12,
+    fontWeight: 600,
+    fontFamily: FONT,
+    cursor: "pointer",
+    border: "none",
+    transition: "all 0.15s",
+    background: active ? C.accent : C.darkSurf2,
+    color: active ? "#fff" : C.darkMuted,
+  }),
+  notesArea: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    padding: "16px 20px",
+    gap: 8,
+  },
+  noteTextarea: {
+    flex: 1,
+    width: "100%",
+    minHeight: 200,
+    background: C.dark,
+    border: `1px solid ${C.darkBorder}`,
+    borderRadius: RADIUS.lg,
+    padding: "12px 14px",
+    fontSize: 13,
+    fontFamily: FONT,
+    color: C.darkText,
+    outline: "none",
+    resize: "vertical",
+    lineHeight: 1.6,
+    transition: "border-color 0.15s",
+  },
+  noteStatus: {
+    fontSize: 11,
+    fontWeight: 500,
+    color: C.darkMuted,
+    textAlign: "right",
+    minHeight: 16,
+  },
+  commentsList: {
+    flex: 1,
+    overflowY: "auto",
+    padding: "12px 20px",
+  },
+  commentItem: {
+    padding: "10px 0",
+    borderBottom: `1px solid ${C.edgeLine}`,
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  commentContent: {
+    flex: 1,
+    fontSize: 13,
+    color: C.darkText,
+    lineHeight: 1.5,
+  },
+  commentMeta: {
+    fontSize: 11,
+    color: C.darkMuted,
+    marginTop: 4,
+  },
+  commentDeleteBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: RADIUS.sm,
+    border: "none",
+    background: "transparent",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    color: C.darkMuted,
+    fontSize: 14,
+    transition: "background 0.15s, color 0.15s",
+  },
+  commentInput: {
+    display: "flex",
+    gap: 8,
+    padding: "12px 20px",
+    borderTop: `1px solid ${C.edgeLine}`,
+    flexShrink: 0,
+  },
+  emptyState: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flex: 1,
+    color: C.darkMuted,
+    fontSize: 13,
+    fontStyle: "italic",
+    padding: 40,
+  },
   selectDropdown: {
     position: "absolute",
     top: "100%",
@@ -219,11 +328,12 @@ if (typeof document !== "undefined") {
 }
 
 // ── Main Component ──
-export default function RecordDetail({ page, schema, onClose, onUpdate }) {
+export default function RecordDetail({ page, schema, onClose, onUpdate, pageConfigId }) {
   const [editingField, setEditingField] = useState(null);
   const [editValue, setEditValue] = useState(null);
   const [saving, setSaving] = useState(false);
   const [pendingChanges, setPendingChanges] = useState({});
+  const [activeTab, setActiveTab] = useState("properties");
 
   if (!page) return null;
 
@@ -323,78 +433,303 @@ export default function RecordDetail({ page, schema, onClose, onUpdate }) {
           </button>
         </div>
 
-        {/* Body — Property rows */}
-        <div style={ds.body}>
-          {properties.map(([fieldName, prop]) => {
-            const isEditing = editingField === fieldName;
-            const isEditable = EDITABLE_TYPES.has(prop.type);
-            const hasPending = !!pendingChanges[fieldName];
+        {/* Tab Bar */}
+        <div style={ds.tabBar}>
+          {[
+            { key: "properties", label: "Properties" },
+            { key: "notes", label: "Notes" },
+            { key: "comments", label: "Comments" },
+          ].map((t) => (
+            <button
+              key={t.key}
+              style={ds.tab(activeTab === t.key)}
+              onClick={() => setActiveTab(t.key)}
+              onMouseEnter={(e) => { if (activeTab !== t.key) e.currentTarget.style.background = C.darkBorder; }}
+              onMouseLeave={(e) => { if (activeTab !== t.key) e.currentTarget.style.background = C.darkSurf2; }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
 
-            return (
-              <div
-                key={fieldName}
-                style={{
-                  ...ds.propRow,
-                  background: hasPending ? `${C.accent}08` : "transparent",
-                  cursor: isEditable ? "pointer" : "default",
-                }}
-                onClick={() => !isEditing && isEditable && startEdit(fieldName, prop)}
+        {/* Properties Tab */}
+        {activeTab === "properties" && (
+          <>
+            <div style={ds.body}>
+              {properties.map(([fieldName, prop]) => {
+                const isEditing = editingField === fieldName;
+                const isEditable = EDITABLE_TYPES.has(prop.type);
+                const hasPending = !!pendingChanges[fieldName];
+
+                return (
+                  <div
+                    key={fieldName}
+                    style={{
+                      ...ds.propRow,
+                      background: hasPending ? `${C.accent}08` : "transparent",
+                      cursor: isEditable ? "pointer" : "default",
+                    }}
+                    onClick={() => !isEditing && isEditable && startEdit(fieldName, prop)}
+                  >
+                    {/* Label */}
+                    <div style={ds.propLabel}>
+                      <span>{fieldName}</span>
+                      <span style={ds.propType}>{TYPE_LABELS[prop.type] || prop.type}</span>
+                    </div>
+
+                    {/* Value */}
+                    <div style={ds.propValue}>
+                      {isEditing ? (
+                        <EditField
+                          fieldName={fieldName}
+                          type={prop.type}
+                          value={editValue}
+                          schemaField={getSchemaField(fieldName, prop.type)}
+                          onCommit={(val) => commitEdit(fieldName, prop.type, val)}
+                          onCancel={() => { setEditingField(null); setEditValue(null); }}
+                        />
+                      ) : (
+                        <DisplayValue
+                          prop={prop}
+                          fieldName={fieldName}
+                          schema={schema}
+                          pendingValue={pendingChanges[fieldName]?.value}
+                        />
+                      )}
+                      {isEditable && !isEditing && (
+                        <IconEdit size={10} color={C.darkMuted + "66"} />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Footer — only on Properties tab */}
+            <div style={ds.footer}>
+              <button
+                style={ds.btn(false)}
+                onClick={onClose}
               >
-                {/* Label */}
-                <div style={ds.propLabel}>
-                  <span>{fieldName}</span>
-                  <span style={ds.propType}>{TYPE_LABELS[prop.type] || prop.type}</span>
-                </div>
+                Cancel
+              </button>
+              <button
+                style={{
+                  ...ds.btn(true),
+                  opacity: saving ? 0.6 : 1,
+                }}
+                onClick={handleSave}
+                disabled={saving}
+              >
+                {saving ? "Saving..." : Object.keys(pendingChanges).length > 0 ? "Save Changes" : "Done"}
+              </button>
+            </div>
+          </>
+        )}
 
-                {/* Value */}
-                <div style={ds.propValue}>
-                  {isEditing ? (
-                    <EditField
-                      fieldName={fieldName}
-                      type={prop.type}
-                      value={editValue}
-                      schemaField={getSchemaField(fieldName, prop.type)}
-                      onCommit={(val) => commitEdit(fieldName, prop.type, val)}
-                      onCancel={() => { setEditingField(null); setEditValue(null); }}
-                    />
-                  ) : (
-                    <DisplayValue
-                      prop={prop}
-                      fieldName={fieldName}
-                      schema={schema}
-                      pendingValue={pendingChanges[fieldName]?.value}
-                    />
-                  )}
-                  {isEditable && !isEditing && (
-                    <IconEdit size={10} color={C.darkMuted + "66"} />
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        {/* Notes Tab */}
+        {activeTab === "notes" && <NotesTab recordId={page.id} pageConfigId={pageConfigId} />}
 
-        {/* Footer */}
-        <div style={ds.footer}>
-          <button
-            style={ds.btn(false)}
-            onClick={onClose}
-          >
-            Cancel
-          </button>
-          <button
-            style={{
-              ...ds.btn(true),
-              opacity: saving ? 0.6 : 1,
-            }}
-            onClick={handleSave}
-            disabled={saving}
-          >
-            {saving ? "Saving..." : Object.keys(pendingChanges).length > 0 ? "Save Changes" : "Done"}
-          </button>
-        </div>
+        {/* Comments Tab */}
+        {activeTab === "comments" && <CommentsTab recordId={page.id} pageConfigId={pageConfigId} />}
       </div>
     </div>
+  );
+}
+
+// ── Notes Tab ──
+function NotesTab({ recordId, pageConfigId }) {
+  const [content, setContent] = useState("");
+  const [status, setStatus] = useState("");      // "", "Saving...", "Saved"
+  const [loading, setLoading] = useState(true);
+  const debounceRef = useRef(null);
+  const latestContentRef = useRef("");
+
+  // Fetch note on mount
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    getRecordNote(recordId, pageConfigId)
+      .then((res) => {
+        if (!cancelled) {
+          const text = res?.note?.content || "";
+          setContent(text);
+          latestContentRef.current = text;
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setContent("");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [recordId, pageConfigId]);
+
+  // Auto-save helper
+  const doSave = useCallback(async (text) => {
+    setStatus("Saving...");
+    try {
+      await saveRecordNote(recordId, pageConfigId, text);
+      setStatus("Saved");
+    } catch {
+      setStatus("Save failed");
+    }
+  }, [recordId, pageConfigId]);
+
+  // Debounced save on change
+  const handleChange = useCallback((e) => {
+    const val = e.target.value;
+    setContent(val);
+    latestContentRef.current = val;
+    setStatus("");
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => doSave(val), 1000);
+  }, [doSave]);
+
+  // Save on blur
+  const handleBlur = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    doSave(latestContentRef.current);
+  }, [doSave]);
+
+  // Cleanup timer
+  useEffect(() => {
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, []);
+
+  if (loading) {
+    return <div style={ds.emptyState}>Loading notes...</div>;
+  }
+
+  return (
+    <div style={ds.notesArea}>
+      <textarea
+        style={ds.noteTextarea}
+        value={content}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        placeholder="Write notes about this record..."
+        onFocus={(e) => { e.currentTarget.style.borderColor = C.accent; }}
+        onMouseLeave={() => {}}
+        onBlurCapture={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
+      />
+      <div style={ds.noteStatus}>{status}</div>
+    </div>
+  );
+}
+
+// ── Comments Tab ──
+function CommentsTab({ recordId, pageConfigId }) {
+  const [comments, setComments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [newComment, setNewComment] = useState("");
+  const [sending, setSending] = useState(false);
+  const inputRef = useRef(null);
+
+  // Fetch comments on mount
+  const fetchComments = useCallback(async () => {
+    try {
+      const res = await listRecordComments(recordId, pageConfigId);
+      setComments(res?.comments || []);
+    } catch {
+      setComments([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [recordId, pageConfigId]);
+
+  useEffect(() => { fetchComments(); }, [fetchComments]);
+
+  // Add comment
+  const handleSend = useCallback(async () => {
+    const text = newComment.trim();
+    if (!text || sending) return;
+    setSending(true);
+    try {
+      await createRecordComment(recordId, pageConfigId, text);
+      setNewComment("");
+      await fetchComments();
+      if (inputRef.current) inputRef.current.focus();
+    } catch (err) {
+      console.error("Failed to add comment:", err);
+    } finally {
+      setSending(false);
+    }
+  }, [newComment, sending, recordId, pageConfigId, fetchComments]);
+
+  // Delete comment
+  const handleDelete = useCallback(async (commentId) => {
+    try {
+      await deleteRecordComment(recordId, commentId);
+      setComments((prev) => prev.filter((c) => c.id !== commentId));
+    } catch (err) {
+      console.error("Failed to delete comment:", err);
+    }
+  }, [recordId]);
+
+  // Enter to send
+  const handleKeyDown = useCallback((e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  }, [handleSend]);
+
+  if (loading) {
+    return <div style={ds.emptyState}>Loading comments...</div>;
+  }
+
+  return (
+    <>
+      <div style={ds.commentsList}>
+        {comments.length === 0 && (
+          <div style={ds.emptyState}>No comments yet</div>
+        )}
+        {comments.map((comment) => (
+          <div key={comment.id} style={ds.commentItem}>
+            <div style={{ flex: 1 }}>
+              <div style={ds.commentContent}>{comment.content}</div>
+              <div style={ds.commentMeta}>
+                {comment.created_at ? timeAgo(comment.created_at) : ""}
+              </div>
+            </div>
+            <button
+              style={ds.commentDeleteBtn}
+              onClick={() => handleDelete(comment.id)}
+              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; e.currentTarget.style.color = "#E05252"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = C.darkMuted; }}
+              title="Delete comment"
+            >
+              &times;
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* New comment input */}
+      <div style={ds.commentInput}>
+        <input
+          ref={inputRef}
+          type="text"
+          value={newComment}
+          onChange={(e) => setNewComment(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Add a comment..."
+          style={{ ...ds.input, flex: 1 }}
+        />
+        <button
+          style={{
+            ...ds.btn(true),
+            opacity: sending || !newComment.trim() ? 0.5 : 1,
+          }}
+          onClick={handleSend}
+          disabled={sending || !newComment.trim()}
+        >
+          {sending ? "..." : "Send"}
+        </button>
+      </div>
+    </>
   );
 }
 

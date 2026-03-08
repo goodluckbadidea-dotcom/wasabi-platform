@@ -416,7 +416,6 @@ export default function PageShell({
         onRenameView={handleRenameView}
         onReorderViews={handleReorderViews}
         onAddView={() => setShowAddDb(true)}
-        onOpenSettings={() => setShowViewSettings(true)}
       />
 
       {/* Header bar — simplified for document, sheet, and linked-sheet-only pages */}
@@ -528,6 +527,7 @@ export default function PageShell({
           onCreate={handleCreate}
           onDelete={handleDelete}
           pageConfig={effectiveConfig}
+          onViewConfigChange={handleViewConfigChange}
         />
 
         {/* View Settings slide-out panel */}

@@ -6,6 +6,7 @@ import React, { useState, useMemo, useCallback, useRef, useEffect } from "react"
 import { C, FONT, RADIUS, TIMELINE_PALETTE, VIEW_PALETTE, getStatusColor, getSolidPillColor, resolveViewColor } from "../design/tokens.js";
 import { readField, getFieldType, getOptionNames, resolveField } from "./_viewHelpers.js";
 import { buildProp } from "../notion/properties.js";
+import RecordDetail from "./RecordDetail.jsx";
 
 // ─── Constants ───
 
@@ -113,13 +114,14 @@ function buildHeaders(origin, days, pxPerDay) {
 
 // ─── Main Component ───
 
-export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefresh }) {
+export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefresh, pageConfig }) {
   const [zoomIndex, setZoomIndex] = useState(2); // Default 30-day
   const [search, setSearch] = useState("");
   const [scrollLeft, setScrollLeft] = useState(0);
   const [tooltip, setTooltip] = useState(null);
   const [dragState, setDragState] = useState(null);
   const [selectedRowIdx, setSelectedRowIdx] = useState(-1);
+  const [detailPage, setDetailPage] = useState(null);
   const [isZooming, setIsZooming] = useState(false);
   const svgContainerRef = useRef(null);
   const scrollRef = useRef(null);
@@ -637,6 +639,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
               <div
                 key={row.pageId}
                 onClick={() => setSelectedRowIdx(i)}
+                onDoubleClick={() => setDetailPage(row.page)}
                 style={{
                   height: dynamicRowHeight,
                   display: "flex",
@@ -869,6 +872,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                             transition: isDragging ? "none" : "all 0.2s ease",
                           }}
                           onMouseDown={(e) => handleBarMouseDown(e, row, bar)}
+                          onDoubleClick={(e) => { e.stopPropagation(); setDetailPage(row.page); }}
                           onMouseEnter={(e) => {
                             const svgRect = svgContainerRef.current?.getBoundingClientRect();
                             if (svgRect) {
@@ -1022,6 +1026,16 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
 
       {/* ─── Sync sidebar scroll with timeline scroll ─── */}
       <SyncScroll scrollRef={scrollRef} />
+
+      {detailPage && (
+        <RecordDetail
+          page={detailPage}
+          schema={schema}
+          onClose={() => setDetailPage(null)}
+          onUpdate={onUpdate}
+          pageConfigId={pageConfig?.id}
+        />
+      )}
     </div>
   );
 }

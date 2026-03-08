@@ -46,8 +46,8 @@ const STATUS_COL = {
   actioned: { border: "1px solid #333", bg: "#1A1A1A", dot: "#2A6B38" },
 };
 
-export default function WasabiPanel({ onClose, isThinking }) {
-  const { user, platformIds, batchQueue, addToQueue, updateQueueItem, removeQueueItem, addPage } =
+export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
+  const { user, platformIds, pages, batchQueue, addToQueue, updateQueueItem, removeQueueItem, addPage } =
     usePlatform();
   const [tab, setTab] = useState("log");
 
@@ -146,10 +146,16 @@ export default function WasabiPanel({ onClose, isThinking }) {
       updateQueueItem(item.id, { status: "processing" });
 
       try {
+        const batchWorkspaceSummary = (pages || []).map((p) => {
+          const dbIds = p.databaseIds?.length ? ` (databases: ${p.databaseIds.join(", ")})` : "";
+          return `- **${p.name || "Untitled"}** (${p.type || "page"})${dbIds}`;
+        }).join("\n");
+
         const systemPrompt = buildWasabiPrompt({
           platformDbIds: platformIds
             ? Object.entries(platformIds).map(([k, v]) => `${k}: ${v}`).join("\n")
             : "",
+          workspaceSummary: batchWorkspaceSummary || undefined,
         });
 
         const bConn = api.getConnection();
@@ -187,7 +193,7 @@ export default function WasabiPanel({ onClose, isThinking }) {
 
     setProcessProgress({ current: pending.length, total: pending.length });
     setIsProcessing(false);
-  }, [batchQueue, isProcessing, user, platformIds, addPage, updateQueueItem]);
+  }, [batchQueue, isProcessing, user, platformIds, pages, addPage, updateQueueItem]);
 
   // ── Chat: send message to Wasabi ──
   const toolExecutor = useCallback(
@@ -238,12 +244,27 @@ export default function WasabiPanel({ onClose, isThinking }) {
       const newHistory = [...chatHistoryRef.current, { role: "user", content: agentText }];
 
       try {
+        // Build workspace summary so Wasabi knows about all pages
+        const workspaceSummary = (pages || []).map((p) => {
+          const dbIds = p.databaseIds?.length ? ` (databases: ${p.databaseIds.join(", ")})` : "";
+          const source = p.sourceType ? ` [${p.sourceType}]` : "";
+          return `- **${p.name || "Untitled"}** (${p.type || "page"})${source}${dbIds}`;
+        }).join("\n");
+
+        const currentPageContext = activePageConfig ? {
+          pageName: activePageConfig.name,
+          databaseIds: activePageConfig.databaseIds || [],
+          schemaText: "",
+        } : undefined;
+
         const systemPrompt = buildWasabiPrompt({
           platformDbIds: platformIds
             ? Object.entries(platformIds)
                 .map(([k, v]) => `${k}: ${v}`)
                 .join("\n")
             : "",
+          workspaceSummary: workspaceSummary || undefined,
+          currentPageContext,
         });
 
         const conn = api.getConnection();
@@ -281,7 +302,7 @@ export default function WasabiPanel({ onClose, isThinking }) {
         setChatLoading(false);
       }
     },
-    [chatLoading, user, platformIds, toolExecutor]
+    [chatLoading, user, platformIds, pages, activePageConfig, toolExecutor]
   );
 
   const handleChatChoice = useCallback(

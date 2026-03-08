@@ -5,7 +5,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { loadPlatformIds, savePlatformIds } from "../config/setup.js";
 import { loadCachedConfigs, loadPageConfigs, validatePageConfigs, archivePageConfig, savePageConfig } from "../config/pageConfig.js";
-import { getConnection, saveConnection, getConnections } from "../lib/api.js";
+import { getConnection, saveConnection, getConnections, initDatabase } from "../lib/api.js";
 
 const PlatformContext = createContext(null);
 
@@ -104,6 +104,18 @@ export function PlatformProvider({ children }) {
   // ─── Loading states ───
   const [isLoading, setIsLoading] = useState(false);
   const [setupError, setSetupError] = useState(null);
+
+  // ─── Ensure D1 schema is up to date on mount ───
+  // Idempotent: creates any new tables (e.g. record_notes, record_comments)
+  // without affecting existing ones. Safe to call every mount.
+  const hasCalledInit = useRef(false);
+  useEffect(() => {
+    if (!workerConnection?.workerUrl || hasCalledInit.current) return;
+    hasCalledInit.current = true;
+    initDatabase().catch((err) => {
+      console.warn("[Platform] D1 init check:", err.message || err);
+    });
+  }, [workerConnection]);
 
   // ─── Sync connection keys from D1 on mount ───
   // Ensures user.notionKey and user.claudeKey are populated even if

@@ -812,7 +812,7 @@ function QuickAddForm({ schema, columns, quickAddValues, setQuickAddValues, quic
 
 // ─── Main Table Component ───
 
-export default function Table({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onSaveFilters }) {
+export default function Table({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onSaveFilters, onViewConfigChange }) {
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState(config.sort?.field || config.sortField || null);
   const [sortDir, setSortDir] = useState(config.sort?.direction || config.sortDir || (config.sortField ? "asc" : null)); // "asc" | "desc" | null
@@ -859,7 +859,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
       .then(setResolvedLinks)
       .catch(() => {});
   }, [pageConfig?.id, viewIdx, resolveLinksForView]);
-  const targetDatabaseId = config.databaseId || pageConfig?.databaseIds?.[0];
+  const targetDatabaseId = config.databaseId || pageConfig?.databaseIds?.[0] || pageConfig?.id;
 
   // Inject animations on mount
   useEffect(() => {
@@ -920,11 +920,12 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     debouncedSetSearch(search);
   }, [search, debouncedSetSearch]);
 
-  // Chip filter change handler (persists)
+  // Chip filter change handler (persists via onViewConfigChange)
   const handleChipFilterChange = useCallback((newFilters) => {
     setChipFilters(newFilters);
     if (onSaveFilters) onSaveFilters(newFilters);
-  }, [onSaveFilters]);
+    if (onViewConfigChange) onViewConfigChange({ activeFilters: newFilters });
+  }, [onSaveFilters, onViewConfigChange]);
 
   // Filter + search + sort pipeline
   const processedData = useMemo(() => {
@@ -1129,9 +1130,14 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
       const next = new Set(prev);
       if (next.has(col)) next.delete(col);
       else next.add(col);
+      // Persist visible fields
+      if (onViewConfigChange && allColumns.length > 0) {
+        const visibleFields = allColumns.filter((c) => !next.has(c));
+        onViewConfigChange({ visibleFields });
+      }
       return next;
     });
-  }, []);
+  }, [allColumns, onViewConfigChange]);
 
   // ── Quick-Add Handler ──
   const handleQuickAdd = useCallback(async () => {
@@ -1188,7 +1194,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           <div style={styles.emptyIcon}>&#x1f4cb;</div>
           <div style={styles.emptyTitle}>No data to display</div>
           <div style={styles.emptySub}>
-            This table is empty. Add records to your Notion database or adjust your filters to see data here.
+            This table is empty. Add records to get started, or adjust your filters to see data here.
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
             {onCreate && targetDatabaseId && (
@@ -1748,6 +1754,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
               await onUpdate(pageId, fieldName, payload);
             }
           }}
+          pageConfigId={pageConfig?.id}
         />
       )}
 

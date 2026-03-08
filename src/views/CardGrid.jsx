@@ -5,10 +5,12 @@ import React, { useState, useMemo, useCallback } from "react";
 import { C, FONT, RADIUS, getStatusColor } from "../design/tokens.js";
 import { readField, getFieldType, getFieldOptions, getOptionNames, displayValue, searchableText, resolveField } from "./_viewHelpers.js";
 import { cellStyles, CellDisplay } from "./_CellComponents.jsx";
+import RecordDetail from "./RecordDetail.jsx";
 
-export default function CardGrid({ data = [], schema, config = {}, onUpdate, onRefresh }) {
+export default function CardGrid({ data = [], schema, config = {}, onUpdate, onRefresh, onViewConfigChange, pageConfig }) {
   const [search, setSearch] = useState("");
-  const [filters, setFilters] = useState({});
+  const [filters, setFilters] = useState(config.activeFilters || {});
+  const [detailPage, setDetailPage] = useState(null);
 
   // Resolve fields from config or auto-detect
   const titleField = resolveField(schema, config.titleField, ["title"]);
@@ -136,7 +138,11 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
           <select
             key={f.name}
             value={filters[f.name] || ""}
-            onChange={(e) => setFilters((prev) => ({ ...prev, [f.name]: e.target.value || undefined }))}
+            onChange={(e) => {
+              const newFilters = { ...filters, [f.name]: e.target.value || undefined };
+              setFilters(newFilters);
+              if (onViewConfigChange) onViewConfigChange({ activeFilters: newFilters });
+            }}
             style={{
               background: C.darkSurf2,
               border: `1px solid ${C.darkBorder}`,
@@ -204,7 +210,9 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
                     overflow: "hidden",
                     transition: "border-color 0.15s",
                     animation: `fadeUp 0.3s ease ${idx * 0.03}s both`,
+                    cursor: "pointer",
                   }}
+                  onClick={() => setDetailPage(page)}
                   onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent + "66"; }}
                   onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
                 >
@@ -301,6 +309,16 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
           </div>
         )}
       </div>
+
+      {detailPage && (
+        <RecordDetail
+          page={detailPage}
+          schema={schema}
+          onClose={() => setDetailPage(null)}
+          onUpdate={onUpdate}
+          pageConfigId={pageConfig?.id}
+        />
+      )}
     </div>
   );
 }

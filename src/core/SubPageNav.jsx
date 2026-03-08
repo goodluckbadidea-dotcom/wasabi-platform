@@ -5,7 +5,7 @@
 
 import React, { useState, useCallback } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
-import { IconPlus, IconClose, IconEdit, IconGear } from "../design/icons.jsx";
+import { IconPlus, IconClose, IconEdit } from "../design/icons.jsx";
 import InlineEdit from "./InlineEdit.jsx";
 
 // ── View type display labels ──
@@ -124,7 +124,6 @@ export default function SubPageNav({
   onRenameView,
   onAddView,
   onReorderViews,
-  onOpenSettings,
 }) {
   const [hoveredPill, setHoveredPill] = useState(null);
   const [hoveredTab, setHoveredTab] = useState(null);
@@ -259,27 +258,6 @@ export default function SubPageNav({
                     color={isActive ? C.darkText : C.darkMuted}
                   />
                 </button>
-                {/* Settings gear on active view */}
-                {isActive && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpenSettings?.();
-                    }}
-                    title="View settings"
-                    style={{
-                      background: "none", border: "none",
-                      cursor: "pointer", padding: 2,
-                      display: "flex", alignItems: "center",
-                      opacity: 0.5, transition: "opacity 0.12s",
-                      outline: "none", marginLeft: -2,
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
-                  >
-                    <IconGear size={10} color={C.accent} />
-                  </button>
-                )}
                 {/* Delete view on hover (only if more than 1 view) */}
                 {isHovered && views.length > 1 && (
                   <button

@@ -331,3 +331,33 @@ export async function claudeProxy(body, claudeKey) {
   if (claudeKey) headers["X-Claude-Key"] = claudeKey;
   return apiFetch("/claude", { method: "POST", body, headers });
 }
+
+// ─── Record Notes ───
+
+export async function getRecordNote(recordId, pageConfigId) {
+  return apiFetch(`/records/${recordId}/notes?page_config_id=${encodeURIComponent(pageConfigId)}`);
+}
+
+export async function saveRecordNote(recordId, pageConfigId, content) {
+  return apiFetch(`/records/${recordId}/notes`, {
+    method: "PUT",
+    body: { page_config_id: pageConfigId, content },
+  });
+}
+
+// ─── Record Comments ───
+
+export async function listRecordComments(recordId, pageConfigId) {
+  return apiFetch(`/records/${recordId}/comments?page_config_id=${encodeURIComponent(pageConfigId)}`);
+}
+
+export async function createRecordComment(recordId, pageConfigId, content) {
+  return apiFetch(`/records/${recordId}/comments`, {
+    method: "POST",
+    body: { page_config_id: pageConfigId, content },
+  });
+}
+
+export async function deleteRecordComment(recordId, commentId) {
+  return apiFetch(`/records/${recordId}/comments/${commentId}`, { method: "DELETE" });
+}

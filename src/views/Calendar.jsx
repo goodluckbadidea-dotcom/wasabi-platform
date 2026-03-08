@@ -474,6 +474,7 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
               await onUpdate(pageId, fieldName, payload);
             }
           }}
+          pageConfigId={pageConfig?.id}
         />
       )}
     </div>

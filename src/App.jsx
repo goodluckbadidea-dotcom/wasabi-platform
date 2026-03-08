@@ -285,6 +285,7 @@ function AppContent() {
           <WasabiPanel
             onClose={() => setWasabiPanelOpen(false)}
             isThinking={false}
+            activePageConfig={activePageConfig}
           />
         )}
 

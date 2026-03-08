@@ -39,7 +39,7 @@ const VIEW_REGISTRY = {
  * Render a single view from a view config.
  * If viewConfig.config.databaseId is set, scopes data and schema to that database.
  */
-function ViewBlock({ viewConfig, data, schema, schemas, onUpdate, onRefresh, onCreate, onDelete, pageConfig }) {
+function ViewBlock({ viewConfig, data, schema, schemas, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onViewConfigChange }) {
   const Component = VIEW_REGISTRY[viewConfig.type];
 
   if (!Component) {
@@ -78,6 +78,7 @@ function ViewBlock({ viewConfig, data, schema, schemas, onUpdate, onRefresh, onC
       onCreate={onCreate}
       onDelete={onDelete}
       pageConfig={pageConfig}
+      onViewConfigChange={onViewConfigChange}
     />
   );
 }
@@ -85,7 +86,7 @@ function ViewBlock({ viewConfig, data, schema, schemas, onUpdate, onRefresh, onC
 /**
  * Render all views for a page in a layout.
  */
-export default function ViewRenderer({ views = [], data, schema, schemas, onUpdate, onRefresh, onCreate, onDelete, pageConfig }) {
+export default function ViewRenderer({ views = [], data, schema, schemas, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onViewConfigChange }) {
   const mainViews = views.filter((v) => v.position !== "sidebar" && v.position !== "bottom");
   const sideViews = views.filter((v) => v.position === "sidebar");
   const bottomViews = views.filter((v) => v.position === "bottom");
@@ -115,6 +116,7 @@ export default function ViewRenderer({ views = [], data, schema, schemas, onUpda
                 onCreate={onCreate}
                 onDelete={onDelete}
                 pageConfig={pageConfig}
+                onViewConfigChange={onViewConfigChange}
               />
             </ErrorBoundary>
           ))}
