@@ -12,11 +12,11 @@ import { savePageConfig } from "../config/pageConfig.js";
 
 // ─── D1 Helpers ───
 
-/** Check if a database_id refers to a D1 standalone table (vs Notion DB). */
+/** Check if a database_id refers to a D1 standalone table or sheet (vs Notion DB). */
 async function isD1Table(id) {
   try {
     const cfg = await api.getPageConfig(id);
-    return cfg && cfg.page_type === "database";
+    return cfg && (cfg.page_type === "database" || cfg.page_type === "sheet");
   } catch {
     return false;
   }
