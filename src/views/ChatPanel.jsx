@@ -169,12 +169,19 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
           ).join("\n")
         : "";
 
+      // Build database IDs list — include D1 table ID if this page IS a database
+      const dbIds = [...(pageConfig.databaseIds || [])];
+      const pt = pageConfig.page_type || pageConfig.pageType;
+      if ((pt === "database" || pt === "sheet") && pageConfig.id && !dbIds.includes(pageConfig.id)) {
+        dbIds.push(pageConfig.id);
+      }
+
       // Build Wasabi prompt with page context + data summary
       const systemPrompt = buildWasabiPrompt({
         platformDbIds: Object.entries(platformIds || {}).map(([k, v]) => `${k}: ${v}`).join("\n"),
         currentPageContext: {
           pageName: pageConfig.name,
-          databaseIds: pageConfig.databaseIds || [],
+          databaseIds: dbIds,
           schemaText: schema ? JSON.stringify(schema, null, 2) : "",
         },
         dataSummary,
