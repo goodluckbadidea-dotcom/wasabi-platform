@@ -8,7 +8,7 @@ import { usePlatform } from "../context/PlatformContext.jsx";
 import { runAgent, extractChoices } from "../agent/runAgent.js";
 import { WASABI_TOOLS } from "../agent/tools.js";
 import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
-import { createToolExecutor, createDelegateFunction } from "../agent/toolExecutor.js";
+import { createToolExecutor } from "../agent/toolExecutor.js";
 import { getConnection } from "../lib/api.js";
 import { C } from "../design/tokens.js";
 import WasabiOrb from "../core/WasabiOrb.jsx";
@@ -119,14 +119,6 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
   const toolExecutor = useCallback((toolName, toolInput) => {
     const conn = getConnection();
     const wUrl = user?.workerUrl || conn?.workerUrl;
-    const delegate = createDelegateFunction({
-      workerUrl: wUrl,
-      notionKey: user?.notionKey || "",
-      claudeKey: user?.claudeKey || "",
-      kbDbId: platformIds?.kbDbId,
-      notifDbId: platformIds?.notifDbId,
-      configDbId: platformIds?.configDbId,
-    });
     const executor = createToolExecutor({
       workerUrl: wUrl,
       notionKey: user?.notionKey || "",
@@ -136,7 +128,6 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
       configDbId: platformIds?.configDbId,
       rulesDbId: platformIds?.rulesDbId,
       onPageCreated: addPage,
-      delegateToPageAgent: delegate,
     });
     return executor(toolName, toolInput);
   }, [user, platformIds, addPage]);

@@ -14,7 +14,7 @@ import ChatUI from "./ChatUI.jsx";
 import { runAgent, extractChoices } from "../agent/runAgent.js";
 import { WASABI_TOOLS } from "../agent/tools.js";
 import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
-import { createToolExecutor, createDelegateFunction } from "../agent/toolExecutor.js";
+import { createToolExecutor } from "../agent/toolExecutor.js";
 import BatchQueue from "./BatchQueue.jsx";
 import * as api from "../lib/api.js";
 // Legacy Notion imports removed — notifications now stored in D1
@@ -149,8 +149,13 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
 
       try {
         const batchWorkspaceSummary = (pages || []).map((p) => {
-          const dbIds = p.databaseIds?.length ? ` (databases: ${p.databaseIds.join(", ")})` : "";
-          return `- **${p.name || "Untitled"}** (${p.type || "page"})${dbIds}`;
+          const dbIds = [...(p.databaseIds || [])];
+          const pt = p.page_type || p.pageType;
+          if ((pt === "database" || pt === "sheet") && p.id && !dbIds.includes(p.id)) {
+            dbIds.push(p.id);
+          }
+          const dbStr = dbIds.length ? ` (databases: ${dbIds.join(", ")})` : "";
+          return `- **${p.name || "Untitled"}** (${pt || p.type || "page"})${dbStr}`;
         }).join("\n");
 
         const systemPrompt = buildWasabiPrompt({
@@ -162,16 +167,11 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
 
         const bConn = api.getConnection();
         const bUrl = user?.workerUrl || bConn?.workerUrl;
-        const delegate = createDelegateFunction({
-          workerUrl: bUrl, notionKey: user?.notionKey || "", claudeKey: user?.claudeKey || "",
-          kbDbId: platformIds?.kbDbId, notifDbId: platformIds?.notifDbId, configDbId: platformIds?.configDbId,
-        });
         const executor = createToolExecutor({
           workerUrl: bUrl, notionKey: user?.notionKey || "",
           parentPageId: platformIds?.rootPageId, kbDbId: platformIds?.kbDbId,
           notifDbId: platformIds?.notifDbId, configDbId: platformIds?.configDbId,
           rulesDbId: platformIds?.rulesDbId, onPageCreated: addPage,
-          delegateToPageAgent: delegate,
         });
 
         const { text: reply } = await runAgent({
@@ -203,14 +203,6 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
       const conn = api.getConnection();
       const wUrl = user?.workerUrl || conn?.workerUrl;
       if (!wUrl) return Promise.resolve("{}");
-      const delegate = createDelegateFunction({
-        workerUrl: wUrl,
-        notionKey: user?.notionKey || "",
-        claudeKey: user?.claudeKey || "",
-        kbDbId: platformIds?.kbDbId,
-        notifDbId: platformIds?.notifDbId,
-        configDbId: platformIds?.configDbId,
-      });
       const executor = createToolExecutor({
         workerUrl: wUrl,
         notionKey: user?.notionKey || "",
@@ -220,7 +212,6 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
         configDbId: platformIds?.configDbId,
         rulesDbId: platformIds?.rulesDbId,
         onPageCreated: addPage,
-        delegateToPageAgent: delegate,
       });
       return executor(toolName, toolInput);
     },
@@ -246,11 +237,17 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
       const newHistory = [...chatHistoryRef.current, { role: "user", content: agentText }];
 
       try {
-        // Build workspace summary so Wasabi knows about all pages
+        // Build workspace summary so Wasabi knows about all pages + D1 tables
         const workspaceSummary = (pages || []).map((p) => {
-          const dbIds = p.databaseIds?.length ? ` (databases: ${p.databaseIds.join(", ")})` : "";
+          // Collect database IDs — for D1 tables, the page's own ID IS the table ID
+          const dbIds = [...(p.databaseIds || [])];
+          const pt = p.page_type || p.pageType;
+          if ((pt === "database" || pt === "sheet") && p.id && !dbIds.includes(p.id)) {
+            dbIds.push(p.id);
+          }
+          const dbStr = dbIds.length ? ` (databases: ${dbIds.join(", ")})` : "";
           const source = p.sourceType ? ` [${p.sourceType}]` : "";
-          return `- **${p.name || "Untitled"}** (${p.type || "page"})${source}${dbIds}`;
+          return `- **${p.name || "Untitled"}** (${pt || p.type || "page"})${source}${dbStr}`;
         }).join("\n");
 
         const currentPageContext = activePageConfig ? {

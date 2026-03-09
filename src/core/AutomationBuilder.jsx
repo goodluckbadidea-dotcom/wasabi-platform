@@ -9,7 +9,7 @@ import ChatUI from "./ChatUI.jsx";
 import { runAgent, extractChoices } from "../agent/runAgent.js";
 import { WASABI_TOOLS } from "../agent/tools.js";
 import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
-import { createToolExecutor, createDelegateFunction } from "../agent/toolExecutor.js";
+import { createToolExecutor } from "../agent/toolExecutor.js";
 import * as api from "../lib/api.js";
 // Legacy Notion imports removed — rules now stored in D1
 import WasabiOrb from "./WasabiOrb.jsx";

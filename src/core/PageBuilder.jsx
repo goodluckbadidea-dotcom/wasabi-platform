@@ -10,7 +10,7 @@ import { usePlatform } from "../context/PlatformContext.jsx";
 import { runAgent, extractChoices } from "../agent/runAgent.js";
 import { WASABI_TOOLS } from "../agent/tools.js";
 import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
-import { createToolExecutor, createDelegateFunction } from "../agent/toolExecutor.js";
+import { createToolExecutor } from "../agent/toolExecutor.js";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 
 // ── Mode tab styles ──
@@ -54,14 +54,6 @@ export default function PageBuilder({ initialTemplate = null, WasabiFlameIcon = 
   }, [initialTemplate]);
 
   const executeTool = useCallback((toolName, toolInput) => {
-    const delegate = createDelegateFunction({
-      workerUrl: user.workerUrl,
-      notionKey: user.notionKey,
-      claudeKey: user.claudeKey,
-      kbDbId: platformIds.kbDbId,
-      notifDbId: platformIds.notifDbId,
-      configDbId: platformIds.configDbId,
-    });
     const executor = createToolExecutor({
       workerUrl: user.workerUrl,
       notionKey: user.notionKey,
@@ -73,7 +65,6 @@ export default function PageBuilder({ initialTemplate = null, WasabiFlameIcon = 
       onPageCreated: (pageConfig) => {
         addPage(pageConfig);
       },
-      delegateToPageAgent: delegate,
     });
     return executor(toolName, toolInput);
   }, [user, platformIds, addPage]);

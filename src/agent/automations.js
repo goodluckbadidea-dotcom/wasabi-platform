@@ -142,14 +142,13 @@ export async function executeRule(rule, opts, contextData = {}) {
 
   const { runAgent } = await import("./runAgent.js");
   const { AUTO_TOOLS } = await import("./tools.js");
-  const { createPageToolExecutor } = await import("./toolExecutor.js");
+  const { createToolExecutor } = await import("./toolExecutor.js");
 
-  const executeTool = createPageToolExecutor({
+  const executeTool = createToolExecutor({
     workerUrl,
     notionKey: opts.notionKey || null,
     notifDbId: "d1",
     kbDbId: "d1",
-    scopedDatabaseIds: rule.databaseId ? [rule.databaseId] : [],
   });
 
   const systemPrompt = [

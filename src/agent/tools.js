@@ -319,44 +319,7 @@ const SMART_MATCH_RECORDS = {
   },
 };
 
-// ─── PAGE AGENT TOOLS ───
-
-const ESCALATE_TO_WASABI = {
-  name: "escalate_to_wasabi",
-  description: "Escalate to the Wasabi global agent when the task is outside your scope (e.g. creating new databases, modifying page config, cross-database operations).",
-  input_schema: {
-    type: "object",
-    properties: {
-      reason: { type: "string", description: "Why you need to escalate." },
-      context_summary: {
-        type: "string",
-        description: "Summary of the conversation so far so Wasabi has context.",
-      },
-    },
-    required: ["reason", "context_summary"],
-  },
-};
-
-// ─── DELEGATION + AUTOMATION TOOLS ───
-
-const DELEGATE_TO_PAGE_AGENT = {
-  name: "delegate_to_page_agent",
-  description: "Delegate a task to a specific page agent. The page agent will execute the task within its scoped databases and return the result. Use this to avoid doing work that a page agent can handle.",
-  input_schema: {
-    type: "object",
-    properties: {
-      page_config_id: {
-        type: "string",
-        description: "The page config ID (Notion page ID) of the target page agent.",
-      },
-      task: {
-        type: "string",
-        description: "Description of the task to delegate. Be specific about what data to query/create/update.",
-      },
-    },
-    required: ["page_config_id", "task"],
-  },
-};
+// ─── AUTOMATION TOOLS ───
 
 const CREATE_AUTOMATION_RULE = {
   name: "create_automation_rule",
@@ -446,20 +409,7 @@ export const WASABI_TOOLS = [
   UPDATE_KNOWLEDGE_BASE,
   SEARCH_KNOWLEDGE_BASE,
   POST_NOTIFICATION,
-  DELEGATE_TO_PAGE_AGENT,
   CREATE_AUTOMATION_RULE,
-  PROCESS_UPLOADED_FILES,
-  SMART_MATCH_RECORDS,
-  QUERY_NEURONS,
-  CREATE_NEURON,
-];
-
-export const PAGE_TOOLS = [
-  QUERY_DATABASE,
-  GET_PAGE,
-  CREATE_PAGE,
-  UPDATE_PAGE,
-  POST_NOTIFICATION,
   PROCESS_UPLOADED_FILES,
   SMART_MATCH_RECORDS,
   QUERY_NEURONS,
