@@ -466,30 +466,12 @@ export default function Navigation({
         onMouseEnter={(e) => { e.currentTarget.style.background = C.accentDim; }}
         onMouseLeave={(e) => { e.currentTarget.style.background = C.accent; }}
       >
-        {/* Left eye */}
-        <div style={{
-          width: 5, height: 5, borderRadius: "50%",
-          background: "#0d1f06", position: "relative",
-          flexShrink: 0,
-        }}>
-          <div style={{
-            position: "absolute", top: 0, right: 0,
-            width: 2, height: 2, borderRadius: "50%",
-            background: "rgba(255,255,255,0.85)",
-          }} />
-        </div>
-        {/* Right eye */}
-        <div style={{
-          width: 5, height: 5, borderRadius: "50%",
-          background: "#0d1f06", position: "relative",
-          flexShrink: 0,
-        }}>
-          <div style={{
-            position: "absolute", top: 0, right: 0,
-            width: 2, height: 2, borderRadius: "50%",
-            background: "rgba(255,255,255,0.85)",
-          }} />
-        </div>
+        <svg
+          width="8" height="14" viewBox="0 0 8 14" fill="none"
+          style={{ transform: collapsed ? "rotate(0deg)" : "rotate(180deg)", transition: "transform 0.2s ease" }}
+        >
+          <path d="M1 1L7 7L1 13" stroke={C.dark} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </button>
 
       {/* ── Context Menu ── */}
