@@ -74,12 +74,25 @@ export function createToolExecutor({
       case "query_database": {
         // D1 standalone table path
         if (await isD1Table(toolInput.database_id)) {
-          const res = await api.listRows(toolInput.database_id);
-          const rows = res?.rows || [];
+          // Use queryTable for full filter/sort/limit support
+          const queryBody = {};
+          if (toolInput.filter) queryBody.filters = toolInput.filter;
+          if (toolInput.sorts) queryBody.sorts = toolInput.sorts;
+          queryBody.limit = 200; // generous limit for agent visibility
+
+          let rows;
+          try {
+            const res = await api.queryTable(toolInput.database_id, queryBody);
+            rows = res?.rows || [];
+          } catch {
+            // Fallback to listRows if queryTable endpoint unavailable
+            const res = await api.listRows(toolInput.database_id, { limit: 200 });
+            rows = res?.rows || [];
+          }
           return JSON.stringify({
             count: rows.length,
-            results: rows.slice(0, 50),
-            truncated: rows.length > 50,
+            results: rows.slice(0, 200),
+            truncated: rows.length > 200,
             storage: "d1",
           });
         }
@@ -125,12 +138,30 @@ export function createToolExecutor({
       }
 
       case "update_page": {
+        // D1 row update: page_id format is "tableId:rowId" or we check if it's a D1 row
+        const pageId = toolInput.page_id;
+        if (pageId && pageId.includes(":")) {
+          // Explicit D1 format — "tableId:rowId"
+          const [tableId, rowId] = pageId.split(":");
+          const cells = notionPropsToD1Cells(toolInput.properties);
+          await api.updateRow(tableId, rowId, { cells });
+          return JSON.stringify({ success: true, page_id: pageId, storage: "d1" });
+        }
+
+        // Check if it looks like a D1 row ID (and a database_id hint is provided)
+        if (toolInput.database_id && await isD1Table(toolInput.database_id)) {
+          const cells = notionPropsToD1Cells(toolInput.properties);
+          await api.updateRow(toolInput.database_id, pageId, { cells });
+          return JSON.stringify({ success: true, page_id: pageId, storage: "d1" });
+        }
+
+        // Notion path
         await client.updatePage(
           workerUrl, notionKey,
-          toolInput.page_id,
+          pageId,
           toolInput.properties
         );
-        return JSON.stringify({ success: true, page_id: toolInput.page_id });
+        return JSON.stringify({ success: true, page_id: pageId });
       }
 
       // ─── Cross-Database Query ───
@@ -140,16 +171,40 @@ export function createToolExecutor({
         for (const q of queries.slice(0, 5)) { // Max 5 databases per call
           const label = q.label || q.database_id;
           try {
-            const results = await queryAll(workerUrl, notionKey, q.database_id, q.filter, q.sorts);
-            const summary = results.map((page) => {
-              const props = extractProperties(page);
-              return { id: page.id, ...props };
-            });
-            allResults[label] = {
-              count: summary.length,
-              results: summary.slice(0, 30),
-              truncated: summary.length > 30,
-            };
+            // D1 path
+            if (await isD1Table(q.database_id)) {
+              const queryBody = {};
+              if (q.filter) queryBody.filters = q.filter;
+              if (q.sorts) queryBody.sorts = q.sorts;
+              queryBody.limit = 100;
+
+              let rows;
+              try {
+                const res = await api.queryTable(q.database_id, queryBody);
+                rows = res?.rows || [];
+              } catch {
+                const res = await api.listRows(q.database_id, { limit: 100 });
+                rows = res?.rows || [];
+              }
+              allResults[label] = {
+                count: rows.length,
+                results: rows.slice(0, 100),
+                truncated: rows.length > 100,
+                storage: "d1",
+              };
+            } else {
+              // Notion path
+              const results = await queryAll(workerUrl, notionKey, q.database_id, q.filter, q.sorts);
+              const summary = results.map((page) => {
+                const props = extractProperties(page);
+                return { id: page.id, ...props };
+              });
+              allResults[label] = {
+                count: summary.length,
+                results: summary.slice(0, 30),
+                truncated: summary.length > 30,
+              };
+            }
           } catch (err) {
             allResults[label] = { error: err.message };
           }
@@ -235,6 +290,25 @@ export function createToolExecutor({
 
       // ─── Schema Detection ───
       case "detect_schema": {
+        // D1 standalone table — use api.getTableSchema()
+        if (await isD1Table(toolInput.database_id)) {
+          try {
+            const d1Schema = await api.getTableSchema(toolInput.database_id);
+            const columns = d1Schema?.columns || [];
+            const text = columns.map((c) =>
+              `- ${c.name} (${c.type}${c.options?.length ? `: ${c.options.join(", ")}` : ""})`
+            ).join("\n");
+            return JSON.stringify({
+              schema: text,
+              fieldCount: columns.length,
+              raw: { columns, storage: "d1" },
+              suggestedViews: [],
+            });
+          } catch (err) {
+            return JSON.stringify({ error: `Failed to detect D1 schema: ${err.message}` });
+          }
+        }
+        // Notion path
         const schema = await detectSchema(workerUrl, notionKey, toolInput.database_id);
         const views = autoDetectViews(schema);
         const text = schemaToText(schema);
@@ -457,24 +531,27 @@ export function createToolExecutor({
         }
 
         const matches = [];
-        for (const term of search_terms.slice(0, 10)) {
-          try {
-            // Query with a title-contains filter as primary search
-            const filter = match_field
-              ? { property: match_field, rich_text: { contains: term } }
-              : undefined;
 
-            const results = await queryAll(workerUrl, notionKey, database_id, filter);
-            const matched = results
-              .map((page) => {
-                const props = extractProperties(page);
-                // Score by how many fields contain the search term
-                const termLower = term.toLowerCase();
+        // D1 path — load all rows and search in JS
+        if (await isD1Table(database_id)) {
+          let allRows;
+          try {
+            const res = await api.listRows(database_id, { limit: 500 });
+            allRows = res?.rows || [];
+          } catch {
+            allRows = [];
+          }
+
+          for (const term of search_terms.slice(0, 10)) {
+            const termLower = term.toLowerCase();
+            const matched = allRows
+              .map((row) => {
+                const cells = row.cells || row;
                 let score = 0;
-                for (const [, val] of Object.entries(props)) {
+                for (const val of Object.values(cells)) {
                   if (String(val).toLowerCase().includes(termLower)) score++;
                 }
-                return { id: page.id, ...props, _matchScore: score };
+                return { id: row.id || row._id, ...cells, _matchScore: score };
               })
               .filter((r) => r._matchScore > 0)
               .sort((a, b) => b._matchScore - a._matchScore)
@@ -483,8 +560,36 @@ export function createToolExecutor({
             if (matched.length > 0) {
               matches.push({ term, matches: matched });
             }
-          } catch (err) {
-            matches.push({ term, error: err.message });
+          }
+        } else {
+          // Notion path
+          for (const term of search_terms.slice(0, 10)) {
+            try {
+              const filter = match_field
+                ? { property: match_field, rich_text: { contains: term } }
+                : undefined;
+
+              const results = await queryAll(workerUrl, notionKey, database_id, filter);
+              const matched = results
+                .map((page) => {
+                  const props = extractProperties(page);
+                  const termLower = term.toLowerCase();
+                  let score = 0;
+                  for (const [, val] of Object.entries(props)) {
+                    if (String(val).toLowerCase().includes(termLower)) score++;
+                  }
+                  return { id: page.id, ...props, _matchScore: score };
+                })
+                .filter((r) => r._matchScore > 0)
+                .sort((a, b) => b._matchScore - a._matchScore)
+                .slice(0, 5);
+
+              if (matched.length > 0) {
+                matches.push({ term, matches: matched });
+              }
+            } catch (err) {
+              matches.push({ term, error: err.message });
+            }
           }
         }
 

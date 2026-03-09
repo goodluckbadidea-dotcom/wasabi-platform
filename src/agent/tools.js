@@ -56,14 +56,15 @@ const CREATE_PAGE = {
 
 const UPDATE_PAGE = {
   name: "update_page",
-  description: "Update properties of an existing Notion page.",
+  description: "Update properties of an existing record. For D1 rows, provide database_id + page_id (the row ID). For Notion pages, just provide page_id.",
   input_schema: {
     type: "object",
     properties: {
-      page_id: { type: "string", description: "The page ID to update." },
+      page_id: { type: "string", description: "The page/row ID to update. For D1 rows, this is the row ID." },
+      database_id: { type: "string", description: "Optional: the D1 table ID when updating a D1 row." },
       properties: {
         type: "object",
-        description: "Properties to update in Notion API format.",
+        description: "Properties to update. For D1 rows, use flat key-value pairs (e.g. {\"Status\": \"Done\", \"Priority\": 3}). For Notion pages, use Notion API format.",
       },
     },
     required: ["page_id", "properties"],
