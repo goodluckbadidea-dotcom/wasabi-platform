@@ -965,9 +965,10 @@ export default function DocumentEditor({ pageId: legacyPageId, config, pageConfi
         const wordCount = r2Blocks.reduce((sum, b) => sum + (b.content?.split(/\s+/).filter(Boolean).length || 0), 0);
         await saveDocument(docId, { version: 1, blocks: r2Blocks, word_count: wordCount });
 
-        // Mark all blocks as clean
+        // Mark all blocks as clean (do NOT update _lastSync — that would trigger
+        // a DOM reload via the html memo, overwriting what the user is currently typing)
         deletedIdsRef.current = [];
-        setBlocks((prev) => prev.map((b) => ({ ...b, _dirty: false, _isNew: false, _lastSync: Date.now() })));
+        setBlocks((prev) => prev.map((b) => ({ ...b, _dirty: false, _isNew: false })));
         setSaveStatus("saved");
       } catch (err) {
         console.error("Save failed:", err);
