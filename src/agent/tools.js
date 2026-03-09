@@ -40,7 +40,7 @@ const GET_PAGE = {
 
 const CREATE_PAGE = {
   name: "create_page",
-  description: "Create a new page in a Notion database. Provide the database_id and a properties object.",
+  description: "Create a new record/row in a database (D1 standalone table or Notion database). Provide the database_id and a properties object.",
   input_schema: {
     type: "object",
     properties: {
@@ -191,7 +191,7 @@ const DETECT_SCHEMA = {
 
 const CREATE_PAGE_CONFIG = {
   name: "create_page_config",
-  description: "Create a new page in the Wasabi platform. Defines the page name, icon, connected databases, views layout, and agent configuration.",
+  description: "Create a new page config in the Wasabi platform (saved to D1). Defines the page name, icon, connected databases, views layout, and agent configuration.",
   input_schema: {
     type: "object",
     properties: {

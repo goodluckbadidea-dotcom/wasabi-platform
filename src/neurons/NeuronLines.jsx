@@ -4,11 +4,12 @@
 // pills show (x) to remove nodes from the neuron.
 // Portal to document.body for correct stacking.
 
-import React, { useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import ReactDOM from "react-dom";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { useNeurons } from "./NeuronsContext.jsx";
+import { IconTrash } from "../design/icons.jsx";
 
 export default function NeuronLines() {
   const {
@@ -17,8 +18,15 @@ export default function NeuronLines() {
     overlayActive,
     removeNode,
     refreshNeurons,
+    deleteNeuron,
   } = useNeurons();
   const barRef = useRef(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Reset confirm state when neuron view changes
+  useEffect(() => {
+    setConfirmDelete(false);
+  }, [activeNeuronView?.neuronId]);
 
   // Click-away to dismiss
   useEffect(() => {
@@ -125,6 +133,39 @@ export default function NeuronLines() {
         >
           {neuronName || `${nodes.length} CONNECTED`}
         </span>
+        {/* Delete neuron button — inline confirmation */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (confirmDelete) {
+              deleteNeuron(activeNeuronView.neuronId);
+            } else {
+              setConfirmDelete(true);
+            }
+          }}
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            color: confirmDelete ? "#E05252" : C.darkMuted,
+            fontSize: confirmDelete ? 10 : 12,
+            padding: "0 2px",
+            lineHeight: 1,
+            transition: "all 0.12s",
+            outline: "none",
+            fontFamily: FONT,
+            fontWeight: confirmDelete ? 600 : 400,
+          }}
+          onMouseEnter={(e) => {
+            if (!confirmDelete) e.currentTarget.style.color = "#E05252";
+          }}
+          onMouseLeave={(e) => {
+            if (!confirmDelete) e.currentTarget.style.color = C.darkMuted;
+          }}
+          title={confirmDelete ? "Click again to confirm delete" : "Delete neuron"}
+        >
+          {confirmDelete ? "Delete?" : <IconTrash size={12} />}
+        </button>
         <button
           onClick={hideNeuronLines}
           style={{

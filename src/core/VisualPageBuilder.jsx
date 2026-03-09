@@ -443,48 +443,39 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
       setError("Page name is required");
       return;
     }
-    if (!user?.workerUrl || !user?.notionKey) {
-      setError("Notion credentials not configured. Complete setup first.");
-      return;
-    }
-    if (!platformIds?.rootPageId) {
-      setError("Platform root page not found. Complete setup in System Manager.");
-      return;
-    }
-    if (!platformIds?.configDbId) {
-      setError("Config database not found. Complete setup in System Manager.");
-      return;
-    }
+
+    const hasNotion = user?.workerUrl && user?.notionKey && platformIds?.rootPageId && platformIds?.configDbId;
 
     setSaving(true);
     try {
-      // Ensure root page is accessible (auto-unarchive if needed)
-      await ensurePageActive(user.workerUrl, user.notionKey, platformIds.rootPageId);
-
-      // Create a Notion subpage under the root page
-      const notionPage = await createSubpage(
-        user.workerUrl, user.notionKey, platformIds.rootPageId, pageName.trim()
-      );
-
-      // Build document page config
-      const docConfig = {
-        ...createDocumentPageConfig(pageName.trim(), pageIcon, notionPage.id),
-        type: subPageParent ? "sub_page" : "page",
-        parentId: subPageParent || folderId || null,
-      };
-
-      // Save to D1
-      const configId = await savePageConfig(docConfig);
-
-      // Add to local state
-      addPage({ ...docConfig, id: configId });
+      if (hasNotion) {
+        // Notion-linked document: create a subpage under root
+        await ensurePageActive(user.workerUrl, user.notionKey, platformIds.rootPageId);
+        const notionPage = await createSubpage(
+          user.workerUrl, user.notionKey, platformIds.rootPageId, pageName.trim()
+        );
+        const docConfig = {
+          ...createDocumentPageConfig(pageName.trim(), pageIcon, notionPage.id),
+          type: subPageParent ? "sub_page" : "page",
+          parentId: subPageParent || folderId || null,
+        };
+        const configId = await savePageConfig(docConfig);
+        addPage({ ...docConfig, id: configId });
+      } else {
+        // Standalone document (D1 only — no Notion required)
+        const config = {
+          ...createStandaloneDocConfig(pageName.trim(), pageIcon),
+          type: subPageParent ? "sub_page" : "page",
+          parentId: subPageParent || folderId || null,
+        };
+        const pageId = await savePageConfig(config);
+        addPage({ ...config, id: pageId });
+      }
       setSuccess(true);
     } catch (err) {
       const msg = err.message || "";
       if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
-        setError("Cannot reach Notion API. Check your worker URL and network connection.");
-      } else if (msg.includes("unarchive") || msg.includes("404") || msg.includes("400")) {
-        setError("Root page is unavailable or deleted. Re-run setup in System Manager.");
+        setError("Cannot reach server. Check your network connection.");
       } else {
         setError(msg || "Failed to create document page");
       }

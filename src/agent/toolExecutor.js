@@ -8,6 +8,39 @@ import { detectSchema, autoDetectViews, schemaToText, suggestViewMappings } from
 import { writeKB, searchKB, kbResultsToText } from "./memory.js";
 import { extractProperties, getPageTitle } from "../notion/properties.js";
 import * as api from "../lib/api.js";
+import { savePageConfig } from "../config/pageConfig.js";
+
+// ─── D1 Helpers ───
+
+/** Check if a database_id refers to a D1 standalone table (vs Notion DB). */
+async function isD1Table(id) {
+  try {
+    const cfg = await api.getPageConfig(id);
+    return cfg && cfg.page_type === "database";
+  } catch {
+    return false;
+  }
+}
+
+/** Convert Notion-format properties to flat D1 cells. */
+function notionPropsToD1Cells(props) {
+  const cells = {};
+  for (const [key, val] of Object.entries(props)) {
+    if (val?.title)
+      cells[key] = val.title.map((t) => t.text?.content || t.plain_text || "").join("");
+    else if (val?.rich_text)
+      cells[key] = val.rich_text.map((t) => t.text?.content || t.plain_text || "").join("");
+    else if (val?.number != null) cells[key] = val.number;
+    else if (val?.select) cells[key] = val.select.name || val.select;
+    else if (val?.date) cells[key] = val.date.start || "";
+    else if (val?.checkbox != null) cells[key] = val.checkbox;
+    else if (val?.url) cells[key] = val.url;
+    else if (val?.email) cells[key] = val.email;
+    else if (typeof val === "string") cells[key] = val;
+    else cells[key] = val;
+  }
+  return cells;
+}
 
 /**
  * Create a tool executor bound to a specific user's credentials and platform config.
@@ -39,20 +72,31 @@ export function createToolExecutor({
     switch (toolName) {
       // ─── Database Operations ───
       case "query_database": {
+        // D1 standalone table path
+        if (await isD1Table(toolInput.database_id)) {
+          const res = await api.listRows(toolInput.database_id);
+          const rows = res?.rows || [];
+          return JSON.stringify({
+            count: rows.length,
+            results: rows.slice(0, 50),
+            truncated: rows.length > 50,
+            storage: "d1",
+          });
+        }
+        // Notion path
         const results = await queryAll(
           workerUrl, notionKey,
           toolInput.database_id,
           toolInput.filter,
           toolInput.sorts
         );
-        // Return summarized results (keep payload manageable for context)
         const summary = results.map((page) => {
           const props = extractProperties(page);
           return { id: page.id, ...props };
         });
         return JSON.stringify({
           count: summary.length,
-          results: summary.slice(0, 50), // Cap at 50 for context window
+          results: summary.slice(0, 50),
           truncated: summary.length > 50,
         });
       }
@@ -64,6 +108,14 @@ export function createToolExecutor({
       }
 
       case "create_page": {
+        // D1 standalone table — create a row
+        if (await isD1Table(toolInput.database_id)) {
+          const cells = notionPropsToD1Cells(toolInput.properties);
+          const res = await api.createRows(toolInput.database_id, [cells]);
+          const newId = res?.ids?.[0] || res?.id || "created";
+          return JSON.stringify({ id: newId, success: true, storage: "d1" });
+        }
+        // Notion path
         const page = await client.createPage(
           workerUrl, notionKey,
           toolInput.database_id,
@@ -215,19 +267,14 @@ export function createToolExecutor({
           createdAt: new Date().toISOString(),
         };
 
-        // Store config in Notion Page Config DB
-        const configPage = await client.createPage(workerUrl, notionKey, configDbId, {
-          Name: { title: [{ type: "text", text: { content: name } }] },
-          Icon: { rich_text: [{ type: "text", text: { content: icon || "page" } }] },
-          Config: { rich_text: [{ type: "text", text: { content: JSON.stringify(pageConfig) } }] },
-        });
-
-        pageConfig.id = configPage.id;
+        // Save to D1 (primary path — works without Notion)
+        const pageId = await savePageConfig(pageConfig);
+        pageConfig.id = pageId;
 
         // Notify the UI to add this page
         if (onPageCreated) onPageCreated(pageConfig);
 
-        return JSON.stringify({ success: true, pageId: configPage.id, name });
+        return JSON.stringify({ success: true, pageId, name });
       }
 
       // ─── Knowledge Base ───
