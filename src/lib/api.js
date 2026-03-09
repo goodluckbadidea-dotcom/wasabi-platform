@@ -76,6 +76,10 @@ export async function initDatabase() {
   return apiFetch("/init", { method: "POST" });
 }
 
+export async function factoryReset() {
+  return apiFetch("/factory-reset", { method: "POST" });
+}
+
 // ─── Connections ───
 
 export async function getConnections() {

@@ -780,6 +780,11 @@ export default {
         return cachedResponse;
       }
 
+      // ─── Factory Reset ───
+      if (path === "/factory-reset" && request.method === "POST") {
+        return await handleFactoryReset(env);
+      }
+
       // 404
       return jsonResponse({ error: "Not found", path }, 404);
 
@@ -852,6 +857,34 @@ async function handleInit(env) {
     });
   } catch (err) {
     return jsonResponse({ _error: `Init failed: ${err.message}` }, 500);
+  }
+}
+
+async function handleFactoryReset(env) {
+  const userTables = [
+    "page_configs", "table_schemas", "table_rows", "sheet_data",
+    "documents", "automation_rules", "notifications", "knowledge_base",
+    "cell_links", "sync_configs", "record_notes", "record_comments",
+    "neurons", "neuron_nodes",
+  ];
+  try {
+    for (const table of userTables) {
+      try { await env.DB.prepare(`DELETE FROM ${table}`).run(); } catch (_) {}
+    }
+    // Also clear API connections (notion, claude, monday)
+    try { await env.DB.prepare("DELETE FROM connections").run(); } catch (_) {}
+    // Delete all R2 docs
+    try {
+      if (env.DOCS) {
+        const listed = await env.DOCS.list();
+        for (const obj of listed.objects || []) {
+          await env.DOCS.delete(obj.key);
+        }
+      }
+    } catch (_) {}
+    return jsonResponse({ ok: true, message: "Factory reset complete. All user data erased." });
+  } catch (err) {
+    return jsonResponse({ _error: `Factory reset failed: ${err.message}` }, 500);
   }
 }
 

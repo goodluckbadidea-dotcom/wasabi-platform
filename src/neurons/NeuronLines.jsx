@@ -1,156 +1,248 @@
-// ─── NeuronLines ───
-// SVG overlay drawing connection lines between nodes of the active neuron.
-// Finds DOM positions via data-neuron-node attributes, draws dashed accent lines.
+// ─── NeuronLines (Floating Pills Bar) ───
+// When a neuron badge is clicked, shows a floating pill bar at the top of the screen
+// listing all connected nodes. Click-away dismisses. During overlay mode,
+// pills show (x) to remove nodes from the neuron.
 // Portal to document.body for correct stacking.
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useCallback, useRef } from "react";
 import ReactDOM from "react-dom";
-import { C } from "../design/tokens.js";
+import { C, FONT, RADIUS } from "../design/tokens.js";
+import { ANIM } from "../design/animations.js";
 import { useNeurons } from "./NeuronsContext.jsx";
 
-/** Find the center point of a DOM element with the given neuron node attribute. */
-function getNodePosition(nodeId) {
-  const el = document.querySelector(`[data-neuron-node="row:${nodeId}"], [data-neuron-node="page:${nodeId}"], [data-neuron-node="folder:${nodeId}"], [data-neuron-node="cell:${nodeId}"]`);
-  if (!el) return null;
-  const rect = el.getBoundingClientRect();
-  return {
-    x: rect.left + rect.width / 2,
-    y: rect.top + rect.height / 2,
-    width: rect.width,
-    height: rect.height,
-  };
-}
-
 export default function NeuronLines() {
-  const { activeNeuronView, hideNeuronLines } = useNeurons();
-  const [positions, setPositions] = useState([]);
+  const {
+    activeNeuronView,
+    hideNeuronLines,
+    overlayActive,
+    removeNode,
+    refreshNeurons,
+  } = useNeurons();
+  const barRef = useRef(null);
 
-  // Calculate positions when activeNeuronView changes
-  const recalc = useCallback(() => {
-    if (!activeNeuronView?.nodes) {
-      setPositions([]);
-      return;
-    }
-
-    const pts = [];
-    for (const node of activeNeuronView.nodes) {
-      const pos = getNodePosition(node.node_id);
-      if (pos) {
-        pts.push({ ...pos, nodeId: node.node_id, label: node.node_label });
+  // Click-away to dismiss
+  useEffect(() => {
+    if (!activeNeuronView) return;
+    const handler = (e) => {
+      if (barRef.current && !barRef.current.contains(e.target)) {
+        hideNeuronLines();
       }
-    }
-    setPositions(pts);
-  }, [activeNeuronView]);
-
-  useEffect(() => {
-    recalc();
-    // Recalc on scroll/resize
-    const handler = () => recalc();
-    window.addEventListener("scroll", handler, true);
-    window.addEventListener("resize", handler);
-    return () => {
-      window.removeEventListener("scroll", handler, true);
-      window.removeEventListener("resize", handler);
     };
-  }, [recalc]);
+    // Delay listener so the badge click that opened this doesn't immediately close it
+    const timer = setTimeout(() => {
+      window.addEventListener("mousedown", handler);
+    }, 50);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("mousedown", handler);
+    };
+  }, [activeNeuronView, hideNeuronLines]);
 
-  // Dismiss on Escape
+  // Escape to dismiss
   useEffect(() => {
+    if (!activeNeuronView) return;
     const handler = (e) => {
       if (e.key === "Escape") hideNeuronLines();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [hideNeuronLines]);
+  }, [activeNeuronView, hideNeuronLines]);
 
-  if (!activeNeuronView || positions.length < 2) return null;
+  const handleRemoveNode = useCallback(
+    async (e, nodeId) => {
+      e.stopPropagation();
+      if (!activeNeuronView) return;
+      try {
+        // Find the neuron_nodes row ID for this node
+        const node = activeNeuronView.nodes.find((n) => n.node_id === nodeId);
+        if (node) {
+          await removeNode(activeNeuronView.neuronId, node.id);
+          await refreshNeurons();
+          // Update local view
+          const remaining = activeNeuronView.nodes.filter((n) => n.node_id !== nodeId);
+          if (remaining.length < 1) {
+            hideNeuronLines();
+          }
+        }
+      } catch (err) {
+        console.error("[Neurons] Remove node failed:", err);
+      }
+    },
+    [activeNeuronView, removeNode, refreshNeurons, hideNeuronLines]
+  );
 
-  // Compute hub center
-  const hub = {
-    x: positions.reduce((s, p) => s + p.x, 0) / positions.length,
-    y: positions.reduce((s, p) => s + p.y, 0) / positions.length,
-  };
+  if (!activeNeuronView || !activeNeuronView.nodes?.length) return null;
+
+  const { nodes } = activeNeuronView;
+  const neuronName = activeNeuronView.name || "";
 
   return ReactDOM.createPortal(
-    <svg
+    <div
+      ref={barRef}
       style={{
         position: "fixed",
-        inset: 0,
-        width: "100vw",
-        height: "100vh",
-        zIndex: 349,
-        pointerEvents: "none",
+        top: 56,
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 400,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 8,
+        animation: ANIM.snapInRight(0.02),
       }}
     >
-      <defs>
-        <filter id="neuron-glow">
-          <feGaussianBlur stdDeviation="3" result="blur" />
-          <feFlood floodColor={C.accent} floodOpacity="0.4" result="color" />
-          <feComposite in="color" in2="blur" operator="in" result="shadow" />
-          <feMerge>
-            <feMergeNode in="shadow" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
-
-      {/* Lines from hub to each node */}
-      {positions.map((pos, i) => (
-        <line
-          key={`line-${i}`}
-          x1={hub.x}
-          y1={hub.y}
-          x2={pos.x}
-          y2={pos.y}
-          stroke={C.accent}
-          strokeWidth="1.5"
-          strokeDasharray="6 4"
-          opacity="0.6"
-          filter="url(#neuron-glow)"
-        />
-      ))}
-
-      {/* Hub dot */}
-      <circle
-        cx={hub.x}
-        cy={hub.y}
-        r={5}
-        fill={C.accent}
-        opacity="0.8"
-        filter="url(#neuron-glow)"
-      />
-
-      {/* Node dots */}
-      {positions.map((pos, i) => (
-        <circle
-          key={`dot-${i}`}
-          cx={pos.x}
-          cy={pos.y}
-          r={4}
-          fill={C.accent}
-          stroke={C.dark || "#111"}
-          strokeWidth="1.5"
-          opacity="0.9"
-        />
-      ))}
-
-      {/* Node labels */}
-      {positions.map((pos, i) => (
-        <text
-          key={`label-${i}`}
-          x={pos.x}
-          y={pos.y - 12}
-          textAnchor="middle"
-          fill={C.accent}
-          fontSize="10"
-          fontWeight="600"
-          opacity="0.8"
-          style={{ pointerEvents: "none", fontFamily: "inherit" }}
+      {/* Neuron header pill */}
+      <div
+        style={{
+          background: C.dark,
+          border: `1.5px solid ${C.accent}`,
+          borderRadius: 999,
+          padding: "6px 16px",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          boxShadow: `0 0 20px ${C.accent}22, 0 4px 12px rgba(0,0,0,0.3)`,
+        }}
+      >
+        {/* Neuron icon */}
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+          <circle cx="4" cy="4" r="2" fill={C.accent} />
+          <circle cx="12" cy="4" r="2" fill={C.accent} />
+          <circle cx="8" cy="12" r="2" fill={C.accent} />
+          <line x1="4" y1="4" x2="12" y2="4" stroke={C.accent} strokeWidth="1" />
+          <line x1="4" y1="4" x2="8" y2="12" stroke={C.accent} strokeWidth="1" />
+          <line x1="12" y1="4" x2="8" y2="12" stroke={C.accent} strokeWidth="1" />
+        </svg>
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            color: C.accent,
+            fontFamily: FONT,
+            letterSpacing: "0.06em",
+          }}
         >
-          {pos.label || ""}
-        </text>
-      ))}
-    </svg>,
+          {neuronName || `${nodes.length} CONNECTED`}
+        </span>
+        <button
+          onClick={hideNeuronLines}
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            color: C.darkMuted,
+            fontSize: 14,
+            padding: "0 2px",
+            lineHeight: 1,
+            transition: "color 0.12s",
+            outline: "none",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = C.darkText; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = C.darkMuted; }}
+          title="Close"
+        >
+          ×
+        </button>
+      </div>
+
+      {/* Connected node pills */}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 6,
+          justifyContent: "center",
+          maxWidth: 600,
+        }}
+      >
+        {nodes.map((node, i) => (
+          <div
+            key={node.node_id || i}
+            style={{
+              background: C.dark,
+              border: `1px solid ${C.accent}44`,
+              borderRadius: RADIUS.md,
+              padding: "4px 10px",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 11,
+              fontWeight: 500,
+              color: C.darkText,
+              fontFamily: FONT,
+              letterSpacing: "0.02em",
+              maxWidth: 200,
+              boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+              animation: ANIM.snapInRight(0.02 + i * 0.015),
+            }}
+          >
+            {/* Node type indicator */}
+            <span
+              style={{
+                fontSize: 9,
+                color: C.accent,
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                flexShrink: 0,
+              }}
+            >
+              {node.node_type || ""}
+            </span>
+            <span
+              style={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {node.node_label || node.node_id}
+            </span>
+
+            {/* Remove button — only in overlay mode */}
+            {overlayActive && (
+              <button
+                onClick={(e) => handleRemoveNode(e, node.node_id)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: C.darkMuted,
+                  fontSize: 13,
+                  padding: "0 1px",
+                  lineHeight: 1,
+                  transition: "color 0.12s",
+                  outline: "none",
+                  flexShrink: 0,
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = "#E05252"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = C.darkMuted; }}
+                title="Remove from neuron"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Hint when in overlay mode */}
+      {overlayActive && (
+        <div
+          style={{
+            fontSize: 10,
+            color: C.darkMuted,
+            fontFamily: FONT,
+            fontWeight: 500,
+            letterSpacing: "0.04em",
+            marginTop: 2,
+          }}
+        >
+          <span style={{ color: C.accent }}>Cmd + Click</span> items to add to this neuron
+        </div>
+      )}
+    </div>,
     document.body
   );
 }

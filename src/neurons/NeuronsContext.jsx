@@ -169,6 +169,12 @@ export function NeuronsProvider({ children }) {
       const list = await loadNeurons(true);
       setNeurons(list);
       await rebuildNodeMap();
+      // Update the active floating pills view if showing this neuron
+      setActiveNeuronView((prev) => {
+        if (!prev || prev.neuronId !== neuronId) return prev;
+        const remaining = (prev.nodes || []).filter((n) => n.id !== nodeId);
+        return remaining.length > 0 ? { ...prev, nodes: remaining } : null;
+      });
     },
     [rebuildNodeMap]
   );
@@ -183,7 +189,7 @@ export function NeuronsProvider({ children }) {
   const showNeuronLines = useCallback(async (neuronId) => {
     try {
       const full = await loadNeuron(neuronId);
-      setActiveNeuronView({ neuronId: full.id, nodes: full.nodes || [] });
+      setActiveNeuronView({ neuronId: full.id, name: full.name || "", nodes: full.nodes || [] });
     } catch {
       setActiveNeuronView(null);
     }

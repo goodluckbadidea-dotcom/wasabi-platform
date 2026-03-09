@@ -16,7 +16,7 @@ import ConfirmDialog from "./ConfirmDialog.jsx";
 import { IconGear } from "../design/icons.jsx";
 import { getSessionUsage, getUsageHistory, formatCost, formatTokens } from "../utils/costTracker.js";
 import * as api from "../lib/api.js";
-import { getConnections, setConnection as apiSetConnection, deleteConnection as apiDeleteConnection, checkHealth } from "../lib/api.js";
+import { getConnections, setConnection as apiSetConnection, deleteConnection as apiDeleteConnection, checkHealth, factoryReset as apiFactoryReset, clearConnection } from "../lib/api.js";
 
 // ── Tab button style (matches WasabiPanel) ──
 const tabBtn = (active) => ({
@@ -887,14 +887,19 @@ function SettingsTab() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetting, setResetting] = useState(false);
 
+  const handleLogout = useCallback(() => {
+    clearConnection();
+    window.location.reload();
+  }, []);
+
   const handleFactoryReset = useCallback(async () => {
     setResetting(true);
     try {
-      // Try to delete connections from D1
-      for (const key of ["notion", "claude", "monday"]) {
-        try { await apiDeleteConnection(key); } catch (_) {}
-      }
-    } catch (_) {}
+      // Server-side: delete all user data from D1 + R2
+      await apiFactoryReset();
+    } catch (_) {
+      // If server call fails, still clear local state
+    }
 
     // Clear all wasabi localStorage keys
     const keysToRemove = [];
@@ -1097,7 +1102,7 @@ function SettingsTab() {
         </button>
       </div>
 
-      {/* ── Factory Reset ── */}
+      {/* ── Account ── */}
       <div
         style={{
           fontSize: 10,
@@ -1106,6 +1111,64 @@ function SettingsTab() {
           textTransform: "uppercase",
           letterSpacing: "0.08em",
           marginTop: 40,
+          marginBottom: 14,
+        }}
+      >
+        Account
+      </div>
+
+      <div
+        style={{
+          background: C.darkSurf,
+          border: `1px solid ${C.darkBorder}`,
+          borderRadius: RADIUS.lg,
+          padding: "16px 18px",
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+          marginBottom: 28,
+        }}
+      >
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.darkText, fontFamily: FONT, marginBottom: 4 }}>
+            Log Out
+          </div>
+          <div style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT, lineHeight: 1.4 }}>
+            Disconnect from the current worker. Your data is preserved on the server.
+          </div>
+        </div>
+        <button
+          onClick={handleLogout}
+          style={{
+            background: "transparent",
+            border: `1px solid ${C.darkBorder}`,
+            borderRadius: RADIUS.pill,
+            color: C.darkText,
+            fontFamily: FONT,
+            fontSize: 12,
+            fontWeight: 600,
+            padding: "7px 18px",
+            cursor: "pointer",
+            outline: "none",
+            transition: "background 0.14s",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = C.darkBorder + "44"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+        >
+          Log Out
+        </button>
+      </div>
+
+      {/* ── Factory Reset ── */}
+      <div
+        style={{
+          fontSize: 10,
+          color: C.darkMuted,
+          fontFamily: FONT,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
           marginBottom: 14,
         }}
       >

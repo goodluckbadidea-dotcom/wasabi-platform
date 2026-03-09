@@ -904,7 +904,7 @@ export default function DocumentEditor({ pageId: legacyPageId, config, pageConfi
       if (isStandalone) {
         // ── Standalone: load from R2 ──
         const doc = await getDocument(docId);
-        const r2Blocks = doc?.blocks || [];
+        const r2Blocks = doc?.content?.blocks || doc?.blocks || [];
         loaded = r2Blocks.map((b) => r2BlockToEditor(b));
       } else {
         // ── Notion-backed: load from Notion API ──
