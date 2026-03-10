@@ -11,6 +11,7 @@ import { debounce, formatDate, truncate } from "../utils/helpers.js";
 import { IconTrash, IconExport, IconEyeOff, IconExpand, IconPlus, IconConnect } from "../design/icons.jsx";
 import FilterChips, { applyChipFilters } from "./FilterChips.jsx";
 import RecordDetail from "./RecordDetail.jsx";
+import NewRecordModal from "./NewRecordModal.jsx";
 import { useLinks } from "../context/LinksContext.jsx";
 import LinkPicker from "../core/LinkPicker.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
@@ -897,6 +898,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const [quickAddValues, setQuickAddValues] = useState({});
   const [quickAddSaving, setQuickAddSaving] = useState(false);
   const [quickAddError, setQuickAddError] = useState(null);
+  const [showNewModal, setShowNewModal] = useState(false);
 
   // ── Cell Linking ──
   const { resolveLinksForView, createLink, removeLink, getLinksForTarget } = useLinks();
@@ -932,11 +934,14 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   }, [colMenuOpen]);
 
   // ── Column resize drag handlers ──
+  const colWidthsRef = useRef(colWidths);
+  colWidthsRef.current = colWidths;
+
   const handleResizeStart = useCallback((col, e) => {
     e.preventDefault();
     e.stopPropagation();
     const startX = e.clientX;
-    const startW = colWidths[col] || 150;
+    const startW = colWidthsRef.current[col] || 150;
     resizeDrag.current = { col, startX, startW };
 
     const onMove = (me) => {
@@ -952,7 +957,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, [colWidths]);
+  }, []);
 
   // ── Column context menu handlers ──
   const handleColRightClick = useCallback((col, e) => {
@@ -1040,6 +1045,10 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
 
   useEffect(() => {
     if (!colDrag) return;
+    // Prevent text selection during drag
+    document.body.style.userSelect = "none";
+    document.body.style.webkitUserSelect = "none";
+
     const onMove = (e) => {
       const els = document.querySelectorAll("[data-col-header]");
       let over = null;
@@ -1066,11 +1075,15 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           onViewConfigChange({ columns: reordered });
         }
       }
+      document.body.style.userSelect = "";
+      document.body.style.webkitUserSelect = "";
       setColDrag(null);
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
     return () => {
+      document.body.style.userSelect = "";
+      document.body.style.webkitUserSelect = "";
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
     };
@@ -1625,17 +1638,11 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
         {/* Add Row */}
         {onCreate && targetDatabaseId && (
           <button
-            style={{
-              ...styles.refreshBtn,
-              ...(quickAddOpen ? { borderColor: C.accent, background: `${C.accent}18` } : {}),
-            }}
-            onClick={() => {
-              setQuickAddOpen((o) => !o);
-              if (quickAddOpen) { setQuickAddValues({}); setQuickAddError(null); }
-            }}
-            title={quickAddOpen ? "Close add row" : "Add new row"}
+            style={styles.refreshBtn}
+            onClick={() => setShowNewModal(true)}
+            title="Add new row"
           >
-            <IconPlus size={14} color={quickAddOpen ? C.accent : C.darkMuted} />
+            <IconPlus size={14} color={C.darkMuted} />
           </button>
         )}
 
@@ -2079,12 +2086,22 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           onClose={() => setDetailPage(null)}
           onUpdate={async (pageId, properties) => {
             if (!onUpdate) throw new Error("Updates not available");
-            // Call onUpdate for each property
             for (const [fieldName, payload] of Object.entries(properties)) {
               await onUpdate(pageId, fieldName, payload);
             }
           }}
+          onDelete={onDelete ? (ids) => { onDelete(ids); setDetailPage(null); } : undefined}
           pageConfigId={pageConfig?.id}
+        />
+      )}
+
+      {/* New Record Modal */}
+      {showNewModal && onCreate && targetDatabaseId && (
+        <NewRecordModal
+          schema={schema}
+          databaseId={targetDatabaseId}
+          onCreate={onCreate}
+          onClose={() => setShowNewModal(false)}
         />
       )}
 

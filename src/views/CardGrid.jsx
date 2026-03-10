@@ -7,9 +7,10 @@ import { readField, getFieldType, getFieldOptions, getOptionNames, displayValue,
 import { cellStyles, CellDisplay } from "./_CellComponents.jsx";
 import { buildProp } from "../notion/properties.js";
 import RecordDetail from "./RecordDetail.jsx";
+import NewRecordModal from "./NewRecordModal.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 
-export default function CardGrid({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onViewConfigChange, pageConfig }) {
+export default function CardGrid({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, onViewConfigChange, pageConfig }) {
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState(config.activeFilters || {});
   const [detailPage, setDetailPage] = useState(null);
@@ -17,6 +18,7 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
   const [addOpen, setAddOpen] = useState(false);
   const [addTitle, setAddTitle] = useState("");
   const [addSaving, setAddSaving] = useState(false);
+  const [showNewModal, setShowNewModal] = useState(false);
 
   // Resolve fields from config or auto-detect
   const titleField = resolveField(schema, config.titleField, ["title"]);
@@ -178,39 +180,10 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
             : `${processedData.length} of ${data.length}`}
         </span>
 
-        {/* Quick-add */}
-        {onCreate && (addOpen ? (
-          <input
-            autoFocus
-            value={addTitle}
-            onChange={(e) => setAddTitle(e.target.value)}
-            onKeyDown={async (e) => {
-              if (e.key === "Enter" && addTitle.trim()) {
-                setAddSaving(true);
-                try {
-                  const dbId = config.databaseId || pageConfig?.databaseIds?.[0] || pageConfig?.id;
-                  const titleField = schema?.title?.name;
-                  const props = {};
-                  if (titleField) props[titleField] = buildProp("title", addTitle.trim());
-                  await onCreate(dbId, props);
-                  setAddTitle(""); setAddOpen(false);
-                } catch (err) { console.error("CardGrid add failed:", err); }
-                finally { setAddSaving(false); }
-              }
-              if (e.key === "Escape") { setAddOpen(false); setAddTitle(""); }
-            }}
-            onBlur={() => { if (!addSaving) { setAddOpen(false); setAddTitle(""); } }}
-            placeholder="New item..."
-            disabled={addSaving}
-            style={{
-              width: 140, padding: "5px 10px", fontSize: 12, fontFamily: FONT,
-              border: `1px solid ${C.accent}44`, borderRadius: RADIUS.md,
-              background: C.darkSurf, color: C.darkText, outline: "none",
-            }}
-          />
-        ) : (
+        {/* Add new */}
+        {onCreate && (
           <button
-            onClick={() => setAddOpen(true)}
+            onClick={() => setShowNewModal(true)}
             style={{
               background: "transparent", border: `1px dashed ${C.darkBorder}`,
               borderRadius: RADIUS.md, padding: "4px 12px", color: C.darkMuted,
@@ -220,7 +193,7 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent + "66"; e.currentTarget.style.color = C.darkText; }}
             onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; e.currentTarget.style.color = C.darkMuted; }}
           >+ New</button>
-        ))}
+        )}
       </div>
 
       {/* Card Grid */}
@@ -382,7 +355,17 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
           schema={schema}
           onClose={() => setDetailPage(null)}
           onUpdate={onUpdate}
+          onDelete={onDelete ? (ids) => { onDelete(ids); setDetailPage(null); } : undefined}
           pageConfigId={pageConfig?.id}
+        />
+      )}
+
+      {showNewModal && onCreate && (
+        <NewRecordModal
+          schema={schema}
+          databaseId={config.databaseId || pageConfig?.databaseIds?.[0] || pageConfig?.id}
+          onCreate={onCreate}
+          onClose={() => setShowNewModal(false)}
         />
       )}
     </div>

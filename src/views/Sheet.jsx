@@ -168,14 +168,16 @@ export default function Sheet({ pageConfig }) {
   const saveTimer = useRef(null);
   const pendingChanges = useRef({});
   const resizeDrag = useRef(null); // { col, startX, startW }
+  const colWidthsRef = useRef(colWidths);
+  colWidthsRef.current = colWidths;
 
-  // Column resize drag
+  // Column resize drag — uses ref to avoid stale closure issues
   const handleColResize = useCallback((colIdx, e) => {
     e.preventDefault();
     e.stopPropagation();
     const col = colLabel(colIdx);
     const startX = e.clientX;
-    const startW = colWidths[col] || 100;
+    const startW = colWidthsRef.current[col] || 100;
     resizeDrag.current = { col, startX, startW };
 
     const onMove = (me) => {
@@ -191,7 +193,7 @@ export default function Sheet({ pageConfig }) {
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, [colWidths]);
+  }, []);
 
   // Visible range for virtual scrolling (simplified: render all for now)
   const visibleCols = Math.min(colCount, 52); // Max 52 columns visible

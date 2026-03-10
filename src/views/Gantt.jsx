@@ -7,6 +7,7 @@ import { C, FONT, RADIUS, TIMELINE_PALETTE, VIEW_PALETTE, getStatusColor, getSol
 import { readField, getFieldType, getOptionNames, resolveField } from "./_viewHelpers.js";
 import { buildProp } from "../notion/properties.js";
 import RecordDetail from "./RecordDetail.jsx";
+import NewRecordModal from "./NewRecordModal.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 
 // ─── Constants ───
@@ -126,7 +127,7 @@ function buildHeaders(origin, days, pxPerDay) {
 
 // ─── Main Component ───
 
-export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, pageConfig }) {
+export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig }) {
   const [zoomIndex, setZoomIndex] = useState(2); // Default 30-day
   const [search, setSearch] = useState("");
   const [scrollLeft, setScrollLeft] = useState(0);
@@ -139,6 +140,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
   const [addOpen, setAddOpen] = useState(false);
   const [addTitle, setAddTitle] = useState("");
   const [addSaving, setAddSaving] = useState(false);
+  const [showNewModal, setShowNewModal] = useState(false);
   const svgContainerRef = useRef(null);
   const scrollRef = useRef(null);
   const wrapperRef = useRef(null);
@@ -592,40 +594,9 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
         />
 
         {/* Quick-add */}
-        {onCreate && (addOpen ? (
-          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-            <input
-              autoFocus
-              value={addTitle}
-              onChange={(e) => setAddTitle(e.target.value)}
-              onKeyDown={async (e) => {
-                if (e.key === "Enter" && addTitle.trim()) {
-                  setAddSaving(true);
-                  try {
-                    const dbId = config.databaseId || pageConfig?.databaseIds?.[0] || pageConfig?.id;
-                    const titleField = schema?.title?.name;
-                    const props = {};
-                    if (titleField) props[titleField] = buildProp("title", addTitle.trim());
-                    await onCreate(dbId, props);
-                    setAddTitle(""); setAddOpen(false);
-                  } catch (err) { console.error("Gantt add failed:", err); }
-                  finally { setAddSaving(false); }
-                }
-                if (e.key === "Escape") { setAddOpen(false); setAddTitle(""); }
-              }}
-              onBlur={() => { if (!addSaving) { setAddOpen(false); setAddTitle(""); } }}
-              placeholder="New item..."
-              disabled={addSaving}
-              style={{
-                width: 140, padding: "4px 8px", fontSize: 12, fontFamily: FONT,
-                border: `1px solid ${C.accent}44`, borderRadius: RADIUS.md,
-                background: C.darkSurf, color: C.darkText, outline: "none",
-              }}
-            />
-          </div>
-        ) : (
+        {onCreate && (
           <button
-            onClick={() => setAddOpen(true)}
+            onClick={() => setShowNewModal(true)}
             style={{
               background: "transparent", border: `1px dashed ${C.darkBorder}`,
               borderRadius: RADIUS.md, padding: "3px 10px", color: C.darkMuted,
@@ -635,7 +606,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent + "66"; e.currentTarget.style.color = C.darkText; }}
             onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; e.currentTarget.style.color = C.darkMuted; }}
           >+ New</button>
-        ))}
+        )}
 
         {/* Legend — switches based on color mode */}
         <div style={{ display: "flex", gap: 10, marginLeft: 8, flexWrap: "wrap" }}>
@@ -1111,7 +1082,17 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
           schema={schema}
           onClose={() => setDetailPage(null)}
           onUpdate={onUpdate}
+          onDelete={onDelete ? (ids) => { onDelete(ids); setDetailPage(null); } : undefined}
           pageConfigId={pageConfig?.id}
+        />
+      )}
+
+      {showNewModal && onCreate && (
+        <NewRecordModal
+          schema={schema}
+          databaseId={config.databaseId || pageConfig?.databaseIds?.[0] || pageConfig?.id}
+          onCreate={onCreate}
+          onClose={() => setShowNewModal(false)}
         />
       )}
     </div>

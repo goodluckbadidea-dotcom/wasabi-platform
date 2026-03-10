@@ -328,10 +328,11 @@ if (typeof document !== "undefined") {
 }
 
 // ── Main Component ──
-export default function RecordDetail({ page, schema, onClose, onUpdate, pageConfigId }) {
+export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete, pageConfigId }) {
   const [editingField, setEditingField] = useState(null);
   const [editValue, setEditValue] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [pendingChanges, setPendingChanges] = useState({});
   const [activeTab, setActiveTab] = useState("properties");
 
@@ -507,6 +508,29 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, pageConf
 
             {/* Footer — only on Properties tab */}
             <div style={ds.footer}>
+              {onDelete && (
+                <button
+                  style={{
+                    ...ds.btn(false),
+                    color: confirmDelete ? "#fff" : "#FF6B3D",
+                    borderColor: "#FF6B3D",
+                    background: confirmDelete ? "#FF6B3D" : "transparent",
+                    marginRight: "auto",
+                    fontSize: 11,
+                  }}
+                  onClick={() => {
+                    if (confirmDelete) {
+                      onDelete([page.id]);
+                      onClose();
+                    } else {
+                      setConfirmDelete(true);
+                    }
+                  }}
+                  onMouseLeave={() => setConfirmDelete(false)}
+                >
+                  {confirmDelete ? "Confirm Delete" : "Delete"}
+                </button>
+              )}
               <button
                 style={ds.btn(false)}
                 onClick={onClose}

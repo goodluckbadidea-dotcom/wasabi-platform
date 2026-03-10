@@ -4,9 +4,10 @@
 
 import React, { useState, useMemo, useCallback } from "react";
 import { C, FONT, RADIUS, SHADOW, getSolidPillColor } from "../design/tokens.js";
-import { readProp, buildProp } from "../notion/properties.js";
+import { readProp } from "../notion/properties.js";
 import { IconChevronLeft, IconChevronRight } from "../design/icons.jsx";
 import RecordDetail from "./RecordDetail.jsx";
+import NewRecordModal from "./NewRecordModal.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 
 // ── Helpers ──
@@ -236,15 +237,14 @@ const cal = {
 };
 
 // ── Main Component ──
-export default function Calendar({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, pageConfig }) {
+export default function Calendar({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig }) {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [popover, setPopover] = useState(null); // { x, y, date, events }
   const [detailPage, setDetailPage] = useState(null);
-  const [addingDate, setAddingDate] = useState(null); // "YYYY-MM-DD" being added to
-  const [addTitle, setAddTitle] = useState("");
-  const [addSaving, setAddSaving] = useState(false);
+  const [showNewModal, setShowNewModal] = useState(false);
+  const [newModalPrefill, setNewModalPrefill] = useState({});
 
   const dateField = resolveDateField(schema, config);
   const titleField = resolveTitleField(schema);
@@ -328,32 +328,18 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
   // Target DB for creating records
   const targetDatabaseId = config.databaseId || pageConfig?.databaseIds?.[0] || pageConfig?.id;
 
-  // Add event to a specific date
-  const handleAddToDate = useCallback(async (dateStr) => {
-    if (!onCreate || !targetDatabaseId || !addTitle.trim()) return;
-    setAddSaving(true);
-    try {
-      const props = {};
-      if (titleField) props[titleField] = buildProp("title", addTitle.trim());
-      if (dateField) props[dateField] = buildProp("date", dateStr);
-      await onCreate(targetDatabaseId, props);
-      setAddTitle("");
-      setAddingDate(null);
-    } catch (err) { console.error("Calendar add failed:", err); }
-    finally { setAddSaving(false); }
-  }, [onCreate, targetDatabaseId, addTitle, titleField, dateField]);
-
   // Click on a day cell
   const handleDayClick = useCallback((day, e) => {
     if (!day) return;
     const key = toDateStr(year, month, day);
     const events = eventMap[key] || [];
 
-    // Empty day with onCreate — start add flow
+    // Empty day with onCreate — open modal with date prefill
     if (events.length === 0 && onCreate && targetDatabaseId) {
-      setAddingDate(key);
-      setAddTitle("");
-      setPopover(null);
+      const prefill = {};
+      if (dateField) prefill[dateField] = key;
+      setNewModalPrefill(prefill);
+      setShowNewModal(true);
       return;
     }
     if (events.length === 0) return;
@@ -422,6 +408,22 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
         <span style={{ fontSize: 11, color: C.darkMuted }}>
           {data.length} event{data.length !== 1 ? "s" : ""}
         </span>
+
+        {onCreate && targetDatabaseId && (
+          <button
+            onClick={() => { setNewModalPrefill({}); setShowNewModal(true); }}
+            style={{
+              padding: "5px 14px", borderRadius: RADIUS.pill,
+              border: `1px solid ${C.accent}44`, background: C.accent + "18",
+              cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: FONT,
+              color: C.accent, transition: "all 0.15s",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = C.accent + "30"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = C.accent + "18"; }}
+          >
+            + New
+          </button>
+        )}
       </div>
 
       {/* Day headers */}
@@ -451,36 +453,23 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
                 {day && (
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <span style={cal.dayNum(isToday)}>{day}</span>
-                    {onCreate && targetDatabaseId && key && addingDate !== key && (
+                    {onCreate && targetDatabaseId && key && (
                       <span
                         style={{ fontSize: 14, color: C.darkMuted, cursor: "pointer", lineHeight: 1, padding: "0 2px", opacity: 0.4, transition: "opacity 0.15s" }}
                         onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
                         onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.4"; }}
-                        onClick={(e) => { e.stopPropagation(); setAddingDate(key); setAddTitle(""); setPopover(null); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPopover(null);
+                          const prefill = {};
+                          if (dateField) prefill[dateField] = key;
+                          setNewModalPrefill(prefill);
+                          setShowNewModal(true);
+                        }}
                         title="Add event"
                       >+</span>
                     )}
                   </div>
-                )}
-                {addingDate === key && (
-                  <input
-                    autoFocus
-                    style={{
-                      width: "100%", border: `1px solid ${C.accent}`, borderRadius: RADIUS.sm,
-                      background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 10,
-                      padding: "2px 4px", outline: "none", boxSizing: "border-box", marginBottom: 2,
-                    }}
-                    value={addTitle}
-                    onChange={(e) => setAddTitle(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && addTitle.trim()) handleAddToDate(key);
-                      if (e.key === "Escape") { setAddingDate(null); setAddTitle(""); }
-                    }}
-                    onBlur={() => { if (!addSaving) { setAddingDate(null); setAddTitle(""); } }}
-                    onClick={(e) => e.stopPropagation()}
-                    disabled={addSaving}
-                    placeholder="New event..."
-                  />
                 )}
                 {events.slice(0, MAX_VISIBLE).map((ev, ei) => (
                   <span key={ei} style={cal.eventPill(ev.color)}>
@@ -551,7 +540,19 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
               await onUpdate(pageId, fieldName, payload);
             }
           }}
+          onDelete={onDelete ? (ids) => { onDelete(ids); setDetailPage(null); } : undefined}
           pageConfigId={pageConfig?.id}
+        />
+      )}
+
+      {/* New Record Modal */}
+      {showNewModal && onCreate && (
+        <NewRecordModal
+          schema={schema}
+          onClose={() => setShowNewModal(false)}
+          onCreate={onCreate}
+          databaseId={targetDatabaseId}
+          prefill={newModalPrefill}
         />
       )}
     </div>

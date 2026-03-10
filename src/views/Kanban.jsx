@@ -8,20 +8,19 @@ import { buildProp } from "../notion/properties.js";
 import { cellStyles, CellDisplay } from "./_CellComponents.jsx";
 import FilterChips, { applyChipFilters } from "./FilterChips.jsx";
 import RecordDetail from "./RecordDetail.jsx";
+import NewRecordModal from "./NewRecordModal.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
 
-export default function Kanban({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onViewConfigChange, pageConfig }) {
+export default function Kanban({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, onViewConfigChange, pageConfig }) {
   const [dragState, setDragState] = useState(null); // { pageId, fromCol, startX, startY, isDragging }
   const [dropTarget, setDropTarget] = useState(null); // column option name
   const [detailPage, setDetailPage] = useState(null);
+  const [showNewModal, setShowNewModal] = useState(false);
+  const [newModalPrefill, setNewModalPrefill] = useState({});
   const lastCardClickRef = useRef({ id: null, time: 0 });
-  const [addingInCol, setAddingInCol] = useState(null); // column name being added to
-  const [addTitle, setAddTitle] = useState("");
-  const [addSaving, setAddSaving] = useState(false);
   const ghostRef = useRef(null);
   const columnRefs = useRef({});
-  const addInputRef = useRef(null);
 
   // Target DB for creating records
   const targetDatabaseId = config.databaseId || pageConfig?.databaseIds?.[0] || pageConfig?.id;
@@ -216,28 +215,15 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
     };
   }, [dragState, dropTarget, onUpdate, columnField, columnType]);
 
-  // ── Quick-add handler ──
-  const handleQuickAdd = useCallback(async (colName) => {
-    if (!onCreate || !targetDatabaseId || !addTitle.trim()) return;
-    setAddSaving(true);
-    try {
-      const titleField = schema?.title?.name;
-      const properties = {};
-      if (titleField) properties[titleField] = buildProp("title", addTitle.trim());
-      // Set the column field value so item appears in the right column
-      if (columnField && colName !== "__uncategorized__") {
-        const colType = getFieldType(schema, columnField);
-        if (colType) properties[columnField] = buildProp(colType, colName);
-      }
-      await onCreate(targetDatabaseId, properties);
-      setAddTitle("");
-      setAddingInCol(null);
-    } catch (err) {
-      console.error("Kanban quick-add failed:", err);
-    } finally {
-      setAddSaving(false);
+  // ── Open new-record modal, optionally pre-filling column value ──
+  const openNewModal = useCallback((colName) => {
+    const prefill = {};
+    if (columnField && colName && colName !== "__uncategorized__") {
+      prefill[columnField] = colName;
     }
-  }, [onCreate, targetDatabaseId, addTitle, schema, columnField]);
+    setNewModalPrefill(prefill);
+    setShowNewModal(true);
+  }, [columnField]);
 
   if (!schema) {
     return (
@@ -426,42 +412,12 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
                   );
                 })}
 
-                {/* Quick-add inline input */}
-                {addingInCol === col.name && (
-                  <div style={{ padding: 4 }}>
-                    <input
-                      ref={addInputRef}
-                      autoFocus
-                      value={addTitle}
-                      onChange={(e) => setAddTitle(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleQuickAdd(col.name);
-                        if (e.key === "Escape") { setAddingInCol(null); setAddTitle(""); }
-                      }}
-                      onBlur={() => { if (!addSaving) { setAddingInCol(null); setAddTitle(""); } }}
-                      placeholder="New item..."
-                      disabled={addSaving}
-                      style={{
-                        width: "100%",
-                        boxSizing: "border-box",
-                        padding: "8px 10px",
-                        fontSize: 13,
-                        fontFamily: FONT,
-                        background: C.dark,
-                        border: `1px solid ${C.accent}44`,
-                        borderRadius: RADIUS.lg,
-                        color: C.darkText,
-                        outline: "none",
-                      }}
-                    />
-                  </div>
-                )}
               </div>
 
-              {/* + New button at bottom of column */}
-              {onCreate && targetDatabaseId && addingInCol !== col.name && (
+              {/* + New button at bottom of column — opens modal with column prefill */}
+              {onCreate && targetDatabaseId && (
                 <button
-                  onClick={() => { setAddingInCol(col.name); setAddTitle(""); }}
+                  onClick={() => openNewModal(col.name)}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -496,7 +452,19 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
           schema={schema}
           onClose={() => setDetailPage(null)}
           onUpdate={onUpdate}
+          onDelete={onDelete ? (ids) => { onDelete(ids); setDetailPage(null); } : undefined}
           pageConfigId={pageConfig?.id}
+        />
+      )}
+
+      {/* New Record Modal */}
+      {showNewModal && onCreate && (
+        <NewRecordModal
+          schema={schema}
+          onClose={() => setShowNewModal(false)}
+          onCreate={onCreate}
+          databaseId={targetDatabaseId}
+          prefill={newModalPrefill}
         />
       )}
     </div>
