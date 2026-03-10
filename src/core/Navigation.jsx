@@ -11,6 +11,7 @@ import { savePageConfig, archivePageConfig, createFolderConfig, createWorkspaceC
 import { archivePage } from "../notion/client.js";
 import {
   IconBolt, IconGear, IconStar, IconSearch, IconBrain,
+  IconChevronLeft, IconChevronRight,
 } from "../design/icons.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
@@ -127,7 +128,7 @@ export default function Navigation({
 
   // -- Style helpers --
   const bottomBtnStyle = (isActive) => ({
-    background: isActive ? `linear-gradient(135deg, #7DC143, ${C.accent})` : "none",
+    background: isActive ? C.accent : "none",
     border: "none",
     cursor: "pointer",
     display: "flex",
@@ -316,32 +317,40 @@ export default function Navigation({
         )}
       </div>
 
-      {/* -- Minimal Collapse Chevron (thin bar) -- */}
+      {/* -- Collapse / Expand Chevron -- */}
       <button
         onClick={onToggleCollapse}
         title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         style={{
-          position: "absolute", top: "50%", right: -4,
+          position: "absolute", top: "50%", right: -12,
           transform: "translateY(-50%)",
-          width: 4, height: 28,
-          background: `linear-gradient(180deg, #7DC14366, ${C.accent}66)`,
-          border: "none",
-          borderRadius: "0 3px 3px 0",
+          width: 16, height: 24,
+          background: C.darkSurf,
+          border: `1px solid ${C.darkBorder}`,
+          borderRadius: "0 4px 4px 0",
           cursor: "pointer",
           outline: "none",
           zIndex: 10,
-          transition: "background 0.15s, width 0.15s",
+          transition: "background 0.15s, border-color 0.15s",
           padding: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.background = C.accent;
-          e.currentTarget.style.width = "6px";
+          e.currentTarget.style.background = C.darkSurf2;
+          e.currentTarget.style.borderColor = C.accent;
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.background = C.darkBorder;
-          e.currentTarget.style.width = "4px";
+          e.currentTarget.style.background = C.darkSurf;
+          e.currentTarget.style.borderColor = C.darkBorder;
         }}
-      />
+      >
+        {collapsed
+          ? <IconChevronRight size={10} color={C.darkMuted} />
+          : <IconChevronLeft size={10} color={C.darkMuted} />
+        }
+      </button>
 
       {/* -- Context Menu -- */}
       {contextMenu && (

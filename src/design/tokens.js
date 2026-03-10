@@ -231,6 +231,16 @@ export function getTheme() { return _currentThemeMode; }
 // These arrays/objects are mutated in-place by applyTheme() so all importers
 // see updated values after a theme switch (same pattern as the C token object).
 
+// Helper: check if a hex color is light (for contrast-aware text colors)
+export function isLightColor(hex) {
+  if (!hex || hex.length < 7) return false;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  // Relative luminance (simplified sRGB)
+  return (r * 0.299 + g * 0.587 + b * 0.114) > 160;
+}
+
 // Helper: compute a very pale tint of a hex color (for Gantt bar backgrounds)
 function _paleTint(hex) {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -248,12 +258,16 @@ function _paleTint(hex) {
 export const VIEW_PALETTE = _theme.palette.map((p) => ({ ...p }));
 
 // ── Timeline Palette (Gantt) ──
-// Mutable array derived from the first 7 VIEW_PALETTE entries.
+// Mutable array derived from the vivid VIEW_PALETTE entries (indices 5-9, 3, 4).
+// Skips indices 0-2 which are dark background colors with poor contrast on dark UIs.
+const _TIMELINE_INDICES = [5, 6, 7, 8, 9, 3, 4];
 export const TIMELINE_PALETTE = [];
 function _rebuildTimelinePalette() {
   TIMELINE_PALETTE.length = 0;
-  for (let i = 0; i < 7 && i < VIEW_PALETTE.length; i++) {
-    TIMELINE_PALETTE.push({ color: VIEW_PALETTE[i].hex, bg: _paleTint(VIEW_PALETTE[i].hex) });
+  for (const i of _TIMELINE_INDICES) {
+    if (i < VIEW_PALETTE.length) {
+      TIMELINE_PALETTE.push({ color: VIEW_PALETTE[i].hex, bg: _paleTint(VIEW_PALETTE[i].hex) });
+    }
   }
 }
 _rebuildTimelinePalette();
@@ -324,13 +338,15 @@ export function getWasabiColor(notionColor) {
   return WASABI_COLORS[notionColor] || WASABI_COLORS.default;
 }
 
-// Generic select option colors (mutable, derived from VIEW_PALETTE)
-export const SELECT_PALETTE = VIEW_PALETTE.map((p) => p.hex);
+// Generic select option colors (mutable, derived from VIEW_PALETTE vivid entries first)
+// Reordered so vivid accent colors (5-9) come before dark bg/light colors (3,4,0,1,2)
+const _SELECT_INDICES = [5, 6, 7, 8, 9, 3, 4, 0, 1, 2];
+export const SELECT_PALETTE = _SELECT_INDICES.map((i) => VIEW_PALETTE[i].hex);
 function _rebuildSelectPalette() {
-  for (let i = 0; i < VIEW_PALETTE.length; i++) {
-    SELECT_PALETTE[i] = VIEW_PALETTE[i].hex;
+  for (let si = 0; si < _SELECT_INDICES.length; si++) {
+    SELECT_PALETTE[si] = VIEW_PALETTE[_SELECT_INDICES[si]].hex;
   }
-  SELECT_PALETTE.length = VIEW_PALETTE.length;
+  SELECT_PALETTE.length = _SELECT_INDICES.length;
 }
 
 // Generate a color for a select option by index
@@ -382,7 +398,9 @@ export function getSolidPillColor(value, options = [], schemaOptions = []) {
   }
   const idx = options.indexOf(value);
   const fill = idx >= 0 ? SELECT_PALETTE[idx % SELECT_PALETTE.length] : getStatusColor(value, options);
-  return { fill, text: "#fff" };
+  // Determine text color based on fill luminance
+  const text = isLightColor(fill) ? "#1a1a1a" : "#fff";
+  return { fill, text };
 }
 
 /** Apply a theme by name + mode. Mutates C and all palettes in place. */

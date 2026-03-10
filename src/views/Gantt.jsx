@@ -3,7 +3,7 @@
 // Schema-agnostic — works with any database that has date fields.
 
 import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { C, FONT, RADIUS, TIMELINE_PALETTE, VIEW_PALETTE, getStatusColor, getSolidPillColor, resolveViewColor } from "../design/tokens.js";
+import { C, FONT, RADIUS, TIMELINE_PALETTE, VIEW_PALETTE, getStatusColor, getSolidPillColor, resolveViewColor, isLightColor } from "../design/tokens.js";
 import { readField, getFieldType, getOptionNames, resolveField } from "./_viewHelpers.js";
 import { buildProp } from "../notion/properties.js";
 import RecordDetail from "./RecordDetail.jsx";
@@ -993,7 +993,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                           x={x + 8}
                           y={y + (barFieldCount > 0 ? 14 : barHeight / 2)}
                           dominantBaseline="middle"
-                          fill="#fff"
+                          fill={isLightColor(bar.color) ? "#1a1a1a" : "#fff"}
                           fontSize={11}
                           fontWeight={600}
                           fontFamily={FONT}
@@ -1012,7 +1012,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                               x={x + 8}
                               y={y + 14 + ((idx + 1) * LABEL_LINE_H)}
                               dominantBaseline="middle"
-                              fill="rgba(255,255,255,0.8)"
+                              fill={isLightColor(bar.color) ? "rgba(0,0,0,0.6)" : "rgba(255,255,255,0.8)"}
                               fontSize={9}
                               fontFamily={FONT}
                               style={{ pointerEvents: "none" }}
