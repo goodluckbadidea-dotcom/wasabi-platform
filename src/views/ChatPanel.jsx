@@ -122,6 +122,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
     const executor = createToolExecutor({
       workerUrl: wUrl,
       notionKey: user?.notionKey || "",
+      mondayKey: user?.mondayKey || "",
       parentPageId: platformIds?.rootPageId,
       kbDbId: platformIds?.kbDbId,
       notifDbId: platformIds?.notifDbId,

@@ -1,6 +1,6 @@
 // ─── Wasabi Tool Executor ───
-// Routes tool calls to the appropriate Notion client functions.
-// Returns string results for the agent.
+// Routes tool calls to the appropriate data source functions.
+// Supports D1 tables, D1 sheets, linked Notion, linked Monday, and linked Google Sheets.
 
 import * as client from "../notion/client.js";
 import { queryAll } from "../notion/pagination.js";
@@ -9,23 +9,82 @@ import { writeKB, searchKB, kbResultsToText } from "./memory.js";
 import { extractProperties, getPageTitle } from "../notion/properties.js";
 import * as api from "../lib/api.js";
 import { savePageConfig } from "../config/pageConfig.js";
+import { fetchSheetData } from "../sheets/sheetClient.js";
+import { fetchBoardItems, fetchBoardColumns } from "../monday/client.js";
+import { mondayColumnsToSchema, mondayItemToPage } from "../monday/schema.js";
 
-// ─── D1 Helpers ───
+// ─── Source Resolution Helpers ───
 
-/** Get the page_type for an ID, or null if not found. */
-async function getPageType(id) {
+/** Fetch and cache page config for an ID. Returns full config or null. */
+async function getFullPageConfig(id) {
   try {
-    const cfg = await api.getPageConfig(id);
-    return cfg?.page_type || null;
+    return await api.getPageConfig(id);
   } catch {
     return null;
   }
+}
+
+/** Get the page_type for an ID, or null if not found. */
+async function getPageType(id) {
+  const cfg = await getFullPageConfig(id);
+  return cfg?.page_type || null;
 }
 
 /** Check if a database_id refers to a D1 standalone table or sheet (vs Notion DB). */
 async function isD1Table(id) {
   const pt = await getPageType(id);
   return pt === "database" || pt === "sheet";
+}
+
+/**
+ * Fetch rows from a linked Google Sheet page.
+ * Returns array of { [columnName]: value } objects.
+ */
+async function fetchLinkedSheetRows(pageConfig, workerUrl) {
+  // Find sheetUrl from views config
+  const sheetView = pageConfig.views?.find((v) => v.type === "linked_sheet");
+  const sheetUrl = sheetView?.config?.sheetUrl || pageConfig.sheetUrl;
+  if (!sheetUrl || !workerUrl) return [];
+
+  const data = await fetchSheetData(workerUrl, sheetUrl);
+  if (!data?.columns?.length || !data?.rows?.length) return [];
+
+  // Convert 2D array to row objects
+  return data.rows.map((row, idx) => {
+    const obj = { _row: idx + 2 };
+    data.columns.forEach((col, i) => {
+      if (row[i] !== undefined && row[i] !== null && row[i] !== "") {
+        obj[col] = row[i];
+      }
+    });
+    return obj;
+  });
+}
+
+/**
+ * Fetch rows from a linked Monday.com board.
+ * Returns array of flat { [columnTitle]: value } objects.
+ */
+async function fetchLinkedMondayRows(pageConfig, mondayKey) {
+  const boardId = pageConfig.mondayBoardId;
+  if (!boardId || !mondayKey) return [];
+
+  const [columns, items] = await Promise.all([
+    fetchBoardColumns(mondayKey, boardId),
+    fetchBoardItems(mondayKey, boardId),
+  ]);
+
+  // Convert Monday items to flat row objects
+  return items.map((item) => {
+    const row = { _id: item.id, Name: item.name };
+    if (item.group?.title) row._group = item.group.title;
+    for (const cv of (item.column_values || [])) {
+      const col = columns.find((c) => c.id === cv.id);
+      const label = col?.title || cv.id;
+      if (cv.text) row[label] = cv.text;
+    }
+    return row;
+  });
 }
 
 /** Convert sheet grid cells { "A1": {v:...}, "B2": {v:...} } into row objects with headers. */
@@ -106,6 +165,7 @@ function notionPropsToD1Cells(props) {
  * @param {object} opts
  * @param {string} opts.workerUrl
  * @param {string} opts.notionKey
+ * @param {string} opts.mondayKey - Monday.com API key (optional)
  * @param {string} opts.parentPageId - Root Wasabi page in user's Notion
  * @param {string} opts.kbDbId - Knowledge Base database ID
  * @param {string} opts.notifDbId - Notifications database ID
@@ -117,6 +177,7 @@ function notionPropsToD1Cells(props) {
 export function createToolExecutor({
   workerUrl,
   notionKey,
+  mondayKey,
   parentPageId,
   kbDbId,
   notifDbId,
@@ -128,9 +189,10 @@ export function createToolExecutor({
     switch (toolName) {
       // ─── Database Operations ───
       case "query_database": {
-        const pageType = await getPageType(toolInput.database_id);
+        const qCfg = await getFullPageConfig(toolInput.database_id);
+        const pageType = qCfg?.page_type || null;
 
-        // Sheet path — grid cells converted to rows
+        // D1 sheet path — grid cells converted to rows
         if (pageType === "sheet") {
           try {
             const sheet = await api.getSheet(toolInput.database_id);
@@ -148,18 +210,16 @@ export function createToolExecutor({
 
         // D1 standalone table path
         if (pageType === "database") {
-          // Use queryTable for full filter/sort/limit support
           const queryBody = {};
           if (toolInput.filter) queryBody.filters = toolInput.filter;
           if (toolInput.sorts) queryBody.sorts = toolInput.sorts;
-          queryBody.limit = 200; // generous limit for agent visibility
+          queryBody.limit = 200;
 
           let rows;
           try {
             const res = await api.queryTable(toolInput.database_id, queryBody);
             rows = res?.rows || [];
           } catch {
-            // Fallback to listRows if queryTable endpoint unavailable
             const res = await api.listRows(toolInput.database_id, { limit: 200 });
             rows = res?.rows || [];
           }
@@ -170,7 +230,59 @@ export function createToolExecutor({
             storage: "d1",
           });
         }
-        // Notion path
+
+        // Linked Google Sheet — read-only via worker proxy
+        if (pageType === "linked_sheet") {
+          try {
+            const rows = await fetchLinkedSheetRows(qCfg, workerUrl);
+            return JSON.stringify({
+              count: rows.length,
+              results: rows.slice(0, 200),
+              truncated: rows.length > 200,
+              storage: "linked_sheet",
+              readOnly: true,
+            });
+          } catch (err) {
+            return JSON.stringify({ error: `Failed to read linked sheet: ${err.message}`, storage: "linked_sheet" });
+          }
+        }
+
+        // Linked Monday.com board — read/write via GraphQL proxy
+        if (pageType === "linked_monday") {
+          try {
+            const rows = await fetchLinkedMondayRows(qCfg, mondayKey);
+            return JSON.stringify({
+              count: rows.length,
+              results: rows.slice(0, 200),
+              truncated: rows.length > 200,
+              storage: "linked_monday",
+            });
+          } catch (err) {
+            return JSON.stringify({ error: `Failed to read Monday board: ${err.message}`, storage: "linked_monday" });
+          }
+        }
+
+        // Linked Notion — use databaseIds from page config
+        if (pageType === "linked_notion" && qCfg?.databaseIds?.length) {
+          const allData = [];
+          for (const dbId of qCfg.databaseIds) {
+            try {
+              const results = await queryAll(workerUrl, notionKey, dbId, toolInput.filter, toolInput.sorts);
+              const mapped = results.map((page) => ({ id: page.id, ...extractProperties(page), _databaseId: dbId }));
+              allData.push(...mapped);
+            } catch (err) {
+              allData.push({ _error: `Failed to query ${dbId}: ${err.message}` });
+            }
+          }
+          return JSON.stringify({
+            count: allData.length,
+            results: allData.slice(0, 100),
+            truncated: allData.length > 100,
+            storage: "linked_notion",
+          });
+        }
+
+        // Direct Notion database path (fallback — raw Notion DB ID)
         const results = await queryAll(
           workerUrl, notionKey,
           toolInput.database_id,
@@ -242,54 +354,42 @@ export function createToolExecutor({
       case "cross_database_query": {
         const queries = toolInput.queries || [];
         const allResults = {};
-        for (const q of queries.slice(0, 5)) { // Max 5 databases per call
+        for (const q of queries.slice(0, 5)) {
           const label = q.label || q.database_id;
           try {
-            const qPageType = await getPageType(q.database_id);
+            const xCfg = await getFullPageConfig(q.database_id);
+            const xType = xCfg?.page_type || null;
 
-            // Sheet path
-            if (qPageType === "sheet") {
+            if (xType === "sheet") {
               const sheet = await api.getSheet(q.database_id);
               const rows = sheetCellsToRows(sheet.cells, sheet.col_count || 26);
-              allResults[label] = {
-                count: rows.length,
-                results: rows.slice(0, 100),
-                truncated: rows.length > 100,
-                storage: "sheet",
-              };
-            } else if (qPageType === "database") {
-              // D1 table path
-              const queryBody = {};
+              allResults[label] = { count: rows.length, results: rows.slice(0, 100), truncated: rows.length > 100, storage: "sheet" };
+            } else if (xType === "database") {
+              const queryBody = { limit: 100 };
               if (q.filter) queryBody.filters = q.filter;
               if (q.sorts) queryBody.sorts = q.sorts;
-              queryBody.limit = 100;
-
               let rows;
-              try {
-                const res = await api.queryTable(q.database_id, queryBody);
-                rows = res?.rows || [];
-              } catch {
-                const res = await api.listRows(q.database_id, { limit: 100 });
-                rows = res?.rows || [];
+              try { rows = (await api.queryTable(q.database_id, queryBody))?.rows || []; }
+              catch { rows = (await api.listRows(q.database_id, { limit: 100 }))?.rows || []; }
+              allResults[label] = { count: rows.length, results: rows.slice(0, 100), truncated: rows.length > 100, storage: "d1" };
+            } else if (xType === "linked_sheet") {
+              const rows = await fetchLinkedSheetRows(xCfg, workerUrl);
+              allResults[label] = { count: rows.length, results: rows.slice(0, 100), truncated: rows.length > 100, storage: "linked_sheet", readOnly: true };
+            } else if (xType === "linked_monday") {
+              const rows = await fetchLinkedMondayRows(xCfg, mondayKey);
+              allResults[label] = { count: rows.length, results: rows.slice(0, 100), truncated: rows.length > 100, storage: "linked_monday" };
+            } else if (xType === "linked_notion" && xCfg?.databaseIds?.length) {
+              const allData = [];
+              for (const dbId of xCfg.databaseIds) {
+                const res = await queryAll(workerUrl, notionKey, dbId, q.filter, q.sorts);
+                allData.push(...res.map((p) => ({ id: p.id, ...extractProperties(p) })));
               }
-              allResults[label] = {
-                count: rows.length,
-                results: rows.slice(0, 100),
-                truncated: rows.length > 100,
-                storage: "d1",
-              };
+              allResults[label] = { count: allData.length, results: allData.slice(0, 100), truncated: allData.length > 100, storage: "linked_notion" };
             } else {
-              // Notion path
-              const results = await queryAll(workerUrl, notionKey, q.database_id, q.filter, q.sorts);
-              const summary = results.map((page) => {
-                const props = extractProperties(page);
-                return { id: page.id, ...props };
-              });
-              allResults[label] = {
-                count: summary.length,
-                results: summary.slice(0, 30),
-                truncated: summary.length > 30,
-              };
+              // Direct Notion DB ID
+              const res = await queryAll(workerUrl, notionKey, q.database_id, q.filter, q.sorts);
+              const mapped = res.map((p) => ({ id: p.id, ...extractProperties(p) }));
+              allResults[label] = { count: mapped.length, results: mapped.slice(0, 30), truncated: mapped.length > 30 };
             }
           } catch (err) {
             allResults[label] = { error: err.message };
@@ -376,9 +476,10 @@ export function createToolExecutor({
 
       // ─── Schema Detection ───
       case "detect_schema": {
-        const schemaPageType = await getPageType(toolInput.database_id);
+        const sCfg = await getFullPageConfig(toolInput.database_id);
+        const schemaPageType = sCfg?.page_type || null;
 
-        // Sheet — read headers from row 1
+        // D1 sheet — read headers from row 1
         if (schemaPageType === "sheet") {
           try {
             const sheet = await api.getSheet(toolInput.database_id);
@@ -396,18 +497,13 @@ export function createToolExecutor({
               if (val) columns.push({ name: String(val).trim(), column: col, type: "text" });
             }
             const text = columns.map((c) => `- ${c.name} (column ${c.column}, text)`).join("\n");
-            return JSON.stringify({
-              schema: text,
-              fieldCount: columns.length,
-              raw: { columns, storage: "sheet" },
-              suggestedViews: [],
-            });
+            return JSON.stringify({ schema: text, fieldCount: columns.length, raw: { columns, storage: "sheet" }, suggestedViews: [] });
           } catch (err) {
             return JSON.stringify({ error: `Failed to detect sheet schema: ${err.message}` });
           }
         }
 
-        // D1 standalone table — use api.getTableSchema()
+        // D1 standalone table
         if (schemaPageType === "database") {
           try {
             const d1Schema = await api.getTableSchema(toolInput.database_id);
@@ -415,26 +511,48 @@ export function createToolExecutor({
             const text = columns.map((c) =>
               `- ${c.name} (${c.type}${c.options?.length ? `: ${c.options.join(", ")}` : ""})`
             ).join("\n");
-            return JSON.stringify({
-              schema: text,
-              fieldCount: columns.length,
-              raw: { columns, storage: "d1" },
-              suggestedViews: [],
-            });
+            return JSON.stringify({ schema: text, fieldCount: columns.length, raw: { columns, storage: "d1" }, suggestedViews: [] });
           } catch (err) {
             return JSON.stringify({ error: `Failed to detect D1 schema: ${err.message}` });
           }
         }
-        // Notion path
+
+        // Linked Google Sheet — detect columns from fetched data
+        if (schemaPageType === "linked_sheet") {
+          try {
+            const rows = await fetchLinkedSheetRows(sCfg, workerUrl);
+            const colNames = rows.length > 0 ? Object.keys(rows[0]).filter((k) => k !== "_row") : [];
+            const text = colNames.map((c) => `- ${c} (text)`).join("\n");
+            return JSON.stringify({ schema: text, fieldCount: colNames.length, raw: { columns: colNames, storage: "linked_sheet" }, suggestedViews: [] });
+          } catch (err) {
+            return JSON.stringify({ error: `Failed to detect linked sheet schema: ${err.message}` });
+          }
+        }
+
+        // Linked Monday — detect columns from board definition
+        if (schemaPageType === "linked_monday") {
+          try {
+            const columns = await fetchBoardColumns(mondayKey, sCfg.mondayBoardId);
+            const text = columns.map((c) => `- ${c.title} (${c.type})`).join("\n");
+            return JSON.stringify({ schema: text, fieldCount: columns.length, raw: { columns, storage: "linked_monday" }, suggestedViews: [] });
+          } catch (err) {
+            return JSON.stringify({ error: `Failed to detect Monday schema: ${err.message}` });
+          }
+        }
+
+        // Linked Notion — detect schema from first databaseId
+        if (schemaPageType === "linked_notion" && sCfg?.databaseIds?.length) {
+          const schema = await detectSchema(workerUrl, notionKey, sCfg.databaseIds[0]);
+          const views = autoDetectViews(schema);
+          const text = schemaToText(schema);
+          return JSON.stringify({ schema: text, suggestedViews: views, fieldCount: schema.allFields.length, raw: schema });
+        }
+
+        // Direct Notion DB ID fallback
         const schema = await detectSchema(workerUrl, notionKey, toolInput.database_id);
         const views = autoDetectViews(schema);
         const text = schemaToText(schema);
-        return JSON.stringify({
-          schema: text,
-          suggestedViews: views,
-          fieldCount: schema.allFields.length,
-          raw: schema,
-        });
+        return JSON.stringify({ schema: text, suggestedViews: views, fieldCount: schema.allFields.length, raw: schema });
       }
 
       // ─── Page Config Creation ───
@@ -648,18 +766,30 @@ export function createToolExecutor({
         }
 
         const matches = [];
-        const smPageType = await getPageType(database_id);
+        const smCfg = await getFullPageConfig(database_id);
+        const smPageType = smCfg?.page_type || null;
 
-        // Sheet path — convert cells to rows, then search
-        if (smPageType === "sheet") {
-          let allRows;
-          try {
+        // Load rows from any source into flat row objects for fuzzy matching
+        let allRows = null;
+        try {
+          if (smPageType === "sheet") {
             const sheet = await api.getSheet(database_id);
             allRows = sheetCellsToRows(sheet.cells, sheet.col_count || 26);
-          } catch {
-            allRows = [];
+          } else if (smPageType === "database") {
+            const res = await api.listRows(database_id, { limit: 500 });
+            allRows = (res?.rows || []).map((r) => ({ id: r.id, ...(r.cells || r) }));
+          } else if (smPageType === "linked_sheet") {
+            allRows = await fetchLinkedSheetRows(smCfg, workerUrl);
+          } else if (smPageType === "linked_monday") {
+            allRows = await fetchLinkedMondayRows(smCfg, mondayKey);
+          } else if (smPageType === "linked_notion" && smCfg?.databaseIds?.length) {
+            const res = await queryAll(workerUrl, notionKey, smCfg.databaseIds[0]);
+            allRows = res.map((p) => ({ id: p.id, ...extractProperties(p) }));
           }
+        } catch { /* fall through to Notion path */ }
 
+        if (allRows !== null) {
+          // Fuzzy match across flat rows
           for (const term of search_terms.slice(0, 10)) {
             const termLower = term.toLowerCase();
             const matched = allRows
@@ -673,48 +803,13 @@ export function createToolExecutor({
               .filter((r) => r._matchScore > 0)
               .sort((a, b) => b._matchScore - a._matchScore)
               .slice(0, 5);
-
-            if (matched.length > 0) {
-              matches.push({ term, matches: matched });
-            }
-          }
-        } else if (smPageType === "database") {
-          // D1 table path — load all rows and search in JS
-          let allRows;
-          try {
-            const res = await api.listRows(database_id, { limit: 500 });
-            allRows = res?.rows || [];
-          } catch {
-            allRows = [];
-          }
-
-          for (const term of search_terms.slice(0, 10)) {
-            const termLower = term.toLowerCase();
-            const matched = allRows
-              .map((row) => {
-                const cells = row.cells || row;
-                let score = 0;
-                for (const val of Object.values(cells)) {
-                  if (String(val).toLowerCase().includes(termLower)) score++;
-                }
-                return { id: row.id || row._id, ...cells, _matchScore: score };
-              })
-              .filter((r) => r._matchScore > 0)
-              .sort((a, b) => b._matchScore - a._matchScore)
-              .slice(0, 5);
-
-            if (matched.length > 0) {
-              matches.push({ term, matches: matched });
-            }
+            if (matched.length > 0) matches.push({ term, matches: matched });
           }
         } else {
-          // Notion path
+          // Direct Notion DB ID fallback
           for (const term of search_terms.slice(0, 10)) {
             try {
-              const filter = match_field
-                ? { property: match_field, rich_text: { contains: term } }
-                : undefined;
-
+              const filter = match_field ? { property: match_field, rich_text: { contains: term } } : undefined;
               const results = await queryAll(workerUrl, notionKey, database_id, filter);
               const matched = results
                 .map((page) => {
@@ -729,10 +824,7 @@ export function createToolExecutor({
                 .filter((r) => r._matchScore > 0)
                 .sort((a, b) => b._matchScore - a._matchScore)
                 .slice(0, 5);
-
-              if (matched.length > 0) {
-                matches.push({ term, matches: matched });
-              }
+              if (matched.length > 0) matches.push({ term, matches: matched });
             } catch (err) {
               matches.push({ term, error: err.message });
             }

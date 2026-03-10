@@ -151,11 +151,16 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
         const batchWorkspaceSummary = (pages || []).map((p) => {
           const dbIds = [...(p.databaseIds || [])];
           const pt = p.page_type || p.pageType;
-          if ((pt === "database" || pt === "sheet") && p.id && !dbIds.includes(p.id)) {
+          const localTypes = ["database", "sheet", "linked_sheet", "linked_monday", "linked_notion"];
+          if (localTypes.includes(pt) && p.id && !dbIds.includes(p.id)) {
             dbIds.push(p.id);
           }
           const dbStr = dbIds.length ? ` (databases: ${dbIds.join(", ")})` : "";
-          return `- **${p.name || "Untitled"}** (${pt || p.type || "page"})${dbStr}`;
+          const extra = [];
+          if (pt === "linked_monday" && p.mondayBoardId) extra.push(`monday board: ${p.mondayBoardId}`);
+          if (pt === "linked_sheet") extra.push("read-only");
+          const extraStr = extra.length ? ` {${extra.join(", ")}}` : "";
+          return `- **${p.name || "Untitled"}** (${pt || p.type || "page"})${dbStr}${extraStr}`;
         }).join("\n");
 
         const systemPrompt = buildWasabiPrompt({
@@ -168,7 +173,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
         const bConn = api.getConnection();
         const bUrl = user?.workerUrl || bConn?.workerUrl;
         const executor = createToolExecutor({
-          workerUrl: bUrl, notionKey: user?.notionKey || "",
+          workerUrl: bUrl, notionKey: user?.notionKey || "", mondayKey: user?.mondayKey || "",
           parentPageId: platformIds?.rootPageId, kbDbId: platformIds?.kbDbId,
           notifDbId: platformIds?.notifDbId, configDbId: platformIds?.configDbId,
           rulesDbId: platformIds?.rulesDbId, onPageCreated: addPage,
@@ -206,6 +211,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
       const executor = createToolExecutor({
         workerUrl: wUrl,
         notionKey: user?.notionKey || "",
+        mondayKey: user?.mondayKey || "",
         parentPageId: platformIds?.rootPageId,
         kbDbId: platformIds?.kbDbId,
         notifDbId: platformIds?.notifDbId,
@@ -237,17 +243,23 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
       const newHistory = [...chatHistoryRef.current, { role: "user", content: agentText }];
 
       try {
-        // Build workspace summary so Wasabi knows about all pages + D1 tables
+        // Build workspace summary so Wasabi knows about all pages + all data sources
         const workspaceSummary = (pages || []).map((p) => {
-          // Collect database IDs — for D1 tables, the page's own ID IS the table ID
           const dbIds = [...(p.databaseIds || [])];
           const pt = p.page_type || p.pageType;
-          if ((pt === "database" || pt === "sheet") && p.id && !dbIds.includes(p.id)) {
+          // For D1 tables, sheets, and ALL linked sources — the page's own ID is the queryable database_id
+          const localTypes = ["database", "sheet", "linked_sheet", "linked_monday", "linked_notion"];
+          if (localTypes.includes(pt) && p.id && !dbIds.includes(p.id)) {
             dbIds.push(p.id);
           }
           const dbStr = dbIds.length ? ` (databases: ${dbIds.join(", ")})` : "";
           const source = p.sourceType ? ` [${p.sourceType}]` : "";
-          return `- **${p.name || "Untitled"}** (${pt || p.type || "page"})${source}${dbStr}`;
+          // Show linked source details so agent knows what it's connecting to
+          const extra = [];
+          if (pt === "linked_monday" && p.mondayBoardId) extra.push(`monday board: ${p.mondayBoardId}`);
+          if (pt === "linked_sheet") extra.push("read-only");
+          const extraStr = extra.length ? ` {${extra.join(", ")}}` : "";
+          return `- **${p.name || "Untitled"}** (${pt || p.type || "page"})${source}${dbStr}${extraStr}`;
         }).join("\n");
 
         const currentPageContext = activePageConfig ? {

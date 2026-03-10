@@ -5,7 +5,7 @@
 
 const QUERY_DATABASE = {
   name: "query_database",
-  description: "Query a database (Notion or D1 standalone table) with optional filters and sorts. Returns matching records with all properties.",
+  description: "Query any data source by its page ID. Supports D1 tables, D1 sheets, linked Google Sheets (read-only), linked Monday.com boards, and linked Notion databases. Returns matching records with all properties.",
   input_schema: {
     type: "object",
     properties: {
