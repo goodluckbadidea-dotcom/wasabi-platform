@@ -109,6 +109,23 @@ export async function validatePageConfigs(workerUrl, notionKey, configs) {
 // ─── Config Object Creators ───
 
 /**
+ * Create a workspace config (top-level container).
+ * Workspaces are structurally folders with page_type "workspace".
+ */
+export function createWorkspaceConfig(name) {
+  return {
+    name,
+    icon: "workspace",
+    type: "folder",
+    page_type: "workspace",
+    pageType: "workspace",
+    databaseIds: [],
+    views: [],
+    sort_order: 0,
+  };
+}
+
+/**
  * Create a folder config (no backend resources).
  */
 export function createFolderConfig(name, icon) {
@@ -297,7 +314,7 @@ export function isDocumentPage(pageConfig) {
 function d1ToFrontend(d1Page) {
   const config = d1Page.config || {};
   const pt = d1Page.page_type;
-  const type = pt === "folder" ? "folder"
+  const type = (pt === "folder" || pt === "workspace") ? "folder"
     : pt === "sub_page" ? "sub_page"
     : "page";
 

@@ -4,7 +4,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { loadPlatformIds, savePlatformIds } from "../config/setup.js";
-import { loadCachedConfigs, loadPageConfigs, validatePageConfigs, archivePageConfig, savePageConfig, createDashboardConfig } from "../config/pageConfig.js";
+import { loadCachedConfigs, loadPageConfigs, validatePageConfigs, archivePageConfig, savePageConfig, createDashboardConfig, createWorkspaceConfig } from "../config/pageConfig.js";
 import { getConnection, saveConnection, getConnections, initDatabase } from "../lib/api.js";
 
 const PlatformContext = createContext(null);
@@ -41,26 +41,51 @@ export function PlatformProvider({ children }) {
   const [activePage, setActivePage] = useState(null); // page id, "wasabi", "system", "dashboard", or null (home)
   const [activeFolder, setActiveFolder] = useState(null); // folder id or null
 
-  // ─── Page tree (hierarchy, max 3 levels of folders) ───
+  // ─── Page tree (full hierarchy: workspace > folder > page > view) ───
   const pageTree = useMemo(() => {
     const folderList = pages.filter((p) => p.type === "folder");
-    const pageList = pages.filter((p) => (p.type === "page" || !p.type) && p.page_type !== "dashboard" && p.pageType !== "dashboard");
+    const pageList = pages.filter((p) => (p.type === "page" || !p.type));
     const folderIdSet = new Set(folderList.map((f) => f.id));
 
-    // Build recursive folder tree (max 3 levels)
-    function buildFolderTree(parentId, depth) {
-      if (depth >= 3) return [];
-      return folderList
-        .filter((f) => (parentId ? f.parentId === parentId : !f.parentId || !folderIdSet.has(f.parentId)))
-        .map((folder) => ({
-          ...folder,
-          depth,
-          children: pageList.filter((p) => p.parentId === folder.id),
-          childFolders: buildFolderTree(folder.id, depth + 1),
-        }));
+    // Build view nodes for a page (virtual children)
+    function buildViewNodes(page) {
+      if (!page.views || page.views.length <= 1) return [];
+      return page.views.map((view, idx) => ({
+        id: page.id + "_view_" + idx,
+        name: view.label || view.type,
+        type: "view",
+        nodeType: "view",
+        viewIndex: idx,
+        viewType: view.type,
+        parentPageId: page.id,
+        virtual: true,
+      }));
     }
 
-    const tree = buildFolderTree(null, 0);
+    // Build recursive tree (no depth limit)
+    function buildTree(parentId, depth) {
+      const childFolders = folderList
+        .filter((f) => (parentId ? f.parentId === parentId : !f.parentId || !folderIdSet.has(f.parentId)))
+        .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+        .map((folder) => ({
+          ...folder,
+          nodeType: folder.page_type === "workspace" || folder.pageType === "workspace" ? "workspace" : "folder",
+          depth,
+          children: pageList
+            .filter((p) => p.parentId === folder.id)
+            .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+            .map((p) => ({
+              ...p,
+              nodeType: (p.page_type === "dashboard" || p.pageType === "dashboard") ? "dashboard" : "page",
+              depth: depth + 1,
+              viewChildren: buildViewNodes(p),
+            })),
+          childFolders: buildTree(folder.id, depth + 1),
+        }));
+      return childFolders;
+    }
+
+    const tree = buildTree(null, 0);
 
     // Orphan pages → virtual "Uncategorized" folder
     const allAssignedPageIds = new Set();
@@ -78,15 +103,47 @@ export function PlatformProvider({ children }) {
         name: "Uncategorized",
         icon: "folder",
         type: "folder",
+        nodeType: "folder",
         virtual: true,
         depth: 0,
-        children: orphans,
+        children: orphans.map((p) => ({
+          ...p,
+          nodeType: (p.page_type === "dashboard" || p.pageType === "dashboard") ? "dashboard" : "page",
+          depth: 1,
+          viewChildren: buildViewNodes(p),
+        })),
         childFolders: [],
       });
     }
 
     return tree;
   }, [pages]);
+
+  // ─── Expanded tree nodes ───
+  const [expandedNodes, setExpandedNodes] = useState(new Set());
+
+  // Auto-expand workspaces on first load
+  const hasAutoExpanded = useRef(false);
+  useEffect(() => {
+    if (hasAutoExpanded.current || pages.length === 0) return;
+    hasAutoExpanded.current = true;
+    const workspaces = pages.filter((p) => p.page_type === "workspace" || p.pageType === "workspace");
+    if (workspaces.length > 0) {
+      setExpandedNodes(new Set(workspaces.map((w) => w.id)));
+    } else {
+      // Expand all root folders by default
+      const roots = pages.filter((p) => p.type === "folder" && !p.parentId);
+      if (roots.length > 0) setExpandedNodes(new Set(roots.map((r) => r.id)));
+    }
+  }, [pages]);
+
+  const toggleExpand = useCallback((nodeId) => {
+    setExpandedNodes((prev) => {
+      const next = new Set(prev);
+      next.has(nodeId) ? next.delete(nodeId) : next.add(nodeId);
+      return next;
+    });
+  }, []);
 
   const folders = useMemo(() => pages.filter((p) => p.type === "folder"), [pages]);
 
@@ -203,6 +260,21 @@ export function PlatformProvider({ children }) {
             }
           } catch (err) {
             console.warn("[Platform] Page validation failed:", err);
+          }
+        }
+
+        // Auto-create default workspace if none exists
+        const hasWorkspace = finalConfigs.some(
+          (c) => c.page_type === "workspace" || c.pageType === "workspace"
+        );
+        if (!hasWorkspace) {
+          try {
+            const wsConfig = createWorkspaceConfig("My Workspace");
+            const id = await savePageConfig(wsConfig);
+            finalConfigs = [...finalConfigs, { ...wsConfig, id }];
+            console.log("[Platform] Auto-created default workspace");
+          } catch (err) {
+            console.warn("[Platform] Failed to auto-create workspace:", err);
           }
         }
 
@@ -407,6 +479,8 @@ export function PlatformProvider({ children }) {
     folders,
     getFolderPages,
     globalDashboard,
+    expandedNodes,
+    toggleExpand,
 
     // Log (batch queue)
     batchQueue,

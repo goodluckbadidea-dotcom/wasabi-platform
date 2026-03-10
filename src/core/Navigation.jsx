@@ -1,24 +1,23 @@
-// ─── Sidebar Navigation ───
-// FolderDropdown at top → page list below for selected folder.
-// Collapsible: 48px (icons) or 220px (full).
-// Supports: right-click context menu, drag-drop page reordering.
+// --- Sidebar Navigation ---
+// Expandable tree navigation with search bar at top.
+// Hierarchy: Workspace > Folder > Dashboard/Page > View
+// Bottom nav: Home, Knowledge Base, Automations, System, Wasabi
 
 import React, { useState, useCallback } from "react";
 import { C, FONT, RADIUS, VIEW_PALETTE } from "../design/tokens.js";
 import { ANIM, TRANSITION } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { savePageConfig, archivePageConfig, createFolderConfig } from "../config/pageConfig.js";
+import { savePageConfig, archivePageConfig, createFolderConfig, createWorkspaceConfig, createDashboardConfig } from "../config/pageConfig.js";
 import { archivePage } from "../notion/client.js";
 import {
-  IconBolt, IconGear, IconStar, IconPlus, IconTrash, IconDiamond,
+  IconBolt, IconGear, IconStar, IconSearch, IconBrain,
 } from "../design/icons.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
-import InlineEdit from "./InlineEdit.jsx";
-import FolderDropdown from "./FolderDropdown.jsx";
-import ContextMenu, { MoveToMenu } from "./ContextMenu.jsx";
-import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
-import NeuronBadge from "../neurons/NeuronBadge.jsx";
+import SidebarTree from "./SidebarTree.jsx";
+import CreateMenu from "./CreateMenu.jsx";
+import ContextMenu from "./ContextMenu.jsx";
+import { getCreateMenuItems } from "./CreateMenu.jsx";
 
 export default function Navigation({
   collapsed,
@@ -32,50 +31,68 @@ export default function Navigation({
   const {
     user, pages, activePage, setActivePage,
     updatePageConfig, removePage, addPage,
-    activeFolder, setActiveFolder, pageTree, folders, getFolderPages,
+    activeFolder, setActiveFolder,
   } = usePlatform();
 
-  const [hoveredItem, setHoveredItem] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
-  const [contextMenu, setContextMenu] = useState(null); // { x, y, page }
-  const [moveToMenu, setMoveToMenu] = useState(null); // { x, y, page }
-  const [dragIdx, setDragIdx] = useState(null);
-  const [dropIdx, setDropIdx] = useState(null);
+  const [contextMenu, setContextMenu] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Active view index (read from App.jsx viewStates)
+  const [activeViewIndex] = useState(0);
 
   const SIDEBAR_W = collapsed ? 48 : 220;
 
-  // Pages in the current folder
-  const folderPages = activeFolder ? getFolderPages(activeFolder) : [];
+  // -- Create item handler --
+  const handleCreateItem = useCallback(async (type) => {
+    if (type === "page") {
+      // Delegate to existing PageBuilder flow
+      onCreatePage?.();
+      return;
+    }
 
-  // ── Create Folder ──
-  const handleCreateFolder = useCallback(async () => {
-    const allFolders = pages.filter((p) => p.type === "folder");
-    const colorIndex = allFolders.length % 10;
-    const config = createFolderConfig("New Folder", "folder");
-    config.colorIndex = colorIndex;
+    let config;
+    if (type === "workspace") {
+      config = createWorkspaceConfig("New Workspace");
+    } else if (type === "folder") {
+      const allFolders = pages.filter((p) => p.type === "folder");
+      const colorIndex = allFolders.length % 10;
+      config = createFolderConfig("New Folder", "folder");
+      config.colorIndex = colorIndex;
+      // If inside a workspace/folder, nest it
+      if (activeFolder) config.parentId = activeFolder;
+    } else if (type === "dashboard") {
+      config = createDashboardConfig("New Dashboard");
+      if (activeFolder) config.parentId = activeFolder;
+    }
+
+    if (!config) return;
+
     try {
       const id = await savePageConfig(config);
       addPage({ ...config, id });
-      setActiveFolder(id);
+      if (type === "workspace" || type === "folder") {
+        setActiveFolder(id);
+      } else {
+        setActivePage(id);
+      }
     } catch (err) {
-      console.error("[Navigation] Failed to create folder:", err);
+      console.error("[Navigation] Failed to create:", err);
     }
-  }, [addPage, pages, setActiveFolder]);
+  }, [addPage, pages, activeFolder, setActiveFolder, setActivePage, onCreatePage]);
 
-  // ── Rename Page ──
-  const handleRename = useCallback((pageConfig, newName) => {
-    updatePageConfig(pageConfig.id, { name: newName });
+  // -- Rename --
+  const handleRename = useCallback((node, newName) => {
+    updatePageConfig(node.id, { name: newName });
   }, [updatePageConfig]);
 
-  // ── Delete Page / Folder ──
+  // -- Delete --
   const handleDelete = useCallback(async (pageConfig) => {
     removePage(pageConfig.id);
     setConfirmDelete(null);
-
     archivePageConfig(pageConfig.id).catch((err) => {
-      console.error("[Navigation] Failed to delete page from D1:", err);
+      console.error("[Navigation] Failed to delete from D1:", err);
     });
-
     if (user?.workerUrl && user?.notionKey) {
       const pt = pageConfig.pageType || pageConfig.page_type;
       if (pt !== "linked_notion") {
@@ -89,56 +106,24 @@ export default function Navigation({
     }
   }, [user, removePage]);
 
-  // ── Move page to folder ──
-  const handleMoveTo = useCallback((page, targetFolderId) => {
-    updatePageConfig(page.id, { parentId: targetFolderId });
-    setMoveToMenu(null);
-    setContextMenu(null);
-  }, [updatePageConfig]);
+  // -- Navigate --
+  const navigateToPage = useCallback((pageId) => {
+    const page = pages.find((p) => p.id === pageId);
+    if (page && page.type === "folder") {
+      setActiveFolder(pageId);
+    } else {
+      setActivePage(pageId);
+    }
+  }, [pages, setActivePage, setActiveFolder]);
 
-  // ── Navigate to page ──
-  const navigateToPage = useCallback((page) => {
-    setActivePage(page.id);
-  }, [setActivePage]);
-
-  // ── Handle dashboard selection ──
-  const handleSelectDashboard = useCallback(() => {
-    setActivePage("dashboard");
-    setActiveFolder(null);
-  }, [setActivePage, setActiveFolder]);
-
-  // ── Right-click context menu ──
-  const handleContextMenu = useCallback((e, page) => {
+  // -- Context menu --
+  const handleContextMenu = useCallback((e, node) => {
     e.preventDefault();
     e.stopPropagation();
-    setMoveToMenu(null);
-    setContextMenu({ x: e.clientX, y: e.clientY, page });
+    setContextMenu({ x: e.clientX, y: e.clientY, node });
   }, []);
 
-  // ── Drag-drop page reordering ──
-  const handleDragEnd = useCallback(() => {
-    if (dragIdx !== null && dropIdx !== null && dragIdx !== dropIdx) {
-      const reordered = [...folderPages];
-      const [moved] = reordered.splice(dragIdx, 1);
-      reordered.splice(dropIdx, 0, moved);
-      // Update sort_order for all affected pages
-      reordered.forEach((page, idx) => {
-        if (page.sort_order !== idx) {
-          updatePageConfig(page.id, { sort_order: idx });
-        }
-      });
-    }
-    setDragIdx(null);
-    setDropIdx(null);
-  }, [dragIdx, dropIdx, folderPages, updatePageConfig]);
-
-  // Build folder list for "Move to..." (with colors)
-  const allFoldersForMove = folders.map((f) => ({
-    ...f,
-    color: VIEW_PALETTE[(f.colorIndex ?? 0) % VIEW_PALETTE.length]?.hex,
-  }));
-
-  // ── Style helpers ──
+  // -- Style helpers --
   const bottomBtnStyle = (isActive) => ({
     background: isActive ? C.accent : "none",
     border: "none",
@@ -162,23 +147,6 @@ export default function Navigation({
     letterSpacing: "0.02em",
   });
 
-  const itemStyle = (isActive, isHovered) => ({
-    width: collapsed ? "100%" : "calc(100% - 16px)",
-    margin: collapsed ? "0" : "3px 8px",
-    border: isActive ? "none" : `1px solid ${C.darkBorder}`,
-    cursor: "pointer",
-    outline: "none",
-    display: "flex",
-    alignItems: "center",
-    gap: collapsed ? 0 : 10,
-    justifyContent: collapsed ? "center" : "flex-start",
-    padding: collapsed ? "11px 0" : "9px 14px",
-    borderRadius: collapsed ? 0 : 999,
-    background: isActive ? C.accent : isHovered ? C.darkSurf2 : "transparent",
-    transition: "all 0.12s",
-    fontFamily: "'Outfit',sans-serif",
-  });
-
   return (
     <div
       style={{
@@ -193,180 +161,67 @@ export default function Navigation({
         boxShadow: "2px 0 8px rgba(0,0,0,0.2)",
       }}
     >
-      {/* ── Folder Dropdown (top of sidebar) ── */}
-      <FolderDropdown
-        activeFolder={activeFolder}
+      {/* -- Search Bar (replaces FolderDropdown) -- */}
+      {!collapsed ? (
+        <div style={{
+          flexShrink: 0, borderBottom: `1px solid ${C.darkBorder}`,
+          padding: "8px 10px", display: "flex", alignItems: "center", gap: 8,
+        }}>
+          <IconSearch size={12} color={C.darkMuted} />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search this workspace..."
+            style={{
+              flex: 1, background: "transparent", border: "none",
+              outline: "none", fontFamily: FONT, fontSize: 12,
+              color: C.darkText, padding: 0,
+            }}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                padding: 0, display: "flex", outline: "none",
+              }}
+            >
+              <span style={{ fontSize: 10, color: C.darkMuted, lineHeight: 1 }}>&times;</span>
+            </button>
+          )}
+        </div>
+      ) : (
+        <button
+          onClick={onExpandSidebar}
+          style={{
+            flexShrink: 0, borderBottom: `1px solid ${C.darkBorder}`,
+            padding: "12px 0", background: "transparent", border: "none",
+            cursor: "pointer", display: "flex", justifyContent: "center",
+            outline: "none",
+          }}
+        >
+          <IconSearch size={14} color={C.darkMuted} />
+        </button>
+      )}
+
+      {/* -- Sidebar Tree -- */}
+      <SidebarTree
         activePage={activePage}
-        onSelectFolder={setActiveFolder}
-        onSelectDashboard={handleSelectDashboard}
-        onCreateFolder={handleCreateFolder}
-        onRenameFolder={(folderId, newName) => updatePageConfig(folderId, { name: newName })}
-        onDeleteFolder={(folder) => setConfirmDelete({ type: "folder", pageConfig: folder })}
-        pageTree={pageTree}
+        activeViewIndex={activeViewIndex}
+        onNavigate={navigateToPage}
+        onSetActiveView={() => {}} // TODO: wire to App.jsx viewStates
+        onRename={handleRename}
+        onDelete={(node) => setConfirmDelete({ node })}
+        onContextMenu={handleContextMenu}
         collapsed={collapsed}
-        onExpandSidebar={onExpandSidebar}
+        searchQuery={searchQuery}
       />
 
-      {/* ── Main list area ── */}
-      <div style={{ flex: 1, overflowY: "auto", paddingTop: 6, paddingBottom: 48 }}>
-        {/* ── Page list (when folder is selected) ── */}
-        {activeFolder && folderPages.map((page, idx) => {
-          const isActive = activePage === page.id;
-          const isHovered = hoveredItem === `page_${page.id}`;
-          const isDragging = dragIdx === idx;
-          const isDropTarget = dropIdx === idx && dragIdx !== null && dragIdx !== idx;
-          return (
-            <div
-              key={page.id}
-              draggable={!collapsed}
-              onDragStart={(e) => {
-                setDragIdx(idx);
-                e.dataTransfer.effectAllowed = "move";
-                e.dataTransfer.setData("text/plain", String(idx));
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = "move";
-                setDropIdx(idx);
-              }}
-              onDragEnd={handleDragEnd}
-              onDragLeave={() => setDropIdx(null)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                position: "relative",
-                opacity: isDragging ? 0.4 : 1,
-                borderTop: isDropTarget && dragIdx > idx ? `2px solid ${C.accent}` : "2px solid transparent",
-                borderBottom: isDropTarget && dragIdx < idx ? `2px solid ${C.accent}` : "2px solid transparent",
-                transition: "opacity 0.12s",
-                animation: ANIM.listItem(idx),
-              }}
-            >
-              <button
-                onClick={(e) => {
-                  if ((e.metaKey || e.ctrlKey) && isNeuronsMode()) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    dispatchNeuronSelect({ node_type: "page", node_id: page.id, node_label: page.name || "Untitled" });
-                    return;
-                  }
-                  navigateToPage(page);
-                }}
-                onContextMenu={(e) => handleContextMenu(e, page)}
-                onMouseEnter={() => setHoveredItem(`page_${page.id}`)}
-                onMouseLeave={() => setHoveredItem(null)}
-                title={collapsed ? page.name : undefined}
-                style={{
-                  ...itemStyle(isActive, isHovered),
-                  flex: 1,
-                }}
-              >
-                <IconDiamond
-                  size={8}
-                  color={isActive ? "#fff" : C.darkBorder}
-                />
-                {!collapsed && (
-                  <InlineEdit
-                    value={page.name}
-                    onCommit={(newName) => handleRename(page, newName)}
-                    placeholder="Untitled"
-                    fontSize={13}
-                    fontWeight={isActive ? 600 : 400}
-                    color={isActive ? "#fff" : C.darkText}
-                  />
-                )}
-                {!collapsed && <NeuronBadge nodeId={page.id} />}
-                {/* Active dot */}
-                {isActive && !collapsed && !isHovered && (
-                  <div style={{
-                    marginLeft: "auto", width: 5, height: 5,
-                    borderRadius: "50%", background: "#fff", flexShrink: 0,
-                    boxShadow: "0 0 4px rgba(255,255,255,0.4)",
-                  }} />
-                )}
-                {/* Delete on hover */}
-                {isHovered && !collapsed && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setConfirmDelete({ type: "page", pageConfig: page });
-                    }}
-                    title="Delete page"
-                    style={{
-                      marginLeft: "auto", background: "none", border: "none",
-                      cursor: "pointer", padding: 2, display: "flex",
-                      alignItems: "center", opacity: 0.5, transition: "opacity 0.12s",
-                      outline: "none", flexShrink: 0,
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
-                  >
-                    <IconTrash size={9} color={isActive ? "#fff" : C.darkMuted} />
-                  </button>
-                )}
-              </button>
-            </div>
-          );
-        })}
+      {/* -- Create Menu (replaces "+ New Page") -- */}
+      <CreateMenu onCreateItem={handleCreateItem} collapsed={collapsed} />
 
-        {/* Empty folder message */}
-        {activeFolder && folderPages.length === 0 && !collapsed && (
-          <div style={{
-            padding: "16px 20px", fontFamily: "'Outfit',sans-serif",
-            fontSize: 11, color: C.darkBorder, letterSpacing: "0.04em",
-          }}>
-            No pages in this folder
-          </div>
-        )}
-
-        {/* No folder selected — prompt to pick one */}
-        {!activeFolder && activePage !== "dashboard" && !collapsed && (
-          <div style={{
-            padding: "20px 16px", fontFamily: "'Outfit',sans-serif",
-            fontSize: 11, color: C.darkMuted, letterSpacing: "0.02em",
-            textAlign: "center", lineHeight: 1.5,
-          }}>
-            Select a folder above to view pages
-          </div>
-        )}
-
-        {/* ── "New Page" button (when inside a folder) ── */}
-        {activeFolder && !collapsed && (
-          <div style={{ padding: "4px 8px" }}>
-            <button
-              onClick={() => onCreatePage?.(activeFolder)}
-              style={{
-                width: "100%", border: `1px dashed ${C.darkBorder}`,
-                background: "transparent", cursor: "pointer",
-                display: "flex", alignItems: "center", gap: 8,
-                padding: "8px 14px", borderRadius: 999,
-                fontFamily: "'Outfit',sans-serif", fontSize: 12,
-                color: C.darkMuted, outline: "none", transition: "all 0.12s",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.color = C.accent; }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; e.currentTarget.style.color = C.darkMuted; }}
-            >
-              <IconPlus size={10} color="currentColor" />
-              <span>New Page</span>
-            </button>
-          </div>
-        )}
-        {activeFolder && collapsed && (
-          <button
-            onClick={() => onCreatePage?.(activeFolder)}
-            title="New Page"
-            style={{
-              width: "100%", border: "none", background: "transparent",
-              cursor: "pointer", display: "flex", alignItems: "center",
-              justifyContent: "center", padding: "10px 0", outline: "none",
-            }}
-          >
-            <IconPlus size={12} color={C.darkMuted} />
-          </button>
-        )}
-      </div>
-
-      {/* ── Bottom action buttons ── */}
+      {/* -- Bottom action buttons -- */}
       <div
         style={{
           flexShrink: 0,
@@ -389,6 +244,18 @@ export default function Navigation({
         >
           <IconStar size={collapsed ? 16 : 14} color={(activePage === null && !activeFolder) ? "#fff" : C.darkMuted} />
           {!collapsed && <span style={bottomLabelStyle(activePage === null && !activeFolder)}>Home</span>}
+        </button>
+
+        {/* Knowledge Base */}
+        <button
+          onClick={() => setActivePage("knowledge-base")}
+          title="Knowledge Base"
+          style={bottomBtnStyle(activePage === "knowledge-base")}
+          onMouseEnter={(e) => { if (activePage !== "knowledge-base") e.currentTarget.style.background = C.darkSurf2; }}
+          onMouseLeave={(e) => { if (activePage !== "knowledge-base") e.currentTarget.style.background = "transparent"; }}
+        >
+          <IconBrain size={collapsed ? 16 : 14} color={activePage === "knowledge-base" ? "#fff" : C.darkMuted} />
+          {!collapsed && <span style={bottomLabelStyle(activePage === "knowledge-base")}>Knowledge Base</span>}
         </button>
 
         {/* Automations */}
@@ -446,96 +313,71 @@ export default function Navigation({
         )}
       </div>
 
-      {/* ── Collapse toggle tab (peeking Wasabi) ── */}
+      {/* -- Minimal Collapse Chevron (thin bar) -- */}
       <button
         onClick={onToggleCollapse}
         title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         style={{
-          position: "absolute", top: "50%", right: -16,
+          position: "absolute", top: "50%", right: -4,
           transform: "translateY(-50%)",
-          width: 16, height: 40,
-          background: C.accent,
+          width: 4, height: 28,
+          background: C.darkBorder,
           border: "none",
-          borderRadius: "0 10px 10px 0",
-          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-          cursor: "pointer", outline: "none", zIndex: 10,
-          transition: "background 0.12s, width 0.12s",
-          gap: 6,
+          borderRadius: "0 3px 3px 0",
+          cursor: "pointer",
+          outline: "none",
+          zIndex: 10,
+          transition: "background 0.15s, width 0.15s",
           padding: 0,
         }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = C.accentDim; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = C.accent; }}
-      >
-        <svg
-          width="8" height="14" viewBox="0 0 8 14" fill="none"
-          style={{ transform: collapsed ? "rotate(0deg)" : "rotate(180deg)", transition: "transform 0.2s ease" }}
-        >
-          <path d="M1 1L7 7L1 13" stroke={C.dark} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = C.accent;
+          e.currentTarget.style.width = "6px";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = C.darkBorder;
+          e.currentTarget.style.width = "4px";
+        }}
+      />
 
-      {/* ── Context Menu ── */}
+      {/* -- Context Menu -- */}
       {contextMenu && (
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          onClose={() => { setContextMenu(null); setMoveToMenu(null); }}
+          onClose={() => setContextMenu(null)}
           items={[
             {
               label: "Rename",
               onClick: () => {
-                // Rename is handled inline — just close menu
+                // Rename is handled inline via double-click
+                setContextMenu(null);
               },
             },
-            {
-              label: "Move to...",
-              sub: true,
-              onClick: () => {
-                setMoveToMenu({
-                  x: contextMenu.x,
-                  y: contextMenu.y,
-                  page: contextMenu.page,
-                });
-              },
-            },
+            { separator: true },
+            ...getCreateMenuItems((type) => {
+              setContextMenu(null);
+              handleCreateItem(type);
+            }),
             { separator: true },
             {
               label: "Delete",
               danger: true,
               onClick: () => {
-                setConfirmDelete({ type: "page", pageConfig: contextMenu.page });
+                setConfirmDelete({ node: contextMenu.node });
+                setContextMenu(null);
               },
             },
           ]}
         />
       )}
 
-      {/* ── Move To sub-menu ── */}
-      {moveToMenu && (
-        <MoveToMenu
-          x={moveToMenu.x}
-          y={moveToMenu.y}
-          folders={allFoldersForMove}
-          currentFolderId={activeFolder}
-          onMove={(targetFolderId) => handleMoveTo(moveToMenu.page, targetFolderId)}
-          onClose={() => setMoveToMenu(null)}
-        />
-      )}
-
-      {/* ── Confirm dialogs ── */}
-      {confirmDelete?.type === "page" && (
+      {/* -- Confirm Dialogs -- */}
+      {confirmDelete && (
         <ConfirmDialog
-          title="Delete Page"
-          message={`Are you sure you want to delete "${confirmDelete.pageConfig.name}"? This action cannot be undone.`}
-          onConfirm={() => handleDelete(confirmDelete.pageConfig)}
-          onCancel={() => setConfirmDelete(null)}
-        />
-      )}
-      {confirmDelete?.type === "folder" && (
-        <ConfirmDialog
-          title="Delete Folder"
-          message={`Are you sure you want to delete "${confirmDelete.pageConfig.name}" and all its contents? This action cannot be undone.`}
-          onConfirm={() => handleDelete(confirmDelete.pageConfig)}
+          title={`Delete ${confirmDelete.node?.nodeType === "workspace" ? "Workspace" : confirmDelete.node?.nodeType === "folder" ? "Folder" : "Page"}`}
+          message={`Are you sure you want to delete "${confirmDelete.node?.name}"? This action cannot be undone.`}
+          onConfirm={() => handleDelete(confirmDelete.node)}
           onCancel={() => setConfirmDelete(null)}
         />
       )}

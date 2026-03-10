@@ -581,3 +581,34 @@ export function IconMoon({ size = 20, color = d, ...rest }) {
     </Icon>
   );
 }
+
+export function IconBrain({ size = 20, color = d, ...rest }) {
+  return (
+    <Icon size={size} {...rest}>
+      <path d="M12 2a6 6 0 0 0-6 6c0 1.66.68 3.16 1.76 4.24L12 16l4.24-3.76A6 6 0 0 0 12 2z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <path d="M9 8.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM15 8.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z" fill={color} />
+      <path d="M12 16v6M8 19h8" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M12 2c-1.5 0-2.8.5-3.8 1.3M12 2c1.5 0 2.8.5 3.8 1.3" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+    </Icon>
+  );
+}
+
+export function IconGlobe({ size = 20, color = d, ...rest }) {
+  return (
+    <Icon size={size} {...rest}>
+      <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.5" fill="none" />
+      <path d="M3 12h18M12 3c2.5 2.5 3.5 5.5 3.5 9s-1 6.5-3.5 9c-2.5-2.5-3.5-5.5-3.5-9s1-6.5 3.5-9z" stroke={color} strokeWidth="1.5" fill="none" />
+    </Icon>
+  );
+}
+
+export function IconGrid({ size = 20, color = d, ...rest }) {
+  return (
+    <Icon size={size} {...rest}>
+      <rect x="3" y="3" width="7" height="7" rx="1.5" stroke={color} strokeWidth="1.5" fill="none" />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" stroke={color} strokeWidth="1.5" fill="none" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" stroke={color} strokeWidth="1.5" fill="none" />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" stroke={color} strokeWidth="1.5" fill="none" />
+    </Icon>
+  );
+}
