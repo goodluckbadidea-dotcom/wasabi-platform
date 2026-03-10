@@ -892,6 +892,40 @@ function DisplayValue({ prop, fieldName, schema, pendingValue }) {
   }
 }
 
+// ── Auto-resizing Textarea ──
+function AutoResizeTextarea({ inputRef, defaultValue, style, onKeyDown, onBlur, onClick }) {
+  const resize = useCallback((el) => {
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 200) + "px";
+  }, []);
+
+  useEffect(() => {
+    if (inputRef.current) resize(inputRef.current);
+  }, []);
+
+  return (
+    <textarea
+      ref={inputRef}
+      defaultValue={defaultValue}
+      rows={1}
+      style={{
+        ...style,
+        resize: "none",
+        minHeight: 32,
+        maxHeight: 200,
+        overflowY: "auto",
+        lineHeight: 1.55,
+        display: "block",
+      }}
+      onKeyDown={onKeyDown}
+      onBlur={onBlur}
+      onClick={onClick}
+      onInput={(e) => resize(e.target)}
+    />
+  );
+}
+
 // ── Edit Field (inline editor) ──
 function EditField({ fieldName, type, value, schemaField, onCommit, onCancel }) {
   const inputRef = useRef(null);
@@ -902,14 +936,28 @@ function EditField({ fieldName, type, value, schemaField, onCommit, onCancel }) 
 
   const handleKeyDown = (e) => {
     if (e.key === "Escape") onCancel();
-    if (e.key === "Enter" && type !== "rich_text") {
+    if (e.key === "Enter" && !e.shiftKey && type !== "rich_text") {
       onCommit(inputRef.current?.value ?? value);
     }
   };
 
   switch (type) {
-    case "title":
     case "rich_text":
+      return (
+        <AutoResizeTextarea
+          inputRef={inputRef}
+          defaultValue={value || ""}
+          style={ds.input}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") onCancel();
+            // Shift+Enter for newline, plain Enter does nothing special (keeps editing)
+          }}
+          onBlur={(e) => onCommit(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+        />
+      );
+
+    case "title":
     case "url":
     case "email":
     case "phone_number":

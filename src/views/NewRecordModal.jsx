@@ -178,7 +178,7 @@ function FieldRow({ field, value, options, onChange, isTitle }) {
         <span style={ms.fieldType}>{TYPE_LABELS[type] || type}</span>
       </div>
       <div style={{ flex: 1 }}>
-        {(type === "title" || type === "rich_text" || type === "text") && (
+        {(type === "title" || type === "text") && (
           <input
             autoFocus={isTitle}
             type="text"
@@ -186,6 +186,26 @@ function FieldRow({ field, value, options, onChange, isTitle }) {
             onChange={(e) => onChange(e.target.value)}
             placeholder={isTitle ? "Required" : ""}
             style={ms.input}
+          />
+        )}
+
+        {type === "rich_text" && (
+          <textarea
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            rows={2}
+            style={{
+              ...ms.input,
+              resize: "none",
+              minHeight: 48,
+              maxHeight: 160,
+              lineHeight: 1.55,
+              overflowY: "auto",
+            }}
+            onInput={(e) => {
+              e.target.style.height = "auto";
+              e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
+            }}
           />
         )}
 

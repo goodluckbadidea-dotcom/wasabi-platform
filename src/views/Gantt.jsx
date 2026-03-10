@@ -894,25 +894,71 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                   </g>
                 )}
 
-                {/* ─── Bars: Pass 1 — bar rects + resize handles ─── */}
+                {/* ─── Bars: Pass 1 — gradient blends between adjacent bars ─── */}
                 {rows.map((row, rowIdx) => {
                   const y = rowIdx * dynamicRowHeight + (dynamicRowHeight - barHeight) / 2;
+                  if (row.bars.length < 2) return null;
+
+                  // Sort bars by start position for adjacency detection
+                  const sorted = row.bars
+                    .map((bar, i) => ({ bar, rect: getBarRect(row, bar), idx: i }))
+                    .sort((a, b) => a.rect.x - b.rect.x);
+
+                  return sorted.slice(0, -1).map((curr, si) => {
+                    const next = sorted[si + 1];
+                    const currEnd = curr.rect.x + curr.rect.w;
+                    const nextStart = next.rect.x;
+                    const gap = nextStart - currEnd;
+
+                    // Only blend if bars overlap or are within a small gap
+                    if (gap > zoom.pxPerDay * 3) return null;
+
+                    const blendStart = Math.max(currEnd - zoom.pxPerDay * 2, curr.rect.x + curr.rect.w / 2);
+                    const blendEnd = Math.min(nextStart + zoom.pxPerDay * 2, next.rect.x + next.rect.w / 2);
+                    const blendW = blendEnd - blendStart;
+                    if (blendW <= 0) return null;
+
+                    const gradId = `blend-${row.pageId}-${si}`;
+                    return (
+                      <g key={gradId}>
+                        <defs>
+                          <linearGradient id={gradId} x1="0" x2="1" y1="0" y2="0">
+                            <stop offset="0%" stopColor={curr.bar.color} stopOpacity="0.75" />
+                            <stop offset="100%" stopColor={next.bar.color} stopOpacity="0.75" />
+                          </linearGradient>
+                        </defs>
+                        <rect
+                          x={blendStart}
+                          y={y}
+                          width={blendW}
+                          height={barHeight}
+                          fill={`url(#${gradId})`}
+                          style={{ pointerEvents: "none" }}
+                        />
+                      </g>
+                    );
+                  });
+                })}
+
+                {/* ─── Bars: Pass 2 — bar rects + resize handles ─── */}
+                {rows.map((row, rowIdx) => {
+                  const y = rowIdx * dynamicRowHeight + (dynamicRowHeight - barHeight) / 2;
+                  const pillRadius = barHeight / 2;
 
                   return row.bars.map((bar, barIdx) => {
                     const { x, w } = getBarRect(row, bar);
                     const isDragging = dragState?.pageId === row.pageId && dragState?.fieldName === bar.fieldName;
-                    const radius = barHeight >= 16 ? 6 : 3;
 
                     return (
                       <g key={`bar-${row.pageId}-${barIdx}`}>
-                        {/* Bar background */}
+                        {/* Bar background — pill shape */}
                         <rect
                           x={x}
                           y={y}
                           width={w}
                           height={barHeight}
-                          rx={radius}
-                          ry={radius}
+                          rx={pillRadius}
+                          ry={pillRadius}
                           fill={bar.color}
                           opacity={isDragging ? 0.9 : 0.75}
                           style={{
@@ -978,7 +1024,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                   });
                 })}
 
-                {/* ─── Bars: Pass 2 — text labels (rendered on top of ALL bars) ─── */}
+                {/* ─── Bars: Pass 3 — text labels (rendered on top of ALL bars) ─── */}
                 {rows.map((row, rowIdx) => {
                   const y = rowIdx * dynamicRowHeight + (dynamicRowHeight - barHeight) / 2;
 
