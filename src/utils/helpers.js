@@ -41,7 +41,16 @@ export function throttle(fn, ms = 300) {
 export function formatDate(dateStr, opts = {}) {
   if (!dateStr) return "";
   try {
-    const d = new Date(dateStr);
+    // Parse date-only strings (e.g. "2024-01-15") as local time, not UTC.
+    // new Date("2024-01-15") treats it as UTC midnight, which shifts to the
+    // previous day in western timezones. Split and construct locally instead.
+    let d;
+    const dateOnly = String(dateStr).match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (dateOnly) {
+      d = new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]));
+    } else {
+      d = new Date(dateStr);
+    }
     if (isNaN(d.getTime())) return dateStr;
     const { short = false, time = false } = opts;
     if (short) {

@@ -279,10 +279,12 @@ export default function Sheet({ pageConfig }) {
       } else if (e.key === "Tab") {
         e.preventDefault();
         commitEdit();
-        // Move right
+        // Move right and start editing next cell
         if (colIdx < colCount - 1) {
           const next = cellKey(colIdx + 1, row - 1);
           setSelectedCell(next);
+          // Start editing the next cell so user can keep typing
+          setTimeout(() => startEditing(next), 0);
         }
       }
       return;
@@ -304,9 +306,17 @@ export default function Sheet({ pageConfig }) {
         if (row > 1) setSelectedCell(cellKey(colIdx, row - 2));
         break;
       case "ArrowRight":
-      case "Tab":
         e.preventDefault();
         if (colIdx < colCount - 1) setSelectedCell(cellKey(colIdx + 1, row - 1));
+        break;
+      case "Tab":
+        e.preventDefault();
+        if (colIdx < colCount - 1) {
+          const next = cellKey(colIdx + 1, row - 1);
+          setSelectedCell(next);
+          // Tab starts editing (like spreadsheet UX)
+          setTimeout(() => startEditing(next), 0);
+        }
         break;
       case "ArrowLeft":
         e.preventDefault();
@@ -318,8 +328,10 @@ export default function Sheet({ pageConfig }) {
         updateCell(selectedCell, "");
         break;
       default:
-        // Start typing to edit
+        // Start typing to edit — preventDefault stops the character
+        // from also being dispatched to the newly focused input
         if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+          e.preventDefault();
           setEditingCell(selectedCell);
           setEditValue(e.key);
           setTimeout(() => inputRef.current?.focus(), 0);
@@ -468,8 +480,12 @@ export default function Sheet({ pageConfig }) {
                             if (e.key === "Tab") {
                               e.preventDefault();
                               commitEdit();
-                              // Move right
-                              if (ci < colCount - 1) setSelectedCell(cellKey(ci + 1, ri));
+                              // Move right and start editing next cell
+                              if (ci < colCount - 1) {
+                                const next = cellKey(ci + 1, ri);
+                                setSelectedCell(next);
+                                setTimeout(() => startEditing(next), 0);
+                              }
                             }
                           }}
                           style={ss.input}

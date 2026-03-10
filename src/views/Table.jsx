@@ -318,6 +318,8 @@ function resolveColumns(schema, configColumns, fieldMappings) {
     ...schema.phones,
     ...schema.multiSelects,
     ...schema.people,
+    ...schema.relations,
+    ...schema.files,
     ...schema.formulas,
     ...schema.rollups,
   ];
