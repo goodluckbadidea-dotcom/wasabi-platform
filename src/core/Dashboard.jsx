@@ -198,7 +198,7 @@ export default function Dashboard({
           <button
             onClick={() => { setEditMode(true); setWidgetPickerOpen(true); }}
             style={{
-              background: C.accent,
+              background: `linear-gradient(135deg, #7DC143, ${C.accent})`,
               color: "#fff",
               border: "none",
               borderRadius: RADIUS.pill,

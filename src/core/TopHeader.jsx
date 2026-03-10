@@ -47,6 +47,7 @@ export default function TopHeader({
         height: 54,
         background: C.dark,
         borderBottom: `1px solid ${C.edgeLine}`,
+        borderImage: `linear-gradient(90deg, ${C.edgeLine}, #7DC14322, ${C.accent}33, #7DC14322, ${C.edgeLine}) 1`,
         display: "flex",
         alignItems: "center",
         padding: "0 24px",
@@ -63,7 +64,10 @@ export default function TopHeader({
             fontWeight: 700,
             letterSpacing: "0.06em",
             textTransform: "uppercase",
-            color: C.darkText,
+            backgroundImage: `linear-gradient(135deg, #7DC143, ${C.accent})`,
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            backgroundClip: "text",
           }}
         >
           Wasabi
@@ -187,12 +191,18 @@ export default function TopHeader({
           }}
         >
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-            <circle cx="4" cy="4" r="2" fill={overlayActive ? C.accent : C.darkMuted} />
-            <circle cx="12" cy="4" r="2" fill={overlayActive ? C.accent : C.darkMuted} />
-            <circle cx="8" cy="12" r="2" fill={overlayActive ? C.accent : C.darkMuted} />
-            <line x1="4" y1="4" x2="12" y2="4" stroke={overlayActive ? C.accent : C.darkMuted} strokeWidth="1" />
-            <line x1="4" y1="4" x2="8" y2="12" stroke={overlayActive ? C.accent : C.darkMuted} strokeWidth="1" />
-            <line x1="12" y1="4" x2="8" y2="12" stroke={overlayActive ? C.accent : C.darkMuted} strokeWidth="1" />
+            <defs>
+              <linearGradient id="neuron-grad" x1="0" y1="0" x2="16" y2="16">
+                <stop offset="0%" stopColor="#7DC143" />
+                <stop offset="100%" stopColor={C.accent} />
+              </linearGradient>
+            </defs>
+            <circle cx="4" cy="4" r="2" fill={overlayActive ? "url(#neuron-grad)" : C.darkMuted} />
+            <circle cx="12" cy="4" r="2" fill={overlayActive ? "url(#neuron-grad)" : C.darkMuted} />
+            <circle cx="8" cy="12" r="2" fill={overlayActive ? "url(#neuron-grad)" : C.darkMuted} />
+            <line x1="4" y1="4" x2="12" y2="4" stroke={overlayActive ? "url(#neuron-grad)" : C.darkMuted} strokeWidth="1" />
+            <line x1="4" y1="4" x2="8" y2="12" stroke={overlayActive ? "url(#neuron-grad)" : C.darkMuted} strokeWidth="1" />
+            <line x1="12" y1="4" x2="8" y2="12" stroke={overlayActive ? "url(#neuron-grad)" : C.darkMuted} strokeWidth="1" />
           </svg>
           Neurons
           {overlayActive && selection.length > 0 && (

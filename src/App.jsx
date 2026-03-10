@@ -357,7 +357,7 @@ function AppContent() {
               width: 1,
               zIndex: 1,
               pointerEvents: "none",
-              background: `linear-gradient(180deg, ${C.edgeLine}00 0%, ${C.edgeLine} 30%, ${C.accent}44 60%, ${C.edgeLine} 85%, ${C.edgeLine}00 100%)`,
+              background: `linear-gradient(180deg, ${C.edgeLine}00 0%, ${C.edgeLine} 20%, #7DC14344 40%, ${C.accent}55 60%, ${C.edgeLine} 85%, ${C.edgeLine}00 100%)`,
               transition: "left 0.32s cubic-bezier(0.25, 1, 0.5, 1)",
             }}
           />

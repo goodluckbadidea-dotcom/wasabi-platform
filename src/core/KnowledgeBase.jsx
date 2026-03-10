@@ -19,7 +19,7 @@ const tabBtn = (active) => ({
   fontFamily: FONT,
   fontSize: 12,
   fontWeight: 500,
-  background: active ? C.accent : "transparent",
+  background: active ? `linear-gradient(135deg, #7DC143, ${C.accent})` : "transparent",
   color: active ? "#fff" : C.darkMuted,
   borderRadius: RADIUS.pill,
   transition: "background 0.14s, color 0.14s",

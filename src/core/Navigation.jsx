@@ -127,7 +127,7 @@ export default function Navigation({
 
   // -- Style helpers --
   const bottomBtnStyle = (isActive) => ({
-    background: isActive ? C.accent : "none",
+    background: isActive ? `linear-gradient(135deg, #7DC143, ${C.accent})` : "none",
     border: "none",
     cursor: "pointer",
     display: "flex",
@@ -228,6 +228,7 @@ export default function Navigation({
         style={{
           flexShrink: 0,
           borderTop: `1px solid ${C.darkBorder}`,
+          borderImage: `linear-gradient(90deg, ${C.darkBorder}, #7DC14344, ${C.accent}44, ${C.darkBorder}) 1`,
           padding: collapsed ? "8px 0" : "8px 12px",
           display: "flex",
           flexDirection: "column",
@@ -323,7 +324,7 @@ export default function Navigation({
           position: "absolute", top: "50%", right: -4,
           transform: "translateY(-50%)",
           width: 4, height: 28,
-          background: C.darkBorder,
+          background: `linear-gradient(180deg, #7DC14366, ${C.accent}66)`,
           border: "none",
           borderRadius: "0 3px 3px 0",
           cursor: "pointer",

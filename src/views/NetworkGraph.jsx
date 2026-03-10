@@ -18,11 +18,14 @@ const DT = 0.8;
 const MIN_VEL = 0.01;
 
 // ── Node types & colors ──
-const NODE_COLORS = {
-  automation: "#FF6B3D",
-  neuron: "#9C6AFF",
-  page: "#4CAF50",
-};
+// Use theme accent + wasabi green for the graph
+const WASABI = "#7DC143";
+function getNodeColor(type) {
+  if (type === "automation") return C.accent;
+  if (type === "neuron") return WASABI;
+  if (type === "page") return C.accentDim || C.accent;
+  return C.darkMuted;
+}
 
 const NODE_RADIUS = {
   automation: 18,
@@ -121,7 +124,7 @@ function render(ctx, sim, width, height, hoveredNode, activeNodes, dpr) {
 
   const { nodes, edges } = sim;
 
-  // Draw edges
+  // Draw edges with gradients (accent → wasabi green)
   edges.forEach((e) => {
     const a = nodes.find((n) => n.id === e.source);
     const b = nodes.find((n) => n.id === e.target);
@@ -129,11 +132,23 @@ function render(ctx, sim, width, height, hoveredNode, activeNodes, dpr) {
 
     const isActive = activeNodes.has(a.id) || activeNodes.has(b.id);
 
+    // Create gradient from source node color to target node color
+    const grad = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+    const colA = getNodeColor(a.type);
+    const colB = getNodeColor(b.type);
+    if (isActive) {
+      grad.addColorStop(0, colA + "BB");
+      grad.addColorStop(1, colB + "BB");
+    } else {
+      grad.addColorStop(0, colA + "44");
+      grad.addColorStop(1, colB + "44");
+    }
+
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
-    ctx.strokeStyle = isActive ? C.accent + "AA" : C.darkBorder + "66";
-    ctx.lineWidth = isActive ? 2 : 1;
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = isActive ? 2.5 : 1.2;
     ctx.stroke();
 
     // Directional arrow
@@ -158,7 +173,7 @@ function render(ctx, sim, width, height, hoveredNode, activeNodes, dpr) {
         arrowY - arrowSize * Math.sin(angle + Math.PI / 6)
       );
       ctx.closePath();
-      ctx.fillStyle = isActive ? C.accent + "AA" : C.darkBorder + "66";
+      ctx.fillStyle = isActive ? colB + "BB" : colB + "44";
       ctx.fill();
     }
   });
@@ -166,7 +181,7 @@ function render(ctx, sim, width, height, hoveredNode, activeNodes, dpr) {
   // Draw nodes
   nodes.forEach((n) => {
     const r = NODE_RADIUS[n.type] || 12;
-    const color = NODE_COLORS[n.type] || C.darkMuted;
+    const color = getNodeColor(n.type);
     const isActive = activeNodes.has(n.id);
     const isHovered = hoveredNode?.id === n.id;
 
@@ -360,7 +375,7 @@ export default function NetworkGraph({ automationEngine }) {
 
     observer.observe(container);
     return () => observer.disconnect();
-  }, []);
+  }, [loading]);
 
   // Animation loop
   useEffect(() => {
@@ -506,8 +521,8 @@ export default function NetworkGraph({ automationEngine }) {
         flexShrink: 0, padding: "10px 20px", borderBottom: `1px solid ${C.darkBorder}`,
         display: "flex", gap: 16, alignItems: "center",
       }}>
-        <Stat label="Automations" value={stats.automations} color={NODE_COLORS.automation} />
-        <Stat label="Neurons" value={stats.neurons} color={NODE_COLORS.neuron} />
+        <Stat label="Automations" value={stats.automations} color={getNodeColor("automation")} />
+        <Stat label="Neurons" value={stats.neurons} color={getNodeColor("neuron")} />
         <Stat label="Connections" value={stats.edges} color={C.darkMuted} />
         {hoveredNode && (
           <span style={{
@@ -537,9 +552,9 @@ export default function NetworkGraph({ automationEngine }) {
           display: "flex", gap: 12,
         }}>
           {[
-            { color: NODE_COLORS.automation, label: "Automation" },
-            { color: NODE_COLORS.neuron, label: "Neuron" },
-            { color: NODE_COLORS.page, label: "Page" },
+            { color: getNodeColor("automation"), label: "Automation" },
+            { color: getNodeColor("neuron"), label: "Neuron" },
+            { color: getNodeColor("page"), label: "Page" },
           ].map((item) => (
             <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
               <div style={{ width: 8, height: 8, borderRadius: "50%", background: item.color }} />

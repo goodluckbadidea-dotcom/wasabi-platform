@@ -114,7 +114,7 @@ const ds = {
     fontWeight: 600,
     borderRadius: RADIUS.md,
     border: "none",
-    background: C.accent,
+    background: `linear-gradient(135deg, #7DC143, ${C.accent})`,
     color: "#fff",
     cursor: "pointer",
     whiteSpace: "nowrap",
@@ -1544,7 +1544,7 @@ function UploadDatabaseForm({
               }}>
                 <div style={{
                   height: "100%", borderRadius: 3,
-                  background: C.accent, transition: "width 0.3s",
+                  background: `linear-gradient(90deg, #7DC143, ${C.accent})`, transition: "width 0.3s",
                   width: `${Math.round((uploadProgress.done / uploadProgress.total) * 100)}%`,
                 }} />
               </div>

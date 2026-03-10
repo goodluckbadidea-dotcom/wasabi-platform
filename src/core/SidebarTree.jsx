@@ -135,7 +135,7 @@ function TreeNode({
             padding: collapsed
               ? "8px 0"
               : `6px 10px 6px ${8 + indent}px`,
-            background: isActive ? C.accent : hovered ? C.darkSurf2 : "transparent",
+            background: isActive ? `linear-gradient(135deg, #7DC143, ${C.accent})` : hovered ? C.darkSurf2 : "transparent",
             fontFamily: FONT,
             transition: "background 0.1s",
             width: "100%",
