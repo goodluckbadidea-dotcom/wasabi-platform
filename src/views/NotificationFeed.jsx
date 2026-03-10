@@ -1,95 +1,71 @@
 // ─── Notification Feed View ───
-// Notification list with read/unread states. Reads from the platform's notification database.
+// Notification list with read/unread states. Reads from D1 notification store.
 
 import React, { useState, useEffect, useCallback } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { queryAll } from "../notion/pagination.js";
-import { updatePage } from "../notion/client.js";
-import { readProp } from "../notion/properties.js";
-import { formatDate, timeAgo } from "../utils/helpers.js";
+import * as api from "../lib/api.js";
+import { timeAgo } from "../utils/helpers.js";
 import { IconBell, IconWarning, IconCheck } from "../design/icons.jsx";
 
 const TABS = ["Unread", "All"];
 
-export default function NotificationFeed({ config = {} }) {
-  const { user, platformIds } = usePlatform();
+export default function NotificationFeed() {
+  const { user } = usePlatform();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("Unread");
 
-  const notifDbId = config.notifDbId || platformIds?.notifDbId;
-
-  // Fetch notifications
+  // Fetch notifications from D1
   const fetchNotifications = useCallback(async () => {
-    if (!user?.workerUrl || !user?.notionKey || !notifDbId) {
+    if (!user?.workerUrl) {
       setLoading(false);
       return;
     }
 
     try {
-      const results = await queryAll(user.workerUrl, user.notionKey, notifDbId, null, [
-        { property: "Created", direction: "descending" },
-      ]);
+      const result = await api.listNotifications({ limit: 200 });
+      const items = (result.notifications || result.rows || []).map((row) => ({
+        id: row.id,
+        message: row.message || "",
+        type: row.type || "notification",
+        status: row.status || "unread",
+        source: row.source || "",
+        createdTime: row.created_at || row.createdAt || "",
+      }));
 
-      const parsed = results.map((page) => {
-        const props = page.properties || {};
-        // Extract notification fields
-        let message = "", type = "notification", status = "unread", source = "";
-        let createdTime = page.created_time || "";
-
-        for (const [key, prop] of Object.entries(props)) {
-          const val = readProp(prop);
-          const lk = key.toLowerCase();
-          if (prop.type === "title") message = val || "";
-          else if (lk === "type" || lk === "category") type = val || "notification";
-          else if (lk === "status" || lk === "read") {
-            if (prop.type === "checkbox") status = val ? "read" : "unread";
-            else status = (val || "unread").toLowerCase();
-          }
-          else if (lk === "source" || lk === "from") source = val || "";
-          else if (prop.type === "created_time") createdTime = val || createdTime;
-        }
-
-        return { id: page.id, message, type, status, source, createdTime };
+      // Sort newest first
+      items.sort((a, b) => {
+        const ta = new Date(a.createdTime).getTime() || 0;
+        const tb = new Date(b.createdTime).getTime() || 0;
+        return tb - ta;
       });
 
-      setNotifications(parsed);
+      setNotifications(items);
     } catch (err) {
       console.error("Failed to fetch notifications:", err);
     } finally {
       setLoading(false);
     }
-  }, [user, notifDbId]);
+  }, [user?.workerUrl]);
 
   useEffect(() => {
     fetchNotifications();
   }, [fetchNotifications]);
 
-  // Mark as read
+  // Mark as read via D1
   const markAsRead = useCallback(async (notifId) => {
-    if (!user?.workerUrl || !user?.notionKey) return;
-
     // Optimistic update
     setNotifications((prev) =>
       prev.map((n) => (n.id === notifId ? { ...n, status: "read" } : n))
     );
 
     try {
-      // Try updating the Status property as select, fallback to checkbox
-      await updatePage(user.workerUrl, user.notionKey, notifId, {
-        Status: { select: { name: "read" } },
-      });
-    } catch {
-      try {
-        await updatePage(user.workerUrl, user.notionKey, notifId, {
-          Read: { checkbox: true },
-        });
-      } catch (err) {
-        console.error("Failed to mark as read:", err);
-      }
+      await api.updateNotification(notifId, { status: "read" });
+    } catch (err) {
+      console.error("Failed to mark as read:", err);
     }
-  }, [user]);
+  }, []);
 
   // Filter by tab
   const filtered = activeTab === "Unread"
@@ -97,28 +73,6 @@ export default function NotificationFeed({ config = {} }) {
     : notifications;
 
   const unreadCount = notifications.filter((n) => n.status === "unread").length;
-
-  if (!notifDbId) {
-    return (
-      <div style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        height: "100%",
-        gap: 12,
-        color: C.darkMuted,
-        fontSize: 14,
-        fontFamily: FONT,
-      }}>
-        <IconBell size={32} color={C.darkMuted} />
-        <span>No notification database configured.</span>
-        <span style={{ fontSize: 12, opacity: 0.6 }}>
-          Wasabi will set this up during page creation.
-        </span>
-      </div>
-    );
-  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", fontFamily: FONT }}>
@@ -152,7 +106,7 @@ export default function NotificationFeed({ config = {} }) {
               <span style={{
                 marginLeft: 6,
                 background: activeTab === tab ? "rgba(255,255,255,0.25)" : C.accent,
-                color: activeTab === tab ? "#fff" : "#fff",
+                color: "#fff",
                 borderRadius: RADIUS.pill,
                 padding: "1px 6px",
                 fontSize: 10,
@@ -163,6 +117,27 @@ export default function NotificationFeed({ config = {} }) {
             )}
           </button>
         ))}
+
+        {/* Refresh button */}
+        <button
+          onClick={() => { setLoading(true); fetchNotifications(); }}
+          style={{
+            marginLeft: "auto",
+            background: "transparent",
+            border: `1px solid ${C.darkBorder}`,
+            borderRadius: RADIUS.md,
+            padding: "4px 10px",
+            fontSize: 10,
+            fontFamily: FONT,
+            color: C.darkMuted,
+            cursor: "pointer",
+            transition: "border-color 0.15s",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
+        >
+          Refresh
+        </button>
       </div>
 
       {/* Notification list */}

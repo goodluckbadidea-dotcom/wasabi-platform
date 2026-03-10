@@ -25,6 +25,7 @@ import WasabiOrb from "./core/WasabiOrb.jsx";
 import SystemManager from "./core/SystemManager.jsx";
 import KnowledgeBase from "./core/KnowledgeBase.jsx";
 import AutomationPage from "./core/AutomationPage.jsx";
+import NotificationFeed from "./views/NotificationFeed.jsx";
 import HomePage from "./core/HomePage.jsx";
 import Dashboard from "./core/Dashboard.jsx";
 import { ErrorBoundary } from "./core/ErrorBoundary.jsx";
@@ -247,6 +248,11 @@ function AppContent() {
     // Automations (sub-view tabs: Node Editor, Simple Rules, Upload)
     if (activePage === "automations") {
       return <AutomationPage automationEngine={engineRef.current} activeTab={activeViewIndex} />;
+    }
+
+    // Inbox (Notification Feed)
+    if (activePage === "inbox") {
+      return <NotificationFeed />;
     }
 
     // Knowledge Base

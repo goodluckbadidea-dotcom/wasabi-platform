@@ -14,6 +14,7 @@ import {
   IconEdit, IconPlus, IconBell, IconTransform, IconTrash, IconClose,
 } from "../design/icons.jsx";
 import { loadCachedFlows, saveFlow, loadFlows, deleteFlow } from "../config/flowStorage.js";
+import * as api from "../lib/api.js";
 import ConfirmDialog from "./ConfirmDialog.jsx";
 import InlineEdit from "./InlineEdit.jsx";
 
@@ -81,7 +82,7 @@ function getDefaultLabel(type, subtype) {
 
 // ── Flow List Sidebar ──
 
-function FlowListPanel({ flows, activeFlowId, onSelect, onNew, onDelete, onRename, collapsed }) {
+function FlowListPanel({ flows, activeFlowId, onSelect, onNew, onDelete, onRename, rules, onDeleteRule, collapsed }) {
   const [hoveredId, setHoveredId] = useState(null);
   if (collapsed) return null;
 
@@ -219,6 +220,91 @@ function FlowListPanel({ flows, activeFlowId, onSelect, onNew, onDelete, onRenam
             </div>
           );
         })}
+
+        {/* ── Rules Section ── */}
+        {rules && rules.length > 0 && (
+          <>
+            <div style={{
+              padding: "12px 16px 6px",
+              borderTop: `1px solid ${C.darkBorder}`,
+              marginTop: 8,
+            }}>
+              <span style={{
+                fontSize: 10,
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.15em",
+                color: C.darkMuted,
+                fontFamily: FONT,
+              }}>
+                Rules
+              </span>
+            </div>
+            {rules.map((rule) => {
+              const isHovered = hoveredId === `rule_${rule.id}`;
+              return (
+                <div
+                  key={`rule_${rule.id}`}
+                  onMouseEnter={() => setHoveredId(`rule_${rule.id}`)}
+                  onMouseLeave={() => setHoveredId(null)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    width: "calc(100% - 12px)",
+                    margin: "2px 6px",
+                    borderRadius: RADIUS.md,
+                    background: isHovered ? C.darkSurf2 : "transparent",
+                    transition: "background 0.1s",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      flex: 1,
+                      padding: "8px 12px",
+                      fontFamily: FONT,
+                      minWidth: 0,
+                    }}
+                  >
+                    <IconBolt size={10} color={rule.enabled ? C.accent : C.darkBorder} />
+                    <span style={{
+                      fontSize: 12,
+                      color: C.darkText,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}>
+                      {rule.name || "Untitled Rule"}
+                    </span>
+                  </div>
+                  {isHovered && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onDeleteRule?.(rule.id); }}
+                      title="Delete rule"
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                        padding: "4px 8px 4px 0",
+                        opacity: 0.4,
+                        transition: "opacity 0.12s",
+                        outline: "none",
+                        display: "flex",
+                        alignItems: "center",
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.4"; }}
+                    >
+                      <IconTrash size={12} color={C.darkMuted} />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </>
+        )}
       </div>
     </div>
   );
@@ -406,6 +492,10 @@ export default function NodeEditor({ automationEngine }) {
   const [executionStates, setExecutionStates] = useState({});
   const [isRunning, setIsRunning] = useState(false);
 
+  // ── Rules state (simple automation rules from D1) ──
+  const [rules, setRules] = useState([]);
+  const [confirmDeleteRule, setConfirmDeleteRule] = useState(null);
+
   // ── Canvas state ──
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -422,6 +512,23 @@ export default function NodeEditor({ automationEngine }) {
         if (loaded.length > 0) setFlows(loaded);
       })
       .catch((err) => console.error("[NodeEditor] Failed to load flows:", err));
+  }, [user?.workerUrl]);
+
+  // ── Load rules from D1 on mount ──
+  useEffect(() => {
+    if (!user?.workerUrl) return;
+    api.listRules()
+      .then((result) => {
+        const items = (result.rules || []).map((r) => ({
+          id: r.id,
+          name: r.name || "Untitled Rule",
+          description: r.description || "",
+          trigger: r.trigger_type || "",
+          enabled: !!r.enabled,
+        }));
+        setRules(items);
+      })
+      .catch((err) => console.error("[NodeEditor] Failed to load rules:", err));
   }, [user?.workerUrl]);
 
   // ── Active flow data ──
@@ -666,6 +773,17 @@ export default function NodeEditor({ automationEngine }) {
     setConfirmDelete(null);
   }, [activeFlowId]);
 
+  // ── Delete rule ──
+  const handleDeleteRule = useCallback(async (ruleId) => {
+    try {
+      await api.deleteRule(ruleId);
+    } catch (err) {
+      console.error("[NodeEditor] Failed to delete rule:", err);
+    }
+    setRules((prev) => prev.filter((r) => r.id !== ruleId));
+    setConfirmDeleteRule(null);
+  }, []);
+
   // ── Rename flow ──
   const handleRenameFlow = useCallback((flowId, newName) => {
     setFlows((prev) => prev.map((f) => (f.id === flowId ? { ...f, name: newName } : f)));
@@ -710,6 +828,8 @@ export default function NodeEditor({ automationEngine }) {
           onNew={handleNewFlow}
           onDelete={(id) => setConfirmDelete(id)}
           onRename={handleRenameFlow}
+          rules={rules}
+          onDeleteRule={(id) => setConfirmDeleteRule(id)}
         />
         <EmptyState onNew={handleNewFlow} />
         {confirmDelete && (
@@ -719,6 +839,15 @@ export default function NodeEditor({ automationEngine }) {
             confirmLabel="Delete"
             onConfirm={() => handleDeleteFlow(confirmDelete)}
             onCancel={() => setConfirmDelete(null)}
+          />
+        )}
+        {confirmDeleteRule && (
+          <ConfirmDialog
+            title="Delete Rule"
+            message={`Are you sure you want to delete "${rules.find((r) => r.id === confirmDeleteRule)?.name || "Untitled Rule"}"? This action cannot be undone.`}
+            confirmLabel="Delete"
+            onConfirm={() => handleDeleteRule(confirmDeleteRule)}
+            onCancel={() => setConfirmDeleteRule(null)}
           />
         )}
       </div>
@@ -735,6 +864,8 @@ export default function NodeEditor({ automationEngine }) {
         onNew={handleNewFlow}
         onDelete={(id) => setConfirmDelete(id)}
         onRename={handleRenameFlow}
+        rules={rules}
+        onDeleteRule={(id) => setConfirmDeleteRule(id)}
       />
 
       {/* Main canvas area */}
@@ -787,6 +918,15 @@ export default function NodeEditor({ automationEngine }) {
           confirmLabel="Delete"
           onConfirm={() => handleDeleteFlow(confirmDelete)}
           onCancel={() => setConfirmDelete(null)}
+        />
+      )}
+      {confirmDeleteRule && (
+        <ConfirmDialog
+          title="Delete Rule"
+          message={`Are you sure you want to delete "${rules.find((r) => r.id === confirmDeleteRule)?.name || "Untitled Rule"}"? This action cannot be undone.`}
+          confirmLabel="Delete"
+          onConfirm={() => handleDeleteRule(confirmDeleteRule)}
+          onCancel={() => setConfirmDeleteRule(null)}
         />
       )}
     </div>

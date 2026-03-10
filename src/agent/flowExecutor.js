@@ -3,7 +3,8 @@
 // Supports visual trace callbacks for the node editor UI.
 
 import { expandTemplate } from "./automations.js";
-import { postNotification, updatePage, createPage } from "../notion/client.js";
+import { updatePage, createPage } from "../notion/client.js";
+import * as api from "../lib/api.js";
 import { safeJSON } from "../utils/helpers.js";
 
 /**
@@ -228,13 +229,11 @@ async function executeAction(node, inputs, opts) {
   switch (node.subtype) {
     case "post_notification": {
       const message = expandTemplate(node.config.message || "", templateData);
-      if (notifDbId) {
-        await postNotification(workerUrl, notionKey, notifDbId, {
-          message,
-          type: node.config.type || "notification",
-          source: `flow:${node.label}`,
-        });
-      }
+      await api.createNotification({
+        message,
+        type: node.config.type || "notification",
+        source: `flow:${node.label}`,
+      });
       return { _action: "notification_sent", message };
     }
 

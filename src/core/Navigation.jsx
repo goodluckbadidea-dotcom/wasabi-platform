@@ -10,7 +10,7 @@ import { usePlatform } from "../context/PlatformContext.jsx";
 import { savePageConfig, archivePageConfig, createFolderConfig, createWorkspaceConfig, createDashboardConfig } from "../config/pageConfig.js";
 import { archivePage } from "../notion/client.js";
 import {
-  IconBolt, IconGear, IconStar, IconSearch, IconBrain,
+  IconBolt, IconGear, IconStar, IconSearch, IconBrain, IconBell,
   IconChevronLeft, IconChevronRight,
 } from "../design/icons.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
@@ -248,6 +248,18 @@ export default function Navigation({
         >
           <IconStar size={collapsed ? 16 : 14} color={(activePage === null && !activeFolder) ? "#fff" : C.darkMuted} />
           {!collapsed && <span style={bottomLabelStyle(activePage === null && !activeFolder)}>Home</span>}
+        </button>
+
+        {/* Inbox */}
+        <button
+          onClick={() => setActivePage("inbox")}
+          title="Inbox"
+          style={bottomBtnStyle(activePage === "inbox")}
+          onMouseEnter={(e) => { if (activePage !== "inbox") e.currentTarget.style.background = C.darkSurf2; }}
+          onMouseLeave={(e) => { if (activePage !== "inbox") e.currentTarget.style.background = "transparent"; }}
+        >
+          <IconBell size={collapsed ? 16 : 14} color={activePage === "inbox" ? "#fff" : C.darkMuted} />
+          {!collapsed && <span style={bottomLabelStyle(activePage === "inbox")}>Inbox</span>}
         </button>
 
         {/* Knowledge Base */}
