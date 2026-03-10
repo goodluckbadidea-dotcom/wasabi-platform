@@ -12,6 +12,7 @@ import ViewRenderer from "../views/ViewRenderer.jsx";
 import ChatPanel from "../views/ChatPanel.jsx";
 import SubPageNav from "./SubPageNav.jsx";
 import DatabaseBrowser from "./DatabaseBrowser.jsx";
+import ViewTypePicker from "./ViewTypePicker.jsx";
 import { ViewSkeleton } from "./ErrorBoundary.jsx";
 import { IconWarning, IconPlus, IconClose } from "../design/icons.jsx";
 import { ANIM } from "../design/animations.js";
@@ -34,6 +35,7 @@ export default function PageShell({
   const [error, setError] = useState(null);
   const refreshTimer = useRef(null);
   const [showAddDb, setShowAddDb] = useState(false);
+  const [showViewPicker, setShowViewPicker] = useState(false);
   const [showSync, setShowSync] = useState(false);
   const [showViewSettings, setShowViewSettings] = useState(false);
 
@@ -211,6 +213,20 @@ export default function PageShell({
     savePageConfig({ ...pageConfig, views: newViews }).catch(() => {});
   }, [pageConfig, updatePageConfig]);
 
+  const handleAddView = useCallback(({ type, label }) => {
+    const newView = {
+      type,
+      label: label || type,
+      position: "main",
+      config: {},
+    };
+    const updatedViews = [...(pageConfig.views || []), newView];
+    updatePageConfig(pageConfig.id, { views: updatedViews });
+    savePageConfig({ ...pageConfig, views: updatedViews }).catch(() => {});
+    // Switch to the new view
+    onSetActiveView?.(updatedViews.length - 1);
+  }, [pageConfig, updatePageConfig, onSetActiveView]);
+
   const handleViewConfigChange = useCallback((configUpdates) => {
     const updatedViews = (pageConfig.views || []).map((v, i) =>
       i === activeViewIndex
@@ -326,7 +342,7 @@ export default function PageShell({
         onDeleteView={handleDeleteView}
         onRenameView={handleRenameView}
         onReorderViews={handleReorderViews}
-        onAddView={() => setShowAddDb(true)}
+        onAddView={() => setShowViewPicker(true)}
       />
 
       {/* Sync panel (collapsible, standalone tables only) */}
@@ -358,6 +374,14 @@ export default function PageShell({
             schema={schema}
             onConfigChange={handleViewConfigChange}
             onClose={() => setShowViewSettings(false)}
+          />
+        )}
+
+        {/* View Type Picker modal */}
+        {showViewPicker && (
+          <ViewTypePicker
+            onSelect={handleAddView}
+            onClose={() => setShowViewPicker(false)}
           />
         )}
 
