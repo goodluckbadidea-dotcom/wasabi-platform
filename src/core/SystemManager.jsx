@@ -14,7 +14,7 @@ import { createToolExecutor } from "../agent/toolExecutor.js";
 import WasabiOrb from "./WasabiOrb.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
 import { IconGear } from "../design/icons.jsx";
-import { getSessionUsage, getUsageHistory, formatCost, formatTokens } from "../utils/costTracker.js";
+import { getSessionUsage, getUsageHistory, formatCost, formatTokens, getTierBreakdown } from "../utils/costTracker.js";
 import * as api from "../lib/api.js";
 import { getConnections, setConnection as apiSetConnection, deleteConnection as apiDeleteConnection, checkHealth, factoryReset as apiFactoryReset, clearConnection } from "../lib/api.js";
 
@@ -277,6 +277,7 @@ export default function SystemManager() {
 
   // ── Cost tracking ──
   const [costData, setCostData] = useState(null);
+  const [tierData, setTierData] = useState(null);
   const [historyOpen, setHistoryOpen] = useState(false);
 
   // ── Connections state ──
@@ -330,6 +331,7 @@ export default function SystemManager() {
   useEffect(() => {
     if (tab === "overview") {
       setCostData(getSessionUsage());
+      setTierData(getTierBreakdown());
     }
   }, [tab]);
 
@@ -665,6 +667,70 @@ export default function SystemManager() {
                   loading={!costData}
                 />
               </div>
+
+              {/* ── AI Routing Breakdown ── */}
+              {tierData && (tierData.haikuCalls > 0 || tierData.sonnetCalls > 0 || tierData.cacheHits > 0) && (
+                <div style={{ marginTop: 16 }}>
+                  <div style={{
+                    fontSize: 10, color: C.darkMuted, fontFamily: FONT,
+                    textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10,
+                  }}>
+                    AI Routing Breakdown
+                  </div>
+                  <div style={{
+                    background: C.darkSurf,
+                    border: `1px solid ${C.darkBorder}`,
+                    borderRadius: RADIUS.lg,
+                    padding: "14px 16px",
+                  }}>
+                    {[
+                      { label: "Cache Hits", count: tierData.cacheHits, color: "#7DC143", cost: "$0.00" },
+                      { label: "Haiku", count: tierData.haikuCalls, color: C.accent, cost: formatCost(tierData.haikuCost) },
+                      { label: "Sonnet", count: tierData.sonnetCalls, color: "#E05252", cost: formatCost(tierData.sonnetCost) },
+                    ].map((row) => (
+                      <div key={row.label} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: row.color, flexShrink: 0 }} />
+                        <span style={{ fontSize: 11, color: C.darkText, fontFamily: FONT, minWidth: 80 }}>{row.label}</span>
+                        <span style={{ fontSize: 11, color: C.darkMuted, fontFamily: MONO, minWidth: 30, textAlign: "right" }}>{row.count}</span>
+                        <div style={{ flex: 1, height: 4, background: C.darkSurf2, borderRadius: 2, overflow: "hidden" }}>
+                          <div style={{
+                            height: "100%",
+                            width: `${Math.min(100, (row.count / (costData?.callCount || 1)) * 100)}%`,
+                            background: row.color,
+                            borderRadius: 2,
+                            transition: "width 0.3s",
+                          }} />
+                        </div>
+                        <span style={{ fontSize: 10, color: C.darkMuted, fontFamily: MONO, minWidth: 50, textAlign: "right" }}>{row.cost}</span>
+                      </div>
+                    ))}
+
+                    {tierData.savedCost > 0 && (
+                      <div style={{
+                        marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.darkBorder}`,
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                      }}>
+                        <span style={{ fontSize: 11, color: "#7DC143", fontFamily: FONT }}>
+                          Estimated Savings (vs all-Sonnet)
+                        </span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "#7DC143", fontFamily: MONO }}>
+                          {formatCost(tierData.savedCost)}
+                        </span>
+                      </div>
+                    )}
+
+                    {tierData.cacheHits > 0 && (
+                      <div style={{
+                        marginTop: 6,
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                      }}>
+                        <span style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>Cache Hit Rate</span>
+                        <span style={{ fontSize: 11, color: C.darkMuted, fontFamily: MONO }}>{tierData.cacheHitRate}%</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Session History (collapsible) */}
               <div style={{ marginTop: 14 }}>

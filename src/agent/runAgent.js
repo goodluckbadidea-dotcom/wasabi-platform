@@ -1,6 +1,7 @@
 // ─── Wasabi Agent Runtime ───
 // Core agentic loop. Parameterized — no module globals.
 // Used by Wasabi, page agents, and automation agents.
+// Supports tier-aware routing and cache hints.
 
 import { sleep } from "../utils/helpers.js";
 import { recordUsage } from "../utils/costTracker.js";
@@ -23,6 +24,8 @@ const MAX_BACKOFF = 60000;
  * @param {object} [opts.abortRef] - { current: boolean } for cancellation
  * @param {number} [opts.maxIterations] - Max loop iterations (default 12)
  * @param {number} [opts.maxTokens] - Max tokens per response (default 2048)
+ * @param {string} [opts.tier] - Routing tier: "haiku"|"sonnet"|"unknown"
+ * @param {string} [opts.routeReason] - Why this tier was chosen
  * @returns {Promise<{ text: string, history: Array, toolCalls: Array }>}
  */
 export async function runAgent({
@@ -37,6 +40,8 @@ export async function runAgent({
   abortRef,
   maxIterations = 12,
   maxTokens = 2048,
+  tier = "unknown",
+  routeReason = "",
 }) {
   const history = [...messages];
   const allToolCalls = [];
@@ -55,6 +60,8 @@ export async function runAgent({
       tools,
       maxTokens,
       abortRef,
+      tier,
+      routeReason,
     });
 
     // Extract text and tool use blocks
@@ -113,6 +120,7 @@ export async function runAgent({
 
 /**
  * Call Claude API via the worker proxy with retry/backoff.
+ * Supports cache hints and tier-aware cost tracking.
  */
 async function callClaude({
   workerUrl,
@@ -123,6 +131,8 @@ async function callClaude({
   tools,
   maxTokens,
   abortRef,
+  tier = "unknown",
+  routeReason = "",
 }) {
   const body = {
     model,
@@ -133,6 +143,9 @@ async function callClaude({
   if (tools && tools.length > 0) {
     body.tools = tools;
   }
+
+  // Determine if this request is cacheable (no tools, single-turn)
+  const cacheable = (!tools || tools.length === 0) && messages.length <= 2;
 
   let lastError;
 
@@ -146,6 +159,7 @@ async function callClaude({
         "X-Claude-Key": claudeKey,
       };
       if (conn?.secret) authHeaders["X-Wasabi-Key"] = conn.secret;
+      if (cacheable) authHeaders["X-Cache-Hint"] = "cacheable";
 
       const res = await fetch(`${workerUrl}/claude`, {
         method: "POST",
@@ -167,14 +181,20 @@ async function callClaude({
 
       const data = await res.json();
 
-      // Track token usage for cost estimation
-      if (data.usage) {
+      // Check for cache hit from worker
+      const cacheHit = res.headers.get("X-Cache") === "HIT";
+
+      // Track token usage for cost estimation (with tier info)
+      if (data.usage || cacheHit) {
         try {
           recordUsage({
             model,
-            inputTokens: data.usage.input_tokens || 0,
-            outputTokens: data.usage.output_tokens || 0,
+            inputTokens: data.usage?.input_tokens || 0,
+            outputTokens: data.usage?.output_tokens || 0,
             source: "agent",
+            tier: cacheHit ? "cache_hit" : tier,
+            cacheHit,
+            routeReason,
           });
         } catch {}
       }

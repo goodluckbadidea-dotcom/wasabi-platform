@@ -1,6 +1,7 @@
 // ─── Chat Panel (Wasabi Agent) ───
 // Single global Wasabi agent with smart model routing.
-// Injects data summary for immediate awareness. No escalation needed.
+// Haiku-first with auto-escalation to Sonnet when needed.
+// Injects data summary for immediate awareness.
 
 import React, { useState, useCallback, useRef, useMemo } from "react";
 import ChatUI from "../core/ChatUI.jsx";
@@ -14,14 +15,7 @@ import { C } from "../design/tokens.js";
 import WasabiOrb from "../core/WasabiOrb.jsx";
 import { readField, getFieldOptions } from "./_viewHelpers.js";
 import { loadCachedNeurons } from "../neurons/neuronStorage.js";
-
-// ── Smart model routing ──
-function pickModel(text) {
-  const isComplex = text.length > 200
-    || /\b(build|create|automat|multi|workflow|setup|design|refactor|update database|modify|schema)\b/i.test(text)
-    || /\b(and then|also|after that|step by step)\b/i.test(text);
-  return isComplex ? "claude-sonnet-4-20250514" : "claude-haiku-4-5-20251001";
-}
+import { routeModel, shouldEscalate, SONNET } from "../agent/aiRouter.js";
 
 // ── Build compact data summary for the agent ──
 function buildDataSummary(data, schema) {
@@ -113,6 +107,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
   const [isLoading, setIsLoading] = useState(false);
   const [choices, setChoices] = useState([]);
   const [modelOverride, setModelOverride] = useState(null); // null = auto, "haiku" | "sonnet"
+  const [lastTier, setLastTier] = useState(null); // tracks last auto-routed tier
   const historyRef = useRef([]);
   const abortRef = useRef(false);
 
@@ -181,16 +176,18 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
         neuronSummary,
       });
 
-      // Smart model routing — user override or auto
-      const model = modelOverride === "sonnet"
-        ? "claude-sonnet-4-20250514"
-        : modelOverride === "haiku"
-        ? "claude-haiku-4-5-20251001"
-        : pickModel(agentText);
+      // ── Haiku-first smart routing ──
+      const { model, tier, reason } = routeModel({
+        text: agentText,
+        override: modelOverride,
+        conversationDepth: historyRef.current.length,
+        toolCount: WASABI_TOOLS.length,
+      });
+      setLastTier(tier);
 
       const conn = getConnection();
       const wUrl = user?.workerUrl || conn?.workerUrl;
-      const { text: reply, history } = await runAgent({
+      let { text: reply, history, toolCalls } = await runAgent({
         messages: newHistory,
         systemPrompt,
         tools: WASABI_TOOLS,
@@ -200,7 +197,31 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
         executeTool: toolExecutor,
         abortRef,
         maxTokens: 2048,
+        tier,
+        routeReason: reason,
       });
+
+      // Auto-escalation: if Haiku gave a weak response, retry with Sonnet
+      if (tier === "haiku" && !modelOverride && shouldEscalate(reply, agentText, toolCalls.length > 0)) {
+        console.log("[AI Router] Auto-escalating to Sonnet:", reason);
+        setLastTier("sonnet");
+        const escalated = await runAgent({
+          messages: newHistory,
+          systemPrompt,
+          tools: WASABI_TOOLS,
+          model: SONNET,
+          workerUrl: wUrl,
+          claudeKey: user?.claudeKey || "",
+          executeTool: toolExecutor,
+          abortRef,
+          maxTokens: 2048,
+          tier: "sonnet",
+          routeReason: "auto_escalation",
+        });
+        reply = escalated.text;
+        history = escalated.history;
+        toolCalls = escalated.toolCalls;
+      }
 
       historyRef.current = history;
 
@@ -267,7 +288,9 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
           }}
           title={modelOverride === null ? "Auto model (click to pin Sonnet)" : modelOverride === "sonnet" ? "Pinned to Sonnet (click for Haiku)" : "Pinned to Haiku (click for Auto)"}
         >
-          {modelOverride === null ? "Auto" : modelOverride === "sonnet" ? "Sonnet" : "Haiku"}
+          {modelOverride === null
+            ? `Auto${lastTier ? ` (${lastTier})` : ""}`
+            : modelOverride === "sonnet" ? "Sonnet" : "Haiku"}
         </button>
       </div>
 

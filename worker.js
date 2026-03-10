@@ -249,7 +249,7 @@ async function getMondayKey(env) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     // CORS preflight
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS });
@@ -777,15 +777,48 @@ export default {
         return await notionFetch("/users/me", "GET", notionKey);
       }
 
-      // ─── Claude API ───
+      // ─── Claude API (with smart caching) ───
       if (path === "/claude" && request.method === "POST") {
         const body = await request.json();
         const claudeKey = await getClaudeKey(request, body, env);
         if (!claudeKey) {
           return jsonResponse({ _error: "Missing Claude API key" }, 400);
         }
-        // Remove claudeKey from body before forwarding
         delete body.claudeKey;
+
+        // ── Cache layer: only for requests flagged as cacheable ──
+        const cacheHint = request.headers.get("X-Cache-Hint");
+        if (cacheHint === "cacheable") {
+          const cacheKey = await buildAICacheKey(body);
+          const cache = caches.default;
+          const cached = await cache.match(cacheKey);
+          if (cached) {
+            const hitBody = await cached.text();
+            return new Response(hitBody, {
+              status: 200,
+              headers: { ...CORS, "Content-Type": "application/json", "X-Cache": "HIT" },
+            });
+          }
+
+          // Cache miss — call Claude, then cache successful responses
+          const response = await claudeFetch(claudeKey, body);
+          if (response.status === 200) {
+            const responseBody = await response.text();
+            const cachedResp = new Response(responseBody, {
+              status: 200,
+              headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=3600" },
+            });
+            ctx.waitUntil(cache.put(cacheKey, cachedResp));
+
+            return new Response(responseBody, {
+              status: 200,
+              headers: { ...CORS, "Content-Type": "application/json", "X-Cache": "MISS" },
+            });
+          }
+          return response;
+        }
+
+        // Non-cacheable: direct pass-through
         return await claudeFetch(claudeKey, body);
       }
 
@@ -1946,6 +1979,21 @@ async function notionFetch(endpoint, method, notionKey, body) {
   }
 
   return jsonResponse({ _error: "Rate limited — max retries exceeded" }, 429);
+}
+
+// ─── AI Cache Key Builder ───
+async function buildAICacheKey(body) {
+  const normalized = JSON.stringify({
+    m: body.model,
+    s: typeof body.system === "string" ? body.system.slice(0, 500) : "",
+    q: (body.messages || []).map((msg) => ({
+      r: msg.role,
+      c: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+    })),
+  });
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalized));
+  const hex = [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return new Request(`https://wasabi-cache.internal/ai/${hex}`, { method: "GET" });
 }
 
 // ─── Claude API Helper ───
