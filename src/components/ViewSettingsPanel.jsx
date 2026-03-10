@@ -194,12 +194,19 @@ export default function ViewSettingsPanel({
   const colorFieldSchema = colorableFields.find((f) => f.name === colorField);
   const colorOptions = colorFieldSchema?.options || [];
 
+  // Collect date fields for Gantt timeline selection
+  const dateFieldNames = useMemo(() => {
+    if (!schema) return [];
+    return (schema.dates || []).map((f) => f.name);
+  }, [schema]);
+
   // Current config values
   const colorMode = config.colorMode || "dateField";
   const colorMapping = config.colorMapping || {};
   const sidebarFields = config.sidebarFields || [];
   const barFields = config.barFields || [];
   const visibleFields = config.visibleFields || [];
+  const dateFields = config.dateFields || [];
   const sortField = config.sortField || null;
   const sortDir = config.sortDir || "asc";
   const cardSize = config.cardSize || "standard";
@@ -240,6 +247,16 @@ export default function ViewSettingsPanel({
       : visibleFields.filter((f) => f !== fieldName);
     onConfigChange({ visibleFields: updated });
   }, [onConfigChange, visibleFields]);
+
+  const toggleDateField = useCallback((fieldName, checked) => {
+    // When dateFields is empty, all fields are shown by default.
+    // On first toggle, start from all fields and remove the unchecked one.
+    const base = dateFields.length > 0 ? dateFields : dateFieldNames;
+    const updated = checked
+      ? [...base.filter((f) => f !== fieldName), fieldName]
+      : base.filter((f) => f !== fieldName);
+    onConfigChange({ dateFields: updated });
+  }, [onConfigChange, dateFields, dateFieldNames]);
 
   const handleSortFieldChange = useCallback((field) => {
     onConfigChange({ sortField: field });
@@ -374,6 +391,31 @@ export default function ViewSettingsPanel({
                 value={cardSize}
                 onChange={handleCardSizeChange}
               />
+            </>
+          )}
+
+          {/* ─── Timeline Fields (Gantt only) ─── */}
+          {isGantt && dateFieldNames.length > 0 && (
+            <>
+              <SectionLabel>Timeline Fields</SectionLabel>
+              <p style={{ fontSize: 10, color: C.darkMuted, margin: "0 0 6px" }}>
+                Date properties shown as bars in the timeline.
+              </p>
+              <FieldListBox>
+                {dateFieldNames.map((fname) => {
+                  const isChecked = dateFields.length === 0
+                    ? true  // all shown by default
+                    : dateFields.includes(fname);
+                  return (
+                    <FieldToggle
+                      key={fname}
+                      label={fname}
+                      checked={isChecked}
+                      onChange={(checked) => toggleDateField(fname, checked)}
+                    />
+                  );
+                })}
+              </FieldListBox>
             </>
           )}
 

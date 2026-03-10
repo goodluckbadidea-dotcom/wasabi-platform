@@ -149,11 +149,17 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
 
   // ─── Resolve fields from config / schema ───
 
+  // All available date fields in the schema
+  const allDateFields = useMemo(() => {
+    if (!schema) return [];
+    return (schema.dates || []).map((f) => f.name);
+  }, [schema]);
+
+  // Active date fields: user-selected subset, or all by default
   const dateFields = useMemo(() => {
     if (config.dateFields?.length) return config.dateFields;
-    if (!schema) return [];
-    return (schema.dates || []).map((f) => f.name).slice(0, 3);
-  }, [config.dateFields, schema]);
+    return allDateFields;
+  }, [config.dateFields, allDateFields]);
 
   const labelField = resolveField(schema, config.labelField, ["title"]);
   const colorField = resolveField(schema, config.colorField, ["statuses", "selects"]);
@@ -894,7 +900,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                   </g>
                 )}
 
-                {/* ─── Bars: Pass 1 — gradient blends between adjacent bars ─── */}
+                {/* ─── Bars: Pass 1 — thin connecting lines between adjacent bars ─── */}
                 {rows.map((row, rowIdx) => {
                   const y = rowIdx * dynamicRowHeight + (dynamicRowHeight - barHeight) / 2;
                   if (row.bars.length < 2) return null;
@@ -904,37 +910,34 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                     .map((bar, i) => ({ bar, rect: getBarRect(row, bar), idx: i }))
                     .sort((a, b) => a.rect.x - b.rect.x);
 
-                  const pillR = barHeight / 2;
                   return sorted.slice(0, -1).map((curr, si) => {
                     const next = sorted[si + 1];
                     const currEnd = curr.rect.x + curr.rect.w;
                     const nextStart = next.rect.x;
                     const gap = nextStart - currEnd;
 
-                    // Only blend if bars overlap or are within a small gap
-                    if (gap > zoom.pxPerDay * 3) return null;
+                    // Only connect bars within a reasonable gap
+                    if (gap > zoom.pxPerDay * 60 || gap < 0) return null;
 
-                    const blendStart = Math.max(currEnd - zoom.pxPerDay * 2, curr.rect.x + curr.rect.w / 2);
-                    const blendEnd = Math.min(nextStart + zoom.pxPerDay * 2, next.rect.x + next.rect.w / 2);
-                    const blendW = blendEnd - blendStart;
-                    if (blendW <= 0) return null;
-
-                    const gradId = `blend-${row.pageId}-${si}`;
+                    // Thin connecting line between the end of one bar and start of next
+                    const lineH = 3;
+                    const lineY = y + barHeight / 2 - lineH / 2;
+                    const gradId = `conn-${row.pageId}-${si}`;
                     return (
                       <g key={gradId}>
                         <defs>
                           <linearGradient id={gradId} x1="0" x2="1" y1="0" y2="0">
-                            <stop offset="0%" stopColor={curr.bar.color} stopOpacity="1" />
-                            <stop offset="100%" stopColor={next.bar.color} stopOpacity="1" />
+                            <stop offset="0%" stopColor={curr.bar.color} stopOpacity="0.6" />
+                            <stop offset="100%" stopColor={next.bar.color} stopOpacity="0.6" />
                           </linearGradient>
                         </defs>
                         <rect
-                          x={blendStart}
-                          y={y}
-                          width={blendW}
-                          height={barHeight}
-                          rx={pillR}
-                          ry={pillR}
+                          x={currEnd}
+                          y={lineY}
+                          width={Math.max(0, gap)}
+                          height={lineH}
+                          rx={lineH / 2}
+                          ry={lineH / 2}
                           fill={`url(#${gradId})`}
                           style={{ pointerEvents: "none" }}
                         />
