@@ -900,53 +900,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                   </g>
                 )}
 
-                {/* ─── Bars: Pass 1 — thin connecting lines between adjacent bars ─── */}
-                {rows.map((row, rowIdx) => {
-                  const y = rowIdx * dynamicRowHeight + (dynamicRowHeight - barHeight) / 2;
-                  if (row.bars.length < 2) return null;
-
-                  // Sort bars by start position for adjacency detection
-                  const sorted = row.bars
-                    .map((bar, i) => ({ bar, rect: getBarRect(row, bar), idx: i }))
-                    .sort((a, b) => a.rect.x - b.rect.x);
-
-                  return sorted.slice(0, -1).map((curr, si) => {
-                    const next = sorted[si + 1];
-                    const currEnd = curr.rect.x + curr.rect.w;
-                    const nextStart = next.rect.x;
-                    const gap = nextStart - currEnd;
-
-                    // Only connect bars within a reasonable gap
-                    if (gap > zoom.pxPerDay * 60 || gap < 0) return null;
-
-                    // Thin connecting line between the end of one bar and start of next
-                    const lineH = 3;
-                    const lineY = y + barHeight / 2 - lineH / 2;
-                    const gradId = `conn-${row.pageId}-${si}`;
-                    return (
-                      <g key={gradId}>
-                        <defs>
-                          <linearGradient id={gradId} x1="0" x2="1" y1="0" y2="0">
-                            <stop offset="0%" stopColor={curr.bar.color} stopOpacity="0.6" />
-                            <stop offset="100%" stopColor={next.bar.color} stopOpacity="0.6" />
-                          </linearGradient>
-                        </defs>
-                        <rect
-                          x={currEnd}
-                          y={lineY}
-                          width={Math.max(0, gap)}
-                          height={lineH}
-                          rx={lineH / 2}
-                          ry={lineH / 2}
-                          fill={`url(#${gradId})`}
-                          style={{ pointerEvents: "none" }}
-                        />
-                      </g>
-                    );
-                  });
-                })}
-
-                {/* ─── Bars: Pass 2 — bar rects + resize handles ─── */}
+                {/* ─── Bars ─── */}
                 {rows.map((row, rowIdx) => {
                   const y = rowIdx * dynamicRowHeight + (dynamicRowHeight - barHeight) / 2;
                   const pillRadius = barHeight / 2;
