@@ -686,9 +686,14 @@ export function createToolExecutor({
         }
 
         if (action === "create_records" && target_database_id) {
-          // Parse CSV/JSON files into records
+          // Parse CSV/JSON files into records and attempt bulk D1 insert
           const created = [];
           const errors = [];
+          let isD1 = false;
+          try {
+            const cfg = await api.getPageConfig(target_database_id);
+            isD1 = cfg && cfg.page_type === "database";
+          } catch { /* not D1 */ }
 
           for (const f of inputFiles) {
             try {
@@ -711,12 +716,29 @@ export function createToolExecutor({
                 records = Array.isArray(parsed) ? parsed : [parsed];
               }
 
-              created.push({
-                file: f.name,
-                recordCount: records.length,
-                sampleRecord: records[0] || null,
-                records: records.slice(0, 50), // Cap for context window
-              });
+              // If D1 table, bulk insert directly
+              if (isD1 && records.length > 0) {
+                let totalInserted = 0;
+                for (let i = 0; i < records.length; i += 25) {
+                  const batch = records.slice(i, i + 25);
+                  await api.createRows(target_database_id, batch);
+                  totalInserted += batch.length;
+                }
+                created.push({
+                  file: f.name,
+                  recordCount: records.length,
+                  inserted: totalInserted,
+                  storage: "d1",
+                  sampleRecord: records[0] || null,
+                });
+              } else {
+                created.push({
+                  file: f.name,
+                  recordCount: records.length,
+                  sampleRecord: records[0] || null,
+                  records: records.slice(0, 50),
+                });
+              }
             } catch (err) {
               errors.push({ file: f.name, error: err.message });
             }
@@ -727,7 +749,9 @@ export function createToolExecutor({
             target_database_id,
             parsed: created,
             errors,
-            note: "Records parsed. Use create_page tool to insert each record into the target database.",
+            note: isD1
+              ? `Records bulk-inserted into D1 table. ${created.reduce((s, c) => s + (c.inserted || 0), 0)} total rows created.`
+              : "Records parsed. Use create_page tool to insert each record into the target database.",
           });
         }
 

@@ -166,6 +166,17 @@ CREATE TABLE IF NOT EXISTS neuron_nodes (
   meta TEXT DEFAULT '{}',
   created_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS files (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  r2_key TEXT NOT NULL,
+  mime_type TEXT DEFAULT 'application/octet-stream',
+  size INTEGER DEFAULT 0,
+  page_id TEXT DEFAULT '',
+  meta TEXT DEFAULT '{}',
+  created_at TEXT DEFAULT (datetime('now'))
+);
 `;
 
 const D1_INDEXES = `
@@ -175,6 +186,7 @@ CREATE INDEX IF NOT EXISTS idx_record_notes_lookup ON record_notes(record_id, pa
 CREATE INDEX IF NOT EXISTS idx_record_comments_lookup ON record_comments(record_id, page_config_id);
 CREATE INDEX IF NOT EXISTS idx_nn_neuron ON neuron_nodes(neuron_id);
 CREATE INDEX IF NOT EXISTS idx_nn_nodeid ON neuron_nodes(node_id);
+CREATE INDEX IF NOT EXISTS idx_files_page ON files(page_id);
 `;
 
 // ─── Auth Middleware ───
@@ -602,6 +614,26 @@ export default {
       if (syncDeleteMatch && request.method === "DELETE") {
         const tableId = syncDeleteMatch[1];
         return await handleSyncDelete(env, tableId);
+      }
+
+      // ─── File Storage (R2) ───
+      const fileMatch = path.match(/^\/files\/([^/]+)$/);
+
+      // POST /files — upload file (multipart form-data)
+      if (path === "/files" && request.method === "POST") {
+        return await handleFileUpload(request, env);
+      }
+      // GET /files — list files, optional ?page_id=
+      if (path === "/files" && request.method === "GET") {
+        return await handleListFiles(env, url.searchParams.get("page_id"));
+      }
+      // GET /files/:id — download file
+      if (fileMatch && request.method === "GET") {
+        return await handleGetFile(env, fileMatch[1]);
+      }
+      // DELETE /files/:id — delete file
+      if (fileMatch && request.method === "DELETE") {
+        return await handleDeleteFile(env, fileMatch[1]);
       }
 
       // ─── Monday.com Proxy ───
@@ -1695,6 +1727,110 @@ function wasabiBlockToNotion(block) {
       return { type: "divider", divider: {} };
     default:
       return { type: "paragraph", paragraph: { rich_text: richText } };
+  }
+}
+
+// ─── File Storage Handlers (R2) ───
+
+async function handleFileUpload(request, env) {
+  try {
+    const contentType = request.headers.get("content-type") || "";
+
+    // Support multipart form-data
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await request.formData();
+      const file = formData.get("file");
+      if (!file || typeof file === "string") {
+        return jsonResponse({ _error: "No file provided" }, 400);
+      }
+      const pageId = formData.get("page_id") || "";
+      const meta = formData.get("meta") || "{}";
+      const id = crypto.randomUUID();
+      const ext = file.name.split(".").pop() || "bin";
+      const r2Key = `files/${id}.${ext}`;
+
+      await env.DOCS.put(r2Key, file.stream(), {
+        httpMetadata: { contentType: file.type || "application/octet-stream" },
+      });
+
+      await env.DB.prepare(
+        `INSERT INTO files (id, name, r2_key, mime_type, size, page_id, meta) VALUES (?, ?, ?, ?, ?, ?, ?)`
+      ).bind(id, file.name, r2Key, file.type || "application/octet-stream", file.size, pageId, meta).run();
+
+      return jsonResponse({ id, name: file.name, r2_key: r2Key, size: file.size, mime_type: file.type });
+    }
+
+    // Support JSON body with base64 data
+    const body = await request.json();
+    if (!body.name || !body.data) {
+      return jsonResponse({ _error: "name and data (base64) required" }, 400);
+    }
+    const id = crypto.randomUUID();
+    const ext = body.name.split(".").pop() || "bin";
+    const r2Key = `files/${id}.${ext}`;
+    const bytes = Uint8Array.from(atob(body.data), (c) => c.charCodeAt(0));
+    const mimeType = body.mime_type || "application/octet-stream";
+
+    await env.DOCS.put(r2Key, bytes, {
+      httpMetadata: { contentType: mimeType },
+    });
+
+    await env.DB.prepare(
+      `INSERT INTO files (id, name, r2_key, mime_type, size, page_id, meta) VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).bind(id, body.name, r2Key, mimeType, bytes.length, body.page_id || "", JSON.stringify(body.meta || {})).run();
+
+    return jsonResponse({ id, name: body.name, r2_key: r2Key, size: bytes.length, mime_type: mimeType });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleListFiles(env, pageId) {
+  try {
+    let result;
+    if (pageId) {
+      result = await env.DB.prepare("SELECT * FROM files WHERE page_id = ? ORDER BY created_at DESC").bind(pageId).all();
+    } else {
+      result = await env.DB.prepare("SELECT * FROM files ORDER BY created_at DESC LIMIT 200").all();
+    }
+    return jsonResponse({ files: result.results || [] });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleGetFile(env, id) {
+  try {
+    const row = await env.DB.prepare("SELECT * FROM files WHERE id = ?").bind(id).first();
+    if (!row) return jsonResponse({ _error: "File not found" }, 404);
+
+    const obj = await env.DOCS.get(row.r2_key);
+    if (!obj) return jsonResponse({ _error: "File data not found in R2" }, 404);
+
+    return new Response(obj.body, {
+      headers: {
+        ...CORS,
+        "Content-Type": row.mime_type || "application/octet-stream",
+        "Content-Disposition": `inline; filename="${row.name}"`,
+        "Content-Length": String(row.size),
+      },
+    });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleDeleteFile(env, id) {
+  try {
+    const row = await env.DB.prepare("SELECT r2_key FROM files WHERE id = ?").bind(id).first();
+    if (!row) return jsonResponse({ _error: "File not found" }, 404);
+
+    await env.DOCS.delete(row.r2_key);
+    await env.DB.prepare("DELETE FROM files WHERE id = ?").bind(id).run();
+
+    return jsonResponse({ success: true });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
   }
 }
 

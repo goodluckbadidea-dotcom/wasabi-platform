@@ -288,7 +288,7 @@ const PROCESS_UPLOADED_FILES = {
       action: {
         type: "string",
         enum: ["analyze", "create_records", "index_to_kb"],
-        description: "Action to perform: 'analyze' to parse and summarize, 'create_records' to create Notion records from file data, 'index_to_kb' to save to knowledge base.",
+        description: "Action to perform: 'analyze' to parse and summarize, 'create_records' to bulk-insert rows into a D1 table or create Notion records from file data, 'index_to_kb' to save to knowledge base.",
       },
     },
     required: ["files", "action"],

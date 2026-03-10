@@ -8,7 +8,7 @@ import { S } from "../design/styles.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { detectSchema, classifyProperties } from "../notion/schema.js";
 import { createDatabase, createPage, ensurePageActive } from "../notion/client.js";
-import { getConnection } from "../lib/api.js";
+import { getConnection, createPageConfig, updateTableSchema, createRows, uploadFile as uploadFileToR2 } from "../lib/api.js";
 import { buildProp } from "../notion/properties.js";
 import { IconSearch, IconDatabase, IconCheck, IconPlus, IconClose, IconTrash, IconSheet, IconBolt } from "../design/icons.jsx";
 import { detectSheetType, validateSheetUrl } from "../sheets/sheetClient.js";
@@ -742,54 +742,113 @@ export default function DatabaseBrowser({
             setUploading(true);
             setUploadError(null);
             setUploadProgress(null);
-            try {
-              await ensurePageActive(user.workerUrl, user.notionKey, platformIds.rootPageId);
 
-              // Build schema: first column with type=title, rest as detected
+            const hasNotion = user?.workerUrl && user?.notionKey && platformIds?.rootPageId;
+
+            try {
+              // Build schema
               const schema = uploadColumns.map((col, i) => ({
                 name: col.name.trim(),
                 type: i === 0 ? "title" : col.type,
                 ...(col.options ? { options: col.options.split(",").map((o) => o.trim()).filter(Boolean) } : {}),
               }));
 
-              const result = await createDatabase(
-                user.workerUrl, user.notionKey,
-                platformIds.rootPageId,
-                uploadDbTitle.trim(),
-                schema
-              );
-              const dbId = result.id;
+              if (hasNotion) {
+                // ── Notion path ──
+                await ensurePageActive(user.workerUrl, user.notionKey, platformIds.rootPageId);
+                const result = await createDatabase(
+                  user.workerUrl, user.notionKey,
+                  platformIds.rootPageId,
+                  uploadDbTitle.trim(),
+                  schema
+                );
+                const dbId = result.id;
 
-              // Bulk create records
-              const rows = uploadFile.rows;
-              const total = rows.length;
-              let done = 0;
-              setUploadProgress({ done: 0, total });
+                const rows = uploadFile.rows;
+                const total = rows.length;
+                let done = 0;
+                setUploadProgress({ done: 0, total });
 
-              // Batch in groups of 3 for reasonable parallelism
-              for (let i = 0; i < total; i += 3) {
-                const batch = rows.slice(i, i + 3);
-                await Promise.all(
-                  batch.map((row) => {
-                    const properties = {};
+                for (let i = 0; i < total; i += 3) {
+                  const batch = rows.slice(i, i + 3);
+                  await Promise.all(
+                    batch.map((row) => {
+                      const properties = {};
+                      uploadColumns.forEach((col, ci) => {
+                        const val = row[ci];
+                        if (val !== undefined && val !== null && val !== "") {
+                          const type = ci === 0 ? "title" : col.type;
+                          const built = buildProp(type, val);
+                          if (built) properties[col.name.trim()] = built;
+                        }
+                      });
+                      return createPage(user.workerUrl, user.notionKey, dbId, properties);
+                    })
+                  );
+                  done += batch.length;
+                  setUploadProgress({ done: Math.min(done, total), total });
+                }
+
+                const detectedSchema = await detectSchema(user.workerUrl, user.notionKey, dbId);
+                handleConnect(dbId, uploadDbTitle.trim(), detectedSchema);
+              } else {
+                // ── D1 standalone path ──
+                const d1Columns = schema.map((col) => ({
+                  id: `col_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                  name: col.name,
+                  type: col.type === "title" ? "text" : col.type,
+                }));
+
+                // Create page config as database
+                const pageConfig = {
+                  title: uploadDbTitle.trim(),
+                  icon: "📊",
+                  page_type: "database",
+                  config: JSON.stringify({ views: [{ type: "table", name: "All", config: {} }] }),
+                };
+                const { id: tableId } = await createPageConfig(pageConfig);
+
+                // Save schema
+                await updateTableSchema(tableId, d1Columns);
+
+                // Bulk insert rows (batches of 25)
+                const rows = uploadFile.rows;
+                const total = rows.length;
+                let done = 0;
+                setUploadProgress({ done: 0, total });
+
+                for (let i = 0; i < total; i += 25) {
+                  const batch = rows.slice(i, i + 25);
+                  const cellsBatch = batch.map((row) => {
+                    const cells = {};
                     uploadColumns.forEach((col, ci) => {
                       const val = row[ci];
                       if (val !== undefined && val !== null && val !== "") {
-                        const type = ci === 0 ? "title" : col.type;
-                        const built = buildProp(type, val);
-                        if (built) properties[col.name.trim()] = built;
+                        cells[col.name.trim()] = val;
                       }
                     });
-                    return createPage(user.workerUrl, user.notionKey, dbId, properties);
-                  })
-                );
-                done += batch.length;
-                setUploadProgress({ done: Math.min(done, total), total });
-              }
+                    return cells;
+                  });
+                  await createRows(tableId, cellsBatch);
+                  done += batch.length;
+                  setUploadProgress({ done: Math.min(done, total), total });
+                }
 
-              // Detect schema and connect
-              const detectedSchema = await detectSchema(user.workerUrl, user.notionKey, dbId);
-              handleConnect(dbId, uploadDbTitle.trim(), detectedSchema);
+                // Also persist the original file to R2
+                if (uploadFile.rawText) {
+                  try {
+                    const blob = new Blob([uploadFile.rawText], { type: "text/csv" });
+                    const file = new File([blob], uploadFile.name || "import.csv", { type: "text/csv" });
+                    await uploadFileToR2(file, tableId);
+                  } catch (_) { /* non-critical */ }
+                }
+
+                const d1Schema = d1Columns.map((c) => ({
+                  name: c.name,
+                  type: c.type === "text" ? "title" : c.type,
+                }));
+                handleConnect(tableId, uploadDbTitle.trim(), d1Schema);
+              }
 
               // Reset upload form
               setUploadFile(null);

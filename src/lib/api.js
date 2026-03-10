@@ -403,3 +403,38 @@ export async function getNeuronsByNode(nodeId) {
 export async function getNeuronGraph() {
   return apiFetch("/neurons/graph", { method: "GET" });
 }
+
+// ─── File Storage (R2) ───
+
+export async function uploadFile(file, pageId = "") {
+  const conn = getConnection();
+  if (!conn?.workerUrl) throw new Error("Not connected");
+
+  const formData = new FormData();
+  formData.append("file", file);
+  if (pageId) formData.append("page_id", pageId);
+
+  const res = await fetch(`${conn.workerUrl}/files`, {
+    method: "POST",
+    headers: { ...(conn.secret ? { "X-Wasabi-Key": conn.secret } : {}) },
+    body: formData,
+  });
+  const data = await res.json().catch(() => ({ _error: `HTTP ${res.status}` }));
+  if (!res.ok || data._error) throw new Error(data._error || `Upload error: ${res.status}`);
+  return data;
+}
+
+export async function listFiles(pageId) {
+  const qs = pageId ? `?page_id=${encodeURIComponent(pageId)}` : "";
+  return apiFetch(`/files${qs}`, { method: "GET" });
+}
+
+export function getFileUrl(fileId) {
+  const conn = getConnection();
+  if (!conn?.workerUrl) return "";
+  return `${conn.workerUrl}/files/${fileId}`;
+}
+
+export async function deleteFile(fileId) {
+  return apiFetch(`/files/${fileId}`, { method: "DELETE" });
+}
