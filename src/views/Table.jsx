@@ -11,7 +11,6 @@ import { debounce, formatDate, truncate } from "../utils/helpers.js";
 import { IconTrash, IconExport, IconEyeOff, IconExpand, IconPlus, IconConnect } from "../design/icons.jsx";
 import FilterChips, { applyChipFilters } from "./FilterChips.jsx";
 import RecordDetail from "./RecordDetail.jsx";
-import NewRecordModal from "./NewRecordModal.jsx";
 import { useLinks } from "../context/LinksContext.jsx";
 import LinkPicker from "../core/LinkPicker.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
@@ -811,54 +810,6 @@ function QuickAddCellInput({ type, fieldName, schema, value, onChange, onSubmit,
   }
 }
 
-// ─── Quick-Add Form (for empty state) ───
-function QuickAddForm({ schema, columns, quickAddValues, setQuickAddValues, quickAddSaving, quickAddError, onSubmit, onCancel }) {
-  return (
-    <div style={{
-      marginTop: 16,
-      padding: 16,
-      background: C.darkSurf,
-      border: `1px solid ${C.darkBorder}`,
-      borderRadius: RADIUS.xl,
-      display: "flex",
-      flexDirection: "column",
-      gap: 10,
-      maxWidth: 400,
-      width: "100%",
-    }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: C.darkText, marginBottom: 4 }}>New Record</div>
-      {columns.slice(0, 6).map((col) => {
-        const type = getFieldType(schema, col);
-        return (
-          <div key={col} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <label style={{ fontSize: 11, fontWeight: 500, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-              {col}
-            </label>
-            <QuickAddCellInput
-              type={type}
-              fieldName={col}
-              schema={schema}
-              value={quickAddValues[col] ?? ""}
-              onChange={(val) => setQuickAddValues((prev) => ({ ...prev, [col]: val }))}
-              onSubmit={onSubmit}
-              autoFocus={type === "title"}
-            />
-          </div>
-        );
-      })}
-      <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-        <button style={{ ...S.btnPrimary, padding: "6px 16px", fontSize: 12 }} onClick={onSubmit} disabled={quickAddSaving}>
-          {quickAddSaving ? "Saving..." : "Add Record"}
-        </button>
-        <button style={{ ...S.btnGhost, padding: "6px 12px", fontSize: 12 }} onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
-      {quickAddError && <span style={{ color: "#E05252", fontSize: 11 }}>{quickAddError}</span>}
-    </div>
-  );
-}
-
 // ─── Main Table Component ───
 
 export default function Table({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onSaveFilters, onViewConfigChange }) {
@@ -916,7 +867,12 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const [quickAddValues, setQuickAddValues] = useState({});
   const [quickAddSaving, setQuickAddSaving] = useState(false);
   const [quickAddError, setQuickAddError] = useState(null);
-  const [showNewModal, setShowNewModal] = useState(false);
+  const quickAddRowRef = useRef(null);
+  useEffect(() => {
+    if (quickAddOpen && quickAddRowRef.current) {
+      quickAddRowRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [quickAddOpen]);
 
   // ── Cell Linking ──
   const { resolveLinksForView, createLink, removeLink, getLinksForTarget } = useLinks();
@@ -1458,19 +1414,61 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
               </button>
             )}
           </div>
-          {/* Quick-add row in empty state */}
-          {quickAddOpen && onCreate && targetDatabaseId && schema && (
-            <QuickAddForm
-              schema={schema}
-              columns={schema.allFields.filter((f) => EDITABLE_TYPES.has(f.type)).map((f) => f.name)}
-              quickAddValues={quickAddValues}
-              setQuickAddValues={setQuickAddValues}
-              quickAddSaving={quickAddSaving}
-              quickAddError={quickAddError}
-              onSubmit={handleQuickAdd}
-              onCancel={() => { setQuickAddOpen(false); setQuickAddValues({}); setQuickAddError(null); }}
-            />
-          )}
+          {/* Inline table for creating first record */}
+          {quickAddOpen && onCreate && targetDatabaseId && schema && (() => {
+            const cols = (schema.allFields || [])
+              .filter((f) => EDITABLE_TYPES.has(f.type))
+              .map((f) => f.name);
+            const titleField = schema?.title?.name;
+            return (
+              <div style={{ marginTop: 16, width: "100%", overflowX: "auto" }}>
+                <table style={{ ...styles.table, width: "100%", minWidth: 400 }}>
+                  <thead>
+                    <tr>{cols.map((c) => <th key={c} style={styles.th}>{c}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    <tr style={{ background: `${C.accent}08` }}>
+                      {cols.map((col) => (
+                        <td key={col} style={{ ...styles.td, padding: "4px 6px" }}>
+                          <QuickAddCellInput
+                            type={getFieldType(schema, col)}
+                            fieldName={col}
+                            schema={schema}
+                            value={quickAddValues[col] ?? ""}
+                            onChange={(v) => setQuickAddValues((p) => ({ ...p, [col]: v }))}
+                            onSubmit={handleQuickAdd}
+                            autoFocus={col === titleField}
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                    <tr style={{ background: `${C.accent}05` }}>
+                      <td colSpan={cols.length} style={{ padding: "6px 12px", borderBottom: `1px solid ${C.edgeLine}` }}>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <button
+                            style={{ ...S.btnPrimary, padding: "5px 14px", fontSize: 12 }}
+                            onClick={handleQuickAdd}
+                            disabled={quickAddSaving}
+                          >
+                            {quickAddSaving ? "Saving..." : "Add Row"}
+                          </button>
+                          <button
+                            style={{ ...S.btnGhost, padding: "5px 10px", fontSize: 12 }}
+                            onClick={() => { setQuickAddOpen(false); setQuickAddValues({}); setQuickAddError(null); }}
+                          >
+                            Cancel
+                          </button>
+                          {quickAddError && (
+                            <span style={{ color: "#E05252", fontSize: 11 }}>{quickAddError}</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
         </div>
       </div>
     );
@@ -1657,7 +1655,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
         {onCreate && targetDatabaseId && (
           <button
             style={styles.refreshBtn}
-            onClick={() => setShowNewModal(true)}
+            onClick={() => setQuickAddOpen(true)}
             title="Add new row"
           >
             <IconPlus size={14} color={C.darkMuted} />
@@ -1996,7 +1994,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
               {/* Quick-add row */}
               {quickAddOpen && onCreate && targetDatabaseId && (
                 <>
-                  <tr style={{ background: `${C.accent}08` }}>
+                  <tr ref={quickAddRowRef} style={{ background: `${C.accent}08` }}>
                     <td style={{ ...styles.td, textAlign: "center", padding: "6px 8px" }}>
                       <IconPlus size={10} color={C.accent} />
                     </td>
@@ -2110,16 +2108,6 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           }}
           onDelete={onDelete ? (ids) => { onDelete(ids); setDetailPage(null); } : undefined}
           pageConfigId={pageConfig?.id}
-        />
-      )}
-
-      {/* New Record Modal */}
-      {showNewModal && onCreate && targetDatabaseId && (
-        <NewRecordModal
-          schema={schema}
-          databaseId={targetDatabaseId}
-          onCreate={onCreate}
-          onClose={() => setShowNewModal(false)}
         />
       )}
 
