@@ -39,6 +39,9 @@ export function displayValue(value, type) {
     }
     return formatDate(String(value), { short: true });
   }
+  if (type === "last_edited_time" || type === "created_time") {
+    return formatDate(String(value), { short: true });
+  }
   if (type === "checkbox") return value ? "Yes" : "No";
   if (type === "people") {
     if (Array.isArray(value)) return value.map((p) => p.name || p.email || p.id).join(", ");
@@ -73,39 +76,46 @@ export function searchableText(value, type) {
 
 /** Resolve column list from schema when not provided in config */
 export function resolveColumns(schema, configColumns) {
-  if (configColumns && configColumns.length > 0) return configColumns;
-  if (!schema) return [];
+  let cols;
 
-  const cols = [];
-  if (schema.title) cols.push(schema.title.name);
+  if (configColumns && configColumns.length > 0) {
+    cols = [...configColumns];
+  } else if (!schema) {
+    return [];
+  } else {
+    cols = [];
+    if (schema.title) cols.push(schema.title.name);
 
-  const orderedFields = [
-    ...schema.statuses,
-    ...schema.selects,
-    ...schema.numbers,
-    ...schema.dates,
-    ...schema.richTexts,
-    ...schema.checkboxes,
-    ...schema.urls,
-    ...schema.emails,
-    ...schema.phones,
-    ...schema.multiSelects,
-    ...schema.people,
-    ...schema.formulas,
-    ...schema.rollups,
-  ];
+    const orderedFields = [
+      ...schema.statuses,
+      ...schema.selects,
+      ...schema.numbers,
+      ...schema.dates,
+      ...schema.richTexts,
+      ...schema.checkboxes,
+      ...schema.urls,
+      ...schema.emails,
+      ...schema.phones,
+      ...schema.multiSelects,
+      ...schema.people,
+      ...schema.formulas,
+      ...schema.rollups,
+    ];
 
-  for (const f of orderedFields) {
-    if (!cols.includes(f.name)) cols.push(f.name);
+    for (const f of orderedFields) {
+      if (!cols.includes(f.name)) cols.push(f.name);
+    }
+
+    if (schema?.uniqueId && !cols.includes(schema.uniqueId.name)) {
+      cols.unshift(schema.uniqueId.name);
+    }
   }
 
-  if (schema.uniqueId && !cols.includes(schema.uniqueId.name)) {
-    cols.unshift(schema.uniqueId.name);
-  }
-  if (schema.createdTime && !cols.includes(schema.createdTime.name)) {
+  // Always append system timestamp fields — these are mandatory tracking columns
+  if (schema?.createdTime && !cols.includes(schema.createdTime.name)) {
     cols.push(schema.createdTime.name);
   }
-  if (schema.lastEditedTime && !cols.includes(schema.lastEditedTime.name)) {
+  if (schema?.lastEditedTime && !cols.includes(schema.lastEditedTime.name)) {
     cols.push(schema.lastEditedTime.name);
   }
 

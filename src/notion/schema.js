@@ -145,6 +145,18 @@ export function classifyProperties(database) {
     schema.allFields.push(field);
   }
 
+  // Always inject system timestamps — every Notion page has these at the page level.
+  // If the DB doesn't have them as explicit property columns, add virtual ones
+  // so views (Table, filters, etc.) can display and filter on them.
+  if (!schema.lastEditedTime) {
+    schema.lastEditedTime = { name: "Last Updated", id: "_last_edited_time", type: "last_edited_time", system: true };
+    schema.allFields.push(schema.lastEditedTime);
+  }
+  if (!schema.createdTime) {
+    schema.createdTime = { name: "Created", id: "_created_time", type: "created_time", system: true };
+    schema.allFields.push(schema.createdTime);
+  }
+
   return schema;
 }
 

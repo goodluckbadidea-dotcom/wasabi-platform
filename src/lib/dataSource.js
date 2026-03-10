@@ -94,7 +94,30 @@ async function fetchNotionDb(pageConfig, user) {
   const allData = [];
   for (const dbId of dbIds) {
     const results = await queryAll(workerUrl, notionKey, dbId);
-    allData.push(...results.map((r) => ({ ...r, _databaseId: dbId })));
+    allData.push(...results.map((r) => {
+      const page = { ...r, _databaseId: dbId };
+      // Inject system timestamp properties so readField() can find them.
+      // Every Notion page has last_edited_time and created_time at the page level,
+      // but readField() looks in page.properties — bridge the gap here.
+      const sch = schemas[dbId];
+      if (sch && page.properties) {
+        const letName = sch.lastEditedTime?.name;
+        if (letName && sch.lastEditedTime?.system && !page.properties[letName]) {
+          page.properties[letName] = {
+            type: "last_edited_time",
+            last_edited_time: page.last_edited_time,
+          };
+        }
+        const ctName = sch.createdTime?.name;
+        if (ctName && sch.createdTime?.system && !page.properties[ctName]) {
+          page.properties[ctName] = {
+            type: "created_time",
+            created_time: page.created_time,
+          };
+        }
+      }
+      return page;
+    }));
   }
 
   return { data: allData, schema: primarySchema, schemas };
@@ -116,7 +139,27 @@ async function fetchMondayBoard(pageConfig, user) {
     ]);
 
     const schema = mondayColumnsToSchema(boardId, pageConfig.name || "Monday Board", columns);
-    const data = items.map((item) => mondayItemToPage(item, columns));
+    const data = items.map((item) => {
+      const page = mondayItemToPage(item, columns);
+      // Inject system timestamp properties so readField() can find them
+      if (page.properties) {
+        const letName = schema.lastEditedTime?.name;
+        if (letName && schema.lastEditedTime?.system && !page.properties[letName]) {
+          page.properties[letName] = {
+            type: "last_edited_time",
+            last_edited_time: page.last_edited_time,
+          };
+        }
+        const ctName = schema.createdTime?.name;
+        if (ctName && schema.createdTime?.system && !page.properties[ctName]) {
+          page.properties[ctName] = {
+            type: "created_time",
+            created_time: page.created_time,
+          };
+        }
+      }
+      return page;
+    });
 
     return { data, schema, schemas: { [`monday_${boardId}`]: schema } };
   } catch (err) {
@@ -316,6 +359,12 @@ function d1SchemaToClassified(tableId, title, columns) {
     schema.allFields.push(field);
   });
 
+  // Auto-inject system timestamp fields (data lives on row, not in cells)
+  schema.lastEditedTime = { name: "Last Updated", id: "_last_edited_time", type: "last_edited_time", system: true };
+  schema.createdTime = { name: "Created", id: "_created_time", type: "created_time", system: true };
+  schema.allFields.push(schema.lastEditedTime);
+  schema.allFields.push(schema.createdTime);
+
   return schema;
 }
 
@@ -340,6 +389,16 @@ function d1RowToPage(row, columns) {
       properties[col.name] = wrapAsNotionProp(value, col.type);
     }
   });
+
+  // Inject system timestamp properties so readField() can find them
+  properties["Last Updated"] = {
+    type: "last_edited_time",
+    last_edited_time: row.updated_at || row.created_at,
+  };
+  properties["Created"] = {
+    type: "created_time",
+    created_time: row.created_at,
+  };
 
   return {
     id: row.id,

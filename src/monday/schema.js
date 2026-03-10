@@ -148,6 +148,17 @@ export function mondayColumnsToSchema(boardId, boardName, columns) {
     schema.allFields.push(field);
   }
 
+  // Always inject system timestamps if not present from explicit columns.
+  // Monday items always have created_at / updated_at at the item level.
+  if (!schema.lastEditedTime) {
+    schema.lastEditedTime = { name: "Last Updated", id: "_last_edited_time", type: "last_edited_time", system: true };
+    schema.allFields.push(schema.lastEditedTime);
+  }
+  if (!schema.createdTime) {
+    schema.createdTime = { name: "Created", id: "_created_time", type: "created_time", system: true };
+    schema.allFields.push(schema.createdTime);
+  }
+
   return schema;
 }
 

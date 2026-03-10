@@ -1077,6 +1077,16 @@ async function handleCreatePage(env, body) {
 
     // If this is a standalone database, create the table schema
     if (page_type === "database" && columns) {
+      // Auto-append system timestamp columns if not present
+      const hasLastUpdated = columns.some((c) => c.type === "last_edited_time" || c.id === "_last_edited_time");
+      if (!hasLastUpdated) {
+        columns.push({ id: "_last_edited_time", name: "Last Updated", type: "last_edited_time", system: true });
+      }
+      const hasCreated = columns.some((c) => c.type === "created_time" || c.id === "_created_time");
+      if (!hasCreated) {
+        columns.push({ id: "_created_time", name: "Created", type: "created_time", system: true });
+      }
+
       await env.DB.prepare(
         `INSERT INTO table_schemas (id, columns, created_at, updated_at)
          VALUES (?, ?, datetime('now'), datetime('now'))`

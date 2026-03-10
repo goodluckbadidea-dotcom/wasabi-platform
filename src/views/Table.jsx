@@ -326,43 +326,49 @@ const ctxItem = {
 
 /** Resolve column list from schema when not provided in config */
 function resolveColumns(schema, configColumns, fieldMappings) {
-  if (configColumns && configColumns.length > 0) return configColumns;
-  if (!schema) return [];
+  let cols;
 
-  // Build column list from schema, title first
-  const cols = [];
-  if (schema.title) cols.push(schema.title.name);
+  if (configColumns && configColumns.length > 0) {
+    cols = [...configColumns];
+  } else if (!schema) {
+    return [];
+  } else {
+    // Build column list from schema, title first
+    cols = [];
+    if (schema.title) cols.push(schema.title.name);
 
-  const orderedFields = [
-    ...schema.statuses,
-    ...schema.selects,
-    ...schema.numbers,
-    ...schema.dates,
-    ...schema.richTexts,
-    ...schema.checkboxes,
-    ...schema.urls,
-    ...schema.emails,
-    ...schema.phones,
-    ...schema.multiSelects,
-    ...schema.people,
-    ...schema.relations,
-    ...schema.files,
-    ...schema.formulas,
-    ...schema.rollups,
-  ];
+    const orderedFields = [
+      ...schema.statuses,
+      ...schema.selects,
+      ...schema.numbers,
+      ...schema.dates,
+      ...schema.richTexts,
+      ...schema.checkboxes,
+      ...schema.urls,
+      ...schema.emails,
+      ...schema.phones,
+      ...schema.multiSelects,
+      ...schema.people,
+      ...schema.relations,
+      ...schema.files,
+      ...schema.formulas,
+      ...schema.rollups,
+    ];
 
-  for (const f of orderedFields) {
-    if (!cols.includes(f.name)) cols.push(f.name);
+    for (const f of orderedFields) {
+      if (!cols.includes(f.name)) cols.push(f.name);
+    }
+
+    if (schema?.uniqueId && !cols.includes(schema.uniqueId.name)) {
+      cols.unshift(schema.uniqueId.name);
+    }
   }
 
-  // Add system fields last
-  if (schema.uniqueId && !cols.includes(schema.uniqueId.name)) {
-    cols.unshift(schema.uniqueId.name);
-  }
-  if (schema.createdTime && !cols.includes(schema.createdTime.name)) {
+  // Always append system timestamp fields — these are mandatory tracking columns
+  if (schema?.createdTime && !cols.includes(schema.createdTime.name)) {
     cols.push(schema.createdTime.name);
   }
-  if (schema.lastEditedTime && !cols.includes(schema.lastEditedTime.name)) {
+  if (schema?.lastEditedTime && !cols.includes(schema.lastEditedTime.name)) {
     cols.push(schema.lastEditedTime.name);
   }
 
@@ -401,6 +407,9 @@ function displayValue(value, type) {
     if (typeof value === "object" && value.start) {
       return formatDate(value.start, { short: true });
     }
+    return formatDate(String(value), { short: true });
+  }
+  if (type === "last_edited_time" || type === "created_time") {
     return formatDate(String(value), { short: true });
   }
   if (type === "checkbox") return value ? "Yes" : "No";
@@ -652,6 +661,15 @@ function CellDisplay({ value, type, fieldName, schema, onClick }) {
     return (
       <span style={{ cursor: onClick ? "pointer" : "default", fontVariantNumeric: "tabular-nums" }} onClick={onClick}>
         {value}
+      </span>
+    );
+  }
+
+  // System timestamps (Last Updated / Created)
+  if (type === "last_edited_time" || type === "created_time") {
+    return (
+      <span style={{ fontSize: 12, color: C.darkMuted, fontVariantNumeric: "tabular-nums" }}>
+        {formatDate(String(value), { short: true })}
       </span>
     );
   }
