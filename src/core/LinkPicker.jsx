@@ -93,8 +93,11 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
             queryAll(user.workerUrl, user.notionKey, dbId),
           ]);
           if (!cancelled) {
-            // Build column list from schema
-            const columns = schema.allFields.map((f) => f.name);
+            // Build column list from schema — title field always first
+            const titleField = schema.allFields.find((f) => f.type === "title");
+            const otherFields = schema.allFields.filter((f) => f.type !== "title");
+            const ordered = titleField ? [titleField, ...otherFields] : schema.allFields;
+            const columns = ordered.map((f) => f.name);
             const rows = results.slice(0, 100).map((page) => ({
               pageId: page.id,
               cells: columns.map((col) => {
@@ -320,7 +323,7 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
               <table style={s.gridTable}>
                 <thead>
                   <tr>
-                    {viewData.columns.slice(0, 8).map((col) => (
+                    {viewData.columns.slice(0, 12).map((col) => (
                       <th key={col} style={s.th}>{col}</th>
                     ))}
                   </tr>
@@ -329,7 +332,7 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
                   {(viewData.type === "sheet" ? viewData.rows : viewData.rows.map((r) => r.cells))
                     .slice(0, 50).map((row, ri) => (
                     <tr key={ri}>
-                      {(Array.isArray(row) ? row : row).slice(0, 8).map((cell, ci) => {
+                      {(Array.isArray(row) ? row : row).slice(0, 12).map((cell, ci) => {
                         const isActive = selectedCell?.rowIdx === ri && selectedCell?.colIdx === ci;
                         const displayVal = cell === null || cell === undefined ? "" : String(cell);
                         return (

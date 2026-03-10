@@ -904,6 +904,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                     .map((bar, i) => ({ bar, rect: getBarRect(row, bar), idx: i }))
                     .sort((a, b) => a.rect.x - b.rect.x);
 
+                  const pillR = barHeight / 2;
                   return sorted.slice(0, -1).map((curr, si) => {
                     const next = sorted[si + 1];
                     const currEnd = curr.rect.x + curr.rect.w;
@@ -923,8 +924,8 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                       <g key={gradId}>
                         <defs>
                           <linearGradient id={gradId} x1="0" x2="1" y1="0" y2="0">
-                            <stop offset="0%" stopColor={curr.bar.color} stopOpacity="0.75" />
-                            <stop offset="100%" stopColor={next.bar.color} stopOpacity="0.75" />
+                            <stop offset="0%" stopColor={curr.bar.color} stopOpacity="1" />
+                            <stop offset="100%" stopColor={next.bar.color} stopOpacity="1" />
                           </linearGradient>
                         </defs>
                         <rect
@@ -932,6 +933,8 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                           y={y}
                           width={blendW}
                           height={barHeight}
+                          rx={pillR}
+                          ry={pillR}
                           fill={`url(#${gradId})`}
                           style={{ pointerEvents: "none" }}
                         />
@@ -960,7 +963,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                           rx={pillRadius}
                           ry={pillRadius}
                           fill={bar.color}
-                          opacity={isDragging ? 0.9 : 0.75}
+                          opacity={isDragging ? 0.95 : 1}
                           style={{
                             cursor: onUpdate ? (isDragging ? "grabbing" : "grab") : "default",
                             filter: isDragging ? "drop-shadow(0 2px 6px rgba(0,0,0,0.3))" : "none",

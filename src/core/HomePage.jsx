@@ -503,7 +503,7 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
             { keys: "\u2318K", label: "Search" },
             { keys: "\u2318N", label: "New page" },
             { keys: "\u2318B", label: "Sidebar" },
-            { keys: "\u2318W", label: "Wasabi" },
+            { keys: "\u2318.", label: "Wasabi" },
           ].map((s) => (
             <div key={s.keys} style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <kbd style={{

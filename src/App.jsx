@@ -141,9 +141,14 @@ function AppContent() {
       handler: () => setSidebarCollapsed((c) => !c),
     },
     {
-      shortcut: "mod+w",
+      shortcut: "mod+.",
       description: "Toggle Wasabi panel",
       handler: () => setWasabiPanelOpen((o) => !o),
+    },
+    {
+      shortcut: "mod+i",
+      description: "Inbox",
+      handler: () => setActivePage("inbox"),
     },
     {
       shortcut: "escape",
@@ -181,7 +186,7 @@ function AppContent() {
         if (idx < folderPages.length - 1) setActivePage(folderPages[idx + 1].id);
       },
     },
-  ], [handleAddPage, wasabiPanelOpen, activePage, pages, activeFolder, getFolderPages, toggleNeurons]);
+  ], [handleAddPage, wasabiPanelOpen, activePage, pages, activeFolder, getFolderPages, toggleNeurons, setActivePage]);
 
   // Auth gate: show setup wizard if not connected
   if (!isAuthenticated || !isSetup) {
