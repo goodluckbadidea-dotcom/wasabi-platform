@@ -956,8 +956,8 @@ function SettingsTab() {
         {THEME_LIST.map((t) => {
           const isActive = themeName === t.key;
           const theme = THEMES[t.key];
-          const darkBg = theme.dark.darkSurf;
-          const lightBg = theme.light.surface;
+          // Show palette accent colors (indices 5-8) as preview dots
+          const previewColors = theme.palette.slice(5, 9);
           return (
             <button
               key={t.key}
@@ -979,61 +979,58 @@ function SettingsTab() {
               {/* Accent bar */}
               <div style={{ height: 6, background: t.accent }} />
 
-              {/* Preview swatches */}
+              {/* Preview palette dots */}
               <div
                 style={{
                   display: "flex",
-                  gap: 4,
+                  gap: 5,
                   padding: "10px 10px 6px",
                   justifyContent: "center",
                 }}
               >
-                <div
-                  style={{
-                    width: 24, height: 24, borderRadius: 4,
-                    background: darkBg,
-                    border: `1px solid ${C.darkBorder}`,
-                  }}
-                />
-                <div
-                  style={{
-                    width: 24, height: 24, borderRadius: 4,
-                    background: lightBg,
-                    border: `1px solid ${C.darkBorder}`,
-                  }}
-                />
-                <div
-                  style={{
-                    width: 24, height: 24, borderRadius: "50%",
-                    background: t.accent,
-                  }}
-                />
+                {previewColors.map((pc, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      width: 18, height: 18, borderRadius: "50%",
+                      background: pc.hex,
+                      border: `1px solid ${C.darkBorder}`,
+                    }}
+                  />
+                ))}
               </div>
 
-              {/* Label + check */}
+              {/* Label + description + check */}
               <div
                 style={{
                   padding: "4px 10px 10px",
                   display: "flex",
+                  flexDirection: "column",
                   alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
+                  gap: 2,
                 }}
               >
-                <span
-                  style={{
-                    fontSize: 12,
-                    fontWeight: isActive ? 600 : 400,
-                    color: isActive ? t.accent : C.darkText,
-                  }}
-                >
-                  {t.label}
-                </span>
-                {isActive && (
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                    <circle cx="6" cy="6" r="6" fill={t.accent} />
-                    <path d="M3.5 6L5.5 8L8.5 4.5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: isActive ? 600 : 400,
+                      color: isActive ? t.accent : C.darkText,
+                    }}
+                  >
+                    {t.label}
+                  </span>
+                  {isActive && (
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <circle cx="6" cy="6" r="6" fill={t.accent} />
+                      <path d="M3.5 6L5.5 8L8.5 4.5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </div>
+                {t.description && (
+                  <span style={{ fontSize: 9, color: C.darkMuted, lineHeight: 1.2 }}>
+                    {t.description}
+                  </span>
                 )}
               </div>
             </button>

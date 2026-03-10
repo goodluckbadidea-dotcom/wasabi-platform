@@ -1,107 +1,178 @@
 // ─── Wasabi Platform Design Tokens ───
-// 5-theme color system with dark + light mode per theme.
+// 5 sushi-themed color system with dark + light mode per theme.
+// Each theme defines 10 named colors that drive both UI tokens and the view palette.
+
+const WASABI_GREEN = "#7DC143";
 
 // ── Theme Definitions ──
-// Each theme: accent colors + dark/light surface token sets.
 export const THEMES = {
-  wasabi: {
-    label: "Wasabi",
-    accent: "#7DC143", accentDim: "#619932", accentPale: "#E6F5D5",
+  nigiri: {
+    label: "Nigiri",
+    description: "Salmon, tuna & rice",
+    accent: "#E8856A", accentDim: "#C84B4B", accentPale: "#F5EDD4",
+    palette: [
+      { key: "nori-black",   hex: "#0C0C0C", text: "#F5EDD4" },
+      { key: "shadow",       hex: "#1C1614", text: "#F5EDD4" },
+      { key: "stone",        hex: "#2E2520", text: "#F5EDD4" },
+      { key: "rice-cream",   hex: "#F5EDD4", text: "#1C1614" },
+      { key: "pale-silk",    hex: "#C8B99A", text: "#1C1614" },
+      { key: "salmon",       hex: "#E8856A", text: "#fff" },
+      { key: "tuna-red",     hex: "#C84B4B", text: "#fff" },
+      { key: "soy-gold",     hex: "#D4A843", text: "#1C1614" },
+      { key: "ginger-blush", hex: "#E8B09A", text: "#1C1614" },
+      { key: "wasabi",       hex: WASABI_GREEN, text: "#fff" },
+    ],
     dark: {
-      bg: "#F4EFE6", surface: "#ECE6DC", surfaceAlt: "#E4DDD3",
-      border: "#D6CCBC", border2: "#C8BDB0",
-      text: "#1A1812", textMid: "#5A5048", muted: "#9A8E82", white: "#FBF8F3",
-      dark: "#181818", darkSurf: "#222222", darkSurf2: "#2A2A2A",
-      darkBorder: "#333333", darkMuted: "#888888", darkText: "#F0F0F0",
-      edgeLine: "#2E2E2E", codeBlockBg: "#111111", overlayBg: "rgba(0,0,0,0.55)",
+      bg: "#0C0C0C", surface: "#1C1614", surfaceAlt: "#2E2520",
+      border: "#3D3128", border2: "#4A3E34",
+      text: "#F5EDD4", textMid: "#C8B99A", muted: "#8A7E72", white: "#F5EDD4",
+      dark: "#0C0C0C", darkSurf: "#1C1614", darkSurf2: "#2E2520",
+      darkBorder: "#3D3128", darkMuted: "#8A7E72", darkText: "#F5EDD4",
+      edgeLine: "#2E2520", codeBlockBg: "#080806", overlayBg: "rgba(0,0,0,0.55)",
     },
     light: {
-      bg: "#FAF7F2", surface: "#F5F1EB", surfaceAlt: "#EDE8E0",
-      border: "#C8BFB3", border2: "#B8B0A4",
-      text: "#2C2824", textMid: "#6B6058", muted: "#9A9088", white: "#FFFFFF",
-      dark: "#F5F1EB", darkSurf: "#EDE8E0", darkSurf2: "#E5DFD6",
-      darkBorder: "#C8BFB3", darkMuted: "#8A8078", darkText: "#2C2824",
-      edgeLine: "#B8B0A4", codeBlockBg: "#F0ECE6", overlayBg: "rgba(0,0,0,0.25)",
+      bg: "#FAF7F0", surface: "#F5EDD4", surfaceAlt: "#EDE5CC",
+      border: "#D4CBAF", border2: "#C8B99A",
+      text: "#1C1614", textMid: "#5A4E42", muted: "#8A7E72", white: "#FFFFFF",
+      dark: "#F5EDD4", darkSurf: "#EDE5CC", darkSurf2: "#E5DCBF",
+      darkBorder: "#D4CBAF", darkMuted: "#8A7E72", darkText: "#1C1614",
+      edgeLine: "#C8B99A", codeBlockBg: "#F0E8D0", overlayBg: "rgba(0,0,0,0.25)",
     },
   },
-  ocean: {
-    label: "Ocean",
-    accent: "#3B82F6", accentDim: "#2563EB", accentPale: "#DBEAFE",
+
+  miso: {
+    label: "Miso",
+    description: "Broth, tofu & dashi",
+    accent: "#C4892A", accentDim: "#8B5E2A", accentPale: "#F0DEB4",
+    palette: [
+      { key: "dark-clay",      hex: "#140E06", text: "#F0DEB4" },
+      { key: "deep-umber",     hex: "#201408", text: "#F0DEB4" },
+      { key: "bark",           hex: "#3D2E14", text: "#F0DEB4" },
+      { key: "tofu-cream",     hex: "#F0DEB4", text: "#201408" },
+      { key: "aged-parchment", hex: "#C8B07A", text: "#201408" },
+      { key: "miso-gold",      hex: "#C4892A", text: "#fff" },
+      { key: "dark-miso",      hex: "#8B5E2A", text: "#fff" },
+      { key: "dashi-amber",    hex: "#E8C56A", text: "#201408" },
+      { key: "kombu-brown",    hex: "#5E4020", text: "#F0DEB4" },
+      { key: "wasabi",         hex: WASABI_GREEN, text: "#fff" },
+    ],
     dark: {
-      bg: "#E8ECF2", surface: "#DFE4EC", surfaceAlt: "#D6DCE6",
-      border: "#B8C2D0", border2: "#A8B4C4",
-      text: "#141820", textMid: "#485060", muted: "#7888A0", white: "#F2F5FA",
-      dark: "#161A1F", darkSurf: "#1C2128", darkSurf2: "#242A33",
-      darkBorder: "#2D3544", darkMuted: "#7090B0", darkText: "#E8EDF5",
-      edgeLine: "#252D38", codeBlockBg: "#0E1218", overlayBg: "rgba(0,0,0,0.55)",
+      bg: "#140E06", surface: "#201408", surfaceAlt: "#3D2E14",
+      border: "#4D3E24", border2: "#5E4E34",
+      text: "#F0DEB4", textMid: "#C8B07A", muted: "#8A7A5A", white: "#F0DEB4",
+      dark: "#140E06", darkSurf: "#201408", darkSurf2: "#3D2E14",
+      darkBorder: "#4D3E24", darkMuted: "#8A7A5A", darkText: "#F0DEB4",
+      edgeLine: "#3D2E14", codeBlockBg: "#0A0804", overlayBg: "rgba(0,0,0,0.55)",
     },
     light: {
-      bg: "#F5F7FA", surface: "#EDF0F5", surfaceAlt: "#E3E8EF",
-      border: "#B8C2D0", border2: "#A0ACBC",
-      text: "#1A2030", textMid: "#506078", muted: "#7888A0", white: "#FFFFFF",
-      dark: "#EDF0F5", darkSurf: "#E3E8EF", darkSurf2: "#D8DFE8",
-      darkBorder: "#B8C2D0", darkMuted: "#6878A0", darkText: "#1A2030",
-      edgeLine: "#A0ACBC", codeBlockBg: "#E8ECF2", overlayBg: "rgba(0,0,0,0.25)",
+      bg: "#FBF6EA", surface: "#F0DEB4", surfaceAlt: "#E8D6A8",
+      border: "#D4C494", border2: "#C8B07A",
+      text: "#201408", textMid: "#5A4A2A", muted: "#8A7A5A", white: "#FFFFFF",
+      dark: "#F0DEB4", darkSurf: "#E8D6A8", darkSurf2: "#E0CE9C",
+      darkBorder: "#D4C494", darkMuted: "#8A7A5A", darkText: "#201408",
+      edgeLine: "#C8B07A", codeBlockBg: "#F0E8D0", overlayBg: "rgba(0,0,0,0.25)",
     },
   },
-  sunset: {
-    label: "Sunset",
-    accent: "#F59E0B", accentDim: "#D97706", accentPale: "#FEF3C7",
+
+  nori: {
+    label: "Nori",
+    description: "Seaweed, ocean & tide",
+    accent: "#2A7A5E", accentDim: "#1A5E4A", accentPale: "#C4E8DA",
+    palette: [
+      { key: "abyss",        hex: "#060D09", text: "#C4E8DA" },
+      { key: "deep-kelp",    hex: "#0D1610", text: "#C4E8DA" },
+      { key: "sea-floor",    hex: "#142218", text: "#C4E8DA" },
+      { key: "sea-foam",     hex: "#8ED4B8", text: "#0D1610" },
+      { key: "pale-tide",    hex: "#C4E8DA", text: "#0D1610" },
+      { key: "sea-glass",    hex: "#4AB884", text: "#fff" },
+      { key: "deep-current", hex: "#1A5E4A", text: "#C4E8DA" },
+      { key: "brine-teal",   hex: "#2A7A5E", text: "#fff" },
+      { key: "surf-mist",    hex: "#6ABAA4", text: "#0D1610" },
+      { key: "wasabi",       hex: WASABI_GREEN, text: "#fff" },
+    ],
     dark: {
-      bg: "#F2EDE4", surface: "#EBE4D8", surfaceAlt: "#E3DACB",
-      border: "#D0C4AE", border2: "#C2B49C",
-      text: "#1C1810", textMid: "#5C5040", muted: "#9A8C78", white: "#FAF6EE",
-      dark: "#1A1816", darkSurf: "#23201C", darkSurf2: "#2C2822",
-      darkBorder: "#3A3428", darkMuted: "#A08860", darkText: "#F5EEDF",
-      edgeLine: "#2E2820", codeBlockBg: "#12100C", overlayBg: "rgba(0,0,0,0.55)",
+      bg: "#060D09", surface: "#0D1610", surfaceAlt: "#142218",
+      border: "#1E3228", border2: "#284238",
+      text: "#C4E8DA", textMid: "#8ED4B8", muted: "#5A8A72", white: "#C4E8DA",
+      dark: "#060D09", darkSurf: "#0D1610", darkSurf2: "#142218",
+      darkBorder: "#1E3228", darkMuted: "#5A8A72", darkText: "#C4E8DA",
+      edgeLine: "#142218", codeBlockBg: "#040A06", overlayBg: "rgba(0,0,0,0.55)",
     },
     light: {
-      bg: "#FBF8F0", surface: "#F5F0E4", surfaceAlt: "#EDE6D6",
-      border: "#D0C4AE", border2: "#C0B098",
-      text: "#2C2418", textMid: "#6B5C48", muted: "#9A8C78", white: "#FFFFFF",
-      dark: "#F5F0E4", darkSurf: "#EDE6D6", darkSurf2: "#E5DCC8",
-      darkBorder: "#D0C4AE", darkMuted: "#8A7C68", darkText: "#2C2418",
-      edgeLine: "#C0B098", codeBlockBg: "#F0EAD8", overlayBg: "rgba(0,0,0,0.25)",
+      bg: "#F2FAF6", surface: "#C4E8DA", surfaceAlt: "#B4DED0",
+      border: "#90C8B4", border2: "#8ED4B8",
+      text: "#0D1610", textMid: "#2A4A3A", muted: "#5A8A72", white: "#FFFFFF",
+      dark: "#C4E8DA", darkSurf: "#B4DED0", darkSurf2: "#A4D4C6",
+      darkBorder: "#90C8B4", darkMuted: "#5A8A72", darkText: "#0D1610",
+      edgeLine: "#8ED4B8", codeBlockBg: "#E4F4EC", overlayBg: "rgba(0,0,0,0.25)",
     },
   },
-  lavender: {
-    label: "Lavender",
-    accent: "#8B6FBE", accentDim: "#7455A8", accentPale: "#EDE5F5",
+
+  tobiko: {
+    label: "Tobiko",
+    description: "Flying fish roe & spice",
+    accent: "#E85C3A", accentDim: "#C43A6A", accentPale: "#F5D4A0",
+    palette: [
+      { key: "void",          hex: "#09070E", text: "#F5D4A0" },
+      { key: "ink-well",      hex: "#150D1A", text: "#F5D4A0" },
+      { key: "deep-plum",     hex: "#2A1A30", text: "#F5D4A0" },
+      { key: "pearl",         hex: "#F5D4A0", text: "#150D1A" },
+      { key: "pale-cream",    hex: "#E8C8A0", text: "#150D1A" },
+      { key: "tobiko-red",    hex: "#E85C3A", text: "#fff" },
+      { key: "scarlet-roe",   hex: "#C43A6A", text: "#fff" },
+      { key: "golden-tobiko", hex: "#F0A030", text: "#150D1A" },
+      { key: "blush-roe",     hex: "#D4607A", text: "#fff" },
+      { key: "wasabi",        hex: WASABI_GREEN, text: "#fff" },
+    ],
     dark: {
-      bg: "#EDE8F0", surface: "#E4DEE8", surfaceAlt: "#DBD4E0",
-      border: "#C4BAD4", border2: "#B4A8C6",
-      text: "#181420", textMid: "#504860", muted: "#8880A0", white: "#F5F2FA",
-      dark: "#19181E", darkSurf: "#211F28", darkSurf2: "#2A2832",
-      darkBorder: "#363244", darkMuted: "#8878B0", darkText: "#ECE8F5",
-      edgeLine: "#2C2838", codeBlockBg: "#100E16", overlayBg: "rgba(0,0,0,0.55)",
+      bg: "#09070E", surface: "#150D1A", surfaceAlt: "#2A1A30",
+      border: "#3A2A40", border2: "#4A3A50",
+      text: "#F5D4A0", textMid: "#E8C8A0", muted: "#8A7A6A", white: "#F5D4A0",
+      dark: "#09070E", darkSurf: "#150D1A", darkSurf2: "#2A1A30",
+      darkBorder: "#3A2A40", darkMuted: "#8A7A6A", darkText: "#F5D4A0",
+      edgeLine: "#2A1A30", codeBlockBg: "#06040A", overlayBg: "rgba(0,0,0,0.55)",
     },
     light: {
-      bg: "#F8F5FC", surface: "#F0ECF6", surfaceAlt: "#E8E2F0",
-      border: "#C4BAD4", border2: "#B0A4C6",
-      text: "#201830", textMid: "#605078", muted: "#8880A0", white: "#FFFFFF",
-      dark: "#F0ECF6", darkSurf: "#E8E2F0", darkSurf2: "#E0D8EA",
-      darkBorder: "#C4BAD4", darkMuted: "#7870A0", darkText: "#201830",
-      edgeLine: "#B0A4C6", codeBlockBg: "#ECE6F2", overlayBg: "rgba(0,0,0,0.25)",
+      bg: "#FDF8F0", surface: "#F5D4A0", surfaceAlt: "#EDCC98",
+      border: "#D8BA88", border2: "#E8C8A0",
+      text: "#150D1A", textMid: "#4A3A50", muted: "#8A7A6A", white: "#FFFFFF",
+      dark: "#F5D4A0", darkSurf: "#EDCC98", darkSurf2: "#E5C490",
+      darkBorder: "#D8BA88", darkMuted: "#8A7A6A", darkText: "#150D1A",
+      edgeLine: "#E8C8A0", codeBlockBg: "#F5EDD8", overlayBg: "rgba(0,0,0,0.25)",
     },
   },
-  ember: {
-    label: "Ember",
-    accent: "#E05252", accentDim: "#C94040", accentPale: "#FDE8E8",
+
+  uni: {
+    label: "Uni",
+    description: "Sea urchin & deep sea",
+    accent: "#D4943A", accentDim: "#A06820", accentPale: "#F5E8C0",
+    palette: [
+      { key: "deep-ocean",    hex: "#080A12", text: "#F5E8C0" },
+      { key: "midnight-blue", hex: "#10121C", text: "#F5E8C0" },
+      { key: "slate-deep",    hex: "#1A1C2A", text: "#F5E8C0" },
+      { key: "ivory-cream",   hex: "#F5E8C0", text: "#10121C" },
+      { key: "sand-silk",     hex: "#D4C898", text: "#10121C" },
+      { key: "uni-gold",      hex: "#D4943A", text: "#fff" },
+      { key: "dark-urchin",   hex: "#A06820", text: "#F5E8C0" },
+      { key: "bright-uni",    hex: "#E8C050", text: "#10121C" },
+      { key: "briny-blue",    hex: "#3A6A9A", text: "#fff" },
+      { key: "wasabi",        hex: WASABI_GREEN, text: "#fff" },
+    ],
     dark: {
-      bg: "#F0E8E8", surface: "#E8DEDE", surfaceAlt: "#E0D4D4",
-      border: "#D4C0C0", border2: "#C6B0B0",
-      text: "#1C1414", textMid: "#604848", muted: "#A08080", white: "#FAF4F4",
-      dark: "#1C1818", darkSurf: "#252020", darkSurf2: "#2E2828",
-      darkBorder: "#3D3333", darkMuted: "#B07070", darkText: "#F5ECEC",
-      edgeLine: "#302828", codeBlockBg: "#140E0E", overlayBg: "rgba(0,0,0,0.55)",
+      bg: "#080A12", surface: "#10121C", surfaceAlt: "#1A1C2A",
+      border: "#2A2C3A", border2: "#3A3C4A",
+      text: "#F5E8C0", textMid: "#D4C898", muted: "#7A7A8A", white: "#F5E8C0",
+      dark: "#080A12", darkSurf: "#10121C", darkSurf2: "#1A1C2A",
+      darkBorder: "#2A2C3A", darkMuted: "#7A7A8A", darkText: "#F5E8C0",
+      edgeLine: "#1A1C2A", codeBlockBg: "#06080E", overlayBg: "rgba(0,0,0,0.55)",
     },
     light: {
-      bg: "#FCF6F6", surface: "#F6EFEF", surfaceAlt: "#EFE6E6",
-      border: "#D4C0C0", border2: "#C4ACAC",
-      text: "#2C2020", textMid: "#6B5858", muted: "#A08080", white: "#FFFFFF",
-      dark: "#F6EFEF", darkSurf: "#EFE6E6", darkSurf2: "#E8DCDC",
-      darkBorder: "#D4C0C0", darkMuted: "#907070", darkText: "#2C2020",
-      edgeLine: "#C4ACAC", codeBlockBg: "#F0E8E8", overlayBg: "rgba(0,0,0,0.25)",
+      bg: "#FDFAF0", surface: "#F5E8C0", surfaceAlt: "#EDE0B8",
+      border: "#D8D0A8", border2: "#D4C898",
+      text: "#10121C", textMid: "#3A3C4A", muted: "#7A7A8A", white: "#FFFFFF",
+      dark: "#F5E8C0", darkSurf: "#EDE0B8", darkSurf2: "#E5D8B0",
+      darkBorder: "#D8D0A8", darkMuted: "#7A7A8A", darkText: "#10121C",
+      edgeLine: "#D4C898", codeBlockBg: "#F0E8D0", overlayBg: "rgba(0,0,0,0.25)",
     },
   },
 };
@@ -110,22 +181,23 @@ export const THEMES = {
 export const THEME_LIST = Object.keys(THEMES).map((key) => ({
   key,
   label: THEMES[key].label,
+  description: THEMES[key].description,
   accent: THEMES[key].accent,
 }));
 
 // ── Resolve initial theme from localStorage (with migration) ──
 function _resolveInitial() {
-  if (typeof localStorage === "undefined") return { name: "wasabi", mode: "dark" };
+  if (typeof localStorage === "undefined") return { name: "nigiri", mode: "dark" };
   // Migrate from old single-key format
   const oldKey = localStorage.getItem("wasabi-theme");
   if (oldKey && !localStorage.getItem("wasabi-theme-name")) {
     localStorage.setItem("wasabi-theme-mode", oldKey === "light" ? "light" : "dark");
-    localStorage.setItem("wasabi-theme-name", "wasabi");
+    localStorage.setItem("wasabi-theme-name", "nigiri");
     localStorage.removeItem("wasabi-theme");
   }
-  const name = localStorage.getItem("wasabi-theme-name") || "wasabi";
+  const name = localStorage.getItem("wasabi-theme-name") || "nigiri";
   const mode = localStorage.getItem("wasabi-theme-mode") || "dark";
-  return { name: THEMES[name] ? name : "wasabi", mode: mode === "light" ? "light" : "dark" };
+  return { name: THEMES[name] ? name : "nigiri", mode: mode === "light" ? "light" : "dark" };
 }
 
 let _currentThemeName = _resolveInitial().name;
@@ -150,27 +222,201 @@ export const C = {
 
 /** Get the current theme mode ('dark' | 'light') */
 export function getThemeMode() { return _currentThemeMode; }
-/** Get the current theme name ('wasabi' | 'ocean' | ...) */
+/** Get the current theme name */
 export function getThemeName() { return _currentThemeName; }
 /** Backward compat alias */
 export function getTheme() { return _currentThemeMode; }
 
-/** Apply a theme by name + mode. Mutates C in place. */
+// ── Mutable Palettes ──
+// These arrays/objects are mutated in-place by applyTheme() so all importers
+// see updated values after a theme switch (same pattern as the C token object).
+
+// Helper: compute a very pale tint of a hex color (for Gantt bar backgrounds)
+function _paleTint(hex) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const tr = Math.round(r * 0.15 + 255 * 0.85);
+  const tg = Math.round(g * 0.15 + 255 * 0.85);
+  const tb = Math.round(b * 0.15 + 255 * 0.85);
+  return `#${tr.toString(16).padStart(2, "0")}${tg.toString(16).padStart(2, "0")}${tb.toString(16).padStart(2, "0")}`;
+}
+
+// ── Global View Palette ──
+// Mutable 10-color palette used by all views for property-driven coloring.
+// Index-based: view configs store palette indices (0-9) in colorMapping.
+export const VIEW_PALETTE = _theme.palette.map((p) => ({ ...p }));
+
+// ── Timeline Palette (Gantt) ──
+// Mutable array derived from the first 7 VIEW_PALETTE entries.
+export const TIMELINE_PALETTE = [];
+function _rebuildTimelinePalette() {
+  TIMELINE_PALETTE.length = 0;
+  for (let i = 0; i < 7 && i < VIEW_PALETTE.length; i++) {
+    TIMELINE_PALETTE.push({ color: VIEW_PALETTE[i].hex, bg: _paleTint(VIEW_PALETTE[i].hex) });
+  }
+}
+_rebuildTimelinePalette();
+
+// Milestone phase colors
+export const PHASE_COLORS = {
+  design:     { color: "#F0C94E", bg: "#FDF8E3" },
+  production: { color: "#7DC143", bg: "#E6F4E9" },
+  shipping:   { color: "#2A6B38", bg: "#E6F4E9" },
+};
+
+// Map Notion color names → palette index for auto-mapping
+const NOTION_TO_PALETTE_IDX = {
+  default: 0, gray: 1, brown: 2, orange: 3, yellow: 4,
+  green: 5, blue: 6, purple: 7, pink: 8, red: 9,
+};
+
+// Notion color name keys in palette index order
+const NOTION_COLOR_NAMES = ["default", "gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red"];
+
+/**
+ * Resolve a property value to a palette color entry.
+ * Priority: explicit user mapping → Notion schema color → palette fallback.
+ * Returns: { hex: string, text: string }
+ */
+export function resolveViewColor(value, colorMapping, schemaOptions) {
+  // 1. Explicit user mapping (config.colorMapping: { "High": 9 })
+  if (colorMapping && colorMapping[value] !== undefined) {
+    const idx = colorMapping[value];
+    return VIEW_PALETTE[idx] || VIEW_PALETTE[0];
+  }
+  // 2. Notion schema color → palette
+  if (schemaOptions) {
+    const opt = schemaOptions.find((o) => o.name === value);
+    if (opt?.color && NOTION_TO_PALETTE_IDX[opt.color] !== undefined) {
+      return VIEW_PALETTE[NOTION_TO_PALETTE_IDX[opt.color]];
+    }
+  }
+  // 3. Fallback: hash to a palette index
+  if (value) {
+    let hash = 0;
+    for (let i = 0; i < value.length; i++) {
+      hash = value.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return VIEW_PALETTE[Math.abs(hash) % VIEW_PALETTE.length];
+  }
+  return VIEW_PALETTE[0];
+}
+
+// ── Wasabi Color Palette ──
+// Mutable map of Notion color names → { fill, text }. Rebuilt from VIEW_PALETTE.
+export const WASABI_COLORS = {};
+function _rebuildWasabiColors() {
+  NOTION_COLOR_NAMES.forEach((name, i) => {
+    WASABI_COLORS[name] = { fill: VIEW_PALETTE[i].hex, text: VIEW_PALETTE[i].text };
+  });
+}
+_rebuildWasabiColors();
+
+/** Map a Notion color name → Wasabi fill color */
+export function notionColorToWasabi(notionColor) {
+  const entry = WASABI_COLORS[notionColor];
+  return entry ? entry.fill : WASABI_COLORS.default.fill;
+}
+
+/** Get the full Wasabi color entry (fill + text) for a Notion color */
+export function getWasabiColor(notionColor) {
+  return WASABI_COLORS[notionColor] || WASABI_COLORS.default;
+}
+
+// Generic select option colors (mutable, derived from VIEW_PALETTE)
+export const SELECT_PALETTE = VIEW_PALETTE.map((p) => p.hex);
+function _rebuildSelectPalette() {
+  for (let i = 0; i < VIEW_PALETTE.length; i++) {
+    SELECT_PALETTE[i] = VIEW_PALETTE[i].hex;
+  }
+  SELECT_PALETTE.length = VIEW_PALETTE.length;
+}
+
+// Generate a color for a select option by index
+export function getSelectColor(index) {
+  return SELECT_PALETTE[index % SELECT_PALETTE.length];
+}
+
+// Status colors (generic — maps status name → color)
+export const STATUS_COLORS = {
+  "Design":              "#FF4800",
+  "Waiting on Deposit":  "#FF8C42",
+  "Waiting on Vendor":   "#FFB347",
+  "Awaiting PO":         "#FFC97A",
+  "In Production":       "#7DC143",
+  "Quality Check":       "#9DD467",
+  "Shipping":            "#2A6B38",
+  "Delivered":           "#7DC143",
+  "Cancelled":           "#9A8E82",
+};
+
+// Fallback colors for items without a status
+export const FALLBACK_COLORS = [
+  "#8B7355", "#A0926E", "#B5A882", "#C9BD96",
+  "#6B5E4A", "#7A6D58", "#89806B",
+];
+
+// Get a status-like pill color, falling back to palette
+export function getStatusColor(value, options = []) {
+  if (STATUS_COLORS[value]) return STATUS_COLORS[value];
+  const idx = options.indexOf(value);
+  if (idx >= 0) return SELECT_PALETTE[idx % SELECT_PALETTE.length];
+  // Hash fallback
+  let hash = 0;
+  for (let i = 0; i < (value || "").length; i++) {
+    hash = value.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return FALLBACK_COLORS[Math.abs(hash) % FALLBACK_COLORS.length];
+}
+
+/**
+ * Get a solid-fill pill style for a select/status value.
+ * Uses the Notion color from schema, falling back to palette.
+ */
+export function getSolidPillColor(value, options = [], schemaOptions = []) {
+  const opt = schemaOptions.find((o) => o.name === value);
+  if (opt?.color) {
+    const wasabi = WASABI_COLORS[opt.color];
+    if (wasabi) return wasabi;
+  }
+  const idx = options.indexOf(value);
+  const fill = idx >= 0 ? SELECT_PALETTE[idx % SELECT_PALETTE.length] : getStatusColor(value, options);
+  return { fill, text: "#fff" };
+}
+
+/** Apply a theme by name + mode. Mutates C and all palettes in place. */
 export function applyTheme(name, mode) {
   // Support old single-arg call: applyTheme("dark")
   if (mode === undefined && (name === "dark" || name === "light")) {
     mode = name;
     name = _currentThemeName;
   }
-  const theme = THEMES[name] || THEMES.wasabi;
+  const theme = THEMES[name] || THEMES.nigiri;
   _currentThemeName = name;
   _currentThemeMode = mode || "dark";
   const tokens = theme[_currentThemeMode] || theme.dark;
+
+  // Update C tokens
   Object.assign(C, tokens, {
     accent: theme.accent,
     accentDim: theme.accentDim,
     accentPale: theme.accentPale,
   });
+
+  // Update VIEW_PALETTE in place
+  const newPalette = theme.palette;
+  for (let i = 0; i < newPalette.length; i++) {
+    VIEW_PALETTE[i] = { ...newPalette[i] };
+  }
+  VIEW_PALETTE.length = newPalette.length;
+
+  // Rebuild derived palettes
+  _rebuildWasabiColors();
+  _rebuildSelectPalette();
+  _rebuildTimelinePalette();
+
+  // Persist
   if (typeof localStorage !== "undefined") {
     localStorage.setItem("wasabi-theme-name", _currentThemeName);
     localStorage.setItem("wasabi-theme-mode", _currentThemeMode);
@@ -203,156 +449,3 @@ export const BP = {
   mobile: 640,
   tablet: 1024,
 };
-
-// Status colors (generic — maps status name → color)
-export const STATUS_COLORS = {
-  "Design":              "#FF4800",
-  "Waiting on Deposit":  "#FF8C42",
-  "Waiting on Vendor":   "#FFB347",
-  "Awaiting PO":         "#FFC97A",
-  "In Production":       "#7DC143",
-  "Quality Check":       "#9DD467",
-  "Shipping":            "#2A6B38",
-  "Delivered":           "#7DC143",
-  "Cancelled":           "#9A8E82",
-};
-
-// Fallback colors for items without a status
-export const FALLBACK_COLORS = [
-  "#8B7355", "#A0926E", "#B5A882", "#C9BD96",
-  "#6B5E4A", "#7A6D58", "#89806B",
-];
-
-// Auto-assigned palette for timeline / Gantt fields
-export const TIMELINE_PALETTE = [
-  { color: "#8B6FBE", bg: "#F0EBF8" },
-  { color: "#2A6B38", bg: "#E6F4E9" },
-  { color: "#1C5C8A", bg: "#E3EFF8" },
-  { color: "#C47A1A", bg: "#FDF3E3" },
-  { color: "#A0303A", bg: "#FAE8EA" },
-  { color: "#2A7A7A", bg: "#E3F5F5" },
-  { color: "#6B5A2A", bg: "#F5F0E3" },
-];
-
-// Milestone phase colors
-export const PHASE_COLORS = {
-  design:     { color: "#F0C94E", bg: "#FDF8E3" },
-  production: { color: "#7DC143", bg: "#E6F4E9" },
-  shipping:   { color: "#2A6B38", bg: "#E6F4E9" },
-};
-
-// ── Global View Palette ──
-// Canonical 10-color palette used by all views for property-driven coloring.
-// Index-based: view configs store palette indices (0-9) in colorMapping.
-export const VIEW_PALETTE = [
-  { key: "slate",  hex: "#6B7280", text: "#fff" },   // 0
-  { key: "gray",   hex: "#9CA3AF", text: "#fff" },   // 1
-  { key: "brown",  hex: "#92704F", text: "#fff" },   // 2
-  { key: "orange", hex: "#FF6B35", text: "#fff" },   // 3
-  { key: "yellow", hex: "#F5B724", text: "#1A1812" }, // 4
-  { key: "green",  hex: "#7DC143", text: "#fff" },   // 5
-  { key: "blue",   hex: "#3B82F6", text: "#fff" },   // 6
-  { key: "purple", hex: "#8B6FBE", text: "#fff" },   // 7
-  { key: "pink",   hex: "#E87CA0", text: "#fff" },   // 8
-  { key: "red",    hex: "#E05252", text: "#fff" },   // 9
-];
-
-// Map Notion color names → palette index for auto-mapping
-const NOTION_TO_PALETTE_IDX = {
-  default: 0, gray: 1, brown: 2, orange: 3, yellow: 4,
-  green: 5, blue: 6, purple: 7, pink: 8, red: 9,
-};
-
-/**
- * Resolve a property value to a palette color entry.
- * Priority: explicit user mapping → Notion schema color → palette fallback.
- * Returns: { hex: string, text: string }
- */
-export function resolveViewColor(value, colorMapping, schemaOptions) {
-  // 1. Explicit user mapping (config.colorMapping: { "High": 9 })
-  if (colorMapping && colorMapping[value] !== undefined) {
-    const idx = colorMapping[value];
-    return VIEW_PALETTE[idx] || VIEW_PALETTE[0];
-  }
-  // 2. Notion schema color → palette
-  if (schemaOptions) {
-    const opt = schemaOptions.find((o) => o.name === value);
-    if (opt?.color && NOTION_TO_PALETTE_IDX[opt.color] !== undefined) {
-      return VIEW_PALETTE[NOTION_TO_PALETTE_IDX[opt.color]];
-    }
-  }
-  // 3. Fallback: hash to a palette index
-  if (value) {
-    let hash = 0;
-    for (let i = 0; i < value.length; i++) {
-      hash = value.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    return VIEW_PALETTE[Math.abs(hash) % VIEW_PALETTE.length];
-  }
-  return VIEW_PALETTE[0];
-}
-
-// ── Wasabi Color Palette ──
-// 10 solid-fill colors reinterpreting Notion's palette.
-export const WASABI_COLORS = {
-  default:  { fill: "#6B7280", text: "#fff" },
-  gray:     { fill: "#9CA3AF", text: "#fff" },
-  brown:    { fill: "#92704F", text: "#fff" },
-  orange:   { fill: "#FF6B35", text: "#fff" },
-  yellow:   { fill: "#F5B724", text: "#1A1812" },
-  green:    { fill: "#7DC143", text: "#fff" },
-  blue:     { fill: "#3B82F6", text: "#fff" },
-  purple:   { fill: "#8B6FBE", text: "#fff" },
-  pink:     { fill: "#E87CA0", text: "#fff" },
-  red:      { fill: "#E05252", text: "#fff" },
-};
-
-/** Map a Notion color name → Wasabi fill color */
-export function notionColorToWasabi(notionColor) {
-  const entry = WASABI_COLORS[notionColor];
-  return entry ? entry.fill : WASABI_COLORS.default.fill;
-}
-
-/** Get the full Wasabi color entry (fill + text) for a Notion color */
-export function getWasabiColor(notionColor) {
-  return WASABI_COLORS[notionColor] || WASABI_COLORS.default;
-}
-
-// Generic select option colors (for auto-coloring select fields)
-export const SELECT_PALETTE = [
-  "#7DC143", "#3B82F6", "#FF6B35", "#E87CA0", "#8B6FBE",
-  "#F5B724", "#2A6B38", "#E05252", "#92704F", "#9CA3AF",
-];
-
-// Generate a color for a select option by index
-export function getSelectColor(index) {
-  return SELECT_PALETTE[index % SELECT_PALETTE.length];
-}
-
-// Get a status-like pill color, falling back to palette
-export function getStatusColor(value, options = []) {
-  if (STATUS_COLORS[value]) return STATUS_COLORS[value];
-  const idx = options.indexOf(value);
-  if (idx >= 0) return SELECT_PALETTE[idx % SELECT_PALETTE.length];
-  // Hash fallback
-  let hash = 0;
-  for (let i = 0; i < (value || "").length; i++) {
-    hash = value.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return FALLBACK_COLORS[Math.abs(hash) % FALLBACK_COLORS.length];
-}
-
-/**
- * Get a solid-fill pill style for a select/status value.
- * Uses the Notion color from schema, falling back to palette.
- */
-export function getSolidPillColor(value, options = [], schemaOptions = []) {
-  const opt = schemaOptions.find((o) => o.name === value);
-  if (opt?.color) {
-    const wasabi = WASABI_COLORS[opt.color];
-    if (wasabi) return wasabi;
-  }
-  const idx = options.indexOf(value);
-  const fill = idx >= 0 ? SELECT_PALETTE[idx % SELECT_PALETTE.length] : getStatusColor(value, options);
-  return { fill, text: "#fff" };
-}
