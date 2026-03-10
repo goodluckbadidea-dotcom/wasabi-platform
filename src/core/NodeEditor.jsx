@@ -13,8 +13,7 @@ import {
   IconPlay, IconDatabase, IconCalendar, IconBolt, IconCondition,
   IconEdit, IconPlus, IconBell, IconTransform, IconTrash, IconClose,
 } from "../design/icons.jsx";
-import { loadCachedFlows, saveFlow, loadFlows, initFlowsDB, deleteFlow } from "../config/flowStorage.js";
-import { savePlatformIds, loadPlatformIds } from "../config/setup.js";
+import { loadCachedFlows, saveFlow, loadFlows, deleteFlow } from "../config/flowStorage.js";
 import ConfirmDialog from "./ConfirmDialog.jsx";
 import InlineEdit from "./InlineEdit.jsx";
 
@@ -415,15 +414,15 @@ export default function NodeEditor({ automationEngine }) {
 
   const canvasRef = useRef(null);
 
-  // ── Load flows from Notion on mount ──
+  // ── Load flows from D1 on mount ──
   useEffect(() => {
-    if (!user?.workerUrl || !user?.notionKey || !platformIds?.flowsDbId) return;
-    loadFlows(user.workerUrl, user.notionKey, platformIds.flowsDbId)
+    if (!user?.workerUrl) return;
+    loadFlows()
       .then((loaded) => {
         if (loaded.length > 0) setFlows(loaded);
       })
       .catch((err) => console.error("[NodeEditor] Failed to load flows:", err));
-  }, [user, platformIds?.flowsDbId]);
+  }, [user?.workerUrl]);
 
   // ── Active flow data ──
   const activeFlow = useMemo(() => flows.find((f) => f.id === activeFlowId), [flows, activeFlowId]);
@@ -443,24 +442,6 @@ export default function NodeEditor({ automationEngine }) {
     () => nodes.find((n) => n.id === selectedNodeId),
     [nodes, selectedNodeId]
   );
-
-  // ── Ensure Flows DB exists ──
-  const ensureFlowsDb = useCallback(async () => {
-    if (platformIds?.flowsDbId) return platformIds.flowsDbId;
-    if (!user?.workerUrl || !user?.notionKey || !platformIds?.rootPageId) return null;
-
-    try {
-      const dbId = await initFlowsDB(user.workerUrl, user.notionKey, platformIds.rootPageId);
-      // Save to platform IDs
-      const ids = loadPlatformIds() || {};
-      ids.flowsDbId = dbId;
-      savePlatformIds(ids);
-      return dbId;
-    } catch (err) {
-      console.error("[NodeEditor] Failed to init flows DB:", err);
-      return null;
-    }
-  }, [user, platformIds]);
 
   // ── Add node ──
   const handleAddNode = useCallback((paletteItem) => {
@@ -588,12 +569,6 @@ export default function NodeEditor({ automationEngine }) {
     setSaveStatus("saving");
 
     try {
-      const flowsDbId = await ensureFlowsDb();
-      if (!flowsDbId) {
-        setSaveStatus("error");
-        return;
-      }
-
       const currentFlow = flows.find((f) => f.id === activeFlowId);
       const updatedFlow = {
         ...currentFlow,
@@ -601,9 +576,9 @@ export default function NodeEditor({ automationEngine }) {
         connections,
       };
 
-      const savedId = await saveFlow(user.workerUrl, user.notionKey, flowsDbId, updatedFlow);
+      const savedId = await saveFlow(updatedFlow);
 
-      // Update flow in local state with the Notion page ID
+      // Update flow in local state with the D1 ID
       setFlows((prev) =>
         prev.map((f) =>
           f.id === activeFlowId
@@ -612,7 +587,7 @@ export default function NodeEditor({ automationEngine }) {
         )
       );
 
-      // If the ID changed (new flow got a Notion page ID), update activeFlowId
+      // If the ID changed (new flow got a D1 UUID), update activeFlowId
       if (savedId && savedId !== activeFlowId) {
         setActiveFlowId(savedId);
       }
@@ -624,7 +599,7 @@ export default function NodeEditor({ automationEngine }) {
       setSaveStatus("error");
       setTimeout(() => setSaveStatus(null), 3000);
     }
-  }, [activeFlowId, flows, nodes, connections, user, ensureFlowsDb]);
+  }, [activeFlowId, flows, nodes, connections]);
 
   // ── Run flow (manual execution with visual trace) ──
   const handleRunFlow = useCallback(async () => {
@@ -672,13 +647,13 @@ export default function NodeEditor({ automationEngine }) {
 
   // ── Delete flow ──
   const handleDeleteFlow = useCallback(async (flowId) => {
-    // Archive in Notion if it's a persisted flow (not a temp ID)
-    const isNotion = flowId && !flowId.startsWith("flow_");
-    if (isNotion && user?.workerUrl && user?.notionKey) {
+    // Delete from D1 if it's a persisted flow (not a temp ID)
+    const isPersisted = flowId && !flowId.startsWith("flow_");
+    if (isPersisted) {
       try {
-        await deleteFlow(user.workerUrl, user.notionKey, flowId);
+        await deleteFlow(flowId);
       } catch (err) {
-        console.error("[NodeEditor] Failed to archive flow:", err);
+        console.error("[NodeEditor] Failed to delete flow:", err);
       }
     }
     setFlows((prev) => prev.filter((f) => f.id !== flowId));
@@ -689,7 +664,7 @@ export default function NodeEditor({ automationEngine }) {
       setSelectedNodeId(null);
     }
     setConfirmDelete(null);
-  }, [activeFlowId, user]);
+  }, [activeFlowId]);
 
   // ── Rename flow ──
   const handleRenameFlow = useCallback((flowId, newName) => {

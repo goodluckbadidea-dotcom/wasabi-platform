@@ -894,7 +894,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                   </g>
                 )}
 
-                {/* ─── Bars ─── */}
+                {/* ─── Bars: Pass 1 — bar rects + resize handles ─── */}
                 {rows.map((row, rowIdx) => {
                   const y = rowIdx * dynamicRowHeight + (dynamicRowHeight - barHeight) / 2;
 
@@ -904,7 +904,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                     const radius = barHeight >= 16 ? 6 : 3;
 
                     return (
-                      <g key={`${row.pageId}-${barIdx}`}>
+                      <g key={`bar-${row.pageId}-${barIdx}`}>
                         {/* Bar background */}
                         <rect
                           x={x}
@@ -942,42 +942,6 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                           onMouseLeave={() => !isDragging && setTooltip(null)}
                         />
 
-                        {/* Bar label (only at wide zoom) */}
-                        {showBarLabels && w > 60 && (
-                          <text
-                            x={x + 8}
-                            y={y + (barFieldCount > 0 ? 14 : barHeight / 2)}
-                            dominantBaseline="middle"
-                            fill="#fff"
-                            fontSize={11}
-                            fontWeight={600}
-                            fontFamily={FONT}
-                            style={{ pointerEvents: "none" }}
-                          >
-                            {row.label.length > Math.floor(w / 7) ? row.label.slice(0, Math.floor(w / 7) - 2) + "…" : row.label}
-                          </text>
-                        )}
-
-                        {/* Bar property labels (from config.barFields) */}
-                        {showBarLabels && w > 60 && (config.barFields || []).map((fieldName, idx) => {
-                          const val = readField(row.page, fieldName);
-                          if (!val) return null;
-                          return (
-                            <text
-                              key={fieldName}
-                              x={x + 8}
-                              y={y + 14 + ((idx + 1) * LABEL_LINE_H)}
-                              dominantBaseline="middle"
-                              fill="rgba(255,255,255,0.8)"
-                              fontSize={9}
-                              fontFamily={FONT}
-                              style={{ pointerEvents: "none" }}
-                            >
-                              {String(val).slice(0, Math.floor(w / 6))}
-                            </text>
-                          );
-                        })}
-
                         {/* Resize handles at wide zoom */}
                         {showBarLabels && onUpdate && w > 20 && (
                           <>
@@ -1009,6 +973,54 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                             />
                           </>
                         )}
+                      </g>
+                    );
+                  });
+                })}
+
+                {/* ─── Bars: Pass 2 — text labels (rendered on top of ALL bars) ─── */}
+                {rows.map((row, rowIdx) => {
+                  const y = rowIdx * dynamicRowHeight + (dynamicRowHeight - barHeight) / 2;
+
+                  return row.bars.map((bar, barIdx) => {
+                    const { x, w } = getBarRect(row, bar);
+                    if (!showBarLabels || w <= 60) return null;
+
+                    return (
+                      <g key={`label-${row.pageId}-${barIdx}`}>
+                        {/* Bar label */}
+                        <text
+                          x={x + 8}
+                          y={y + (barFieldCount > 0 ? 14 : barHeight / 2)}
+                          dominantBaseline="middle"
+                          fill="#fff"
+                          fontSize={11}
+                          fontWeight={600}
+                          fontFamily={FONT}
+                          style={{ pointerEvents: "none" }}
+                        >
+                          {row.label.length > Math.floor(w / 7) ? row.label.slice(0, Math.floor(w / 7) - 2) + "…" : row.label}
+                        </text>
+
+                        {/* Bar property labels (from config.barFields) */}
+                        {(config.barFields || []).map((fieldName, idx) => {
+                          const val = readField(row.page, fieldName);
+                          if (!val) return null;
+                          return (
+                            <text
+                              key={fieldName}
+                              x={x + 8}
+                              y={y + 14 + ((idx + 1) * LABEL_LINE_H)}
+                              dominantBaseline="middle"
+                              fill="rgba(255,255,255,0.8)"
+                              fontSize={9}
+                              fontFamily={FONT}
+                              style={{ pointerEvents: "none" }}
+                            >
+                              {String(val).slice(0, Math.floor(w / 6))}
+                            </text>
+                          );
+                        })}
                       </g>
                     );
                   });

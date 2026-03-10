@@ -85,6 +85,18 @@ CREATE TABLE IF NOT EXISTS automation_rules (
   updated_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS automation_flows (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL DEFAULT 'Untitled',
+  description TEXT DEFAULT '',
+  flow_data TEXT DEFAULT '{}',
+  enabled INTEGER DEFAULT 0,
+  run_count INTEGER DEFAULT 0,
+  last_run TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS notifications (
   id TEXT PRIMARY KEY,
   message TEXT NOT NULL,
@@ -436,6 +448,26 @@ export default {
       if (path === "/d1/rules" && request.method === "POST") {
         const body = await request.json();
         return await handleCreateRule(env, body);
+      }
+
+      // ─── D1 Automation Flows CRUD ───
+      const flowMatch = path.match(/^\/d1\/flows\/([^/]+)$/);
+      if (flowMatch) {
+        const id = flowMatch[1];
+        if (request.method === "GET") return await handleGetFlow(env, id);
+        if (request.method === "PATCH") {
+          const body = await request.json();
+          return await handleUpdateFlow(env, id, body);
+        }
+        if (request.method === "DELETE") return await handleDeleteFlow(env, id);
+      }
+
+      if (path === "/d1/flows" && request.method === "GET") {
+        return await handleListFlows(env, url);
+      }
+      if (path === "/d1/flows" && request.method === "POST") {
+        const body = await request.json();
+        return await handleCreateFlow(env, body);
       }
 
       // ─── D1 Notifications CRUD ───
@@ -2100,6 +2132,86 @@ async function handleUpdateRule(env, id, body) {
 
 async function handleDeleteRule(env, id) {
   await env.DB.prepare("DELETE FROM automation_rules WHERE id = ?").bind(id).run();
+  return jsonResponse({ success: true, id });
+}
+
+// ─── D1 Automation Flows Handlers ───
+
+async function handleListFlows(env, url) {
+  const enabled = url.searchParams.get("enabled");
+  let query = "SELECT * FROM automation_flows";
+  const params = [];
+  if (enabled === "true") { query += " WHERE enabled = 1"; }
+  else if (enabled === "false") { query += " WHERE enabled = 0"; }
+  query += " ORDER BY updated_at DESC";
+
+  const { results } = await env.DB.prepare(query).bind(...params).all();
+  const flows = (results || []).map((r) => ({
+    ...r,
+    flow_data: safeParseJSON(r.flow_data),
+    enabled: !!r.enabled,
+  }));
+  return jsonResponse({ flows });
+}
+
+async function handleCreateFlow(env, body) {
+  const id = crypto.randomUUID();
+  const {
+    name = "Untitled", description = "", flow_data = {},
+    enabled = false,
+  } = body;
+
+  await env.DB.prepare(
+    `INSERT INTO automation_flows (id, name, description, flow_data, enabled, run_count, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 0, datetime('now'), datetime('now'))`
+  ).bind(
+    id, name, description,
+    typeof flow_data === "string" ? flow_data : JSON.stringify(flow_data),
+    enabled ? 1 : 0,
+  ).run();
+
+  return jsonResponse({ id, name, success: true });
+}
+
+async function handleGetFlow(env, id) {
+  const row = await env.DB.prepare("SELECT * FROM automation_flows WHERE id = ?").bind(id).first();
+  if (!row) return jsonResponse({ _error: "Flow not found" }, 404);
+  row.flow_data = safeParseJSON(row.flow_data);
+  row.enabled = !!row.enabled;
+  return jsonResponse(row);
+}
+
+async function handleUpdateFlow(env, id, body) {
+  const sets = [];
+  const vals = [];
+
+  for (const [key, val] of Object.entries(body)) {
+    if (["name", "description", "last_run"].includes(key)) {
+      sets.push(`${key} = ?`);
+      vals.push(val);
+    } else if (key === "flow_data") {
+      sets.push("flow_data = ?");
+      vals.push(typeof val === "string" ? val : JSON.stringify(val));
+    } else if (key === "enabled") {
+      sets.push("enabled = ?");
+      vals.push(val ? 1 : 0);
+    } else if (key === "run_count") {
+      sets.push("run_count = ?");
+      vals.push(val);
+    }
+  }
+
+  if (sets.length === 0) return jsonResponse({ _error: "No valid fields to update" }, 400);
+
+  sets.push("updated_at = datetime('now')");
+  vals.push(id);
+
+  await env.DB.prepare(`UPDATE automation_flows SET ${sets.join(", ")} WHERE id = ?`).bind(...vals).run();
+  return jsonResponse({ success: true, id });
+}
+
+async function handleDeleteFlow(env, id) {
+  await env.DB.prepare("DELETE FROM automation_flows WHERE id = ?").bind(id).run();
   return jsonResponse({ success: true, id });
 }
 

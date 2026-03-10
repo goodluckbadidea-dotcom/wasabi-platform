@@ -80,7 +80,7 @@ function TreeNode({
     }
     if (nt === "view") {
       onNavigate(node.parentPageId);
-      onSetActiveView?.(node.viewIndex);
+      onSetActiveView?.(node.parentPageId, node.viewIndex);
     } else if (nt === "workspace" || nt === "folder") {
       onToggleExpand(node.id);
     } else {
@@ -187,7 +187,7 @@ function TreeNode({
               color: isActive ? "#fff" : C.darkMuted,
               whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
             }}>
-              {VIEW_SHORT[node.viewType] || node.name}
+              {node.name || VIEW_SHORT[node.viewType] || node.viewType}
             </span>
           )}
 

@@ -27,6 +27,8 @@ export default function Navigation({
   onToggleWasabiPanel,
   isThinking,
   onCreatePage,
+  viewStates,
+  onSetViewForPage,
 }) {
   const {
     user, pages, activePage, setActivePage,
@@ -38,8 +40,8 @@ export default function Navigation({
   const [contextMenu, setContextMenu] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Active view index (read from App.jsx viewStates)
-  const [activeViewIndex] = useState(0);
+  // Active view index (from App.jsx viewStates)
+  const activeViewIndex = viewStates?.[activePage] ?? 0;
 
   const SIDEBAR_W = collapsed ? 48 : 220;
 
@@ -210,7 +212,7 @@ export default function Navigation({
         activePage={activePage}
         activeViewIndex={activeViewIndex}
         onNavigate={navigateToPage}
-        onSetActiveView={() => {}} // TODO: wire to App.jsx viewStates
+        onSetActiveView={(pageId, viewIdx) => onSetViewForPage?.(pageId, viewIdx)}
         onRename={handleRename}
         onDelete={(node) => setConfirmDelete({ node })}
         onContextMenu={handleContextMenu}

@@ -31,16 +31,16 @@ const NODE_RADIUS = {
 };
 
 // ── Force simulation ──
-function createSimulation(nodes, edges) {
-  // Initialize positions in a circle
-  const cx = 0;
-  const cy = 0;
-  const r = Math.max(150, nodes.length * 20);
+function createSimulation(nodes, edges, width, height) {
+  // Initialize positions in a circle around the canvas center
+  const cx = width / 2;
+  const cy = height / 2;
+  const r = Math.min(Math.max(80, nodes.length * 18), Math.min(width, height) * 0.35);
 
   nodes.forEach((n, i) => {
     const angle = (2 * Math.PI * i) / nodes.length;
-    n.x = cx + r * Math.cos(angle) + (Math.random() - 0.5) * 30;
-    n.y = cy + r * Math.sin(angle) + (Math.random() - 0.5) * 30;
+    n.x = cx + r * Math.cos(angle) + (Math.random() - 0.5) * 20;
+    n.y = cy + r * Math.sin(angle) + (Math.random() - 0.5) * 20;
     n.vx = 0;
     n.vy = 0;
     n.fx = 0;
@@ -319,9 +319,10 @@ export default function NetworkGraph({ automationEngine }) {
           edges: edges.length,
         });
 
-        // Create simulation
+        // Create simulation (use current canvas size or fallback)
         if (nodes.length > 0) {
-          const sim = createSimulation(nodes, edges);
+          const { width, height } = sizeRef.current;
+          const sim = createSimulation(nodes, edges, width || 800, height || 600);
           simRef.current = sim;
         } else {
           simRef.current = null;

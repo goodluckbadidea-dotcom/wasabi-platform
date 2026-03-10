@@ -1,56 +1,17 @@
 // ─── Flow Storage ───
-// Stores and loads automation flows from Notion + localStorage cache.
-// Same persistence pattern as pageConfig.js.
+// Stores and loads automation flows using D1 (via worker API).
+// Falls back to localStorage cache for instant startup.
 
-import { queryAll, createPage, updatePage, createDatabase } from "../notion/client.js";
-import { safeJSON } from "../utils/helpers.js";
-
-const FLOWS_SCHEMA = [
-  { name: "Name", type: "title" },
-  { name: "Description", type: "rich_text" },
-  { name: "Flow Data", type: "rich_text" },
-  { name: "Enabled", type: "checkbox" },
-  { name: "Last Run", type: "date" },
-  { name: "Run Count", type: "number" },
-];
+import * as api from "../lib/api.js";
 
 const CACHE_KEY = "wasabi_flows";
 
 /**
- * Initialize the Flows database (lazy, called on first use).
+ * Load all flows from D1.
  */
-export async function initFlowsDB(workerUrl, notionKey, rootPageId) {
-  const db = await createDatabase(workerUrl, notionKey, rootPageId, "Automation Flows", FLOWS_SCHEMA);
-  return db.id;
-}
-
-/**
- * Load all flows from Notion.
- */
-export async function loadFlows(workerUrl, notionKey, flowsDbId) {
-  const results = await queryAll(workerUrl, notionKey, flowsDbId);
-
-  const flows = results.map((page) => {
-    const name = page.properties?.Name?.title?.map((t) => t.plain_text).join("") || "Untitled";
-    const description = page.properties?.Description?.rich_text?.map((t) => t.plain_text).join("") || "";
-    const flowDataStr = page.properties?.["Flow Data"]?.rich_text?.map((t) => t.plain_text).join("") || "{}";
-    const enabled = page.properties?.Enabled?.checkbox || false;
-    const lastRun = page.properties?.["Last Run"]?.date?.start || null;
-    const runCount = page.properties?.["Run Count"]?.number || 0;
-
-    const flowData = safeJSON(flowDataStr, {});
-
-    return {
-      id: page.id,
-      name,
-      description,
-      enabled,
-      lastRun,
-      runCount,
-      nodes: flowData.nodes || [],
-      connections: flowData.connections || [],
-    };
-  });
+export async function loadFlows() {
+  const result = await api.listFlows();
+  const flows = (result.flows || []).map(fromD1Row);
 
   // Cache locally
   try {
@@ -73,61 +34,73 @@ export function loadCachedFlows() {
 }
 
 /**
- * Save a flow to Notion (create or update).
- * Returns the page ID.
+ * Save a flow to D1 (create or update).
+ * Returns the flow ID.
  */
-export async function saveFlow(workerUrl, notionKey, flowsDbId, flow) {
+export async function saveFlow(flow) {
   const { id, name, description, enabled, nodes, connections, lastRun, runCount } = flow;
-  const flowDataStr = JSON.stringify({ nodes, connections });
+  const flowData = { nodes, connections };
 
-  const properties = {
-    Name: { title: [{ type: "text", text: { content: name || "Untitled" } }] },
-    Description: { rich_text: [{ type: "text", text: { content: description || "" } }] },
-    "Flow Data": { rich_text: [{ type: "text", text: { content: flowDataStr } }] },
-    Enabled: { checkbox: enabled || false },
-    "Run Count": { number: runCount || 0 },
-  };
-
-  // Include Last Run if present
-  if (lastRun) {
-    properties["Last Run"] = { date: { start: lastRun } };
-  }
-
-  // Check if this is an existing Notion page (real UUID) or a temp ID
+  // Check if this is an existing D1 record or a temp local ID
   const isExisting = id && !id.startsWith("flow_");
 
   if (isExisting) {
-    await updatePage(workerUrl, notionKey, id, properties);
-
-    // Update cache
+    await api.updateFlow(id, {
+      name: name || "Untitled",
+      description: description || "",
+      flow_data: flowData,
+      enabled: enabled || false,
+      run_count: runCount || 0,
+      last_run: lastRun || null,
+    });
     updateCachedFlow(flow);
-
     return id;
   }
 
   // Create new
-  const page = await createPage(workerUrl, notionKey, flowsDbId, properties);
+  const result = await api.createFlow({
+    name: name || "Untitled",
+    description: description || "",
+    flow_data: flowData,
+    enabled: enabled || false,
+  });
 
-  // Update cache with real ID
-  const savedFlow = { ...flow, id: page.id };
+  const savedFlow = { ...flow, id: result.id };
   updateCachedFlow(savedFlow, id);
-
-  return page.id;
+  return result.id;
 }
 
 /**
- * Delete (archive) a flow.
+ * Delete a flow from D1.
  */
-export async function deleteFlow(workerUrl, notionKey, flowPageId) {
-  await updatePage(workerUrl, notionKey, flowPageId, {
-    Enabled: { checkbox: false },
-  });
+export async function deleteFlow(flowId) {
+  await api.deleteFlow(flowId);
   // Remove from cache
   try {
     const cached = loadCachedFlows();
-    const updated = cached.filter((f) => f.id !== flowPageId);
+    const updated = cached.filter((f) => f.id !== flowId);
     localStorage.setItem(CACHE_KEY, JSON.stringify(updated));
   } catch {}
+}
+
+/**
+ * Convert a D1 row to frontend flow format.
+ */
+function fromD1Row(row) {
+  const flowData = typeof row.flow_data === "string"
+    ? JSON.parse(row.flow_data || "{}")
+    : (row.flow_data || {});
+
+  return {
+    id: row.id,
+    name: row.name || "Untitled",
+    description: row.description || "",
+    enabled: !!row.enabled,
+    lastRun: row.last_run || null,
+    runCount: row.run_count || 0,
+    nodes: flowData.nodes || [],
+    connections: flowData.connections || [],
+  };
 }
 
 /**

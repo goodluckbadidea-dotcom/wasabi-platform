@@ -372,6 +372,8 @@ function AppContent() {
           onToggleWasabiPanel={() => setWasabiPanelOpen((o) => !o)}
           isThinking={false}
           onCreatePage={handleAddPage}
+          viewStates={viewStates}
+          onSetViewForPage={(pageId, viewIdx) => setViewStates((prev) => ({ ...prev, [pageId]: viewIdx }))}
         />
 
         {/* Main Content */}

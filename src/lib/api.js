@@ -237,6 +237,31 @@ export async function deleteRule(id) {
   return apiFetch(`/d1/rules/${id}`, { method: "DELETE" });
 }
 
+// ─── Automation Flows ───
+
+export async function listFlows({ enabled } = {}) {
+  const params = new URLSearchParams();
+  if (enabled !== undefined) params.set("enabled", enabled);
+  const qs = params.toString();
+  return apiFetch(`/d1/flows${qs ? `?${qs}` : ""}`, { method: "GET" });
+}
+
+export async function createFlow(flow) {
+  return apiFetch("/d1/flows", { method: "POST", body: flow });
+}
+
+export async function getFlow(id) {
+  return apiFetch(`/d1/flows/${id}`, { method: "GET" });
+}
+
+export async function updateFlow(id, updates) {
+  return apiFetch(`/d1/flows/${id}`, { method: "PATCH", body: updates });
+}
+
+export async function deleteFlow(id) {
+  return apiFetch(`/d1/flows/${id}`, { method: "DELETE" });
+}
+
 // ─── Notifications ───
 
 export async function listNotifications({ status, limit, offset } = {}) {
