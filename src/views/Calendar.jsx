@@ -4,7 +4,7 @@
 
 import React, { useState, useMemo, useCallback } from "react";
 import { C, FONT, RADIUS, SHADOW, getSolidPillColor } from "../design/tokens.js";
-import { readProp } from "../notion/properties.js";
+import { readProp, buildProp } from "../notion/properties.js";
 import { IconChevronLeft, IconChevronRight } from "../design/icons.jsx";
 import RecordDetail from "./RecordDetail.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
@@ -236,12 +236,15 @@ const cal = {
 };
 
 // ── Main Component ──
-export default function Calendar({ data = [], schema, config = {}, onUpdate, onRefresh }) {
+export default function Calendar({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, pageConfig }) {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [popover, setPopover] = useState(null); // { x, y, date, events }
   const [detailPage, setDetailPage] = useState(null);
+  const [addingDate, setAddingDate] = useState(null); // "YYYY-MM-DD" being added to
+  const [addTitle, setAddTitle] = useState("");
+  const [addSaving, setAddSaving] = useState(false);
 
   const dateField = resolveDateField(schema, config);
   const titleField = resolveTitleField(schema);
@@ -322,11 +325,37 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
     setPopover(null);
   }, []); // eslint-disable-line
 
+  // Target DB for creating records
+  const targetDatabaseId = config.databaseId || pageConfig?.databaseIds?.[0] || pageConfig?.id;
+
+  // Add event to a specific date
+  const handleAddToDate = useCallback(async (dateStr) => {
+    if (!onCreate || !targetDatabaseId || !addTitle.trim()) return;
+    setAddSaving(true);
+    try {
+      const props = {};
+      if (titleField) props[titleField] = buildProp("title", addTitle.trim());
+      if (dateField) props[dateField] = buildProp("date", dateStr);
+      await onCreate(targetDatabaseId, props);
+      setAddTitle("");
+      setAddingDate(null);
+    } catch (err) { console.error("Calendar add failed:", err); }
+    finally { setAddSaving(false); }
+  }, [onCreate, targetDatabaseId, addTitle, titleField, dateField]);
+
   // Click on a day cell
   const handleDayClick = useCallback((day, e) => {
     if (!day) return;
     const key = toDateStr(year, month, day);
     const events = eventMap[key] || [];
+
+    // Empty day with onCreate — start add flow
+    if (events.length === 0 && onCreate && targetDatabaseId) {
+      setAddingDate(key);
+      setAddTitle("");
+      setPopover(null);
+      return;
+    }
     if (events.length === 0) return;
 
     const rect = e.currentTarget.getBoundingClientRect();
@@ -336,7 +365,7 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
       date: key,
       events,
     });
-  }, [year, month, eventMap]);
+  }, [year, month, eventMap, onCreate, targetDatabaseId]);
 
   // Close popover on outside click
   const handleBackdropClick = useCallback(() => setPopover(null), []);
@@ -419,7 +448,40 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
                 onMouseEnter={(e) => { if (!isEmpty) e.currentTarget.style.background = isToday ? `${C.accent}14` : C.darkSurf2; }}
                 onMouseLeave={(e) => { if (!isEmpty) e.currentTarget.style.background = isToday ? `${C.accent}08` : C.darkSurf; }}
               >
-                {day && <span style={cal.dayNum(isToday)}>{day}</span>}
+                {day && (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={cal.dayNum(isToday)}>{day}</span>
+                    {onCreate && targetDatabaseId && key && addingDate !== key && (
+                      <span
+                        style={{ fontSize: 14, color: C.darkMuted, cursor: "pointer", lineHeight: 1, padding: "0 2px", opacity: 0.4, transition: "opacity 0.15s" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.4"; }}
+                        onClick={(e) => { e.stopPropagation(); setAddingDate(key); setAddTitle(""); setPopover(null); }}
+                        title="Add event"
+                      >+</span>
+                    )}
+                  </div>
+                )}
+                {addingDate === key && (
+                  <input
+                    autoFocus
+                    style={{
+                      width: "100%", border: `1px solid ${C.accent}`, borderRadius: RADIUS.sm,
+                      background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 10,
+                      padding: "2px 4px", outline: "none", boxSizing: "border-box", marginBottom: 2,
+                    }}
+                    value={addTitle}
+                    onChange={(e) => setAddTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && addTitle.trim()) handleAddToDate(key);
+                      if (e.key === "Escape") { setAddingDate(null); setAddTitle(""); }
+                    }}
+                    onBlur={() => { if (!addSaving) { setAddingDate(null); setAddTitle(""); } }}
+                    onClick={(e) => e.stopPropagation()}
+                    disabled={addSaving}
+                    placeholder="New event..."
+                  />
+                )}
                 {events.slice(0, MAX_VISIBLE).map((ev, ei) => (
                   <span key={ei} style={cal.eventPill(ev.color)}>
                     {ev.title}

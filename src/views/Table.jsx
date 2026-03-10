@@ -850,6 +850,11 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
 
   // ── Record Detail Panel ──
   const [detailPage, setDetailPage] = useState(null);
+  const lastRowClickRef = useRef({ id: null, time: 0 });
+
+  // ── Column Resize ──
+  const [colWidths, setColWidths] = useState({}); // { fieldName: px }
+  const resizeDrag = useRef(null); // { col, startX, startW }
 
   // ── Quick-Add Row ──
   const [quickAddOpen, setQuickAddOpen] = useState(false);
@@ -889,6 +894,29 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [colMenuOpen]);
+
+  // ── Column resize drag handlers ──
+  const handleResizeStart = useCallback((col, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startW = colWidths[col] || 150;
+    resizeDrag.current = { col, startX, startW };
+
+    const onMove = (me) => {
+      if (!resizeDrag.current) return;
+      const dx = me.clientX - resizeDrag.current.startX;
+      const newW = Math.max(60, resizeDrag.current.startW + dx);
+      setColWidths((prev) => ({ ...prev, [resizeDrag.current.col]: newW }));
+    };
+    const onUp = () => {
+      resizeDrag.current = null;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [colWidths]);
 
   // Resolve all columns from schema
   const allColumns = useMemo(
@@ -1518,6 +1546,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                       style={{
                         ...styles.th,
                         ...(isActive ? styles.thActive : {}),
+                        ...(colWidths[col] ? { width: colWidths[col], minWidth: colWidths[col] } : {}),
+                        position: "relative",
                       }}
                       onClick={() => handleSort(col)}
                     >
@@ -1527,6 +1557,16 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                           {sortDir === "asc" ? "\u25B2" : "\u25BC"}
                         </span>
                       )}
+                      {/* Resize handle */}
+                      <span
+                        style={{
+                          position: "absolute", right: 0, top: 0, bottom: 0, width: 5,
+                          cursor: "col-resize", background: "transparent", zIndex: 3,
+                        }}
+                        onMouseDown={(e) => handleResizeStart(col, e)}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = C.accent + "44"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                      />
                     </th>
                   );
                 })}
@@ -1555,9 +1595,17 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                         e.preventDefault();
                         e.stopPropagation();
                         dispatchNeuronSelect({ node_type: "row", node_id: pageId, node_label: getPageTitle(page) || "Untitled" });
+                        return;
+                      }
+                      const now = Date.now();
+                      const last = lastRowClickRef.current;
+                      if (last.id === pageId && now - last.time < 1000) {
+                        setDetailPage(page);
+                        lastRowClickRef.current = { id: null, time: 0 };
+                      } else {
+                        lastRowClickRef.current = { id: pageId, time: now };
                       }
                     }}
-                    onDoubleClick={() => setDetailPage(page)}
                   >
                     {/* Row checkbox + expand */}
                     <td style={{ ...styles.td, width: 52, minWidth: 52, padding: "8px 4px", textAlign: "center" }}>
@@ -1598,6 +1646,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                           key={col}
                           style={{
                             ...styles.td,
+                            ...(colWidths[col] ? { width: colWidths[col], minWidth: colWidths[col] } : {}),
                             ...(isSaving ? { opacity: 0.55 } : {}),
                             ...(failMsg ? { background: "#E0525210" } : {}),
                           }}

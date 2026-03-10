@@ -167,6 +167,31 @@ export default function Sheet({ pageConfig }) {
   const inputRef = useRef(null);
   const saveTimer = useRef(null);
   const pendingChanges = useRef({});
+  const resizeDrag = useRef(null); // { col, startX, startW }
+
+  // Column resize drag
+  const handleColResize = useCallback((colIdx, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const col = colLabel(colIdx);
+    const startX = e.clientX;
+    const startW = colWidths[col] || 100;
+    resizeDrag.current = { col, startX, startW };
+
+    const onMove = (me) => {
+      if (!resizeDrag.current) return;
+      const dx = me.clientX - resizeDrag.current.startX;
+      const newW = Math.max(40, resizeDrag.current.startW + dx);
+      setColWidths((prev) => ({ ...prev, [resizeDrag.current.col]: newW }));
+    };
+    const onUp = () => {
+      resizeDrag.current = null;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [colWidths]);
 
   // Visible range for virtual scrolling (simplified: render all for now)
   const visibleCols = Math.min(colCount, 52); // Max 52 columns visible
@@ -418,9 +443,19 @@ export default function Sheet({ pageConfig }) {
                   style={{
                     ...ss.headerCell,
                     width: colWidths[colLabel(ci)] || 100,
+                    position: "relative",
                   }}
                 >
                   {colLabel(ci)}
+                  <span
+                    style={{
+                      position: "absolute", right: 0, top: 0, bottom: 0, width: 4,
+                      cursor: "col-resize", background: "transparent", zIndex: 4,
+                    }}
+                    onMouseDown={(e) => handleColResize(ci, e)}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = C.accent + "44"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                  />
                 </th>
               ))}
             </tr>

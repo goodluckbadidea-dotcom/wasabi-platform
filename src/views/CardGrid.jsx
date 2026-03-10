@@ -1,17 +1,22 @@
 // ─── Card Grid View ───
 // Schema-agnostic card layout with search, filtering, and badge pills.
 
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useRef } from "react";
 import { C, FONT, RADIUS, getStatusColor } from "../design/tokens.js";
 import { readField, getFieldType, getFieldOptions, getOptionNames, displayValue, searchableText, resolveField } from "./_viewHelpers.js";
 import { cellStyles, CellDisplay } from "./_CellComponents.jsx";
+import { buildProp } from "../notion/properties.js";
 import RecordDetail from "./RecordDetail.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 
-export default function CardGrid({ data = [], schema, config = {}, onUpdate, onRefresh, onViewConfigChange, pageConfig }) {
+export default function CardGrid({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onViewConfigChange, pageConfig }) {
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState(config.activeFilters || {});
   const [detailPage, setDetailPage] = useState(null);
+  const lastCardClickRef = useRef({ id: null, time: 0 });
+  const [addOpen, setAddOpen] = useState(false);
+  const [addTitle, setAddTitle] = useState("");
+  const [addSaving, setAddSaving] = useState(false);
 
   // Resolve fields from config or auto-detect
   const titleField = resolveField(schema, config.titleField, ["title"]);
@@ -172,6 +177,50 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
             ? `${data.length} records`
             : `${processedData.length} of ${data.length}`}
         </span>
+
+        {/* Quick-add */}
+        {onCreate && (addOpen ? (
+          <input
+            autoFocus
+            value={addTitle}
+            onChange={(e) => setAddTitle(e.target.value)}
+            onKeyDown={async (e) => {
+              if (e.key === "Enter" && addTitle.trim()) {
+                setAddSaving(true);
+                try {
+                  const dbId = config.databaseId || pageConfig?.databaseIds?.[0] || pageConfig?.id;
+                  const titleField = schema?.title?.name;
+                  const props = {};
+                  if (titleField) props[titleField] = buildProp("title", addTitle.trim());
+                  await onCreate(dbId, props);
+                  setAddTitle(""); setAddOpen(false);
+                } catch (err) { console.error("CardGrid add failed:", err); }
+                finally { setAddSaving(false); }
+              }
+              if (e.key === "Escape") { setAddOpen(false); setAddTitle(""); }
+            }}
+            onBlur={() => { if (!addSaving) { setAddOpen(false); setAddTitle(""); } }}
+            placeholder="New item..."
+            disabled={addSaving}
+            style={{
+              width: 140, padding: "5px 10px", fontSize: 12, fontFamily: FONT,
+              border: `1px solid ${C.accent}44`, borderRadius: RADIUS.md,
+              background: C.darkSurf, color: C.darkText, outline: "none",
+            }}
+          />
+        ) : (
+          <button
+            onClick={() => setAddOpen(true)}
+            style={{
+              background: "transparent", border: `1px dashed ${C.darkBorder}`,
+              borderRadius: RADIUS.md, padding: "4px 12px", color: C.darkMuted,
+              fontSize: 11, cursor: "pointer", fontFamily: FONT, outline: "none",
+              transition: "border-color 0.15s, color 0.15s",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent + "66"; e.currentTarget.style.color = C.darkText; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; e.currentTarget.style.color = C.darkMuted; }}
+          >+ New</button>
+        ))}
       </div>
 
       {/* Card Grid */}
@@ -221,7 +270,14 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
                       dispatchNeuronSelect({ node_type: "row", node_id: page.id, node_label: title || "Untitled" });
                       return;
                     }
-                    setDetailPage(page);
+                    const now = Date.now();
+                    const last = lastCardClickRef.current;
+                    if (last.id === page.id && now - last.time < 1000) {
+                      setDetailPage(page);
+                      lastCardClickRef.current = { id: null, time: 0 };
+                    } else {
+                      lastCardClickRef.current = { id: page.id, time: now };
+                    }
                   }}
                   onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent + "66"; }}
                   onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}

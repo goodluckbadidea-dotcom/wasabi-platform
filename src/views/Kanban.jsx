@@ -11,12 +11,20 @@ import RecordDetail from "./RecordDetail.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
 
-export default function Kanban({ data = [], schema, config = {}, onUpdate, onRefresh, onViewConfigChange, pageConfig }) {
+export default function Kanban({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onViewConfigChange, pageConfig }) {
   const [dragState, setDragState] = useState(null); // { pageId, fromCol, startX, startY, isDragging }
   const [dropTarget, setDropTarget] = useState(null); // column option name
   const [detailPage, setDetailPage] = useState(null);
+  const lastCardClickRef = useRef({ id: null, time: 0 });
+  const [addingInCol, setAddingInCol] = useState(null); // column name being added to
+  const [addTitle, setAddTitle] = useState("");
+  const [addSaving, setAddSaving] = useState(false);
   const ghostRef = useRef(null);
   const columnRefs = useRef({});
+  const addInputRef = useRef(null);
+
+  // Target DB for creating records
+  const targetDatabaseId = config.databaseId || pageConfig?.databaseIds?.[0] || pageConfig?.id;
 
   // ── Chip Filters (persisted) ──
   const [chipFilters, setChipFilters] = useState(config.activeFilters || {});
@@ -175,8 +183,17 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
       }
 
       if (!dragState.isDragging) {
-        // Mouse didn't move beyond threshold — treat as click
-        if (dragState.page) setDetailPage(dragState.page);
+        // Mouse didn't move beyond threshold — treat as slow-double-click
+        if (dragState.page) {
+          const now = Date.now();
+          const last = lastCardClickRef.current;
+          if (last.id === dragState.pageId && now - last.time < 1000) {
+            setDetailPage(dragState.page);
+            lastCardClickRef.current = { id: null, time: 0 };
+          } else {
+            lastCardClickRef.current = { id: dragState.pageId, time: now };
+          }
+        }
       } else {
         // Execute drop
         if (dropTarget && dropTarget !== dragState.fromCol && dropTarget !== "__uncategorized__" && onUpdate && columnField && columnType) {
@@ -198,6 +215,29 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
       document.removeEventListener("mouseup", handleMouseUp);
     };
   }, [dragState, dropTarget, onUpdate, columnField, columnType]);
+
+  // ── Quick-add handler ──
+  const handleQuickAdd = useCallback(async (colName) => {
+    if (!onCreate || !targetDatabaseId || !addTitle.trim()) return;
+    setAddSaving(true);
+    try {
+      const titleField = schema?.title?.name;
+      const properties = {};
+      if (titleField) properties[titleField] = buildProp("title", addTitle.trim());
+      // Set the column field value so item appears in the right column
+      if (columnField && colName !== "__uncategorized__") {
+        const colType = getFieldType(schema, columnField);
+        if (colType) properties[columnField] = buildProp(colType, colName);
+      }
+      await onCreate(targetDatabaseId, properties);
+      setAddTitle("");
+      setAddingInCol(null);
+    } catch (err) {
+      console.error("Kanban quick-add failed:", err);
+    } finally {
+      setAddSaving(false);
+    }
+  }, [onCreate, targetDatabaseId, addTitle, schema, columnField]);
 
   if (!schema) {
     return (
@@ -385,7 +425,66 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
                     </div>
                   );
                 })}
+
+                {/* Quick-add inline input */}
+                {addingInCol === col.name && (
+                  <div style={{ padding: 4 }}>
+                    <input
+                      ref={addInputRef}
+                      autoFocus
+                      value={addTitle}
+                      onChange={(e) => setAddTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleQuickAdd(col.name);
+                        if (e.key === "Escape") { setAddingInCol(null); setAddTitle(""); }
+                      }}
+                      onBlur={() => { if (!addSaving) { setAddingInCol(null); setAddTitle(""); } }}
+                      placeholder="New item..."
+                      disabled={addSaving}
+                      style={{
+                        width: "100%",
+                        boxSizing: "border-box",
+                        padding: "8px 10px",
+                        fontSize: 13,
+                        fontFamily: FONT,
+                        background: C.dark,
+                        border: `1px solid ${C.accent}44`,
+                        borderRadius: RADIUS.lg,
+                        color: C.darkText,
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+                )}
               </div>
+
+              {/* + New button at bottom of column */}
+              {onCreate && targetDatabaseId && addingInCol !== col.name && (
+                <button
+                  onClick={() => { setAddingInCol(col.name); setAddTitle(""); }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 4,
+                    padding: "8px 0",
+                    margin: "0 8px 8px",
+                    background: "transparent",
+                    border: `1px dashed ${C.darkBorder}`,
+                    borderRadius: RADIUS.lg,
+                    color: C.darkMuted,
+                    fontSize: 11,
+                    cursor: "pointer",
+                    fontFamily: FONT,
+                    transition: "border-color 0.15s, color 0.15s",
+                    outline: "none",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent + "66"; e.currentTarget.style.color = C.darkText; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; e.currentTarget.style.color = C.darkMuted; }}
+                >
+                  + New
+                </button>
+              )}
             </div>
           );
         })}

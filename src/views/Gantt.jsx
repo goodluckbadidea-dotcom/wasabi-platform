@@ -126,7 +126,7 @@ function buildHeaders(origin, days, pxPerDay) {
 
 // ─── Main Component ───
 
-export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefresh, pageConfig }) {
+export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, pageConfig }) {
   const [zoomIndex, setZoomIndex] = useState(2); // Default 30-day
   const [search, setSearch] = useState("");
   const [scrollLeft, setScrollLeft] = useState(0);
@@ -134,7 +134,11 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
   const [dragState, setDragState] = useState(null);
   const [selectedRowIdx, setSelectedRowIdx] = useState(-1);
   const [detailPage, setDetailPage] = useState(null);
+  const lastRowClickRef = useRef({ id: null, time: 0 });
   const [isZooming, setIsZooming] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addTitle, setAddTitle] = useState("");
+  const [addSaving, setAddSaving] = useState(false);
   const svgContainerRef = useRef(null);
   const scrollRef = useRef(null);
   const wrapperRef = useRef(null);
@@ -587,6 +591,52 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
           }}
         />
 
+        {/* Quick-add */}
+        {onCreate && (addOpen ? (
+          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <input
+              autoFocus
+              value={addTitle}
+              onChange={(e) => setAddTitle(e.target.value)}
+              onKeyDown={async (e) => {
+                if (e.key === "Enter" && addTitle.trim()) {
+                  setAddSaving(true);
+                  try {
+                    const dbId = config.databaseId || pageConfig?.databaseIds?.[0] || pageConfig?.id;
+                    const titleField = schema?.title?.name;
+                    const props = {};
+                    if (titleField) props[titleField] = buildProp("title", addTitle.trim());
+                    await onCreate(dbId, props);
+                    setAddTitle(""); setAddOpen(false);
+                  } catch (err) { console.error("Gantt add failed:", err); }
+                  finally { setAddSaving(false); }
+                }
+                if (e.key === "Escape") { setAddOpen(false); setAddTitle(""); }
+              }}
+              onBlur={() => { if (!addSaving) { setAddOpen(false); setAddTitle(""); } }}
+              placeholder="New item..."
+              disabled={addSaving}
+              style={{
+                width: 140, padding: "4px 8px", fontSize: 12, fontFamily: FONT,
+                border: `1px solid ${C.accent}44`, borderRadius: RADIUS.md,
+                background: C.darkSurf, color: C.darkText, outline: "none",
+              }}
+            />
+          </div>
+        ) : (
+          <button
+            onClick={() => setAddOpen(true)}
+            style={{
+              background: "transparent", border: `1px dashed ${C.darkBorder}`,
+              borderRadius: RADIUS.md, padding: "3px 10px", color: C.darkMuted,
+              fontSize: 11, cursor: "pointer", fontFamily: FONT, outline: "none",
+              transition: "border-color 0.15s, color 0.15s",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent + "66"; e.currentTarget.style.color = C.darkText; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; e.currentTarget.style.color = C.darkMuted; }}
+          >+ New</button>
+        ))}
+
         {/* Legend — switches based on color mode */}
         <div style={{ display: "flex", gap: 10, marginLeft: 8, flexWrap: "wrap" }}>
           {(config.colorMode === "property" && colorField) ? (
@@ -659,8 +709,15 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                     return;
                   }
                   setSelectedRowIdx(i);
+                  const now = Date.now();
+                  const last = lastRowClickRef.current;
+                  if (last.id === row.pageId && now - last.time < 1000) {
+                    setDetailPage(row.page);
+                    lastRowClickRef.current = { id: null, time: 0 };
+                  } else {
+                    lastRowClickRef.current = { id: row.pageId, time: now };
+                  }
                 }}
-                onDoubleClick={() => setDetailPage(row.page)}
                 style={{
                   height: dynamicRowHeight,
                   display: "flex",
