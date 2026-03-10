@@ -20,6 +20,14 @@ import * as api from "../lib/api.js";
 // Legacy Notion imports removed — notifications now stored in D1
 import { timeAgo } from "../utils/helpers.js";
 
+// ── Smart model routing (same logic as ChatPanel) ──
+function pickModel(text) {
+  const isComplex = text.length > 200
+    || /\b(build|create|automat|multi|workflow|setup|design|refactor|update database|modify|schema)\b/i.test(text)
+    || /\b(and then|also|after that|step by step)\b/i.test(text);
+  return isComplex ? "claude-sonnet-4-20250514" : "claude-haiku-4-5-20251001";
+}
+
 // ── Tab button style ──
 const tabBtn = (active) => ({
   flex: 1,
@@ -68,6 +76,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatLoading, setChatLoading] = useState(false);
   const [chatChoices, setChatChoices] = useState([]);
+  const [modelOverride, setModelOverride] = useState(null); // null = auto, "haiku" | "sonnet"
   const chatHistoryRef = useRef([]);
   const chatAbortRef = useRef(false);
 
@@ -280,11 +289,17 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
 
         const conn = api.getConnection();
         const wUrl = user?.workerUrl || conn?.workerUrl;
+        // Smart model routing — user override or auto
+        const model = modelOverride === "sonnet"
+          ? "claude-sonnet-4-20250514"
+          : modelOverride === "haiku"
+          ? "claude-haiku-4-5-20251001"
+          : pickModel(agentText);
         const { text: reply, history } = await runAgent({
           messages: newHistory,
           systemPrompt,
           tools: WASABI_TOOLS,
-          model: "claude-sonnet-4-20250514",
+          model,
           workerUrl: wUrl,
           claudeKey: user?.claudeKey || "",
           executeTool: toolExecutor,
@@ -313,7 +328,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
         setChatLoading(false);
       }
     },
-    [chatLoading, user, platformIds, pages, activePageConfig, toolExecutor]
+    [chatLoading, user, platformIds, pages, activePageConfig, toolExecutor, modelOverride]
   );
 
   const handleChatChoice = useCallback(
@@ -528,6 +543,31 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
       {/* ═══ CHAT TAB ═══ */}
       {tab === "chat" && (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+          {/* Model toggle pill */}
+          <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 10px 0" }}>
+            <button
+              onClick={() => {
+                const next = modelOverride === null ? "sonnet" : modelOverride === "sonnet" ? "haiku" : null;
+                setModelOverride(next);
+              }}
+              style={{
+                background: modelOverride ? (modelOverride === "sonnet" ? C.accent + "22" : C.darkSurf2) : "transparent",
+                border: `1px solid ${modelOverride ? (modelOverride === "sonnet" ? C.accent + "44" : C.darkBorder) : C.darkBorder}`,
+                borderRadius: 999,
+                padding: "2px 8px",
+                fontSize: 9,
+                color: modelOverride === "sonnet" ? C.accent : C.darkMuted,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                lineHeight: 1.4,
+                transition: "all 0.15s",
+                outline: "none",
+              }}
+              title={modelOverride === null ? "Auto model (click to pin Sonnet)" : modelOverride === "sonnet" ? "Pinned to Sonnet (click for Haiku)" : "Pinned to Haiku (click for Auto)"}
+            >
+              {modelOverride === null ? "Auto" : modelOverride === "sonnet" ? "Sonnet" : "Haiku"}
+            </button>
+          </div>
           <ChatUI
             messages={chatMessages}
             onSend={handleChatSend}

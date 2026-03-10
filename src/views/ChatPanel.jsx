@@ -112,6 +112,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
   const [displayMessages, setDisplayMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [choices, setChoices] = useState([]);
+  const [modelOverride, setModelOverride] = useState(null); // null = auto, "haiku" | "sonnet"
   const historyRef = useRef([]);
   const abortRef = useRef(false);
 
@@ -180,8 +181,12 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
         neuronSummary,
       });
 
-      // Smart model routing
-      const model = pickModel(agentText);
+      // Smart model routing — user override or auto
+      const model = modelOverride === "sonnet"
+        ? "claude-sonnet-4-20250514"
+        : modelOverride === "haiku"
+        ? "claude-haiku-4-5-20251001"
+        : pickModel(agentText);
 
       const conn = getConnection();
       const wUrl = user?.workerUrl || conn?.workerUrl;
@@ -219,7 +224,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, user, platformIds, pageConfig, schema, dataSummary, toolExecutor]);
+  }, [isLoading, user, platformIds, pageConfig, schema, dataSummary, toolExecutor, modelOverride]);
 
   const handleChoice = useCallback((choice) => {
     handleSend({ text: typeof choice === "string" ? choice : choice.label });
@@ -227,7 +232,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      {/* Wasabi agent indicator */}
+      {/* Wasabi agent indicator + model toggle */}
       <div style={{
         padding: "8px 16px",
         borderBottom: `1px solid ${C.darkBorder}`,
@@ -241,7 +246,29 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
         <WasabiOrb size={18} />
         <span>Wasabi</span>
         <span style={{ opacity: 0.4 }}>&middot;</span>
-        <span style={{ opacity: 0.6 }}>{pageConfig.name}</span>
+        <span style={{ opacity: 0.6, flex: 1 }}>{pageConfig.name}</span>
+        <button
+          onClick={() => {
+            const next = modelOverride === null ? "sonnet" : modelOverride === "sonnet" ? "haiku" : null;
+            setModelOverride(next);
+          }}
+          style={{
+            background: modelOverride ? (modelOverride === "sonnet" ? C.accent + "22" : C.darkSurf2) : "transparent",
+            border: `1px solid ${modelOverride ? (modelOverride === "sonnet" ? C.accent + "44" : C.darkBorder) : C.darkBorder}`,
+            borderRadius: 999,
+            padding: "2px 8px",
+            fontSize: 9,
+            color: modelOverride === "sonnet" ? C.accent : C.darkMuted,
+            cursor: "pointer",
+            fontFamily: "inherit",
+            lineHeight: 1.4,
+            transition: "all 0.15s",
+            outline: "none",
+          }}
+          title={modelOverride === null ? "Auto model (click to pin Sonnet)" : modelOverride === "sonnet" ? "Pinned to Sonnet (click for Haiku)" : "Pinned to Haiku (click for Auto)"}
+        >
+          {modelOverride === null ? "Auto" : modelOverride === "sonnet" ? "Sonnet" : "Haiku"}
+        </button>
       </div>
 
       <ChatUI

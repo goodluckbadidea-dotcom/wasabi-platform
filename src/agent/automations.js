@@ -15,8 +15,8 @@ import { safeJSON } from "../utils/helpers.js";
 // ─── Constants ───
 
 const LOG_PREFIX = "[Automation]";
-const DEFAULT_TICK_MS = 60_000;          // 1 minute default poll
-const BACKOFF_TICK_MS = 300_000;         // 5 minutes when no rules found
+const DEFAULT_TICK_MS = 300_000;         // 5 minutes default poll
+const BACKOFF_TICK_MS = 1_800_000;       // 30 minutes when no rules found
 const MAX_CONCURRENT = 3;               // Max parallel rule executions per tick
 const AUTOMATION_MODEL = "claude-haiku-4-5-20251001";
 

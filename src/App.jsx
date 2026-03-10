@@ -84,7 +84,7 @@ function AppContent() {
       workerUrl: user.workerUrl,
       notionKey: user.notionKey || "",
       claudeKey: user.claudeKey || "",
-      tickIntervalMs: 60_000,
+      tickIntervalMs: 300_000,
       onRuleFired: (rule, result) => {
         console.log(`[Automation] Rule "${rule.name}" fired (${result.path})`);
       },
