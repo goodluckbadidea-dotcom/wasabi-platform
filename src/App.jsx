@@ -23,6 +23,7 @@ import PageShell from "./core/PageShell.jsx";
 import WasabiFlame from "./core/WasabiFlame.jsx";
 import WasabiOrb from "./core/WasabiOrb.jsx";
 import SystemManager from "./core/SystemManager.jsx";
+import KnowledgeBase from "./core/KnowledgeBase.jsx";
 import AutomationPage from "./core/AutomationPage.jsx";
 import HomePage from "./core/HomePage.jsx";
 import Dashboard from "./core/Dashboard.jsx";
@@ -246,6 +247,11 @@ function AppContent() {
     // Automations (sub-view tabs: Node Editor, Simple Rules, Upload)
     if (activePage === "automations") {
       return <AutomationPage automationEngine={engineRef.current} activeTab={activeViewIndex} />;
+    }
+
+    // Knowledge Base
+    if (activePage === "knowledge-base") {
+      return <KnowledgeBase automationEngine={engineRef.current} />;
     }
 
     // System manager

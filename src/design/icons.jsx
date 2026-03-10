@@ -585,10 +585,16 @@ export function IconMoon({ size = 20, color = d, ...rest }) {
 export function IconBrain({ size = 20, color = d, ...rest }) {
   return (
     <Icon size={size} {...rest}>
-      <path d="M12 2a6 6 0 0 0-6 6c0 1.66.68 3.16 1.76 4.24L12 16l4.24-3.76A6 6 0 0 0 12 2z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-      <path d="M9 8.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM15 8.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z" fill={color} />
-      <path d="M12 16v6M8 19h8" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M12 2c-1.5 0-2.8.5-3.8 1.3M12 2c1.5 0 2.8.5 3.8 1.3" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      {/* Left hemisphere */}
+      <path d="M12 2C9.5 2 7.2 3.1 5.8 5c-1 1.4-1.6 3-1.6 4.8 0 1.5.4 2.8 1.2 4 .6.9 1.2 1.7 1.6 2.7.5 1.2.7 2.5.8 3.5h4.2" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      {/* Right hemisphere */}
+      <path d="M12 2c2.5 0 4.8 1.1 6.2 3 1 1.4 1.6 3 1.6 4.8 0 1.5-.4 2.8-1.2 4-.6.9-1.2 1.7-1.6 2.7-.5 1.2-.7 2.5-.8 3.5h-4.2" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      {/* Center divide */}
+      <path d="M12 2v18" stroke={color} strokeWidth="1" strokeLinecap="round" opacity="0.4" />
+      {/* Brain folds */}
+      <path d="M5.5 8.5c2 .5 4 0 6.5-1M18.5 8.5c-2 .5-4 0-6.5-1M6 13c2-.8 3.5-.3 6 .5M18 13c-2-.8-3.5-.3-6 .5" stroke={color} strokeWidth="1" strokeLinecap="round" fill="none" opacity="0.5" />
+      {/* Stem */}
+      <path d="M10 20h4" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
     </Icon>
   );
 }
