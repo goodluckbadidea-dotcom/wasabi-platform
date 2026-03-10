@@ -12,14 +12,72 @@ import { savePageConfig } from "../config/pageConfig.js";
 
 // ─── D1 Helpers ───
 
-/** Check if a database_id refers to a D1 standalone table or sheet (vs Notion DB). */
-async function isD1Table(id) {
+/** Get the page_type for an ID, or null if not found. */
+async function getPageType(id) {
   try {
     const cfg = await api.getPageConfig(id);
-    return cfg && (cfg.page_type === "database" || cfg.page_type === "sheet");
+    return cfg?.page_type || null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+/** Check if a database_id refers to a D1 standalone table or sheet (vs Notion DB). */
+async function isD1Table(id) {
+  const pt = await getPageType(id);
+  return pt === "database" || pt === "sheet";
+}
+
+/** Convert sheet grid cells { "A1": {v:...}, "B2": {v:...} } into row objects with headers. */
+function sheetCellsToRows(cells, colCount = 26) {
+  if (!cells || typeof cells !== "object") return [];
+
+  // Build column labels (A, B, C, ...)
+  const colLabels = [];
+  for (let i = 0; i < colCount; i++) {
+    let label = "";
+    let n = i + 1;
+    while (n > 0) {
+      const rem = (n - 1) % 26;
+      label = String.fromCharCode(65 + rem) + label;
+      n = Math.floor((n - 1) / 26);
+    }
+    colLabels.push(label);
+  }
+
+  // Find the max row number present in cells
+  let maxRow = 0;
+  for (const key of Object.keys(cells)) {
+    const rowNum = parseInt(key.replace(/^[A-Z]+/, ""), 10);
+    if (rowNum > maxRow) maxRow = rowNum;
+  }
+  if (maxRow === 0) return [];
+
+  // Read row 1 as headers
+  const headers = {};
+  for (const col of colLabels) {
+    const cell = cells[`${col}1`];
+    const val = cell && typeof cell === "object" ? cell.v : cell;
+    if (val) headers[col] = String(val).trim();
+  }
+
+  // Build rows (starting from row 2)
+  const rows = [];
+  for (let r = 2; r <= maxRow; r++) {
+    const row = { _row: r };
+    let hasData = false;
+    for (const col of colLabels) {
+      const cell = cells[`${col}${r}`];
+      const val = cell && typeof cell === "object" ? cell.v : cell;
+      const header = headers[col] || col;
+      if (val !== undefined && val !== null && val !== "") {
+        row[header] = val;
+        hasData = true;
+      }
+    }
+    if (hasData) rows.push(row);
+  }
+  return rows;
 }
 
 /** Convert Notion-format properties to flat D1 cells. */
@@ -70,8 +128,26 @@ export function createToolExecutor({
     switch (toolName) {
       // ─── Database Operations ───
       case "query_database": {
+        const pageType = await getPageType(toolInput.database_id);
+
+        // Sheet path — grid cells converted to rows
+        if (pageType === "sheet") {
+          try {
+            const sheet = await api.getSheet(toolInput.database_id);
+            const rows = sheetCellsToRows(sheet.cells, sheet.col_count || 26);
+            return JSON.stringify({
+              count: rows.length,
+              results: rows.slice(0, 200),
+              truncated: rows.length > 200,
+              storage: "sheet",
+            });
+          } catch (err) {
+            return JSON.stringify({ error: `Failed to read sheet: ${err.message}`, storage: "sheet" });
+          }
+        }
+
         // D1 standalone table path
-        if (await isD1Table(toolInput.database_id)) {
+        if (pageType === "database") {
           // Use queryTable for full filter/sort/limit support
           const queryBody = {};
           if (toolInput.filter) queryBody.filters = toolInput.filter;
@@ -169,8 +245,20 @@ export function createToolExecutor({
         for (const q of queries.slice(0, 5)) { // Max 5 databases per call
           const label = q.label || q.database_id;
           try {
-            // D1 path
-            if (await isD1Table(q.database_id)) {
+            const qPageType = await getPageType(q.database_id);
+
+            // Sheet path
+            if (qPageType === "sheet") {
+              const sheet = await api.getSheet(q.database_id);
+              const rows = sheetCellsToRows(sheet.cells, sheet.col_count || 26);
+              allResults[label] = {
+                count: rows.length,
+                results: rows.slice(0, 100),
+                truncated: rows.length > 100,
+                storage: "sheet",
+              };
+            } else if (qPageType === "database") {
+              // D1 table path
               const queryBody = {};
               if (q.filter) queryBody.filters = q.filter;
               if (q.sorts) queryBody.sorts = q.sorts;
@@ -288,8 +376,39 @@ export function createToolExecutor({
 
       // ─── Schema Detection ───
       case "detect_schema": {
+        const schemaPageType = await getPageType(toolInput.database_id);
+
+        // Sheet — read headers from row 1
+        if (schemaPageType === "sheet") {
+          try {
+            const sheet = await api.getSheet(toolInput.database_id);
+            const colLabels = [];
+            for (let i = 0; i < (sheet.col_count || 26); i++) {
+              let label = "";
+              let n = i + 1;
+              while (n > 0) { const rem = (n - 1) % 26; label = String.fromCharCode(65 + rem) + label; n = Math.floor((n - 1) / 26); }
+              colLabels.push(label);
+            }
+            const columns = [];
+            for (const col of colLabels) {
+              const cell = sheet.cells?.[`${col}1`];
+              const val = cell && typeof cell === "object" ? cell.v : cell;
+              if (val) columns.push({ name: String(val).trim(), column: col, type: "text" });
+            }
+            const text = columns.map((c) => `- ${c.name} (column ${c.column}, text)`).join("\n");
+            return JSON.stringify({
+              schema: text,
+              fieldCount: columns.length,
+              raw: { columns, storage: "sheet" },
+              suggestedViews: [],
+            });
+          } catch (err) {
+            return JSON.stringify({ error: `Failed to detect sheet schema: ${err.message}` });
+          }
+        }
+
         // D1 standalone table — use api.getTableSchema()
-        if (await isD1Table(toolInput.database_id)) {
+        if (schemaPageType === "database") {
           try {
             const d1Schema = await api.getTableSchema(toolInput.database_id);
             const columns = d1Schema?.columns || [];
@@ -529,9 +648,38 @@ export function createToolExecutor({
         }
 
         const matches = [];
+        const smPageType = await getPageType(database_id);
 
-        // D1 path — load all rows and search in JS
-        if (await isD1Table(database_id)) {
+        // Sheet path — convert cells to rows, then search
+        if (smPageType === "sheet") {
+          let allRows;
+          try {
+            const sheet = await api.getSheet(database_id);
+            allRows = sheetCellsToRows(sheet.cells, sheet.col_count || 26);
+          } catch {
+            allRows = [];
+          }
+
+          for (const term of search_terms.slice(0, 10)) {
+            const termLower = term.toLowerCase();
+            const matched = allRows
+              .map((row) => {
+                let score = 0;
+                for (const val of Object.values(row)) {
+                  if (String(val).toLowerCase().includes(termLower)) score++;
+                }
+                return { ...row, _matchScore: score };
+              })
+              .filter((r) => r._matchScore > 0)
+              .sort((a, b) => b._matchScore - a._matchScore)
+              .slice(0, 5);
+
+            if (matched.length > 0) {
+              matches.push({ term, matches: matched });
+            }
+          }
+        } else if (smPageType === "database") {
+          // D1 table path — load all rows and search in JS
           let allRows;
           try {
             const res = await api.listRows(database_id, { limit: 500 });
