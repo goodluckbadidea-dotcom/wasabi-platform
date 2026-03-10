@@ -52,8 +52,8 @@ export default function NewRecordModal({ schema, onClose, onCreate, databaseId, 
   // Extract fields from schema
   const fields = useMemo(() => {
     if (!schema) return [];
-    // Schema can be { fields: [...] } or just an array
-    const raw = schema.fields || schema;
+    // Classified schema uses allFields; also support legacy { fields: [...] } or plain array
+    const raw = schema.allFields || schema.fields || schema;
     if (!Array.isArray(raw)) return [];
     return raw.filter((f) => EDITABLE_TYPES.has(f.type));
   }, [schema]);
