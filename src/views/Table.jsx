@@ -15,6 +15,21 @@ import { useLinks } from "../context/LinksContext.jsx";
 import LinkPicker from "../core/LinkPicker.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
+import { updateTableSchema, getTableSchema } from "../lib/api.js";
+
+// ─── Column Types ───
+const COLUMN_TYPES = [
+  { value: "text", label: "Text", icon: "Aa" },
+  { value: "number", label: "Number", icon: "#" },
+  { value: "select", label: "Select", icon: "\u25BE" },
+  { value: "multi_select", label: "Multi Select", icon: "\u2630" },
+  { value: "date", label: "Date", icon: "\uD83D\uDCC5" },
+  { value: "checkbox", label: "Checkbox", icon: "\u2611" },
+  { value: "url", label: "URL", icon: "\uD83D\uDD17" },
+  { value: "email", label: "Email", icon: "\u2709" },
+  { value: "phone", label: "Phone", icon: "\uD83D\uDCDE" },
+  { value: "status", label: "Status", icon: "\u25C9" },
+];
 
 // ─── Constants ───
 
@@ -293,6 +308,17 @@ const styles = {
     fontSize: 10,
     opacity: 0.7,
   },
+};
+
+// Context menu item style
+const ctxItem = {
+  padding: "6px 10px",
+  fontSize: 12,
+  color: C.darkText,
+  cursor: "pointer",
+  borderRadius: RADIUS.sm,
+  transition: "background 0.1s",
+  fontFamily: FONT,
 };
 
 // ─── Helpers ───
@@ -856,6 +882,16 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const [colWidths, setColWidths] = useState({}); // { fieldName: px }
   const resizeDrag = useRef(null); // { col, startX, startW }
 
+  // ── Column Management ──
+  const [colCtxMenu, setColCtxMenu] = useState(null); // { col, x, y }
+  const [renamingCol, setRenamingCol] = useState(null); // column name being renamed
+  const [renameValue, setRenameValue] = useState("");
+  const [addColOpen, setAddColOpen] = useState(false);
+  const [addColName, setAddColName] = useState("");
+  const [addColType, setAddColType] = useState("text");
+  const [colDrag, setColDrag] = useState(null); // { col, startX, overCol }
+  const isD1Table = pageConfig?.page_type === "database" || pageConfig?.pageType === "database";
+
   // ── Quick-Add Row ──
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [quickAddValues, setQuickAddValues] = useState({});
@@ -918,6 +954,131 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     document.addEventListener("mouseup", onUp);
   }, [colWidths]);
 
+  // ── Column context menu handlers ──
+  const handleColRightClick = useCallback((col, e) => {
+    e.preventDefault();
+    setColCtxMenu({ col, x: e.clientX, y: e.clientY });
+  }, []);
+
+  // Close context menu on outside click
+  useEffect(() => {
+    if (!colCtxMenu) return;
+    const handler = () => setColCtxMenu(null);
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [colCtxMenu]);
+
+  // Hide column from context menu
+  const handleHideCol = useCallback((col) => {
+    setHiddenColumns((prev) => new Set([...prev, col]));
+    setColCtxMenu(null);
+    if (onViewConfigChange) {
+      const visibleFields = allColumnsRef.current.filter((c) => c !== col && !hiddenColumns.has(c));
+      onViewConfigChange({ visibleFields });
+    }
+  }, [hiddenColumns, onViewConfigChange]);
+
+  // Rename column (D1 tables only)
+  const handleRenameCol = useCallback(async (oldName, newName) => {
+    if (!newName.trim() || newName === oldName) { setRenamingCol(null); return; }
+    if (!isD1Table || !pageConfig?.id) { setRenamingCol(null); return; }
+    try {
+      const schemaRes = await getTableSchema(pageConfig.id);
+      const cols = (schemaRes?.columns || []).map((c) =>
+        c.name === oldName ? { ...c, name: newName.trim() } : c
+      );
+      await updateTableSchema(pageConfig.id, cols);
+      if (onRefresh) onRefresh();
+    } catch (err) { console.error("Rename column failed:", err); }
+    setRenamingCol(null);
+  }, [isD1Table, pageConfig?.id, onRefresh]);
+
+  // Delete column (D1 tables only)
+  const handleDeleteCol = useCallback(async (col) => {
+    if (!isD1Table || !pageConfig?.id) return;
+    try {
+      const schemaRes = await getTableSchema(pageConfig.id);
+      const cols = (schemaRes?.columns || []).filter((c) => c.name !== col);
+      await updateTableSchema(pageConfig.id, cols);
+      if (onRefresh) onRefresh();
+    } catch (err) { console.error("Delete column failed:", err); }
+    setColCtxMenu(null);
+  }, [isD1Table, pageConfig?.id, onRefresh]);
+
+  // Change column type (D1 tables only)
+  const handleChangeColType = useCallback(async (col, newType) => {
+    if (!isD1Table || !pageConfig?.id) return;
+    try {
+      const schemaRes = await getTableSchema(pageConfig.id);
+      const cols = (schemaRes?.columns || []).map((c) =>
+        c.name === col ? { ...c, type: newType } : c
+      );
+      await updateTableSchema(pageConfig.id, cols);
+      if (onRefresh) onRefresh();
+    } catch (err) { console.error("Change type failed:", err); }
+    setColCtxMenu(null);
+  }, [isD1Table, pageConfig?.id, onRefresh]);
+
+  // Add new column (D1 tables only)
+  const handleAddCol = useCallback(async () => {
+    if (!addColName.trim() || !isD1Table || !pageConfig?.id) return;
+    try {
+      const schemaRes = await getTableSchema(pageConfig.id);
+      const cols = [...(schemaRes?.columns || []), { id: `col_${Date.now()}`, name: addColName.trim(), type: addColType }];
+      await updateTableSchema(pageConfig.id, cols);
+      setAddColOpen(false);
+      setAddColName("");
+      setAddColType("text");
+      if (onRefresh) onRefresh();
+    } catch (err) { console.error("Add column failed:", err); }
+  }, [addColName, addColType, isD1Table, pageConfig?.id, onRefresh]);
+
+  // Column reorder via drag
+  const handleColDragStart = useCallback((col, e) => {
+    setColDrag({ col, startX: e.clientX, overCol: null });
+  }, []);
+
+  useEffect(() => {
+    if (!colDrag) return;
+    const onMove = (e) => {
+      const els = document.querySelectorAll("[data-col-header]");
+      let over = null;
+      for (const el of els) {
+        const rect = el.getBoundingClientRect();
+        if (e.clientX >= rect.left && e.clientX <= rect.right) {
+          over = el.dataset.colHeader;
+          break;
+        }
+      }
+      if (over && over !== colDrag.col) {
+        setColDrag((prev) => prev ? { ...prev, overCol: over } : null);
+      }
+    };
+    const onUp = () => {
+      if (colDrag.overCol && colDrag.overCol !== colDrag.col && onViewConfigChange) {
+        const currentOrder = columns || allColumnsRef.current;
+        const fromIdx = currentOrder.indexOf(colDrag.col);
+        const toIdx = currentOrder.indexOf(colDrag.overCol);
+        if (fromIdx >= 0 && toIdx >= 0) {
+          const reordered = [...currentOrder];
+          reordered.splice(fromIdx, 1);
+          reordered.splice(toIdx, 0, colDrag.col);
+          onViewConfigChange({ columns: reordered });
+        }
+      }
+      setColDrag(null);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+  }, [colDrag, onViewConfigChange]);
+
+  // Ref for allColumns (needed by handlers that can't close over latest allColumns)
+  const allColumnsRef = useRef([]);
+
   // Resolve all columns from schema
   const allColumns = useMemo(
     () => resolveColumns(schema, config.columns, config.fieldMappings),
@@ -945,6 +1106,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   }, [allColumns, config.visibleFields]);
 
   // Visible columns (filtered by hiddenColumns)
+  allColumnsRef.current = allColumns;
+
   const columns = useMemo(
     () => allColumns.filter((c) => !hiddenColumns.has(c)),
     [allColumns, hiddenColumns]
@@ -1540,25 +1703,55 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                 </th>
                 {columns.map((col) => {
                   const isActive = sortField === col;
+                  const isDragOver = colDrag?.overCol === col;
                   return (
                     <th
                       key={col}
+                      data-col-header={col}
                       style={{
                         ...styles.th,
                         ...(isActive ? styles.thActive : {}),
                         ...(colWidths[col] ? { width: colWidths[col], minWidth: colWidths[col] } : {}),
+                        ...(isDragOver ? { borderLeft: `2px solid ${C.accent}` } : {}),
                         position: "relative",
+                        cursor: colDrag ? "grabbing" : "pointer",
                       }}
                       onClick={() => handleSort(col)}
+                      onContextMenu={(e) => handleColRightClick(col, e)}
+                      onMouseDown={(e) => { if (e.button === 0 && !e.target.closest("[data-resize]")) handleColDragStart(col, e); }}
                     >
-                      {col}
-                      {isActive && sortDir && (
-                        <span style={styles.sortArrow}>
-                          {sortDir === "asc" ? "\u25B2" : "\u25BC"}
-                        </span>
+                      {renamingCol === col ? (
+                        <input
+                          autoFocus
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleRenameCol(col, renameValue);
+                            if (e.key === "Escape") setRenamingCol(null);
+                            e.stopPropagation();
+                          }}
+                          onBlur={() => handleRenameCol(col, renameValue)}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            width: "100%", border: `1px solid ${C.accent}`, borderRadius: RADIUS.sm,
+                            background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 11,
+                            padding: "2px 6px", outline: "none", fontWeight: 600, textTransform: "uppercase",
+                            letterSpacing: "0.06em",
+                          }}
+                        />
+                      ) : (
+                        <>
+                          {col}
+                          {isActive && sortDir && (
+                            <span style={styles.sortArrow}>
+                              {sortDir === "asc" ? "\u25B2" : "\u25BC"}
+                            </span>
+                          )}
+                        </>
                       )}
                       {/* Resize handle */}
                       <span
+                        data-resize="true"
                         style={{
                           position: "absolute", right: 0, top: 0, bottom: 0, width: 5,
                           cursor: "col-resize", background: "transparent", zIndex: 3,
@@ -1570,6 +1763,65 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                     </th>
                   );
                 })}
+                {/* Add column button */}
+                {isD1Table && (
+                  <th style={{ ...styles.th, width: 40, minWidth: 40, textAlign: "center", padding: "10px 4px" }}>
+                    {addColOpen ? (
+                      <div
+                        style={{
+                          position: "absolute", top: "100%", right: 0, zIndex: 100,
+                          background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
+                          borderRadius: RADIUS.lg, padding: 12, minWidth: 200,
+                          boxShadow: SHADOW.dropdown, display: "flex", flexDirection: "column", gap: 8,
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          autoFocus
+                          placeholder="Column name"
+                          value={addColName}
+                          onChange={(e) => setAddColName(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") handleAddCol(); if (e.key === "Escape") setAddColOpen(false); }}
+                          style={{
+                            border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
+                            background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 12,
+                            padding: "6px 8px", outline: "none", width: "100%", boxSizing: "border-box",
+                          }}
+                        />
+                        <select
+                          value={addColType}
+                          onChange={(e) => setAddColType(e.target.value)}
+                          style={{
+                            border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
+                            background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 12,
+                            padding: "6px 8px", cursor: "pointer", width: "100%", boxSizing: "border-box",
+                          }}
+                        >
+                          {COLUMN_TYPES.map((t) => (
+                            <option key={t.value} value={t.value}>{t.icon} {t.label}</option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={handleAddCol}
+                          disabled={!addColName.trim()}
+                          style={{
+                            background: C.accent, color: "#fff", border: "none", borderRadius: RADIUS.sm,
+                            padding: "6px 12px", fontSize: 12, fontFamily: FONT, fontWeight: 600,
+                            cursor: addColName.trim() ? "pointer" : "default", opacity: addColName.trim() ? 1 : 0.4,
+                          }}
+                        >Add Column</button>
+                      </div>
+                    ) : (
+                      <span
+                        style={{ cursor: "pointer", color: C.darkMuted, fontSize: 14, opacity: 0.5, transition: "opacity 0.15s" }}
+                        onClick={(e) => { e.stopPropagation(); setAddColOpen(true); }}
+                        onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
+                        title="Add column"
+                      >+</span>
+                    )}
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -1837,6 +2089,84 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
       )}
 
       {/* Cell Link Picker */}
+      {/* Column Context Menu */}
+      {colCtxMenu && (
+        <>
+          <div style={{ position: "fixed", inset: 0, zIndex: 299 }} onMouseDown={() => setColCtxMenu(null)} />
+          <div
+            style={{
+              position: "fixed", left: colCtxMenu.x, top: colCtxMenu.y, zIndex: 300,
+              background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
+              borderRadius: RADIUS.lg, padding: 4, minWidth: 160,
+              boxShadow: SHADOW.dropdown, fontFamily: FONT,
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {/* Sort Asc */}
+            <div
+              style={ctxItem}
+              onClick={() => { setSortField(colCtxMenu.col); setSortDir("asc"); setColCtxMenu(null); }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            >{"\u25B2"} Sort Ascending</div>
+            {/* Sort Desc */}
+            <div
+              style={ctxItem}
+              onClick={() => { setSortField(colCtxMenu.col); setSortDir("desc"); setColCtxMenu(null); }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            >{"\u25BC"} Sort Descending</div>
+            <div style={{ borderTop: `1px solid ${C.edgeLine}`, margin: "2px 0" }} />
+            {/* Hide */}
+            <div
+              style={ctxItem}
+              onClick={() => handleHideCol(colCtxMenu.col)}
+              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            >{"\uD83D\uDC41\uFE0F"} Hide Column</div>
+            {/* Rename (D1 only) */}
+            {isD1Table && (
+              <div
+                style={ctxItem}
+                onClick={() => { setRenamingCol(colCtxMenu.col); setRenameValue(colCtxMenu.col); setColCtxMenu(null); }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+              >{"\u270F\uFE0F"} Rename</div>
+            )}
+            {/* Type Change (D1 only) */}
+            {isD1Table && (
+              <>
+                <div style={{ borderTop: `1px solid ${C.edgeLine}`, margin: "2px 0" }} />
+                <div style={{ padding: "4px 10px", fontSize: 10, color: C.darkMuted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  Change Type
+                </div>
+                {COLUMN_TYPES.slice(0, 6).map((t) => (
+                  <div
+                    key={t.value}
+                    style={{ ...ctxItem, color: getFieldType(schema, colCtxMenu.col) === t.value ? C.accent : C.darkText }}
+                    onClick={() => handleChangeColType(colCtxMenu.col, t.value)}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                  >{t.icon} {t.label}</div>
+                ))}
+              </>
+            )}
+            {/* Delete (D1 only) */}
+            {isD1Table && (
+              <>
+                <div style={{ borderTop: `1px solid ${C.edgeLine}`, margin: "2px 0" }} />
+                <div
+                  style={{ ...ctxItem, color: "#FF6B3D" }}
+                  onClick={() => { if (confirm(`Delete column "${colCtxMenu.col}"?`)) handleDeleteCol(colCtxMenu.col); }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "#FF6B3D10"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                >{"\uD83D\uDDD1"} Delete Column</div>
+              </>
+            )}
+          </div>
+        </>
+      )}
+
       {linkPickerCell && (
         <LinkPicker
           onCancel={() => setLinkPickerCell(null)}
