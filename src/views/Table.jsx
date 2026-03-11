@@ -31,6 +31,23 @@ const COLUMN_TYPES = [
   { value: "status", label: "Status", icon: "\u25C9" },
 ];
 
+// ─── Type Icon Lookup ───
+const TYPE_ICON_MAP = {};
+COLUMN_TYPES.forEach((t) => { TYPE_ICON_MAP[t.value] = t.icon; });
+TYPE_ICON_MAP["rich_text"] = "Aa";
+TYPE_ICON_MAP["title"] = "Aa";
+TYPE_ICON_MAP["phone_number"] = "\uD83D\uDCDE";
+TYPE_ICON_MAP["last_edited_time"] = "\uD83D\uDCC5";
+TYPE_ICON_MAP["created_time"] = "\uD83D\uDCC5";
+
+const D1_TO_NOTION_TYPE = {
+  text: "rich_text", number: "number", select: "select",
+  multi_select: "multi_select", date: "date", checkbox: "checkbox",
+  url: "url", email: "email", phone: "phone_number", status: "status",
+};
+function mapD1TypeForUI(d1Type) { return D1_TO_NOTION_TYPE[d1Type] || d1Type; }
+function getTypeIcon(schema, fieldName) { return TYPE_ICON_MAP[getFieldType(schema, fieldName)] || null; }
+
 // ─── Constants ───
 
 const EDITABLE_TYPES = new Set([
@@ -1739,7 +1756,10 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                         position: "relative",
                         cursor: colDrag ? "grabbing" : "pointer",
                       }}
-                      onClick={() => handleSort(col)}
+                      onClick={(e) => {
+                        if (isD1Table && e.detail === 2) { e.stopPropagation(); setRenamingCol(col); setRenameValue(col); return; }
+                        handleSort(col);
+                      }}
                       onContextMenu={(e) => handleColRightClick(col, e)}
                       onMouseDown={(e) => { if (e.button === 0 && !e.target.closest("[data-resize]")) handleColDragStart(col, e); }}
                     >
@@ -1764,6 +1784,12 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                         />
                       ) : (
                         <>
+                          {(() => {
+                            const icon = getTypeIcon(schema, col);
+                            return icon ? (
+                              <span style={{ marginRight: 5, fontSize: 10, opacity: 0.55, verticalAlign: "middle" }} title={getFieldType(schema, col)}>{icon}</span>
+                            ) : null;
+                          })()}
                           {col}
                           {isActive && sortDir && (
                             <span style={styles.sortArrow}>
@@ -1788,60 +1814,98 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                 })}
                 {/* Add column button */}
                 {isD1Table && (
-                  <th style={{ ...styles.th, width: 40, minWidth: 40, textAlign: "center", padding: "10px 4px" }}>
+                  <th style={{ ...styles.th, width: 44, minWidth: 44, textAlign: "center", padding: "10px 8px" }}>
                     {addColOpen ? (
                       <div
                         style={{
                           position: "absolute", top: "100%", right: 0, zIndex: 100,
                           background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
-                          borderRadius: RADIUS.lg, padding: 12, minWidth: 200,
-                          boxShadow: SHADOW.dropdown, display: "flex", flexDirection: "column", gap: 8,
+                          borderRadius: RADIUS.lg, padding: 14, width: 240,
+                          boxShadow: SHADOW.dropdown, display: "flex", flexDirection: "column", gap: 10,
                         }}
                         onClick={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
                       >
+                        <div style={{ fontSize: 11, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                          New Column
+                        </div>
                         <input
                           autoFocus
-                          placeholder="Column name"
+                          placeholder="Column name..."
                           value={addColName}
                           onChange={(e) => setAddColName(e.target.value)}
                           onKeyDown={(e) => { if (e.key === "Enter") handleAddCol(); if (e.key === "Escape") setAddColOpen(false); }}
                           style={{
                             border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
-                            background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 12,
-                            padding: "6px 8px", outline: "none", width: "100%", boxSizing: "border-box",
+                            background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 13,
+                            padding: "7px 10px", outline: "none", width: "100%", boxSizing: "border-box",
                           }}
                         />
-                        <select
-                          value={addColType}
-                          onChange={(e) => setAddColType(e.target.value)}
-                          style={{
-                            border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
-                            background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 12,
-                            padding: "6px 8px", cursor: "pointer", width: "100%", boxSizing: "border-box",
-                          }}
-                        >
-                          {COLUMN_TYPES.map((t) => (
-                            <option key={t.value} value={t.value}>{t.icon} {t.label}</option>
-                          ))}
-                        </select>
+                        <div style={{ fontSize: 10, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                          Column Type
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
+                          {COLUMN_TYPES.map((t) => {
+                            const isSelected = addColType === t.value;
+                            return (
+                              <div
+                                key={t.value}
+                                style={{
+                                  display: "flex", alignItems: "center", gap: 6,
+                                  padding: "5px 8px", borderRadius: RADIUS.sm,
+                                  cursor: "pointer", fontSize: 12, fontFamily: FONT,
+                                  transition: "background 0.1s",
+                                  color: isSelected ? C.accent : C.darkText,
+                                  background: isSelected ? `${C.accent}15` : "transparent",
+                                  fontWeight: isSelected ? 600 : 400,
+                                }}
+                                onClick={() => setAddColType(t.value)}
+                                onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = C.darkSurf2; }}
+                                onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = isSelected ? `${C.accent}15` : "transparent"; }}
+                              >
+                                <span style={{ width: 16, textAlign: "center", fontSize: 12, flexShrink: 0 }}>{t.icon}</span>
+                                <span>{t.label}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
                         <button
                           onClick={handleAddCol}
                           disabled={!addColName.trim()}
                           style={{
                             background: C.accent, color: "#fff", border: "none", borderRadius: RADIUS.sm,
-                            padding: "6px 12px", fontSize: 12, fontFamily: FONT, fontWeight: 600,
-                            cursor: addColName.trim() ? "pointer" : "default", opacity: addColName.trim() ? 1 : 0.4,
+                            padding: "7px 14px", fontSize: 12, fontFamily: FONT, fontWeight: 600,
+                            cursor: addColName.trim() ? "pointer" : "default",
+                            opacity: addColName.trim() ? 1 : 0.4, transition: "opacity 0.15s", marginTop: 2,
                           }}
                         >Add Column</button>
                       </div>
                     ) : (
-                      <span
-                        style={{ cursor: "pointer", color: C.darkMuted, fontSize: 14, opacity: 0.5, transition: "opacity 0.15s" }}
+                      <div
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          width: 26, height: 26, borderRadius: RADIUS.md,
+                          border: `1px dashed ${C.darkBorder}`,
+                          cursor: "pointer", transition: "all 0.15s",
+                          color: C.darkMuted, opacity: 0.65,
+                        }}
                         onClick={(e) => { e.stopPropagation(); setAddColOpen(true); }}
-                        onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.opacity = "1";
+                          e.currentTarget.style.borderColor = C.accent;
+                          e.currentTarget.style.color = C.accent;
+                          e.currentTarget.style.background = `${C.accent}10`;
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.opacity = "0.65";
+                          e.currentTarget.style.borderColor = C.darkBorder;
+                          e.currentTarget.style.color = C.darkMuted;
+                          e.currentTarget.style.background = "transparent";
+                        }}
                         title="Add column"
-                      >+</span>
+                      >
+                        <IconPlus size={13} />
+                      </div>
                     )}
                   </th>
                 )}
@@ -2163,15 +2227,29 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                 <div style={{ padding: "4px 10px", fontSize: 10, color: C.darkMuted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
                   Change Type
                 </div>
-                {COLUMN_TYPES.slice(0, 6).map((t) => (
-                  <div
-                    key={t.value}
-                    style={{ ...ctxItem, color: getFieldType(schema, colCtxMenu.col) === t.value ? C.accent : C.darkText }}
-                    onClick={() => handleChangeColType(colCtxMenu.col, t.value)}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                  >{t.icon} {t.label}</div>
-                ))}
+                {COLUMN_TYPES.map((t) => {
+                  const currentType = getFieldType(schema, colCtxMenu.col);
+                  const isCurrentType = currentType === t.value || currentType === mapD1TypeForUI(t.value);
+                  return (
+                    <div
+                      key={t.value}
+                      style={{
+                        ...ctxItem,
+                        display: "flex", alignItems: "center", gap: 8,
+                        color: isCurrentType ? C.accent : C.darkText,
+                        background: isCurrentType ? `${C.accent}10` : "transparent",
+                        fontWeight: isCurrentType ? 600 : 400,
+                      }}
+                      onClick={() => handleChangeColType(colCtxMenu.col, t.value)}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = isCurrentType ? `${C.accent}18` : C.darkSurf2; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = isCurrentType ? `${C.accent}10` : "transparent"; }}
+                    >
+                      <span style={{ width: 20, textAlign: "center", fontSize: 13, flexShrink: 0 }}>{t.icon}</span>
+                      <span style={{ flex: 1 }}>{t.label}</span>
+                      {isCurrentType && <span style={{ fontSize: 11, opacity: 0.7 }}>{"\u2713"}</span>}
+                    </div>
+                  );
+                })}
               </>
             )}
             {/* Delete (D1 only) */}
