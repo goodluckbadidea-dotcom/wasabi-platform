@@ -613,6 +613,95 @@ export default {
         return jsonResponse({ id: neuronId, name: name || "", node_count: nodes.length }, 201);
       }
 
+      // ─── Cell Links Routes ───
+
+      // GET /links?target_page_id=X&target_view_idx=N — list links for a view
+      if (path === "/links" && request.method === "GET") {
+        const url = new URL(request.url);
+        const targetPage = url.searchParams.get("target_page_id");
+        const targetView = url.searchParams.get("target_view_idx");
+        let query = "SELECT * FROM cell_links WHERE active = 1";
+        const binds = [];
+        if (targetPage) { query += " AND target_page_id = ?"; binds.push(targetPage); }
+        if (targetView != null) { query += " AND target_view_idx = ?"; binds.push(Number(targetView)); }
+        query += " ORDER BY created_at DESC";
+        const { results } = await env.DB.prepare(query).bind(...binds).all();
+        // Parse JSON refs
+        const links = results.map((r) => ({
+          ...r,
+          source_ref: safeParseJSON(r.source_ref),
+          target_ref: safeParseJSON(r.target_ref),
+        }));
+        return jsonResponse({ links });
+      }
+
+      // POST /links — create a new link
+      if (path === "/links" && request.method === "POST") {
+        const body = await request.json();
+        const id = crypto.randomUUID();
+        await env.DB.prepare(
+          `INSERT INTO cell_links (id, source_page_id, source_view_idx, source_ref, target_page_id, target_view_idx, target_ref, direction, active)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`
+        ).bind(
+          id,
+          body.source_page_id || "",
+          body.source_view_idx ?? 0,
+          JSON.stringify(body.source_ref || {}),
+          body.target_page_id || "",
+          body.target_view_idx ?? 0,
+          JSON.stringify(body.target_ref || {}),
+          body.direction || "one_way"
+        ).run();
+        return jsonResponse({ id }, 201);
+      }
+
+      // GET /links/by-source/:pageId — links from a source page
+      if (path.startsWith("/links/by-source/") && request.method === "GET") {
+        const sourcePageId = decodeURIComponent(path.slice(17));
+        const { results } = await env.DB.prepare(
+          "SELECT * FROM cell_links WHERE source_page_id = ? AND active = 1 ORDER BY created_at DESC"
+        ).bind(sourcePageId).all();
+        const links = results.map((r) => ({
+          ...r,
+          source_ref: safeParseJSON(r.source_ref),
+          target_ref: safeParseJSON(r.target_ref),
+        }));
+        return jsonResponse({ links });
+      }
+
+      // Single link routes: GET/PATCH/DELETE /links/:id
+      const linkMatch = path.match(/^\/links\/([^/]+)$/);
+      if (linkMatch) {
+        const id = linkMatch[1];
+        if (request.method === "GET") {
+          const link = await env.DB.prepare("SELECT * FROM cell_links WHERE id = ?").bind(id).first();
+          if (!link) return jsonResponse({ _error: "Link not found" }, 404);
+          return jsonResponse({
+            ...link,
+            source_ref: safeParseJSON(link.source_ref),
+            target_ref: safeParseJSON(link.target_ref),
+          });
+        }
+        if (request.method === "PATCH") {
+          const body = await request.json();
+          const sets = [];
+          const vals = [];
+          if (body.direction !== undefined) { sets.push("direction = ?"); vals.push(body.direction); }
+          if (body.active !== undefined) { sets.push("active = ?"); vals.push(body.active ? 1 : 0); }
+          if (body.source_ref !== undefined) { sets.push("source_ref = ?"); vals.push(JSON.stringify(body.source_ref)); }
+          if (body.target_ref !== undefined) { sets.push("target_ref = ?"); vals.push(JSON.stringify(body.target_ref)); }
+          if (sets.length > 0) {
+            vals.push(id);
+            await env.DB.prepare(`UPDATE cell_links SET ${sets.join(", ")} WHERE id = ?`).bind(...vals).run();
+          }
+          return jsonResponse({ ok: true });
+        }
+        if (request.method === "DELETE") {
+          await env.DB.prepare("DELETE FROM cell_links WHERE id = ?").bind(id).run();
+          return jsonResponse({ ok: true });
+        }
+      }
+
       // ─── Notion Sync Routes ───
       const syncConfigureMatch = path.match(/^\/sync\/([^/]+)\/configure$/);
       if (syncConfigureMatch && request.method === "POST") {

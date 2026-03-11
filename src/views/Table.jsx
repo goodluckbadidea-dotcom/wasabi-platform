@@ -16,6 +16,8 @@ import LinkPicker from "../core/LinkPicker.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
 import { updateTableSchema, getTableSchema } from "../lib/api.js";
+import SelectPicker from "../components/SelectPicker.jsx";
+import MultiSelectPicker from "../components/MultiSelectPicker.jsx";
 
 // ─── Column Types ───
 const COLUMN_TYPES = [
@@ -50,9 +52,13 @@ function getTypeIcon(schema, fieldName) { return TYPE_ICON_MAP[getFieldType(sche
 
 // ─── Constants ───
 
+const ROW_HEIGHT = 36;
+const VIRT_BUFFER = 10;
+
 const EDITABLE_TYPES = new Set([
   "title", "rich_text", "number", "select", "status",
   "date", "checkbox", "url", "email", "phone_number",
+  "multi_select",
 ]);
 
 const TEXT_SEARCH_TYPES = new Set([
@@ -463,9 +469,12 @@ function searchableText(value, type) {
 
 // ─── Cell Editor Component ───
 
-function CellEditor({ value, type, options, onCommit, onCancel }) {
+function CellEditor({ value, type, options, schemaOptions, onCommit, onCancel, initialChar, isD1Table, onCreateOption, cellRef }) {
   const inputRef = useRef(null);
   const [draft, setDraft] = useState(() => {
+    if (initialChar && (type === "title" || type === "rich_text" || type === "url" || type === "email" || type === "phone_number")) {
+      return initialChar;
+    }
     if (type === "date" && value && typeof value === "object") return value.start || "";
     if (type === "date" && typeof value === "string") return value;
     if (type === "checkbox") return !!value;
@@ -473,12 +482,27 @@ function CellEditor({ value, type, options, onCommit, onCancel }) {
     return String(value);
   });
 
+  // Date range state
+  const [dateEnd, setDateEnd] = useState(() => {
+    if (type === "date" && value && typeof value === "object") return value.end || "";
+    return "";
+  });
+  const [includeTime, setIncludeTime] = useState(() => {
+    if (type === "date" && typeof draft === "string" && draft.includes("T")) return true;
+    return false;
+  });
+
   useEffect(() => {
     if (inputRef.current) {
       inputRef.current.focus();
-      if (inputRef.current.select) inputRef.current.select();
+      if (inputRef.current.select && !initialChar) inputRef.current.select();
+      // Move cursor to end if initialChar was set
+      if (initialChar && inputRef.current.setSelectionRange) {
+        const len = inputRef.current.value.length;
+        inputRef.current.setSelectionRange(len, len);
+      }
     }
-  }, []);
+  }, [initialChar]);
 
   const commit = useCallback((val) => {
     let out = val;
@@ -501,43 +525,122 @@ function CellEditor({ value, type, options, onCommit, onCancel }) {
       e.preventDefault();
       onCancel();
     }
+    if (e.key === "Tab") {
+      e.preventDefault();
+      commit(draft);
+    }
   }, [draft, commit, onCancel]);
 
   // Checkbox is always a direct toggle, no editor needed (handled in-cell)
   if (type === "checkbox") return null;
 
+  // Select / Status — custom SelectPicker
   if (type === "select" || type === "status") {
+    const anchor = cellRef?.current?.getBoundingClientRect?.();
     return (
-      <select
-        ref={inputRef}
-        style={styles.cellSelect}
-        value={draft}
-        onChange={(e) => {
-          setDraft(e.target.value);
-          onCommit(e.target.value || null);
-        }}
-        onBlur={() => onCancel()}
-        onKeyDown={handleKeyDown}
-      >
-        <option value="">-- none --</option>
-        {options.map((opt) => (
-          <option key={opt} value={opt}>{opt}</option>
-        ))}
-      </select>
+      <SelectPicker
+        value={value}
+        options={schemaOptions || options.map((o) => ({ name: o }))}
+        onSelect={(selected) => onCommit(selected)}
+        onClose={onCancel}
+        allowCreate={!!isD1Table}
+        onCreateOption={onCreateOption}
+        anchor={anchor ? { top: anchor.bottom, left: anchor.left, width: anchor.width } : undefined}
+        initialChar={initialChar}
+      />
     );
   }
 
+  // Multi-select — custom MultiSelectPicker
+  if (type === "multi_select") {
+    const currentValues = Array.isArray(value) ? value : (value ? String(value).split(",").map((s) => s.trim()).filter(Boolean) : []);
+    const anchor = cellRef?.current?.getBoundingClientRect?.();
+    return (
+      <MultiSelectPicker
+        value={currentValues}
+        options={schemaOptions || options.map((o) => ({ name: o }))}
+        onChange={(newVals) => onCommit(newVals)}
+        onClose={onCancel}
+        allowCreate={!!isD1Table}
+        onCreateOption={onCreateOption}
+        anchor={anchor ? { top: anchor.bottom, left: anchor.left, width: anchor.width } : undefined}
+        initialChar={initialChar}
+      />
+    );
+  }
+
+  // Date — enhanced with end date, time toggle, quick buttons
   if (type === "date") {
     return (
-      <input
-        ref={inputRef}
-        type="date"
-        style={styles.cellInput}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => commit(draft)}
-        onKeyDown={handleKeyDown}
-      />
+      <div
+        style={{
+          background: C.darkSurf,
+          border: `1px solid ${C.accent}`,
+          borderRadius: RADIUS.md,
+          padding: 8,
+          boxShadow: `0 0 0 2px ${C.accent}33`,
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          minWidth: 200,
+        }}
+      >
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <input
+            ref={inputRef}
+            type={includeTime ? "datetime-local" : "date"}
+            style={{ ...styles.cellInput, flex: 1, boxShadow: "none" }}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={handleKeyDown}
+          />
+          <button
+            onClick={() => { commit(null); }}
+            style={{ ...S.btnGhost, fontSize: 10, padding: "2px 6px", color: C.darkMuted }}
+            title="Clear"
+          >{"\u2715"}</button>
+        </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <input
+            type={includeTime ? "datetime-local" : "date"}
+            style={{ ...styles.cellInput, flex: 1, boxShadow: "none", opacity: dateEnd ? 1 : 0.5 }}
+            value={dateEnd}
+            onChange={(e) => setDateEnd(e.target.value)}
+            placeholder="End date"
+            onKeyDown={handleKeyDown}
+          />
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 11, color: C.darkMuted }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+            <input type="checkbox" checked={includeTime} onChange={(e) => setIncludeTime(e.target.checked)} />
+            Time
+          </label>
+          <span style={{ flex: 1 }} />
+          {/* Quick buttons */}
+          <button
+            onClick={() => { setDraft(new Date().toISOString().slice(0, 10)); }}
+            style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 10, fontFamily: FONT, padding: 0 }}
+          >Today</button>
+          <button
+            onClick={() => {
+              const d = new Date(); d.setDate(d.getDate() + 1);
+              setDraft(d.toISOString().slice(0, 10));
+            }}
+            style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 10, fontFamily: FONT, padding: 0 }}
+          >Tomorrow</button>
+          <button
+            onClick={() => {
+              const d = new Date(); d.setDate(d.getDate() + 7);
+              setDraft(d.toISOString().slice(0, 10));
+            }}
+            style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 10, fontFamily: FONT, padding: 0 }}
+          >+1w</button>
+        </div>
+        <button
+          onClick={() => commit(draft)}
+          style={{ ...S.btnPrimary, fontSize: 11, padding: "4px 10px", alignSelf: "flex-end" }}
+        >Done</button>
+      </div>
     );
   }
 
@@ -699,134 +802,6 @@ function CellDisplay({ value, type, fieldName, schema, onClick }) {
 }
 
 
-// ─── Quick-Add Cell Input (inline per-column) ───
-function QuickAddCellInput({ type, fieldName, schema, value, onChange, onSubmit, autoFocus }) {
-  const baseStyle = {
-    width: "100%",
-    border: `1px solid ${C.darkBorder}`,
-    borderRadius: RADIUS.sm,
-    background: C.darkSurf2,
-    color: C.darkText,
-    fontFamily: FONT,
-    fontSize: 12,
-    padding: "5px 8px",
-    outline: "none",
-    transition: "border-color 0.15s",
-    boxSizing: "border-box",
-  };
-
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      onSubmit();
-    }
-    if (e.key === "Escape") {
-      e.target.blur();
-    }
-  };
-
-  switch (type) {
-    case "title":
-    case "rich_text":
-    case "url":
-    case "email":
-    case "phone_number":
-      return (
-        <input
-          type="text"
-          style={baseStyle}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={handleKeyDown}
-          autoFocus={autoFocus}
-          placeholder={type === "title" ? "Enter title..." : fieldName}
-          onFocus={(e) => { e.currentTarget.style.borderColor = C.accent; }}
-          onBlur={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
-        />
-      );
-
-    case "number":
-      return (
-        <input
-          type="number"
-          style={{ ...baseStyle, fontVariantNumeric: "tabular-nums" }}
-          value={value}
-          onChange={(e) => onChange(e.target.value ? Number(e.target.value) : "")}
-          onKeyDown={handleKeyDown}
-          placeholder="0"
-          onFocus={(e) => { e.currentTarget.style.borderColor = C.accent; }}
-          onBlur={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
-        />
-      );
-
-    case "select":
-    case "status":
-      return (
-        <select
-          style={{ ...baseStyle, cursor: "pointer" }}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-        >
-          <option value="">—</option>
-          {getOptionNames(schema, fieldName).map((opt) => (
-            <option key={opt} value={opt}>{opt}</option>
-          ))}
-        </select>
-      );
-
-    case "multi_select":
-      return (
-        <input
-          type="text"
-          style={baseStyle}
-          value={Array.isArray(value) ? value.join(", ") : value}
-          onChange={(e) => onChange(e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
-          onKeyDown={handleKeyDown}
-          placeholder="Comma-separated..."
-          onFocus={(e) => { e.currentTarget.style.borderColor = C.accent; }}
-          onBlur={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
-        />
-      );
-
-    case "date":
-      return (
-        <input
-          type="date"
-          style={{ ...baseStyle, cursor: "pointer" }}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={handleKeyDown}
-        />
-      );
-
-    case "checkbox":
-      return (
-        <span
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 18,
-            height: 18,
-            borderRadius: RADIUS.sm,
-            border: `2px solid ${value ? C.accent : C.darkBorder}`,
-            background: value ? C.accent : "transparent",
-            cursor: "pointer",
-            fontSize: 11,
-            fontWeight: 700,
-            color: "#fff",
-          }}
-          onClick={() => onChange(!value)}
-        >
-          {value ? "\u2713" : ""}
-        </span>
-      );
-
-    default:
-      return <span style={{ color: C.darkMuted, fontSize: 11 }}>—</span>;
-  }
-}
-
 // ─── Main Table Component ───
 
 export default function Table({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onSaveFilters, onViewConfigChange }) {
@@ -865,8 +840,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const [detailPage, setDetailPage] = useState(null);
   const lastRowClickRef = useRef({ id: null, time: 0 });
 
-  // ── Column Resize ──
-  const [colWidths, setColWidths] = useState({}); // { fieldName: px }
+  // ── Column Resize (persisted) ──
+  const [colWidths, setColWidths] = useState(() => config.colWidths || {}); // { fieldName: px }
   const resizeDrag = useRef(null); // { col, startX, startW }
 
   // ── Column Management ──
@@ -879,17 +854,20 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const [colDrag, setColDrag] = useState(null); // { col, startX, overCol }
   const isD1Table = pageConfig?.page_type === "database" || pageConfig?.pageType === "database";
 
-  // ── Quick-Add Row ──
-  const [quickAddOpen, setQuickAddOpen] = useState(false);
-  const [quickAddValues, setQuickAddValues] = useState({});
-  const [quickAddSaving, setQuickAddSaving] = useState(false);
-  const [quickAddError, setQuickAddError] = useState(null);
-  const quickAddRowRef = useRef(null);
-  useEffect(() => {
-    if (quickAddOpen && quickAddRowRef.current) {
-      quickAddRowRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }
-  }, [quickAddOpen]);
+  // ── Ghost Row (inline new record creation) ──
+  const [ghostValues, setGhostValues] = useState({});
+  const [ghostSaving, setGhostSaving] = useState(false);
+  const [ghostError, setGhostError] = useState(null);
+  const ghostActive = useRef(false); // true when user has started typing in ghost row
+
+  // ── Keyboard Navigation ──
+  const [focusedCell, setFocusedCell] = useState(null); // { row: number, col: number } | null
+  const [initialChar, setInitialChar] = useState(""); // printable char that triggered cell edit
+  const scrollAreaRef = useRef(null);
+
+  // ── Virtualization ──
+  const [scrollTop, setScrollTop] = useState(0);
+  const scrollRAF = useRef(null);
 
   // ── Cell Linking ──
   const { resolveLinksForView, createLink, removeLink, getLinksForTarget } = useLinks();
@@ -911,6 +889,117 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   useEffect(() => {
     injectAnimations();
   }, []);
+
+  // ── Keyboard Navigation Handler ──
+  useEffect(() => {
+    const handler = (e) => {
+      // Don't intercept if user is in a text input, search, or modal
+      const tag = e.target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (!focusedCell && !e.key.startsWith("Arrow")) return;
+
+      const rowCount = processedData.length;
+      const colCount = columns.length;
+      if (rowCount === 0 || colCount === 0) return;
+
+      const { row, col } = focusedCell || { row: 0, col: 0 };
+
+      switch (e.key) {
+        case "ArrowDown":
+          e.preventDefault();
+          setFocusedCell({ row: Math.min(row + 1, rowCount - 1), col });
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          setFocusedCell({ row: Math.max(row - 1, 0), col });
+          break;
+        case "ArrowRight":
+          e.preventDefault();
+          if (col < colCount - 1) setFocusedCell({ row, col: col + 1 });
+          else if (row < rowCount - 1) setFocusedCell({ row: row + 1, col: 0 });
+          break;
+        case "ArrowLeft":
+          e.preventDefault();
+          if (col > 0) setFocusedCell({ row, col: col - 1 });
+          else if (row > 0) setFocusedCell({ row: row - 1, col: colCount - 1 });
+          break;
+        case "Tab":
+          e.preventDefault();
+          if (e.shiftKey) {
+            if (col > 0) setFocusedCell({ row, col: col - 1 });
+            else if (row > 0) setFocusedCell({ row: row - 1, col: colCount - 1 });
+          } else {
+            if (col < colCount - 1) setFocusedCell({ row, col: col + 1 });
+            else if (row < rowCount - 1) setFocusedCell({ row: row + 1, col: 0 });
+          }
+          break;
+        case "Enter":
+          if (focusedCell && !editCell) {
+            e.preventDefault();
+            const page = processedData[row];
+            const field = columns[col];
+            const type = getFieldType(schema, field);
+            if (page && field && EDITABLE_TYPES.has(type) && onUpdate) {
+              if (type === "checkbox") {
+                handleCheckboxToggle(page.id, field, readField(page, field));
+              } else {
+                setEditCell({ pageId: page.id, field });
+                setInitialChar("");
+              }
+            }
+          }
+          break;
+        case "Escape":
+          if (editCell) {
+            setEditCell(null);
+          } else {
+            setFocusedCell(null);
+          }
+          break;
+        case "Delete":
+        case "Backspace":
+          if (focusedCell && !editCell) {
+            e.preventDefault();
+            const page = processedData[row];
+            const field = columns[col];
+            const type = getFieldType(schema, field);
+            if (page && field && EDITABLE_TYPES.has(type) && onUpdate && type !== "checkbox") {
+              handleEditCommit(page.id, field, null);
+            }
+          }
+          break;
+        default:
+          // Printable character → open editor with that char
+          if (focusedCell && !editCell && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            const page = processedData[row];
+            const field = columns[col];
+            const type = getFieldType(schema, field);
+            if (page && field && EDITABLE_TYPES.has(type) && onUpdate && type !== "checkbox") {
+              setEditCell({ pageId: page.id, field });
+              setInitialChar(e.key);
+            }
+          }
+          break;
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [focusedCell, editCell, processedData, columns, schema, onUpdate, handleCheckboxToggle, handleEditCommit]);
+
+  // Scroll focused cell into view (for virtualization compatibility)
+  useEffect(() => {
+    if (focusedCell && scrollAreaRef.current) {
+      const targetTop = focusedCell.row * ROW_HEIGHT;
+      const container = scrollAreaRef.current;
+      const viewTop = container.scrollTop;
+      const viewBottom = viewTop + container.clientHeight - 80; // account for header
+      if (targetTop < viewTop) {
+        container.scrollTop = targetTop;
+      } else if (targetTop + ROW_HEIGHT > viewBottom) {
+        container.scrollTop = targetTop + ROW_HEIGHT - container.clientHeight + 80;
+      }
+    }
+  }, [focusedCell]);
 
   // Outside-click to close column visibility menu
   useEffect(() => {
@@ -942,6 +1031,11 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
       setColWidths((prev) => ({ ...prev, [resizeDrag.current.col]: newW }));
     };
     const onUp = () => {
+      // Persist column widths
+      if (resizeDrag.current && onViewConfigChange) {
+        const finalWidths = { ...colWidthsRef.current };
+        onViewConfigChange({ colWidths: finalWidths });
+      }
       resizeDrag.current = null;
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
@@ -1260,7 +1354,34 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
       }
     }
     setEditCell(null);
-  }, [schema, onUpdate]);
+    setInitialChar("");
+    // Advance focus down after commit (Notion behavior)
+    if (focusedCell) {
+      setFocusedCell((prev) =>
+        prev && prev.row < processedData.length - 1
+          ? { row: prev.row + 1, col: prev.col }
+          : prev
+      );
+    }
+  }, [schema, onUpdate, focusedCell, processedData.length]);
+
+  // Create option handler for SelectPicker/MultiSelectPicker (adds to D1 schema)
+  const handleCreateOption = useCallback(async (fieldName, newOptionName) => {
+    if (!isD1Table || !pageConfig?.id) return;
+    try {
+      const schemaRes = await getTableSchema(pageConfig.id);
+      const cols = (schemaRes?.columns || []).map((c) => {
+        if (c.name === fieldName) {
+          const existing = c.options || [];
+          if (!existing.some((o) => (typeof o === "string" ? o : o.name) === newOptionName)) {
+            return { ...c, options: [...existing, { name: newOptionName }] };
+          }
+        }
+        return c;
+      });
+      await updateTableSchema(pageConfig.id, cols);
+    } catch (err) { console.error("Create option failed:", err); }
+  }, [isD1Table, pageConfig?.id]);
 
   // Checkbox direct toggle
   const handleCheckboxToggle = useCallback((pageId, field, currentValue) => {
@@ -1354,20 +1475,27 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     });
   }, [allColumns, onViewConfigChange]);
 
-  // ── Quick-Add Handler ──
-  const handleQuickAdd = useCallback(async () => {
+  // ── Ghost Row Handler (create record from inline ghost row) ──
+  const handleGhostCommit = useCallback(async () => {
     if (!onCreate || !targetDatabaseId) return;
-    // Must have at least a title value
     const titleField = schema?.title?.name;
-    if (titleField && !quickAddValues[titleField]?.toString().trim()) {
-      setQuickAddError("Title is required");
+    // Only create if there's a title value
+    if (titleField && !ghostValues[titleField]?.toString().trim()) {
+      setGhostValues({});
+      ghostActive.current = false;
       return;
     }
-    setQuickAddSaving(true);
-    setQuickAddError(null);
+    // Don't create if no values at all
+    const hasAnyValue = Object.values(ghostValues).some((v) => v !== "" && v !== null && v !== undefined);
+    if (!hasAnyValue) {
+      ghostActive.current = false;
+      return;
+    }
+    setGhostSaving(true);
+    setGhostError(null);
     try {
       const properties = {};
-      for (const [fieldName, val] of Object.entries(quickAddValues)) {
+      for (const [fieldName, val] of Object.entries(ghostValues)) {
         if (val === "" || val === null || val === undefined) continue;
         const type = getFieldType(schema, fieldName);
         if (!type) continue;
@@ -1377,14 +1505,15 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
         }
       }
       await onCreate(targetDatabaseId, properties);
-      setQuickAddValues({});
-      setQuickAddError(null);
+      setGhostValues({});
+      setGhostError(null);
+      ghostActive.current = false;
     } catch (err) {
-      setQuickAddError(err.message || "Failed to create record");
+      setGhostError(err.message || "Failed to create record");
     } finally {
-      setQuickAddSaving(false);
+      setGhostSaving(false);
     }
-  }, [onCreate, targetDatabaseId, quickAddValues, schema]);
+  }, [onCreate, targetDatabaseId, ghostValues, schema]);
 
   // ─── Render ───
 
@@ -1409,30 +1538,10 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           <div style={styles.emptyIcon}>&#x1f4cb;</div>
           <div style={styles.emptyTitle}>No data to display</div>
           <div style={styles.emptySub}>
-            This table is empty. Add records to get started, or adjust your filters to see data here.
+            This table is empty. Start typing in the row below to create your first record.
           </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-            {onCreate && targetDatabaseId && (
-              <button
-                style={{ ...S.btnPrimary, display: "flex", alignItems: "center", gap: 6 }}
-                onClick={() => setQuickAddOpen(true)}
-              >
-                <IconPlus size={12} color="#fff" /> Create First Record
-              </button>
-            )}
-            {onRefresh && (
-              <button
-                style={S.btnSecondary}
-                onClick={onRefresh}
-                onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-              >
-                Refresh
-              </button>
-            )}
-          </div>
-          {/* Inline table for creating first record */}
-          {quickAddOpen && onCreate && targetDatabaseId && schema && (() => {
+          {/* Inline ghost row for empty state */}
+          {onCreate && targetDatabaseId && schema && (() => {
             const cols = (schema.allFields || [])
               .filter((f) => EDITABLE_TYPES.has(f.type))
               .map((f) => f.name);
@@ -1444,48 +1553,55 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                     <tr>{cols.map((c) => <th key={c} style={styles.th}>{c}</th>)}</tr>
                   </thead>
                   <tbody>
-                    <tr style={{ background: `${C.accent}08` }}>
+                    <tr style={{ height: ROW_HEIGHT, opacity: 0.8 }}>
                       {cols.map((col) => (
                         <td key={col} style={{ ...styles.td, padding: "4px 6px" }}>
-                          <QuickAddCellInput
-                            type={getFieldType(schema, col)}
-                            fieldName={col}
-                            schema={schema}
-                            value={quickAddValues[col] ?? ""}
-                            onChange={(v) => setQuickAddValues((p) => ({ ...p, [col]: v }))}
-                            onSubmit={handleQuickAdd}
+                          <input
+                            type={getFieldType(schema, col) === "number" ? "number" : getFieldType(schema, col) === "date" ? "date" : "text"}
+                            style={{
+                              width: "100%", border: "none", borderRadius: RADIUS.sm,
+                              background: "transparent", color: C.darkText, fontFamily: FONT,
+                              fontSize: 12, padding: "4px 6px", outline: "none", boxSizing: "border-box",
+                            }}
+                            value={ghostValues[col] ?? ""}
+                            placeholder={col === titleField ? "New row..." : col}
                             autoFocus={col === titleField}
+                            onChange={(e) => {
+                              ghostActive.current = true;
+                              const type = getFieldType(schema, col);
+                              const val = type === "number" ? (e.target.value ? Number(e.target.value) : "") : e.target.value;
+                              setGhostValues((p) => ({ ...p, [col]: val }));
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") { e.preventDefault(); handleGhostCommit(); }
+                              if (e.key === "Escape") { setGhostValues({}); ghostActive.current = false; e.target.blur(); }
+                            }}
+                            onFocus={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                            onBlur={(e) => { e.currentTarget.style.background = "transparent"; }}
                           />
                         </td>
                       ))}
                     </tr>
-                    <tr style={{ background: `${C.accent}05` }}>
-                      <td colSpan={cols.length} style={{ padding: "6px 12px", borderBottom: `1px solid ${C.edgeLine}` }}>
-                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                          <button
-                            style={{ ...S.btnPrimary, padding: "5px 14px", fontSize: 12 }}
-                            onClick={handleQuickAdd}
-                            disabled={quickAddSaving}
-                          >
-                            {quickAddSaving ? "Saving..." : "Add Row"}
-                          </button>
-                          <button
-                            style={{ ...S.btnGhost, padding: "5px 10px", fontSize: 12 }}
-                            onClick={() => { setQuickAddOpen(false); setQuickAddValues({}); setQuickAddError(null); }}
-                          >
-                            Cancel
-                          </button>
-                          {quickAddError && (
-                            <span style={{ color: "#E05252", fontSize: 11 }}>{quickAddError}</span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
                   </tbody>
                 </table>
+                {ghostError && (
+                  <div style={{ fontSize: 11, color: "#E05252", padding: "4px 12px" }}>{ghostError}</div>
+                )}
               </div>
             );
           })()}
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            {onRefresh && (
+              <button
+                style={S.btnSecondary}
+                onClick={onRefresh}
+                onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+              >
+                Refresh
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -1668,11 +1784,20 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           )}
         </div>
 
-        {/* Add Row */}
+        {/* Add Row — scrolls to ghost row */}
         {onCreate && targetDatabaseId && (
           <button
             style={styles.refreshBtn}
-            onClick={() => setQuickAddOpen(true)}
+            onClick={() => {
+              if (scrollAreaRef.current) {
+                scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
+              }
+              const titleField = schema?.title?.name;
+              if (titleField) {
+                const colIdx = columns.indexOf(titleField);
+                setFocusedCell({ row: processedData.length, col: colIdx >= 0 ? colIdx : 0 });
+              }
+            }}
             title="Add new row"
           >
             <IconPlus size={14} color={C.darkMuted} />
@@ -1708,7 +1833,16 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
       </div>
 
       {/* Table area */}
-      <div style={styles.scrollArea}>
+      <div
+        ref={scrollAreaRef}
+        style={styles.scrollArea}
+        onScroll={(e) => {
+          if (scrollRAF.current) cancelAnimationFrame(scrollRAF.current);
+          scrollRAF.current = requestAnimationFrame(() => {
+            setScrollTop(e.target.scrollTop);
+          });
+        }}
+      >
         {showNoResults ? (
           <div style={styles.empty}>
             <div style={styles.emptyTitle}>No matching records</div>
@@ -1723,15 +1857,15 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
             </button>
           </div>
         ) : (
-          <table style={styles.table}>
+          <table style={{ ...styles.table, tableLayout: "fixed" }}>
             <thead>
               <tr>
                 {/* Select-all checkbox */}
                 <th
                   style={{
                     ...styles.th,
-                    width: 36,
-                    minWidth: 36,
+                    width: 52,
+                    minWidth: 52,
                     padding: "10px 8px",
                     textAlign: "center",
                   }}
@@ -1912,202 +2046,265 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
               </tr>
             </thead>
             <tbody>
-              {processedData.map((page, rowIdx) => {
-                const pageId = page.id;
-                const isHovered = hoveredRow === pageId;
-                const isSelected = selectedRows.has(pageId);
+              {/* Virtualized rows */}
+              {(() => {
+                const containerHeight = scrollAreaRef.current?.clientHeight || 600;
+                const totalRows = processedData.length;
+                const visibleStart = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - VIRT_BUFFER);
+                const visibleEnd = Math.min(totalRows, Math.ceil((scrollTop + containerHeight) / ROW_HEIGHT) + VIRT_BUFFER);
+                const visibleRows = processedData.slice(visibleStart, visibleEnd);
 
                 return (
-                  <tr
-                    key={pageId}
-                    data-neuron-node={`row:${pageId}`}
-                    style={{
-                      ...styles.row,
-                      ...(isHovered ? styles.rowHover : {}),
-                      ...(isSelected ? { background: C.accent + "10" } : {}),
-                      animation: ANIM.rowReveal(rowIdx),
-                    }}
-                    onMouseEnter={() => setHoveredRow(pageId)}
-                    onMouseLeave={() => setHoveredRow(null)}
-                    onClick={(e) => {
-                      if ((e.metaKey || e.ctrlKey) && isNeuronsMode()) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        dispatchNeuronSelect({ node_type: "row", node_id: pageId, node_label: getPageTitle(page) || "Untitled" });
-                        return;
-                      }
-                      const now = Date.now();
-                      const last = lastRowClickRef.current;
-                      if (last.id === pageId && now - last.time < 1000) {
-                        setDetailPage(page);
-                        lastRowClickRef.current = { id: null, time: 0 };
-                      } else {
-                        lastRowClickRef.current = { id: pageId, time: now };
-                      }
-                    }}
-                  >
-                    {/* Row checkbox + expand */}
-                    <td style={{ ...styles.td, width: 52, minWidth: 52, padding: "8px 4px", textAlign: "center" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 4, justifyContent: "center" }}>
-                        <span
-                          style={styles.toggle(isSelected)}
-                          onClick={() => toggleRow(pageId)}
-                        >
-                          {isSelected ? "\u2713" : ""}
-                        </span>
-                        <NeuronBadge nodeId={pageId} />
-                        {isHovered && (
-                          <span
-                            style={{ cursor: "pointer", opacity: 0.5, display: "flex", alignItems: "center", transition: "opacity 0.1s" }}
-                            onClick={(e) => { e.stopPropagation(); setDetailPage(page); }}
-                            onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
-                            title="Open record detail"
-                          >
-                            <IconExpand size={11} color={C.darkMuted} />
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    {columns.map((col) => {
-                      const type = getFieldType(schema, col);
-                      const value = readField(page, col);
-                      const isEditing = editCell?.pageId === pageId && editCell?.field === col;
-                      const canEdit = EDITABLE_TYPES.has(type) && !!onUpdate;
-                      const cellKey = `${pageId}:${col}`;
-                      const isSaving = !!savingCells[cellKey];
-                      const failMsg = failedCells[cellKey];
-                      const linkData = resolvedLinks.get(cellKey);
-                      const isHoveredCell = hoveredCell?.pageId === pageId && hoveredCell?.field === col;
+                  <>
+                    {/* Top spacer */}
+                    {visibleStart > 0 && (
+                      <tr style={{ height: visibleStart * ROW_HEIGHT }}>
+                        <td colSpan={columns.length + (isD1Table ? 2 : 1)} />
+                      </tr>
+                    )}
+                    {visibleRows.map((page, localIdx) => {
+                      const rowIdx = visibleStart + localIdx;
+                      const pageId = page.id;
+                      const isHovered = hoveredRow === pageId;
+                      const isSelected = selectedRows.has(pageId);
 
                       return (
-                        <td
-                          key={col}
+                        <tr
+                          key={pageId}
+                          data-neuron-node={`row:${pageId}`}
                           style={{
-                            ...styles.td,
-                            ...(colWidths[col] ? { width: colWidths[col], minWidth: colWidths[col] } : {}),
-                            ...(isSaving ? { opacity: 0.55 } : {}),
-                            ...(failMsg ? { background: "#E0525210" } : {}),
+                            ...styles.row,
+                            height: ROW_HEIGHT,
+                            ...(isHovered ? styles.rowHover : {}),
+                            ...(isSelected ? { background: C.accent + "10" } : {}),
                           }}
-                          onMouseEnter={() => setHoveredCell({ pageId, field: col })}
-                          onMouseLeave={() => setHoveredCell(null)}
+                          onMouseEnter={() => setHoveredRow(pageId)}
+                          onMouseLeave={() => setHoveredRow(null)}
+                          onClick={(e) => {
+                            if ((e.metaKey || e.ctrlKey) && isNeuronsMode()) {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              dispatchNeuronSelect({ node_type: "row", node_id: pageId, node_label: getPageTitle(page) || "Untitled" });
+                              return;
+                            }
+                            const now = Date.now();
+                            const last = lastRowClickRef.current;
+                            if (last.id === pageId && now - last.time < 1000) {
+                              setDetailPage(page);
+                              lastRowClickRef.current = { id: null, time: 0 };
+                            } else {
+                              lastRowClickRef.current = { id: pageId, time: now };
+                            }
+                          }}
                         >
-                          {isEditing ? (
-                            <CellEditor
-                              value={value}
-                              type={type}
-                              options={getOptionNames(schema, col)}
-                              onCommit={(newVal) => handleEditCommit(pageId, col, newVal)}
-                              onCancel={() => setEditCell(null)}
-                            />
-                          ) : (
-                            <div style={{ position: "relative" }}>
-                              <CellDisplay
-                                value={value}
-                                type={type}
-                                fieldName={col}
-                                schema={schema}
-                                linkInfo={linkData ? { sourceName: linkData.link?.name, stale: linkData.stale } : undefined}
-                                linkedValue={linkData?.value}
-                                onLinkClick={linkData ? () => removeLink(linkData.link.id) : undefined}
-                                onClick={
-                                  type === "checkbox" && canEdit
-                                    ? () => handleCheckboxToggle(pageId, col, value)
-                                    : canEdit
-                                      ? () => setEditCell({ pageId, field: col })
-                                      : undefined
-                                }
-                              />
-                              {/* Link icon on hover */}
-                              {isHoveredCell && !isEditing && !linkData && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); setLinkPickerCell({ pageId, field: col }); }}
-                                  title="Link cell value"
-                                  style={{
-                                    position: "absolute", top: -2, right: -2,
-                                    background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-                                    borderRadius: 4, padding: 2, cursor: "pointer",
-                                    display: "flex", alignItems: "center", justifyContent: "center",
-                                    opacity: 0.6, transition: "opacity 0.12s", zIndex: 2,
-                                  }}
+                          {/* Row number + checkbox + expand */}
+                          <td style={{ ...styles.td, width: 52, minWidth: 52, padding: "4px 4px", textAlign: "center" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 3, justifyContent: "center" }}>
+                              <span
+                                style={styles.toggle(isSelected)}
+                                onClick={() => toggleRow(pageId)}
+                              >
+                                {isSelected ? "\u2713" : ""}
+                              </span>
+                              <NeuronBadge nodeId={pageId} />
+                              {isHovered && (
+                                <span
+                                  style={{ cursor: "pointer", opacity: 0.5, display: "flex", alignItems: "center", transition: "opacity 0.1s" }}
+                                  onClick={(e) => { e.stopPropagation(); setDetailPage(page); }}
                                   onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.6"; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
+                                  title="Open record detail"
                                 >
-                                  <IconConnect size={10} color={C.accent} />
-                                </button>
-                              )}
-                              {failMsg && (
-                                <div style={{
-                                  fontSize: 10,
-                                  color: "#E05252",
-                                  marginTop: 2,
-                                  animation: "fadeUp 0.2s ease",
-                                }}>
-                                  {failMsg}
-                                </div>
+                                  <IconExpand size={11} color={C.darkMuted} />
+                                </span>
                               )}
                             </div>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
+                          </td>
+                          {columns.map((col, colIdx) => {
+                            const type = getFieldType(schema, col);
+                            const value = readField(page, col);
+                            const isEditing = editCell?.pageId === pageId && editCell?.field === col;
+                            const canEdit = EDITABLE_TYPES.has(type) && !!onUpdate;
+                            const cellKey = `${pageId}:${col}`;
+                            const isSaving = !!savingCells[cellKey];
+                            const failMsg = failedCells[cellKey];
+                            const linkData = resolvedLinks.get(cellKey);
+                            const isHoveredCell = hoveredCell?.pageId === pageId && hoveredCell?.field === col;
+                            const isFocused = focusedCell?.row === rowIdx && focusedCell?.col === colIdx;
 
-              {/* Quick-add row */}
-              {quickAddOpen && onCreate && targetDatabaseId && (
-                <>
-                  <tr ref={quickAddRowRef} style={{ background: `${C.accent}08` }}>
-                    <td style={{ ...styles.td, textAlign: "center", padding: "6px 8px" }}>
-                      <IconPlus size={10} color={C.accent} />
-                    </td>
-                    {columns.map((col) => {
-                      const type = getFieldType(schema, col);
-                      const isEditable = EDITABLE_TYPES.has(type);
-                      const titleField = schema?.title?.name;
-                      return (
-                        <td key={col} style={{ ...styles.td, padding: "4px 6px" }}>
-                          {isEditable ? (
-                            <QuickAddCellInput
-                              type={type}
-                              fieldName={col}
-                              schema={schema}
-                              value={quickAddValues[col] ?? ""}
-                              onChange={(val) => setQuickAddValues((prev) => ({ ...prev, [col]: val }))}
-                              onSubmit={handleQuickAdd}
-                              autoFocus={col === titleField}
-                            />
-                          ) : (
-                            <span style={{ color: C.darkMuted, fontSize: 11, fontStyle: "italic" }}>—</span>
-                          )}
-                        </td>
+                            return (
+                              <td
+                                key={col}
+                                style={{
+                                  ...styles.td,
+                                  height: ROW_HEIGHT,
+                                  padding: "4px 8px",
+                                  overflow: "hidden",
+                                  ...(colWidths[col] ? { width: colWidths[col], minWidth: colWidths[col] } : {}),
+                                  ...(isSaving ? { opacity: 0.55 } : {}),
+                                  ...(failMsg ? { background: "#E0525210" } : {}),
+                                  ...(isFocused ? { outline: `2px solid ${C.accent}`, outlineOffset: -2, zIndex: 1, position: "relative" } : {}),
+                                }}
+                                onClick={() => {
+                                  setFocusedCell({ row: rowIdx, col: colIdx });
+                                  if (canEdit && type !== "checkbox") {
+                                    setEditCell({ pageId, field: col });
+                                    setInitialChar("");
+                                  }
+                                }}
+                                onMouseEnter={() => setHoveredCell({ pageId, field: col })}
+                                onMouseLeave={() => setHoveredCell(null)}
+                              >
+                                {isEditing ? (
+                                  <CellEditor
+                                    value={value}
+                                    type={type}
+                                    options={getOptionNames(schema, col)}
+                                    schemaOptions={getFieldOptions(schema, col)}
+                                    onCommit={(newVal) => handleEditCommit(pageId, col, newVal)}
+                                    onCancel={() => { setEditCell(null); setInitialChar(""); }}
+                                    initialChar={initialChar}
+                                    isD1Table={isD1Table}
+                                    onCreateOption={(optName) => handleCreateOption(col, optName)}
+                                  />
+                                ) : (
+                                  <div style={{ position: "relative" }}>
+                                    <CellDisplay
+                                      value={value}
+                                      type={type}
+                                      fieldName={col}
+                                      schema={schema}
+                                      linkInfo={linkData ? { sourceName: linkData.link?.name, stale: linkData.stale } : undefined}
+                                      linkedValue={linkData?.value}
+                                      onLinkClick={linkData ? () => removeLink(linkData.link.id) : undefined}
+                                      onClick={
+                                        type === "checkbox" && canEdit
+                                          ? () => handleCheckboxToggle(pageId, col, value)
+                                          : canEdit
+                                            ? () => { setEditCell({ pageId, field: col }); setInitialChar(""); }
+                                            : undefined
+                                      }
+                                    />
+                                    {/* Link icon on hover */}
+                                    {isHoveredCell && !isEditing && !linkData && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setLinkPickerCell({ pageId, field: col }); }}
+                                        title="Link cell value"
+                                        style={{
+                                          position: "absolute", top: -2, right: -2,
+                                          background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
+                                          borderRadius: 4, padding: 2, cursor: "pointer",
+                                          display: "flex", alignItems: "center", justifyContent: "center",
+                                          opacity: 0.6, transition: "opacity 0.12s", zIndex: 2,
+                                        }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.6"; }}
+                                      >
+                                        <IconConnect size={10} color={C.accent} />
+                                      </button>
+                                    )}
+                                    {failMsg && (
+                                      <div style={{
+                                        fontSize: 10,
+                                        color: "#E05252",
+                                        marginTop: 2,
+                                      }}>
+                                        {failMsg}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
                       );
                     })}
-                  </tr>
-                  <tr style={{ background: `${C.accent}05` }}>
-                    <td colSpan={columns.length + 1} style={{ padding: "6px 12px", borderBottom: `1px solid ${C.edgeLine}` }}>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <button
-                          style={{ ...S.btnPrimary, padding: "5px 14px", fontSize: 12 }}
-                          onClick={handleQuickAdd}
-                          disabled={quickAddSaving}
-                        >
-                          {quickAddSaving ? "Saving..." : "Add Row"}
-                        </button>
-                        <button
-                          style={{ ...S.btnGhost, padding: "5px 10px", fontSize: 12 }}
-                          onClick={() => { setQuickAddOpen(false); setQuickAddValues({}); setQuickAddError(null); }}
-                        >
-                          Cancel
-                        </button>
-                        {quickAddError && (
-                          <span style={{ color: "#E05252", fontSize: 11 }}>{quickAddError}</span>
+                    {/* Bottom spacer */}
+                    {visibleEnd < totalRows && (
+                      <tr style={{ height: (totalRows - visibleEnd) * ROW_HEIGHT }}>
+                        <td colSpan={columns.length + (isD1Table ? 2 : 1)} />
+                      </tr>
+                    )}
+                  </>
+                );
+              })()}
+
+              {/* Ghost row — always visible at bottom for inline record creation */}
+              {onCreate && targetDatabaseId && (
+                <tr
+                  style={{
+                    height: ROW_HEIGHT,
+                    opacity: ghostSaving ? 0.5 : 0.6,
+                    transition: "opacity 0.15s",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+                  onMouseLeave={(e) => { if (!ghostActive.current) e.currentTarget.style.opacity = "0.6"; }}
+                >
+                  <td style={{ ...styles.td, textAlign: "center", padding: "4px 4px", color: C.darkMuted }}>
+                    <IconPlus size={10} color={C.darkMuted} />
+                  </td>
+                  {columns.map((col) => {
+                    const type = getFieldType(schema, col);
+                    const isEditable = EDITABLE_TYPES.has(type);
+                    const titleField = schema?.title?.name;
+                    return (
+                      <td key={col} style={{ ...styles.td, padding: "2px 6px", height: ROW_HEIGHT }}>
+                        {isEditable ? (
+                          <input
+                            type={type === "number" ? "number" : type === "date" ? "date" : "text"}
+                            style={{
+                              width: "100%",
+                              border: "none",
+                              borderRadius: RADIUS.sm,
+                              background: "transparent",
+                              color: C.darkText,
+                              fontFamily: FONT,
+                              fontSize: 12,
+                              padding: "4px 6px",
+                              outline: "none",
+                              boxSizing: "border-box",
+                            }}
+                            value={ghostValues[col] ?? ""}
+                            placeholder={col === titleField ? "New row..." : ""}
+                            onChange={(e) => {
+                              ghostActive.current = true;
+                              const val = type === "number" ? (e.target.value ? Number(e.target.value) : "") : e.target.value;
+                              setGhostValues((p) => ({ ...p, [col]: val }));
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                handleGhostCommit();
+                              }
+                              if (e.key === "Escape") {
+                                setGhostValues({});
+                                ghostActive.current = false;
+                                e.target.blur();
+                              }
+                            }}
+                            onFocus={(e) => {
+                              e.currentTarget.style.background = C.darkSurf2;
+                              e.currentTarget.parentElement.parentElement.style.opacity = "1";
+                            }}
+                            onBlur={(e) => {
+                              e.currentTarget.style.background = "transparent";
+                            }}
+                          />
+                        ) : (
+                          <span style={{ color: C.darkMuted, fontSize: 11, fontStyle: "italic" }}>—</span>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                </>
+                      </td>
+                    );
+                  })}
+                </tr>
+              )}
+              {ghostError && (
+                <tr>
+                  <td colSpan={columns.length + 1} style={{ padding: "4px 12px", fontSize: 11, color: "#E05252" }}>
+                    {ghostError}
+                  </td>
+                </tr>
               )}
             </tbody>
             {/* Totals row */}
@@ -2119,7 +2316,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                   bottom: 0,
                   background: C.darkSurf,
                   borderTop: `2px solid ${C.darkBorder}`,
-                  padding: "8px 8px",
+                  padding: "4px 8px",
                 }}></td>
                 {columns.map((col) => {
                   const type = getFieldType(schema, col);

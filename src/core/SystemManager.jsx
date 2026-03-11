@@ -949,7 +949,7 @@ export default function SystemManager() {
 // ════════════════════════════════════════════════════════════════════════════
 
 function SettingsTab() {
-  const { themeName, themeMode, setThemeName, toggleMode } = useTheme();
+  const { themeName, setThemeName } = useTheme();
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetting, setResetting] = useState(false);
 
@@ -1098,71 +1098,25 @@ function SettingsTab() {
                     {t.description}
                   </span>
                 )}
+                {t.mode && (
+                  <span style={{
+                    fontSize: 8, color: C.darkMuted, fontWeight: 600,
+                    textTransform: "uppercase", letterSpacing: "0.06em",
+                    background: C.darkSurf2, borderRadius: RADIUS.sm,
+                    padding: "2px 6px", marginTop: 2,
+                  }}>
+                    {t.mode}
+                  </span>
+                )}
               </div>
             </button>
           );
         })}
       </div>
 
-      {/* Label: Mode */}
-      <div
-        style={{
-          fontSize: 11,
-          color: C.darkMuted,
-          fontFamily: FONT,
-          fontWeight: 600,
-          marginBottom: 10,
-        }}
-      >
-        Mode
-      </div>
-
-      {/* Dark / Light toggle */}
-      <div
-        style={{
-          display: "inline-flex",
-          background: C.darkSurf,
-          borderRadius: RADIUS.pill,
-          padding: 3,
-          gap: 2,
-        }}
-      >
-        <button
-          onClick={() => { if (themeMode !== "dark") toggleMode(); }}
-          style={{
-            padding: "7px 20px",
-            border: "none",
-            cursor: "pointer",
-            fontFamily: FONT,
-            fontSize: 12,
-            fontWeight: 500,
-            background: themeMode === "dark" ? C.accent : "transparent",
-            color: themeMode === "dark" ? "#fff" : C.darkMuted,
-            borderRadius: RADIUS.pill,
-            transition: "background 0.14s, color 0.14s",
-            outline: "none",
-          }}
-        >
-          Dark
-        </button>
-        <button
-          onClick={() => { if (themeMode !== "light") toggleMode(); }}
-          style={{
-            padding: "7px 20px",
-            border: "none",
-            cursor: "pointer",
-            fontFamily: FONT,
-            fontSize: 12,
-            fontWeight: 500,
-            background: themeMode === "light" ? C.accent : "transparent",
-            color: themeMode === "light" ? "#fff" : C.darkMuted,
-            borderRadius: RADIUS.pill,
-            transition: "background 0.14s, color 0.14s",
-            outline: "none",
-          }}
-        >
-          Light
-        </button>
+      {/* Mode indicator (inherent to theme) */}
+      <div style={{ fontSize: 10, color: C.darkMuted, fontFamily: FONT, marginBottom: 0 }}>
+        Mode is set by theme selection
       </div>
 
       {/* ── Account ── */}

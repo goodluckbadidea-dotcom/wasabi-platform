@@ -3,7 +3,6 @@
 
 import { createSubpage, createDatabase } from "../notion/client.js";
 import { initKnowledgeBase } from "../agent/memory.js";
-import { initLinksDB } from "./linkStorage.js";
 
 const STORAGE_KEY = "wasabi_platform_ids";
 
@@ -59,8 +58,7 @@ export async function runFirstTimeSetup(workerUrl, notionKey, parentPageId) {
   const rulesDb = await createDatabase(workerUrl, notionKey, rootId, "Automation Rules", RULES_SCHEMA);
   const rulesDbId = rulesDb.id;
 
-  // 6. Create Cell Links DB
-  const linksDbId = await initLinksDB(workerUrl, notionKey, rootId);
+  // Cell links now stored in D1 — no Notion DB needed.
 
   const ids = {
     rootPageId: rootId,
@@ -68,7 +66,6 @@ export async function runFirstTimeSetup(workerUrl, notionKey, parentPageId) {
     configDbId,
     notifDbId,
     rulesDbId,
-    linksDbId,
   };
 
   // Store locally

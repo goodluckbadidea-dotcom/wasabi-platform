@@ -5,7 +5,7 @@ import React from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { ANIM } from "../design/animations.js";
-import { IconEdit, IconRefresh, IconSun, IconMoon } from "../design/icons.jsx";
+import { IconEdit, IconRefresh } from "../design/icons.jsx";
 import { useTheme } from "../context/ThemeContext.jsx";
 import { useNeurons } from "../neurons/NeuronsContext.jsx";
 
@@ -21,7 +21,7 @@ const REFRESH_OPTIONS = [
 export default function TopHeader({
   pageControls,
 }) {
-  const { themeMode, toggleMode } = useTheme();
+  const { themeName, toggleMode } = useTheme();
   const { overlayActive, toggleOverlay, selection } = useNeurons();
   const controls = pageControls || {};
   const showControls = !!pageControls;
@@ -224,7 +224,7 @@ export default function TopHeader({
           )}
         </button>
 
-        {/* Theme toggle */}
+        {/* Theme cycle */}
         <button
           onClick={toggleMode}
           style={{
@@ -242,13 +242,18 @@ export default function TopHeader({
             fontFamily: FONT,
             fontWeight: 500,
           }}
-          title={themeMode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          title="Cycle theme"
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = C.darkMuted;
+            e.currentTarget.style.background = C.darkSurf2;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = C.darkBorder;
+            e.currentTarget.style.background = "transparent";
+          }}
         >
-          {themeMode === "dark"
-            ? <IconSun size={13} color={C.darkMuted} />
-            : <IconMoon size={13} color={C.darkMuted} />
-          }
-          {themeMode === "dark" ? "Light" : "Dark"}
+          <span style={{ width: 10, height: 10, borderRadius: "50%", background: C.accent, flexShrink: 0 }} />
+          {themeName.charAt(0).toUpperCase() + themeName.slice(1)}
         </button>
       </div>
     </header>

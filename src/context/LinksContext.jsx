@@ -1,11 +1,11 @@
 // ─── Links Context ───
 // Global state for cross-page cell links.
 // Loads links on mount, provides resolution and CRUD to all views.
+// Links are stored in D1 via the /links API.
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { usePlatform } from "./PlatformContext.jsx";
-import { loadLinks, loadCachedLinks, saveLink, deleteLink, initLinksDB, resolveRef } from "../config/linkStorage.js";
-import { savePlatformIds, loadPlatformIds } from "../config/setup.js";
+import { loadLinks, loadCachedLinks, saveLink, deleteLink, resolveRef, invalidateLinksCache } from "../config/linkStorage.js";
 import { queryAll } from "../notion/pagination.js";
 import { fetchSheetData } from "../sheets/sheetClient.js";
 
@@ -15,11 +15,11 @@ const LinksContext = createContext({
   removeLink: async () => {},
   resolveLinkedValue: () => null,
   getLinksForTarget: () => [],
-  ensureLinksDb: async () => null,
+  invalidateCache: () => {},
 });
 
 export function LinksProvider({ children }) {
-  const { user, platformIds, setPlatformIds, pages } = usePlatform();
+  const { user, pages } = usePlatform();
   const [links, setLinks] = useState(() => loadCachedLinks());
 
   // Cross-page data cache: { key → { data, fetchedAt } }
@@ -27,36 +27,18 @@ export function LinksProvider({ children }) {
   const dataCacheRef = useRef({});
   const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-  // Load links from Notion on mount
+  // Load links from D1 on mount
   useEffect(() => {
-    if (!user?.workerUrl || !user?.notionKey || !platformIds?.linksDbId) return;
-    loadLinks(user.workerUrl, user.notionKey, platformIds.linksDbId)
+    if (!user?.workerUrl) return;
+    loadLinks()
       .then(setLinks)
       .catch((err) => console.error("[Links] Failed to load links:", err));
-  }, [user?.workerUrl, user?.notionKey, platformIds?.linksDbId]);
-
-  // Lazy-init links DB for existing users who don't have one
-  const ensureLinksDb = useCallback(async () => {
-    if (platformIds?.linksDbId) return platformIds.linksDbId;
-    if (!user?.workerUrl || !user?.notionKey || !platformIds?.rootPageId) return null;
-    try {
-      const linksDbId = await initLinksDB(user.workerUrl, user.notionKey, platformIds.rootPageId);
-      const newIds = { ...platformIds, linksDbId };
-      setPlatformIds(newIds);
-      savePlatformIds(newIds);
-      return linksDbId;
-    } catch (err) {
-      console.error("[Links] Failed to init links DB:", err);
-      return null;
-    }
-  }, [user, platformIds, setPlatformIds]);
+  }, [user?.workerUrl]);
 
   // Create a new link
   const createNewLink = useCallback(async (link) => {
-    const dbId = await ensureLinksDb();
-    if (!dbId) return null;
     try {
-      const savedId = await saveLink(user.workerUrl, user.notionKey, dbId, link);
+      const savedId = await saveLink(null, null, null, link);
       const saved = { ...link, id: savedId };
       setLinks((prev) => [...prev.filter((l) => l.id !== savedId), saved]);
       return savedId;
@@ -64,15 +46,13 @@ export function LinksProvider({ children }) {
       console.error("[Links] Failed to create link:", err);
       return null;
     }
-  }, [user, ensureLinksDb]);
+  }, []);
 
   // Remove a link
   const removeLink = useCallback(async (linkId) => {
     setLinks((prev) => prev.filter((l) => l.id !== linkId));
-    if (user?.workerUrl && user?.notionKey) {
-      deleteLink(user.workerUrl, user.notionKey, linkId).catch(() => {});
-    }
-  }, [user]);
+    deleteLink(null, null, linkId).catch(() => {});
+  }, []);
 
   // Fetch data for a source ref (with caching)
   const fetchSourceData = useCallback(async (sourceRef, sourcePageConfigId) => {
@@ -161,7 +141,6 @@ export function LinksProvider({ children }) {
       removeLink,
       resolveLinksForView,
       getLinksForTarget,
-      ensureLinksDb,
       invalidateCache,
     }}>
       {children}

@@ -391,6 +391,36 @@ export async function deleteRecordComment(recordId, commentId) {
   return apiFetch(`/records/${recordId}/comments/${commentId}`, { method: "DELETE" });
 }
 
+// ─── Cell Links ───
+
+export async function listLinks(targetPageId, targetViewIdx) {
+  const params = new URLSearchParams();
+  if (targetPageId) params.set("target_page_id", targetPageId);
+  if (targetViewIdx != null) params.set("target_view_idx", String(targetViewIdx));
+  const qs = params.toString();
+  return apiFetch(`/links${qs ? `?${qs}` : ""}`, { method: "GET" });
+}
+
+export async function getLink(id) {
+  return apiFetch(`/links/${id}`, { method: "GET" });
+}
+
+export async function createLinkAPI(link) {
+  return apiFetch("/links", { method: "POST", body: link });
+}
+
+export async function updateLinkAPI(id, updates) {
+  return apiFetch(`/links/${id}`, { method: "PATCH", body: updates });
+}
+
+export async function deleteLinkAPI(id) {
+  return apiFetch(`/links/${id}`, { method: "DELETE" });
+}
+
+export async function getLinksBySource(pageId) {
+  return apiFetch(`/links/by-source/${encodeURIComponent(pageId)}`, { method: "GET" });
+}
+
 // ─── Neurons ───
 
 export async function listNeurons() {

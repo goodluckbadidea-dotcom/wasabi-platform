@@ -1,68 +1,32 @@
 // ─── Link Storage ───
-// Stores and loads cell links from Notion + localStorage cache.
+// Stores and loads cell links via D1 API + localStorage cache.
 // Each record represents a live data link between two cells across views/pages.
 
-import { queryAll, createPage, updatePage, createDatabase } from "../notion/client.js";
-import { safeJSON } from "../utils/helpers.js";
-
-const LINKS_SCHEMA = [
-  { name: "Name", type: "title" },
-  { name: "Source Page", type: "rich_text" },
-  { name: "Source View", type: "number" },
-  { name: "Source Ref", type: "rich_text" },      // JSON: { type, pageId?, field?, sheetUrl?, rowIndex?, column? }
-  { name: "Target Page", type: "rich_text" },
-  { name: "Target View", type: "number" },
-  { name: "Target Ref", type: "rich_text" },      // JSON: same shape as Source Ref
-  { name: "Direction", type: "select", options: ["one_way", "bidirectional"] },
-  { name: "Active", type: "checkbox" },
-];
+import * as api from "../lib/api.js";
 
 const CACHE_KEY = "wasabi_links";
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+let _cacheTimestamp = 0;
 
 /**
- * Initialize the Links database (lazy, called on first use).
+ * Load all active links from D1.
+ * Uses localStorage cache if fresh (< 5 min), otherwise fetches from API.
  */
-export async function initLinksDB(workerUrl, notionKey, rootPageId) {
-  const db = await createDatabase(workerUrl, notionKey, rootPageId, "Cell Links", LINKS_SCHEMA);
-  return db.id;
-}
+export async function loadLinks(_workerUrl, _notionKey, _linksDbId, forceRefresh = false) {
+  // Check cache freshness
+  if (!forceRefresh && Date.now() - _cacheTimestamp < CACHE_TTL) {
+    const cached = loadCachedLinks();
+    if (cached.length > 0) return cached;
+  }
 
-/**
- * Load all active links from Notion.
- */
-export async function loadLinks(workerUrl, notionKey, linksDbId) {
-  const results = await queryAll(workerUrl, notionKey, linksDbId, {
-    property: "Active",
-    checkbox: { equals: true },
-  });
-
-  const links = results.map((page) => {
-    const props = page.properties || {};
-    const name = props.Name?.title?.map((t) => t.plain_text).join("") || "";
-    const sourcePage = props["Source Page"]?.rich_text?.map((t) => t.plain_text).join("") || "";
-    const sourceView = props["Source View"]?.number ?? 0;
-    const sourceRefStr = props["Source Ref"]?.rich_text?.map((t) => t.plain_text).join("") || "{}";
-    const targetPage = props["Target Page"]?.rich_text?.map((t) => t.plain_text).join("") || "";
-    const targetView = props["Target View"]?.number ?? 0;
-    const targetRefStr = props["Target Ref"]?.rich_text?.map((t) => t.plain_text).join("") || "{}";
-    const direction = props.Direction?.select?.name || "one_way";
-
-    return {
-      id: page.id,
-      name,
-      sourcePage,
-      sourceView,
-      sourceRef: safeJSON(sourceRefStr, {}),
-      targetPage,
-      targetView,
-      targetRef: safeJSON(targetRefStr, {}),
-      direction,
-    };
-  });
+  const res = await api.listLinks();
+  const links = (res.links || []).map(normalizeLink);
 
   // Cache locally
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify(links));
+    _cacheTimestamp = Date.now();
   } catch {}
 
   return links;
@@ -81,44 +45,40 @@ export function loadCachedLinks() {
 }
 
 /**
- * Save a link to Notion (create or update). Returns the page ID.
+ * Save a link to D1 (create or update). Returns the link ID.
  */
-export async function saveLink(workerUrl, notionKey, linksDbId, link) {
+export async function saveLink(_workerUrl, _notionKey, _linksDbId, link) {
   const { id, name, sourcePage, sourceView, sourceRef, targetPage, targetView, targetRef, direction } = link;
 
-  const properties = {
-    Name: { title: [{ type: "text", text: { content: name || "Link" } }] },
-    "Source Page": { rich_text: [{ type: "text", text: { content: sourcePage || "" } }] },
-    "Source View": { number: sourceView ?? 0 },
-    "Source Ref": { rich_text: [{ type: "text", text: { content: JSON.stringify(sourceRef || {}) } }] },
-    "Target Page": { rich_text: [{ type: "text", text: { content: targetPage || "" } }] },
-    "Target View": { number: targetView ?? 0 },
-    "Target Ref": { rich_text: [{ type: "text", text: { content: JSON.stringify(targetRef || {}) } }] },
-    Direction: { select: { name: direction || "one_way" } },
-    Active: { checkbox: true },
+  const payload = {
+    source_page_id: sourcePage || "",
+    source_view_idx: sourceView ?? 0,
+    source_ref: sourceRef || {},
+    target_page_id: targetPage || "",
+    target_view_idx: targetView ?? 0,
+    target_ref: targetRef || {},
+    direction: direction || "one_way",
   };
 
   // Existing link → update
   if (id && !id.startsWith("link_")) {
-    await updatePage(workerUrl, notionKey, id, properties);
+    await api.updateLinkAPI(id, payload);
     updateCachedLink({ ...link, id });
     return id;
   }
 
   // New link → create
-  const page = await createPage(workerUrl, notionKey, linksDbId, properties);
-  const saved = { ...link, id: page.id };
+  const res = await api.createLinkAPI(payload);
+  const saved = { ...link, id: res.id };
   updateCachedLink(saved, id);
-  return page.id;
+  return res.id;
 }
 
 /**
- * Delete (archive) a link.
+ * Delete a link from D1.
  */
-export async function deleteLink(workerUrl, notionKey, linkId) {
-  await updatePage(workerUrl, notionKey, linkId, {
-    Active: { checkbox: false },
-  });
+export async function deleteLink(_workerUrl, _notionKey, linkId) {
+  await api.deleteLinkAPI(linkId);
   try {
     const cached = loadCachedLinks();
     const updated = cached.filter((l) => l.id !== linkId);
@@ -139,7 +99,32 @@ function updateCachedLink(link, oldId) {
       cached.push(link);
     }
     localStorage.setItem(CACHE_KEY, JSON.stringify(cached));
+    _cacheTimestamp = Date.now();
   } catch {}
+}
+
+/**
+ * Normalize a D1 link row into the app's link format.
+ */
+function normalizeLink(row) {
+  return {
+    id: row.id,
+    name: row.name || "",
+    sourcePage: row.source_page_id || "",
+    sourceView: row.source_view_idx ?? 0,
+    sourceRef: typeof row.source_ref === "string" ? JSON.parse(row.source_ref || "{}") : (row.source_ref || {}),
+    targetPage: row.target_page_id || "",
+    targetView: row.target_view_idx ?? 0,
+    targetRef: typeof row.target_ref === "string" ? JSON.parse(row.target_ref || "{}") : (row.target_ref || {}),
+    direction: row.direction || "one_way",
+  };
+}
+
+/**
+ * Invalidate the cache so next loadLinks() fetches fresh data.
+ */
+export function invalidateLinksCache() {
+  _cacheTimestamp = 0;
 }
 
 /**
