@@ -61,7 +61,7 @@ export default function PageShell({
   // Multi-database schema map
   const [schemas, setSchemas] = useState({});
 
-  const effectiveDbs = pageConfig.databaseIds || [];
+  const effectiveDbs = useMemo(() => pageConfig.databaseIds || [], [pageConfig.databaseIds]);
 
   // ── Data fetching ──
   const fetchData = useCallback(async () => {
@@ -89,7 +89,7 @@ export default function PageShell({
     } finally {
       setLoading(false);
     }
-  }, [user, pageConfig, effectiveDbs, sourceType, isDocumentPage, isLinkedSheetPage]);
+  }, [user, pageConfig, effectiveDbs, sourceType, isDocumentPage, isLinkedSheetPage, isSheetPage]);
 
   // Initial fetch
   useEffect(() => {

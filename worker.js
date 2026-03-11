@@ -57,6 +57,9 @@ CREATE TABLE IF NOT EXISTS sheet_data (
   row_count INTEGER DEFAULT 100,
   cells TEXT NOT NULL DEFAULT '{}',
   col_widths TEXT DEFAULT '{}',
+  row_heights TEXT DEFAULT '{}',
+  frozen TEXT DEFAULT '{}',
+  cell_styles TEXT DEFAULT '{}',
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -382,6 +385,13 @@ export default {
       }
 
       // ─── Sheet Routes ───
+      const sheetStructureMatch = path.match(/^\/sheets\/([^/]+)\/structure$/);
+      if (sheetStructureMatch && request.method === "POST") {
+        const id = sheetStructureMatch[1];
+        const body = await request.json();
+        return await handleSheetStructure(env, id, body);
+      }
+
       const sheetFormulaMatch = path.match(/^\/sheets\/([^/]+)\/formula$/);
       if (sheetFormulaMatch && request.method === "POST") {
         const id = sheetFormulaMatch[1];
@@ -1031,6 +1041,16 @@ async function handleInit(env) {
       await env.DB.prepare(sql).run();
     }
 
+    // Migrations for existing databases
+    const migrations = [
+      "ALTER TABLE sheet_data ADD COLUMN row_heights TEXT DEFAULT '{}'",
+      "ALTER TABLE sheet_data ADD COLUMN frozen TEXT DEFAULT '{}'",
+      "ALTER TABLE sheet_data ADD COLUMN cell_styles TEXT DEFAULT '{}'",
+    ];
+    for (const sql of migrations) {
+      try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }
+    }
+
     // Return table list
     const tables = await env.DB.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' ORDER BY name"
@@ -1525,6 +1545,9 @@ async function handleGetSheet(env, id) {
       ...row,
       cells: JSON.parse(row.cells || "{}"),
       col_widths: JSON.parse(row.col_widths || "{}"),
+      row_heights: JSON.parse(row.row_heights || "{}"),
+      frozen: JSON.parse(row.frozen || "{}"),
+      cell_styles: JSON.parse(row.cell_styles || "{}"),
     });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
@@ -1533,32 +1556,38 @@ async function handleGetSheet(env, id) {
 
 async function handleUpdateSheet(env, id, body) {
   try {
-    // Merge mode: read existing cells, merge with incoming
-    if (body.cells) {
-      const existing = await env.DB.prepare("SELECT cells FROM sheet_data WHERE id = ?").bind(id).first();
-      if (!existing) return jsonResponse({ _error: "Sheet not found" }, 404);
-      const currentCells = JSON.parse(existing.cells || "{}");
-      // Merge: incoming cells override existing ones
-      const merged = { ...currentCells };
-      for (const [key, val] of Object.entries(body.cells)) {
-        if (val === null || val === undefined) {
-          delete merged[key]; // null = clear cell
+    // Helper: merge a JSON column
+    async function mergeJsonCol(colName, incoming, deleteNulls) {
+      const existing = await env.DB.prepare(`SELECT ${colName} FROM sheet_data WHERE id = ?`).bind(id).first();
+      if (!existing) return false;
+      const current = JSON.parse(existing[colName] || "{}");
+      const merged = { ...current };
+      for (const [key, val] of Object.entries(incoming)) {
+        if (deleteNulls && (val === null || val === undefined)) {
+          delete merged[key];
         } else {
           merged[key] = val;
         }
       }
       await env.DB.prepare(
-        "UPDATE sheet_data SET cells = ?, updated_at = datetime('now') WHERE id = ?"
+        `UPDATE sheet_data SET ${colName} = ?, updated_at = datetime('now') WHERE id = ?`
       ).bind(JSON.stringify(merged), id).run();
+      return true;
     }
 
-    if (body.col_widths) {
-      const existing = await env.DB.prepare("SELECT col_widths FROM sheet_data WHERE id = ?").bind(id).first();
-      const currentWidths = JSON.parse(existing?.col_widths || "{}");
-      const mergedWidths = { ...currentWidths, ...body.col_widths };
+    if (body.cells) {
+      const ok = await mergeJsonCol("cells", body.cells, true);
+      if (!ok) return jsonResponse({ _error: "Sheet not found" }, 404);
+    }
+    if (body.col_widths) await mergeJsonCol("col_widths", body.col_widths, false);
+    if (body.row_heights) await mergeJsonCol("row_heights", body.row_heights, false);
+    if (body.cell_styles) await mergeJsonCol("cell_styles", body.cell_styles, false);
+
+    // Direct JSON overwrites (not merge)
+    if (body.frozen !== undefined) {
       await env.DB.prepare(
-        "UPDATE sheet_data SET col_widths = ?, updated_at = datetime('now') WHERE id = ?"
-      ).bind(JSON.stringify(mergedWidths), id).run();
+        "UPDATE sheet_data SET frozen = ?, updated_at = datetime('now') WHERE id = ?"
+      ).bind(JSON.stringify(body.frozen), id).run();
     }
 
     return jsonResponse({ ok: true, id });
@@ -1568,9 +1597,11 @@ async function handleUpdateSheet(env, id, body) {
 }
 
 async function handleSheetFormula(env, id, body) {
-  const { fn, range, target } = body;
-  if (!fn || !range || !target) {
-    return jsonResponse({ _error: "Missing fn, range, or target" }, 400);
+  const { fn, args, target } = body;
+  // Backward compat: accept "range" as alias for "args"
+  const formulaArgs = args || body.range;
+  if (!fn || !formulaArgs || !target) {
+    return jsonResponse({ _error: "Missing fn, args, or target" }, 400);
   }
 
   try {
@@ -1578,43 +1609,347 @@ async function handleSheetFormula(env, id, body) {
     if (!row) return jsonResponse({ _error: "Sheet not found" }, 404);
     const cells = JSON.parse(row.cells || "{}");
 
-    // Parse range (e.g., "A2:A10")
-    const rangeValues = parseCellRange(range, cells);
-    const nums = rangeValues.map(Number).filter((n) => !isNaN(n));
-
-    let result;
-    switch (fn.toUpperCase()) {
-      case "SUM":
-        result = nums.reduce((a, b) => a + b, 0);
-        break;
-      case "AVG":
-      case "AVERAGE":
-        result = nums.length > 0 ? nums.reduce((a, b) => a + b, 0) / nums.length : 0;
-        break;
-      case "COUNT":
-        result = rangeValues.filter((v) => v !== null && v !== undefined && v !== "").length;
-        break;
-      case "MIN":
-        result = nums.length > 0 ? Math.min(...nums) : 0;
-        break;
-      case "MAX":
-        result = nums.length > 0 ? Math.max(...nums) : 0;
-        break;
-      case "CONCAT":
-        result = rangeValues.join("");
-        break;
-      default:
-        return jsonResponse({ _error: `Unknown function: ${fn}` }, 400);
-    }
+    const result = evaluateFormula(fn.toUpperCase(), formulaArgs, cells);
+    if (result._error) return jsonResponse({ _error: result._error }, 400);
 
     // Store result + formula in target cell
-    cells[target] = { v: result, f: `${fn.toUpperCase()}(${range})` };
+    const formula = `${fn.toUpperCase()}(${formulaArgs})`;
+    cells[target] = { v: result.value, f: formula };
 
     await env.DB.prepare(
       "UPDATE sheet_data SET cells = ?, updated_at = datetime('now') WHERE id = ?"
     ).bind(JSON.stringify(cells), id).run();
 
-    return jsonResponse({ ok: true, target, value: result, formula: `${fn.toUpperCase()}(${range})` });
+    return jsonResponse({ ok: true, target, value: result.value, formula });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// ─── Expanded Formula Engine ───
+
+function evaluateFormula(fn, argsStr, cells) {
+  // Parse comma-separated args, respecting ranges
+  const parts = splitFormulaArgs(argsStr);
+
+  // Resolve all values from args
+  function resolveValues(parts) {
+    const vals = [];
+    for (const part of parts) {
+      const trimmed = part.trim();
+      // Check if it's a range (e.g., A1:B10)
+      if (/^[A-Z]+\d+:[A-Z]+\d+$/i.test(trimmed)) {
+        vals.push(...parseCellRange(trimmed, cells));
+      }
+      // Single cell ref (e.g., A1)
+      else if (/^[A-Z]+\d+$/i.test(trimmed)) {
+        const cell = cells[trimmed.toUpperCase()];
+        vals.push(cell !== undefined && cell !== null ? (typeof cell === "object" ? cell.v : cell) : null);
+      }
+      // String literal
+      else if (/^".*"$/.test(trimmed) || /^'.*'$/.test(trimmed)) {
+        vals.push(trimmed.slice(1, -1));
+      }
+      // Number literal
+      else if (!isNaN(Number(trimmed)) && trimmed !== "") {
+        vals.push(Number(trimmed));
+      }
+      else {
+        vals.push(trimmed);
+      }
+    }
+    return vals;
+  }
+
+  const allVals = resolveValues(parts);
+  const nums = allVals.map(Number).filter((n) => !isNaN(n));
+
+  switch (fn) {
+    case "SUM":
+      return { value: nums.reduce((a, b) => a + b, 0) };
+    case "AVG":
+    case "AVERAGE":
+      return { value: nums.length > 0 ? nums.reduce((a, b) => a + b, 0) / nums.length : 0 };
+    case "COUNT":
+      return { value: allVals.filter((v) => v !== null && v !== undefined && v !== "").length };
+    case "COUNTA":
+      return { value: allVals.filter((v) => v !== null && v !== undefined && v !== "").length };
+    case "COUNTBLANK":
+      return { value: allVals.filter((v) => v === null || v === undefined || v === "").length };
+    case "MIN":
+      return { value: nums.length > 0 ? Math.min(...nums) : 0 };
+    case "MAX":
+      return { value: nums.length > 0 ? Math.max(...nums) : 0 };
+    case "CONCAT":
+    case "CONCATENATE":
+      return { value: allVals.map((v) => v ?? "").join("") };
+    case "ABS":
+      return { value: nums.length > 0 ? Math.abs(nums[0]) : 0 };
+    case "ROUND": {
+      const val = nums[0] ?? 0;
+      const dec = nums[1] ?? 0;
+      return { value: Math.round(val * Math.pow(10, dec)) / Math.pow(10, dec) };
+    }
+    case "LEN":
+      return { value: String(allVals[0] ?? "").length };
+    case "TRIM":
+      return { value: String(allVals[0] ?? "").trim() };
+    case "UPPER":
+      return { value: String(allVals[0] ?? "").toUpperCase() };
+    case "LOWER":
+      return { value: String(allVals[0] ?? "").toLowerCase() };
+    case "LEFT": {
+      const str = String(allVals[0] ?? "");
+      const n = nums.length > 1 ? nums[1] : (Number(allVals[1]) || 1);
+      return { value: str.slice(0, n) };
+    }
+    case "RIGHT": {
+      const str = String(allVals[0] ?? "");
+      const n = nums.length > 1 ? nums[1] : (Number(allVals[1]) || 1);
+      return { value: str.slice(-n) };
+    }
+    case "MID": {
+      const str = String(allVals[0] ?? "");
+      const start = (Number(allVals[1]) || 1) - 1;
+      const len = Number(allVals[2]) || 1;
+      return { value: str.slice(start, start + len) };
+    }
+    case "TODAY":
+      return { value: new Date().toISOString().slice(0, 10) };
+    case "NOW":
+      return { value: new Date().toISOString() };
+    case "IF": {
+      // Evaluate condition: may be a comparison expression like "B2>200"
+      const rawCond = parts[0].trim();
+      let isTruthy;
+      const compMatch = rawCond.match(/^(.+?)(>=|<=|<>|!=|>|<|=)(.+)$/);
+      if (compMatch) {
+        const [, lhsRaw, op, rhsRaw] = compMatch;
+        const resolve1 = (s) => { const t = s.trim(); const m = t.match(/^[A-Z]+\d+$/i); if (m) { const c = cells[t.toUpperCase()]; return c != null ? (typeof c === "object" ? c.v : c) : null; } if (/^".*"$/.test(t)||/^'.*'$/.test(t)) return t.slice(1,-1); const n = Number(t); return isNaN(n) ? t : n; };
+        const lhs = resolve1(lhsRaw), rhs = resolve1(rhsRaw);
+        const nl = Number(lhs), nr = Number(rhs);
+        const useNum = !isNaN(nl) && !isNaN(nr);
+        const a = useNum ? nl : lhs, b = useNum ? nr : rhs;
+        switch (op) {
+          case ">": isTruthy = a > b; break;
+          case "<": isTruthy = a < b; break;
+          case ">=": isTruthy = a >= b; break;
+          case "<=": isTruthy = a <= b; break;
+          case "=": isTruthy = a == b; break;
+          case "<>": case "!=": isTruthy = a != b; break;
+          default: isTruthy = !!a;
+        }
+      } else {
+        const condition = allVals[0];
+        isTruthy = condition && condition !== 0 && condition !== "0" && condition !== "FALSE" && condition !== "false";
+      }
+      const trueVal = allVals[1] ?? "";
+      const falseVal = allVals[2] ?? "";
+      return { value: isTruthy ? trueVal : falseVal };
+    }
+    case "SUMIF": {
+      // SUMIF(range, criteria, sum_range)
+      if (parts.length < 2) return { _error: "SUMIF requires at least 2 args" };
+      const criteriaRange = parseCellRange(parts[0].trim(), cells);
+      const criteria = parts[1].trim().replace(/^["']|["']$/g, "");
+      const sumRange = parts.length > 2 ? parseCellRange(parts[2].trim(), cells) : criteriaRange;
+      let sum = 0;
+      for (let i = 0; i < criteriaRange.length; i++) {
+        if (String(criteriaRange[i]) === criteria) {
+          const n = Number(sumRange[i]);
+          if (!isNaN(n)) sum += n;
+        }
+      }
+      return { value: sum };
+    }
+    case "COUNTIF": {
+      if (parts.length < 2) return { _error: "COUNTIF requires 2 args" };
+      const cRange = parseCellRange(parts[0].trim(), cells);
+      const crit = parts[1].trim().replace(/^["']|["']$/g, "");
+      let count = 0;
+      for (const v of cRange) {
+        if (String(v) === crit) count++;
+      }
+      return { value: count };
+    }
+    case "VLOOKUP": {
+      // VLOOKUP(search_key, range, col_index, [is_sorted])
+      if (parts.length < 3) return { _error: "VLOOKUP requires at least 3 args" };
+      const searchKey = allVals[0];
+      const rangeStr = parts[1].trim();
+      const colIdx = Number(allVals[2]) || 1;
+      const rangeMatch = rangeStr.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i);
+      if (!rangeMatch) return { _error: "Invalid VLOOKUP range" };
+      const [, sc, sr, ec, er] = rangeMatch;
+      const startC = colToIndex(sc.toUpperCase());
+      const endC = colToIndex(ec.toUpperCase());
+      const startR = parseInt(sr);
+      const endR = parseInt(er);
+      for (let r = startR; r <= endR; r++) {
+        const lookKey = indexToCol(startC) + r;
+        const lookCell = cells[lookKey];
+        const lookVal = lookCell !== undefined && lookCell !== null ? (typeof lookCell === "object" ? lookCell.v : lookCell) : null;
+        if (String(lookVal) === String(searchKey)) {
+          const resultCol = startC + colIdx - 1;
+          if (resultCol > endC) return { _error: "Col index out of range" };
+          const rKey = indexToCol(resultCol) + r;
+          const rCell = cells[rKey];
+          return { value: rCell !== undefined && rCell !== null ? (typeof rCell === "object" ? rCell.v : rCell) : "" };
+        }
+      }
+      return { value: "#N/A" };
+    }
+    case "INDEX": {
+      // INDEX(range, row_num, [col_num])
+      if (parts.length < 2) return { _error: "INDEX requires at least 2 args" };
+      const rangeStr = parts[0].trim();
+      const rowNum = Number(allVals[1]) || 1;
+      const colNum = parts.length > 2 ? (Number(allVals[2]) || 1) : 1;
+      const rangeMatch = rangeStr.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i);
+      if (!rangeMatch) return { _error: "Invalid INDEX range" };
+      const [, sc, sr, , ] = rangeMatch;
+      const targetCol = colToIndex(sc.toUpperCase()) + colNum - 1;
+      const targetRow = parseInt(sr) + rowNum - 1;
+      const rKey = indexToCol(targetCol) + targetRow;
+      const rCell = cells[rKey];
+      return { value: rCell !== undefined && rCell !== null ? (typeof rCell === "object" ? rCell.v : rCell) : "" };
+    }
+    case "MATCH": {
+      // MATCH(search_key, range, [match_type])
+      if (parts.length < 2) return { _error: "MATCH requires at least 2 args" };
+      const searchKey = allVals[0];
+      const mRange = parseCellRange(parts[1].trim(), cells);
+      for (let i = 0; i < mRange.length; i++) {
+        if (String(mRange[i]) === String(searchKey)) return { value: i + 1 };
+      }
+      return { value: "#N/A" };
+    }
+    case "HYPERLINK": {
+      // HYPERLINK(url, [label]) - returns label or url
+      return { value: allVals[1] ?? allVals[0] ?? "" };
+    }
+    default:
+      return { _error: `Unknown function: ${fn}` };
+  }
+}
+
+function splitFormulaArgs(argsStr) {
+  // Split by comma but respect quoted strings
+  const result = [];
+  let current = "";
+  let inQuote = false;
+  let quoteChar = "";
+  for (let i = 0; i < argsStr.length; i++) {
+    const ch = argsStr[i];
+    if (inQuote) {
+      current += ch;
+      if (ch === quoteChar) inQuote = false;
+    } else if (ch === '"' || ch === "'") {
+      inQuote = true;
+      quoteChar = ch;
+      current += ch;
+    } else if (ch === ",") {
+      result.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  if (current) result.push(current);
+  return result;
+}
+
+// ─── Sheet Structure Handler ───
+
+async function handleSheetStructure(env, id, body) {
+  const { action, index } = body;
+  if (!action || index === undefined) {
+    return jsonResponse({ _error: "Missing action or index" }, 400);
+  }
+
+  try {
+    const row = await env.DB.prepare("SELECT * FROM sheet_data WHERE id = ?").bind(id).first();
+    if (!row) return jsonResponse({ _error: "Sheet not found" }, 404);
+
+    let cells = JSON.parse(row.cells || "{}");
+    let colCount = row.col_count || 26;
+    let rowCount = row.row_count || 100;
+    const newCells = {};
+
+    switch (action) {
+      case "insertRow": {
+        // Shift all rows >= index down by 1
+        for (const [key, val] of Object.entries(cells)) {
+          const m = key.match(/^([A-Z]+)(\d+)$/);
+          if (!m) { newCells[key] = val; continue; }
+          const r = parseInt(m[2]);
+          if (r >= index) {
+            newCells[m[1] + (r + 1)] = val;
+          } else {
+            newCells[key] = val;
+          }
+        }
+        cells = newCells;
+        rowCount++;
+        break;
+      }
+      case "deleteRow": {
+        for (const [key, val] of Object.entries(cells)) {
+          const m = key.match(/^([A-Z]+)(\d+)$/);
+          if (!m) { newCells[key] = val; continue; }
+          const r = parseInt(m[2]);
+          if (r === index) continue; // skip deleted row
+          if (r > index) {
+            newCells[m[1] + (r - 1)] = val;
+          } else {
+            newCells[key] = val;
+          }
+        }
+        cells = newCells;
+        rowCount = Math.max(1, rowCount - 1);
+        break;
+      }
+      case "insertCol": {
+        // Shift all columns >= index right by 1
+        for (const [key, val] of Object.entries(cells)) {
+          const m = key.match(/^([A-Z]+)(\d+)$/);
+          if (!m) { newCells[key] = val; continue; }
+          const c = colToIndex(m[1]);
+          if (c >= index) {
+            newCells[indexToCol(c + 1) + m[2]] = val;
+          } else {
+            newCells[key] = val;
+          }
+        }
+        cells = newCells;
+        colCount++;
+        break;
+      }
+      case "deleteCol": {
+        for (const [key, val] of Object.entries(cells)) {
+          const m = key.match(/^([A-Z]+)(\d+)$/);
+          if (!m) { newCells[key] = val; continue; }
+          const c = colToIndex(m[1]);
+          if (c === index) continue; // skip deleted col
+          if (c > index) {
+            newCells[indexToCol(c - 1) + m[2]] = val;
+          } else {
+            newCells[key] = val;
+          }
+        }
+        cells = newCells;
+        colCount = Math.max(1, colCount - 1);
+        break;
+      }
+      default:
+        return jsonResponse({ _error: `Unknown action: ${action}` }, 400);
+    }
+
+    await env.DB.prepare(
+      "UPDATE sheet_data SET cells = ?, col_count = ?, row_count = ?, updated_at = datetime('now') WHERE id = ?"
+    ).bind(JSON.stringify(cells), colCount, rowCount, id).run();
+
+    return jsonResponse({ ok: true, cells, col_count: colCount, row_count: rowCount });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
   }

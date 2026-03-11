@@ -177,10 +177,17 @@ export async function updateSheet(id, updates) {
   return apiFetch(`/sheets/${id}`, { method: "PATCH", body: updates });
 }
 
-export async function sheetFormula(id, fn, range, target) {
+export async function sheetFormula(id, fn, args, target) {
   return apiFetch(`/sheets/${id}/formula`, {
     method: "POST",
-    body: { fn, range, target },
+    body: { fn, args, target },
+  });
+}
+
+export async function sheetStructure(id, action, index) {
+  return apiFetch(`/sheets/${id}/structure`, {
+    method: "POST",
+    body: { action, index },
   });
 }
 
