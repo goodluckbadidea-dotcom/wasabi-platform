@@ -395,13 +395,20 @@ function resolveColumns(schema, configColumns, fieldMappings) {
     }
   }
 
-  if (configColumns && configColumns.length > 0) {
-    cols = [...configColumns];
-    // Append any NEW columns from the schema that config doesn't know about yet
+  if (configColumns && configColumns.length > 0 && schemaColumns.length > 0) {
+    // Reconcile saved columns against live schema:
+    // 1. Keep saved columns that still exist in schema (preserves user ordering)
+    // 2. Drop stale columns that no longer exist in schema (renamed/deleted in Notion)
+    // 3. Append new schema columns not in the saved list
+    const schemaSet = new Set(schemaColumns);
+    cols = configColumns.filter((c) => schemaSet.has(c));
     const colSet = new Set(cols);
     for (const sc of schemaColumns) {
       if (!colSet.has(sc)) cols.push(sc);
     }
+  } else if (configColumns && configColumns.length > 0) {
+    // No schema yet — use config as-is
+    cols = [...configColumns];
   } else if (!schema) {
     return [];
   } else {
