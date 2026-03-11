@@ -15,17 +15,28 @@ import { runAgent, extractChoices } from "../agent/runAgent.js";
 import { WASABI_TOOLS } from "../agent/tools.js";
 import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createToolExecutor } from "../agent/toolExecutor.js";
+import { routeModel, shouldEscalate, SONNET } from "../agent/aiRouter.js";
+import { loadCachedNeurons } from "../neurons/neuronStorage.js";
 import BatchQueue from "./BatchQueue.jsx";
 import * as api from "../lib/api.js";
 // Legacy Notion imports removed — notifications now stored in D1
 import { timeAgo } from "../utils/helpers.js";
 
-// ── Smart model routing (same logic as ChatPanel) ──
-function pickModel(text) {
-  const isComplex = text.length > 200
-    || /\b(build|create|automat|multi|workflow|setup|design|refactor|update database|modify|schema)\b/i.test(text)
-    || /\b(and then|also|after that|step by step)\b/i.test(text);
-  return isComplex ? "claude-sonnet-4-20250514" : "claude-haiku-4-5-20251001";
+// Walk up the page tree to find the workspace ancestor
+function findWorkspaceAncestor(pageId, pages) {
+  if (!pageId || !pages?.length) return null;
+  const byId = {};
+  for (const p of pages) byId[p.id] = p;
+  let current = byId[pageId];
+  const visited = new Set();
+  while (current) {
+    if (visited.has(current.id)) break;
+    visited.add(current.id);
+    const pt = current.page_type || current.pageType;
+    if (pt === "workspace") return current;
+    current = current.parentId ? byId[current.parentId] : null;
+  }
+  return null;
 }
 
 // ── Tab button style ──
@@ -77,6 +88,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
   const [chatLoading, setChatLoading] = useState(false);
   const [chatChoices, setChatChoices] = useState([]);
   const [modelOverride, setModelOverride] = useState(null); // null = auto, "haiku" | "sonnet"
+  const [lastTier, setLastTier] = useState(null); // tracks last auto-routed tier
   const chatHistoryRef = useRef([]);
   const chatAbortRef = useRef(false);
 
@@ -277,6 +289,34 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
           schemaText: "",
         } : undefined;
 
+        // Auto-search KB for relevant context
+        let kbContext = "";
+        try {
+          const kbResult = await toolExecutor("search_knowledge_base", { query: agentText });
+          const parsed = typeof kbResult === "string" ? JSON.parse(kbResult) : kbResult;
+          if (parsed?.results?.length > 0) {
+            kbContext = parsed.results.slice(0, 5).map((r) =>
+              `- **${r.key || r.title || "Note"}**: ${(r.content || r.value || "").slice(0, 300)}`
+            ).join("\n");
+          }
+        } catch (_) { /* KB search is best-effort */ }
+
+        // Build neuron summary from cached data
+        const cachedNeurons = loadCachedNeurons();
+        const neuronSummary = cachedNeurons.length > 0
+          ? cachedNeurons.slice(0, 20).map((n) =>
+              `- ${n.name || "(unnamed)"} (${n.node_count || 0} nodes, id: ${n.id})`
+            ).join("\n")
+          : "";
+
+        // Find workspace ancestor for custom AI instructions
+        let workspaceInstructions = "";
+        if (activePageConfig) {
+          const wsConfig = findWorkspaceAncestor(activePageConfig.id || activePageConfig.parentId, pages);
+          const wsSettings = wsConfig?.settings || wsConfig?.config?.settings;
+          if (wsSettings?.aiInstructions) workspaceInstructions = wsSettings.aiInstructions;
+        }
+
         const systemPrompt = buildWasabiPrompt({
           platformDbIds: platformIds
             ? Object.entries(platformIds)
@@ -285,17 +325,25 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
             : "",
           workspaceSummary: workspaceSummary || undefined,
           currentPageContext,
+          kbContext,
+          neuronSummary,
+          currentDate: new Date().toISOString().split("T")[0],
+          workspaceInstructions,
         });
 
         const conn = api.getConnection();
         const wUrl = user?.workerUrl || conn?.workerUrl;
-        // Smart model routing — user override or auto
-        const model = modelOverride === "sonnet"
-          ? "claude-sonnet-4-20250514"
-          : modelOverride === "haiku"
-          ? "claude-haiku-4-5-20251001"
-          : pickModel(agentText);
-        const { text: reply, history } = await runAgent({
+
+        // ── Shared model routing ──
+        const { model, tier, reason } = routeModel({
+          text: agentText,
+          override: modelOverride,
+          conversationDepth: chatHistoryRef.current.length,
+          toolCount: WASABI_TOOLS.length,
+        });
+        setLastTier(tier);
+
+        let { text: reply, history, toolCalls } = await runAgent({
           messages: newHistory,
           systemPrompt,
           tools: WASABI_TOOLS,
@@ -305,7 +353,31 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
           executeTool: toolExecutor,
           abortRef: chatAbortRef,
           maxTokens: 2048,
+          tier,
+          routeReason: reason,
         });
+
+        // Auto-escalation: if Haiku gave a weak response, retry with Sonnet
+        if (tier === "haiku" && !modelOverride && shouldEscalate(reply, agentText, toolCalls.length > 0)) {
+          console.log("[AI Router] Global chat auto-escalating to Sonnet:", reason);
+          setLastTier("sonnet");
+          const escalated = await runAgent({
+            messages: newHistory,
+            systemPrompt,
+            tools: WASABI_TOOLS,
+            model: SONNET,
+            workerUrl: wUrl,
+            claudeKey: user?.claudeKey || "",
+            executeTool: toolExecutor,
+            abortRef: chatAbortRef,
+            maxTokens: 2048,
+            tier: "sonnet",
+            routeReason: "auto_escalation",
+          });
+          reply = escalated.text;
+          history = escalated.history;
+          toolCalls = escalated.toolCalls;
+        }
 
         chatHistoryRef.current = history;
         const extracted = extractChoices(reply);

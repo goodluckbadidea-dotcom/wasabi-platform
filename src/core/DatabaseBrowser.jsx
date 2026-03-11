@@ -14,6 +14,45 @@ import { IconSearch, IconDatabase, IconCheck, IconPlus, IconClose, IconTrash, Ic
 import { detectSheetType, validateSheetUrl } from "../sheets/sheetClient.js";
 import { fetchBoards } from "../monday/client.js";
 
+// ── Build a classified schema object from field definitions ──
+// Produces the same shape as classifyProperties() for autoDetectViews compatibility.
+function buildSchemaFromFields(title, fields) {
+  const schema = {
+    databaseTitle: title,
+    title: null,
+    statuses: [],
+    selects: [],
+    dates: [],
+    numbers: [],
+    richTexts: [],
+    checkboxes: [],
+    urls: [],
+    emails: [],
+    phones: [],
+    multiSelects: [],
+    allFields: [],
+  };
+  for (const f of fields) {
+    const entry = { name: f.name.trim(), type: f.type };
+    schema.allFields.push(entry);
+    switch (f.type) {
+      case "title": schema.title = entry; schema.richTexts.push(entry); break;
+      case "rich_text": schema.richTexts.push(entry); break;
+      case "number": schema.numbers.push(entry); break;
+      case "select": schema.selects.push(entry); break;
+      case "status": schema.statuses.push(entry); break;
+      case "multi_select": schema.multiSelects.push(entry); break;
+      case "date": schema.dates.push(entry); break;
+      case "checkbox": schema.checkboxes.push(entry); break;
+      case "url": schema.urls.push(entry); break;
+      case "email": schema.emails.push(entry); break;
+      case "phone_number": schema.phones.push(entry); break;
+      default: schema.richTexts.push(entry);
+    }
+  }
+  return schema;
+}
+
 // ── Styles ──
 const ds = {
   container: {
@@ -843,10 +882,7 @@ export default function DatabaseBrowser({
                   } catch (_) { /* non-critical */ }
                 }
 
-                const d1Schema = d1Columns.map((c) => ({
-                  name: c.name,
-                  type: c.type === "text" ? "title" : c.type,
-                }));
+                const d1Schema = buildSchemaFromFields(uploadDbTitle.trim(), schema);
                 handleConnect(tableId, uploadDbTitle.trim(), d1Schema);
               }
 
@@ -946,23 +982,28 @@ export default function DatabaseBrowser({
             setCreating(true);
             setCreateError(null);
             try {
-              // Ensure root page is active (auto-unarchive if needed)
-              await ensurePageActive(user.workerUrl, user.notionKey, platformIds.rootPageId);
+              // Map Notion-style field types to D1 column types
+              const notionToD1 = { title: "text", rich_text: "text", phone_number: "phone" };
+              const d1Columns = newDbFields.map((f) => ({
+                id: `col_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                name: f.name.trim(),
+                type: notionToD1[f.type] || f.type,
+                ...(f.options ? { options: f.options.split(",").map((o) => o.trim()).filter(Boolean) } : {}),
+              }));
 
-              const result = await createDatabase(
-                user.workerUrl,
-                user.notionKey,
-                platformIds.rootPageId,
-                newDbTitle.trim(),
-                newDbFields.map((f) => ({
-                  name: f.name.trim(),
-                  type: f.type,
-                  ...(f.options ? { options: f.options.split(",").map((o) => o.trim()).filter(Boolean) } : {}),
-                }))
-              );
-              // Detect the full schema from the newly created database
-              const schema = await detectSchema(user.workerUrl, user.notionKey, result.id);
-              handleConnect(result.id, newDbTitle.trim(), schema);
+              // Create D1 standalone table
+              const pageConfig = {
+                title: newDbTitle.trim(),
+                icon: "database",
+                page_type: "database",
+                config: JSON.stringify({ views: [{ type: "table", name: "All", config: {} }] }),
+              };
+              const { id: tableId } = await createPageConfig(pageConfig);
+              await updateTableSchema(tableId, d1Columns);
+
+              // Build schema object compatible with view suggestions
+              const schema = buildSchemaFromFields(newDbTitle.trim(), newDbFields);
+              handleConnect(tableId, newDbTitle.trim(), schema);
               // Reset form
               setNewDbTitle("");
               setNewDbFields([{ name: "Name", type: "title" }]);
@@ -1076,6 +1117,9 @@ function CreateDatabaseForm({
         </label>
         <input
           type="text"
+          autoComplete="off"
+          data-1p-ignore
+          data-lpignore="true"
           style={ds.urlInput}
           value={newDbTitle}
           onChange={(e) => setNewDbTitle(e.target.value)}
@@ -1096,6 +1140,9 @@ function CreateDatabaseForm({
                 {/* Field name */}
                 <input
                   type="text"
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
                   style={{ ...ds.urlInput, flex: 1, padding: "8px 10px", fontSize: 12 }}
                   value={field.name}
                   onChange={(e) => updateField(idx, "name", e.target.value)}
@@ -1159,6 +1206,9 @@ function CreateDatabaseForm({
             <div key={`opts-${idx}`} style={{ marginTop: 4, marginBottom: 4, paddingLeft: 8 }}>
               <input
                 type="text"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
                 style={{ ...ds.urlInput, fontSize: 11, padding: "6px 10px" }}
                 value={field.options || ""}
                 onChange={(e) => updateField(idx, "options", e.target.value)}
@@ -1219,7 +1269,7 @@ function CreateDatabaseForm({
       </button>
 
       <div style={ds.hint}>
-        Creates a new Notion database under your workspace. You can always add more fields later in Notion.
+        Creates a new D1 database in your workspace. You can always add or modify fields later.
       </div>
     </div>
   );
@@ -1432,6 +1482,9 @@ function UploadDatabaseForm({
             </label>
             <input
               type="text"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
               style={ds.urlInput}
               value={uploadDbTitle}
               onChange={(e) => setUploadDbTitle(e.target.value)}
@@ -1449,6 +1502,9 @@ function UploadDatabaseForm({
                 <div key={idx} style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <input
                     type="text"
+                    autoComplete="off"
+                    data-1p-ignore
+                    data-lpignore="true"
                     style={{ ...ds.urlInput, flex: 1, padding: "7px 10px", fontSize: 12 }}
                     value={col.name}
                     onChange={(e) => {
@@ -1575,7 +1631,7 @@ function UploadDatabaseForm({
           </button>
 
           <div style={ds.hint}>
-            Creates a new Notion database with the detected schema and imports all rows as records.
+            Creates a new database with the detected schema and imports all rows as records.
           </div>
         </>
       )}

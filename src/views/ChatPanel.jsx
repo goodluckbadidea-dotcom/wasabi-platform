@@ -101,8 +101,25 @@ function buildDataSummary(data, schema) {
   return lines.join("\n");
 }
 
+// Walk up the page tree to find the workspace ancestor
+function findWorkspaceAncestor(pageId, pages) {
+  if (!pageId || !pages?.length) return null;
+  const byId = {};
+  for (const p of pages) byId[p.id] = p;
+  let current = byId[pageId];
+  const visited = new Set();
+  while (current) {
+    if (visited.has(current.id)) break;
+    visited.add(current.id);
+    const pt = current.page_type || current.pageType;
+    if (pt === "workspace") return current;
+    current = current.parentId ? byId[current.parentId] : null;
+  }
+  return null;
+}
+
 export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
-  const { user, platformIds, addPage } = usePlatform();
+  const { user, platformIds, addPage, pages } = usePlatform();
   const [displayMessages, setDisplayMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [choices, setChoices] = useState([]);
@@ -157,12 +174,29 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
           ).join("\n")
         : "";
 
+      // Auto-search KB for relevant context
+      let kbContext = "";
+      try {
+        const kbResult = await toolExecutor("search_knowledge_base", { query: agentText });
+        const parsed = typeof kbResult === "string" ? JSON.parse(kbResult) : kbResult;
+        if (parsed?.results?.length > 0) {
+          kbContext = parsed.results.slice(0, 5).map((r) =>
+            `- **${r.key || r.title || "Note"}**: ${(r.content || r.value || "").slice(0, 300)}`
+          ).join("\n");
+        }
+      } catch (_) { /* KB search is best-effort */ }
+
       // Build database IDs list — include D1 table ID if this page IS a database
       const dbIds = [...(pageConfig.databaseIds || [])];
       const pt = pageConfig.page_type || pageConfig.pageType;
       if ((pt === "database" || pt === "sheet") && pageConfig.id && !dbIds.includes(pageConfig.id)) {
         dbIds.push(pageConfig.id);
       }
+
+      // Find workspace ancestor for custom AI instructions
+      const wsConfig = findWorkspaceAncestor(pageConfig.id || pageConfig.parentId, pages);
+      const wsSettings = wsConfig?.settings || wsConfig?.config?.settings;
+      const workspaceInstructions = wsSettings?.aiInstructions || "";
 
       // Build Wasabi prompt with page context + data summary
       const systemPrompt = buildWasabiPrompt({
@@ -174,6 +208,9 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
         },
         dataSummary,
         neuronSummary,
+        kbContext,
+        currentDate: new Date().toISOString().split("T")[0],
+        workspaceInstructions,
       });
 
       // ── Haiku-first smart routing ──

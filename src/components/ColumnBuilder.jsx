@@ -250,6 +250,9 @@ function ColumnRow({ col, index, total, expanded, onToggle, onUpdate, onRemove, 
             </label>
             <input
               type="text"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
               value={col.name}
               onChange={(e) => onUpdate({ name: e.target.value })}
               placeholder={isFirst ? "e.g. Name, Title" : "e.g. Email, Status"}

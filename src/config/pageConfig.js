@@ -122,6 +122,12 @@ export function createWorkspaceConfig(name) {
     databaseIds: [],
     views: [],
     sort_order: 0,
+    settings: {
+      aiInstructions: "",     // Custom prompt text for this workspace
+      defaultModel: "auto",   // "auto" | "haiku" | "sonnet"
+      autoSearchKb: true,     // Auto-search KB before agent responds
+      kbCategories: [],       // KB category filters for this workspace
+    },
   };
 }
 

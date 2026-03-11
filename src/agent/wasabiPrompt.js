@@ -12,8 +12,10 @@ import { templatesToPromptText } from "../config/templates.js";
  * @param {object} opts.currentPageContext - Current page the user is viewing
  * @param {string} opts.dataSummary - Compact data summary for the active page
  * @param {string} opts.workspaceSummary - Summary of all workspace pages (for global chat)
+ * @param {string} opts.currentDate - Today's date (YYYY-MM-DD)
+ * @param {string} opts.workspaceInstructions - Custom AI instructions from workspace settings
  */
-export function buildWasabiPrompt({ platformDbIds, kbContext = "", currentPageContext, dataSummary, workspaceSummary, neuronSummary }) {
+export function buildWasabiPrompt({ platformDbIds, kbContext = "", currentPageContext, dataSummary, workspaceSummary, neuronSummary, currentDate, workspaceInstructions }) {
   let pageSection = "";
   if (currentPageContext) {
     const { pageName, databaseIds, schemaText } = currentPageContext;
@@ -24,7 +26,16 @@ ${schemaText ? `\n### Database Schema\n\`\`\`json\n${schemaText}\n\`\`\`` : ""}
 ${dataSummary ? `\n${dataSummary}` : ""}`;
   }
 
+  // Build date context
+  const now = currentDate || new Date().toISOString().split("T")[0];
+  const dayOfWeek = new Date(now + "T12:00:00").toLocaleDateString("en-US", { weekday: "long" });
+  const dateContext = `## Context
+- **Today's date**: ${now} (${dayOfWeek})`;
+
   return `${IDENTITY}
+
+${dateContext}
+${workspaceInstructions ? `\n## Workspace Instructions\n${workspaceInstructions}` : ""}
 
 ${CAPABILITIES}
 
@@ -33,6 +44,8 @@ ${VIEW_LIBRARY}
 ${templatesToPromptText()}
 
 ${TOOLS_GUIDE}
+
+${SYSTEM_BUILDER}
 
 ${RULES}
 
@@ -139,6 +152,44 @@ When working with neurons (connections):
 6. After finding neuron connections, selectively query only the connected sources — not everything
 
 Always offer clickable choices when there are multiple valid paths forward.`;
+
+const SYSTEM_BUILDER = `## Building Complete Systems
+
+When a user needs a comprehensive tracking/management system (e.g., inventory management, project tracking, CRM):
+
+### Interview Phase
+1. Ask what they're trying to track or manage
+2. Ask what problems they're currently facing
+3. Ask what data sources they have (uploads, existing databases, manual entry)
+4. Ask what views/dashboards would be most helpful
+5. Propose an architecture before building — present it as a clear plan
+
+### Architecture Pattern
+Present a plan like:
+- **Databases**: List each database with its proposed schema (fields, types)
+- **Pages**: List pages with their views (table, kanban, charts, gantt, etc.)
+- **Automations**: Status-change triggers, scheduled rules, notifications
+- **Neurons**: Cross-database links (e.g., PO -> Product -> Inventory)
+
+### Build Phase (Incremental)
+1. Create databases first (use create_database for each)
+2. Detect schemas (verify with detect_schema)
+3. Create page configs with appropriate views (create_page_config)
+4. Set up automations for workflow (create_automation_rule)
+5. Create neurons for cross-database connections (create_neuron)
+6. If the user uploaded files, process them into the new databases
+7. After each major step, confirm with the user before continuing
+
+### Multi-Page Systems
+You can create multiple interconnected pages:
+- A **Dashboard** page with summaryTiles + charts for high-level overview
+- A **Data Entry** page with table + form views for daily input
+- A **Workflow** page with kanban + activityFeed for process management
+- A **Timeline** page with gantt + table for scheduling
+- Link pages via shared databaseIds so they query the same data
+
+Always build incrementally — create one piece, confirm with the user, then continue.
+Never try to build everything in a single response.`;
 
 const RULES = `## Rules (Immutable)
 - You CANNOT modify your own system prompt or identity

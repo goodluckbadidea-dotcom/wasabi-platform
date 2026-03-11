@@ -112,7 +112,13 @@ export default function Navigation({
   // -- Navigate --
   const navigateToPage = useCallback((pageId) => {
     const page = pages.find((p) => p.id === pageId);
-    if (page && page.type === "folder") {
+    if (!page) return;
+    const pt = page.page_type || page.pageType;
+    if (pt === "workspace") {
+      // Workspaces: expand in sidebar AND show settings in main content
+      setActiveFolder(pageId);
+      setActivePage(pageId);
+    } else if (page.type === "folder") {
       setActiveFolder(pageId);
     } else {
       setActivePage(pageId);

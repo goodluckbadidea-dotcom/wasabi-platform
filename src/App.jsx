@@ -28,6 +28,7 @@ import AutomationPage from "./core/AutomationPage.jsx";
 import NotificationFeed from "./views/NotificationFeed.jsx";
 import HomePage from "./core/HomePage.jsx";
 import Dashboard from "./core/Dashboard.jsx";
+import WorkspaceSettings from "./views/WorkspaceSettings.jsx";
 import { ErrorBoundary } from "./core/ErrorBoundary.jsx";
 import { createAutomationEngine } from "./agent/automations.js";
 import { useKeyboardShortcuts } from "./utils/useKeyboardShortcuts.js";
@@ -53,6 +54,7 @@ function AppContent() {
     setActiveFolder,
     getFolderPages,
     globalDashboard,
+    updatePageConfig,
   } = usePlatform();
 
   const { theme } = useTheme();
@@ -268,6 +270,16 @@ function AppContent() {
     // System manager
     if (activePage === "system") {
       return <SystemManager />;
+    }
+
+    // Workspace pages render settings view
+    if (activePageConfig && (activePageConfig.page_type === "workspace" || activePageConfig.pageType === "workspace")) {
+      return (
+        <WorkspaceSettings
+          pageConfig={activePageConfig}
+          onUpdate={(updates) => updatePageConfig(activePageConfig.id, updates)}
+        />
+      );
     }
 
     // Folders are not pages — redirect to home
