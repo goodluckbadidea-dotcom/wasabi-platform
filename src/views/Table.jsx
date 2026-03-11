@@ -890,117 +890,6 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     injectAnimations();
   }, []);
 
-  // ── Keyboard Navigation Handler ──
-  useEffect(() => {
-    const handler = (e) => {
-      // Don't intercept if user is in a text input, search, or modal
-      const tag = e.target.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      if (!focusedCell && !e.key.startsWith("Arrow")) return;
-
-      const rowCount = processedData.length;
-      const colCount = columns.length;
-      if (rowCount === 0 || colCount === 0) return;
-
-      const { row, col } = focusedCell || { row: 0, col: 0 };
-
-      switch (e.key) {
-        case "ArrowDown":
-          e.preventDefault();
-          setFocusedCell({ row: Math.min(row + 1, rowCount - 1), col });
-          break;
-        case "ArrowUp":
-          e.preventDefault();
-          setFocusedCell({ row: Math.max(row - 1, 0), col });
-          break;
-        case "ArrowRight":
-          e.preventDefault();
-          if (col < colCount - 1) setFocusedCell({ row, col: col + 1 });
-          else if (row < rowCount - 1) setFocusedCell({ row: row + 1, col: 0 });
-          break;
-        case "ArrowLeft":
-          e.preventDefault();
-          if (col > 0) setFocusedCell({ row, col: col - 1 });
-          else if (row > 0) setFocusedCell({ row: row - 1, col: colCount - 1 });
-          break;
-        case "Tab":
-          e.preventDefault();
-          if (e.shiftKey) {
-            if (col > 0) setFocusedCell({ row, col: col - 1 });
-            else if (row > 0) setFocusedCell({ row: row - 1, col: colCount - 1 });
-          } else {
-            if (col < colCount - 1) setFocusedCell({ row, col: col + 1 });
-            else if (row < rowCount - 1) setFocusedCell({ row: row + 1, col: 0 });
-          }
-          break;
-        case "Enter":
-          if (focusedCell && !editCell) {
-            e.preventDefault();
-            const page = processedData[row];
-            const field = columns[col];
-            const type = getFieldType(schema, field);
-            if (page && field && EDITABLE_TYPES.has(type) && onUpdate) {
-              if (type === "checkbox") {
-                handleCheckboxToggle(page.id, field, readField(page, field));
-              } else {
-                setEditCell({ pageId: page.id, field });
-                setInitialChar("");
-              }
-            }
-          }
-          break;
-        case "Escape":
-          if (editCell) {
-            setEditCell(null);
-          } else {
-            setFocusedCell(null);
-          }
-          break;
-        case "Delete":
-        case "Backspace":
-          if (focusedCell && !editCell) {
-            e.preventDefault();
-            const page = processedData[row];
-            const field = columns[col];
-            const type = getFieldType(schema, field);
-            if (page && field && EDITABLE_TYPES.has(type) && onUpdate && type !== "checkbox") {
-              handleEditCommit(page.id, field, null);
-            }
-          }
-          break;
-        default:
-          // Printable character → open editor with that char
-          if (focusedCell && !editCell && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            const page = processedData[row];
-            const field = columns[col];
-            const type = getFieldType(schema, field);
-            if (page && field && EDITABLE_TYPES.has(type) && onUpdate && type !== "checkbox") {
-              setEditCell({ pageId: page.id, field });
-              setInitialChar(e.key);
-            }
-          }
-          break;
-      }
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [focusedCell, editCell, processedData, columns, schema, onUpdate, handleCheckboxToggle, handleEditCommit]);
-
-  // Scroll focused cell into view (for virtualization compatibility)
-  useEffect(() => {
-    if (focusedCell && scrollAreaRef.current) {
-      const targetTop = focusedCell.row * ROW_HEIGHT;
-      const container = scrollAreaRef.current;
-      const viewTop = container.scrollTop;
-      const viewBottom = viewTop + container.clientHeight - 80; // account for header
-      if (targetTop < viewTop) {
-        container.scrollTop = targetTop;
-      } else if (targetTop + ROW_HEIGHT > viewBottom) {
-        container.scrollTop = targetTop + ROW_HEIGHT - container.clientHeight + 80;
-      }
-    }
-  }, [focusedCell]);
-
   // Outside-click to close column visibility menu
   useEffect(() => {
     if (!colMenuOpen) return;
@@ -1391,6 +1280,117 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
       onUpdate(pageId, field, propPayload);
     }
   }, [onUpdate]);
+
+  // ── Keyboard Navigation Handler ──
+  useEffect(() => {
+    const handler = (e) => {
+      // Don't intercept if user is in a text input, search, or modal
+      const tag = e.target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (!focusedCell && !e.key.startsWith("Arrow")) return;
+
+      const rowCount = processedData.length;
+      const colCount = columns.length;
+      if (rowCount === 0 || colCount === 0) return;
+
+      const { row, col } = focusedCell || { row: 0, col: 0 };
+
+      switch (e.key) {
+        case "ArrowDown":
+          e.preventDefault();
+          setFocusedCell({ row: Math.min(row + 1, rowCount - 1), col });
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          setFocusedCell({ row: Math.max(row - 1, 0), col });
+          break;
+        case "ArrowRight":
+          e.preventDefault();
+          if (col < colCount - 1) setFocusedCell({ row, col: col + 1 });
+          else if (row < rowCount - 1) setFocusedCell({ row: row + 1, col: 0 });
+          break;
+        case "ArrowLeft":
+          e.preventDefault();
+          if (col > 0) setFocusedCell({ row, col: col - 1 });
+          else if (row > 0) setFocusedCell({ row: row - 1, col: colCount - 1 });
+          break;
+        case "Tab":
+          e.preventDefault();
+          if (e.shiftKey) {
+            if (col > 0) setFocusedCell({ row, col: col - 1 });
+            else if (row > 0) setFocusedCell({ row: row - 1, col: colCount - 1 });
+          } else {
+            if (col < colCount - 1) setFocusedCell({ row, col: col + 1 });
+            else if (row < rowCount - 1) setFocusedCell({ row: row + 1, col: 0 });
+          }
+          break;
+        case "Enter":
+          if (focusedCell && !editCell) {
+            e.preventDefault();
+            const page = processedData[row];
+            const field = columns[col];
+            const type = getFieldType(schema, field);
+            if (page && field && EDITABLE_TYPES.has(type) && onUpdate) {
+              if (type === "checkbox") {
+                handleCheckboxToggle(page.id, field, readField(page, field));
+              } else {
+                setEditCell({ pageId: page.id, field });
+                setInitialChar("");
+              }
+            }
+          }
+          break;
+        case "Escape":
+          if (editCell) {
+            setEditCell(null);
+          } else {
+            setFocusedCell(null);
+          }
+          break;
+        case "Delete":
+        case "Backspace":
+          if (focusedCell && !editCell) {
+            e.preventDefault();
+            const page = processedData[row];
+            const field = columns[col];
+            const type = getFieldType(schema, field);
+            if (page && field && EDITABLE_TYPES.has(type) && onUpdate && type !== "checkbox") {
+              handleEditCommit(page.id, field, null);
+            }
+          }
+          break;
+        default:
+          // Printable character → open editor with that char
+          if (focusedCell && !editCell && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            const page = processedData[row];
+            const field = columns[col];
+            const type = getFieldType(schema, field);
+            if (page && field && EDITABLE_TYPES.has(type) && onUpdate && type !== "checkbox") {
+              setEditCell({ pageId: page.id, field });
+              setInitialChar(e.key);
+            }
+          }
+          break;
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [focusedCell, editCell, processedData, columns, schema, onUpdate, handleCheckboxToggle, handleEditCommit]);
+
+  // Scroll focused cell into view (for virtualization compatibility)
+  useEffect(() => {
+    if (focusedCell && scrollAreaRef.current) {
+      const targetTop = focusedCell.row * ROW_HEIGHT;
+      const container = scrollAreaRef.current;
+      const viewTop = container.scrollTop;
+      const viewBottom = viewTop + container.clientHeight - 80; // account for header
+      if (targetTop < viewTop) {
+        container.scrollTop = targetTop;
+      } else if (targetTop + ROW_HEIGHT > viewBottom) {
+        container.scrollTop = targetTop + ROW_HEIGHT - container.clientHeight + 80;
+      }
+    }
+  }, [focusedCell]);
 
   // Filter change handler
   const handleFilterChange = useCallback((field, value) => {
