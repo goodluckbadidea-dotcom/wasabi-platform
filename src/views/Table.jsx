@@ -353,18 +353,19 @@ const ctxItem = {
 
 // ─── Helpers ───
 
-/** Resolve column list from schema when not provided in config */
+/** Resolve column list from schema when not provided in config.
+ *  When config.columns exists, still appends any NEW schema fields
+ *  so that columns added in Notion are discovered automatically. */
 function resolveColumns(schema, configColumns, fieldMappings) {
   let cols;
 
-  if (configColumns && configColumns.length > 0) {
-    cols = [...configColumns];
-  } else if (!schema) {
-    return [];
-  } else {
-    // Build column list from schema, title first
-    cols = [];
-    if (schema.title) cols.push(schema.title.name);
+  // Build the full schema-derived list (used as source of truth)
+  const schemaColumns = [];
+  if (schema) {
+    if (schema.title) schemaColumns.push(schema.title.name);
+    if (schema.uniqueId && !schemaColumns.includes(schema.uniqueId.name)) {
+      schemaColumns.unshift(schema.uniqueId.name);
+    }
 
     const orderedFields = [
       ...schema.statuses,
@@ -383,22 +384,28 @@ function resolveColumns(schema, configColumns, fieldMappings) {
       ...schema.formulas,
       ...schema.rollups,
     ];
-
     for (const f of orderedFields) {
-      if (!cols.includes(f.name)) cols.push(f.name);
+      if (!schemaColumns.includes(f.name)) schemaColumns.push(f.name);
     }
-
-    if (schema?.uniqueId && !cols.includes(schema.uniqueId.name)) {
-      cols.unshift(schema.uniqueId.name);
+    if (schema.createdTime && !schemaColumns.includes(schema.createdTime.name)) {
+      schemaColumns.push(schema.createdTime.name);
+    }
+    if (schema.lastEditedTime && !schemaColumns.includes(schema.lastEditedTime.name)) {
+      schemaColumns.push(schema.lastEditedTime.name);
     }
   }
 
-  // Always append system timestamp fields — these are mandatory tracking columns
-  if (schema?.createdTime && !cols.includes(schema.createdTime.name)) {
-    cols.push(schema.createdTime.name);
-  }
-  if (schema?.lastEditedTime && !cols.includes(schema.lastEditedTime.name)) {
-    cols.push(schema.lastEditedTime.name);
+  if (configColumns && configColumns.length > 0) {
+    cols = [...configColumns];
+    // Append any NEW columns from the schema that config doesn't know about yet
+    const colSet = new Set(cols);
+    for (const sc of schemaColumns) {
+      if (!colSet.has(sc)) cols.push(sc);
+    }
+  } else if (!schema) {
+    return [];
+  } else {
+    cols = schemaColumns;
   }
 
   return cols;
@@ -1130,25 +1137,28 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     [schema, config.columns, config.fieldMappings]
   );
 
-  // Sync hidden columns from config.visibleFields (updates when ViewSettingsPanel changes)
+  // Sync hidden columns from config.visibleFields (updates when ViewSettingsPanel changes).
+  // New columns discovered from schema that aren't in the saved visibleFields list
+  // default to VISIBLE so that columns added in Notion appear automatically.
   const prevVisibleFields = useRef(config.visibleFields);
   useEffect(() => {
     const vf = config.visibleFields;
     if (!Array.isArray(vf) || vf.length === 0 || allColumns.length === 0) return;
-    // Only update if visibleFields actually changed (avoids resetting manual column toggles)
-    if (prevVisibleFields.current !== vf) {
+
+    if (prevVisibleFields.current !== vf || !prevVisibleFields.current) {
       const visibleSet = new Set(vf);
-      const hidden = new Set(allColumns.filter((c) => !visibleSet.has(c)));
-      setHiddenColumns(hidden);
-      prevVisibleFields.current = vf;
-    } else if (!prevVisibleFields.current) {
-      // First load: seed from config
-      const visibleSet = new Set(vf);
-      const hidden = new Set(allColumns.filter((c) => !visibleSet.has(c)));
+      // Only hide columns that were KNOWN at save time and explicitly excluded.
+      // New columns (not in visibleFields at all) stay visible by default.
+      // To detect "known at save time", we check if the column was in the config.columns
+      // snapshot. If config.columns doesn't exist, treat visibleFields as the full list.
+      const knownColumns = new Set(config.columns || vf);
+      const hidden = new Set(
+        allColumns.filter((c) => knownColumns.has(c) && !visibleSet.has(c))
+      );
       setHiddenColumns(hidden);
       prevVisibleFields.current = vf;
     }
-  }, [allColumns, config.visibleFields]);
+  }, [allColumns, config.visibleFields, config.columns]);
 
   // Visible columns (filtered by hiddenColumns)
   allColumnsRef.current = allColumns;
