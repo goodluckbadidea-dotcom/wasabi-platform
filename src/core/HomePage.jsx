@@ -17,6 +17,7 @@ import {
   IconTimeline, IconChart, IconBolt, IconGear, IconFolder,
   IconChevronRight, IconTrash,
 } from "../design/icons.jsx";
+import WidgetGrid from "../components/WidgetGrid.jsx";
 
 // ── localStorage key for home config ──
 const HOME_CONFIG_KEY = "wasabi_home_config";
@@ -215,7 +216,7 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
   const hs = buildHomeStyles();
   const {
     pages, activePage, setActivePage, removePage, updatePageConfig, user, platformIds,
-    pageTree, setActiveFolder, folders,
+    pageTree, setActiveFolder, folders, globalDashboard,
   } = usePlatform();
   const [homeConfig, setHomeConfig] = useState(() => loadHomeConfig());
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -274,6 +275,13 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
       return updated;
     });
   }, []);
+
+  // ── Widget grid (global dashboard) ──
+  const globalWidgets = globalDashboard?.widgets || [];
+  const handleUpdateWidgets = useCallback((newWidgets) => {
+    if (!globalDashboard?.id) return;
+    updatePageConfig(globalDashboard.id, { widgets: newWidgets });
+  }, [globalDashboard, updatePageConfig]);
 
   // Exclude folders and sub-pages from card lists (they show via folder cards)
   const visiblePages = useMemo(
@@ -432,6 +440,28 @@ export default function HomePage({ onStartBlank, onStartTemplate, onNavigate }) 
                 onRename={(newName) => handleRenamePage(page.id, newName)}
               />
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Pinned Views / Widget Grid (from global dashboard) ── */}
+      {(globalWidgets.length > 0 || globalDashboard) && (
+        <div style={hs.section}>
+          <div style={hs.sectionHeader}>
+            <span style={hs.sectionTitle}>
+              <IconChart size={11} color={C.darkMuted} /> Pinned Views
+            </span>
+          </div>
+          <div style={{
+            borderRadius: RADIUS.xl,
+            border: `1px solid ${C.darkBorder}`,
+            overflow: "hidden",
+            minHeight: globalWidgets.length > 0 ? 300 : 160,
+          }}>
+            <WidgetGrid
+              widgets={globalWidgets}
+              onUpdateWidgets={handleUpdateWidgets}
+            />
           </div>
         </div>
       )}

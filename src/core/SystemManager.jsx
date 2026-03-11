@@ -1,17 +1,13 @@
 // ─── SystemManager ───
-// Three-tab system management interface: Overview, Connections, Chat.
+// Four-tab system management interface: Overview, Connections, Workspaces, Settings.
+// Chat tab removed — use WasabiPanel chat instead.
 // No emojis. Dark theme. Inline CSS-in-JS.
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { C, FONT, MONO, RADIUS, THEME_LIST, THEMES } from "../design/tokens.js";
 import { useTheme } from "../context/ThemeContext.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import ChatUI from "./ChatUI.jsx";
-import { runAgent, extractChoices } from "../agent/runAgent.js";
-import { SYSTEM_TOOLS } from "../agent/tools.js";
-import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
-import { createToolExecutor } from "../agent/toolExecutor.js";
-import WasabiOrb from "./WasabiOrb.jsx";
+import WorkspaceSettings from "../views/WorkspaceSettings.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
 import { IconGear } from "../design/icons.jsx";
 import { getSessionUsage, getUsageHistory, formatCost, formatTokens, getTierBreakdown } from "../utils/costTracker.js";
@@ -367,97 +363,7 @@ export default function SystemManager() {
     setStats((prev) => ({ ...prev, pages: pages.length }));
   }, [pages.length]);
 
-  // ── Chat state ──
-  const [chatMessages, setChatMessages] = useState([]);
-  const [chatLoading, setChatLoading] = useState(false);
-  const [chatChoices, setChatChoices] = useState([]);
-  const chatHistoryRef = useRef([]);
-  const chatAbortRef = useRef(false);
-
-  // ── Chat tool executor ──
-  const toolExecutor = useCallback(
-    (toolName, toolInput) => {
-      if (!user?.workerUrl || !user?.notionKey) return Promise.resolve("{}");
-      const executor = createToolExecutor({
-        workerUrl: user.workerUrl,
-        notionKey: user.notionKey,
-        parentPageId: platformIds?.rootPageId,
-        kbDbId: platformIds?.kbDbId,
-        notifDbId: platformIds?.notifDbId,
-        configDbId: platformIds?.configDbId,
-        onPageCreated: null,
-      });
-      return executor(toolName, toolInput);
-    },
-    [user, platformIds]
-  );
-
-  // ── Chat send handler ──
-  const handleChatSend = useCallback(
-    async ({ text }) => {
-      if (chatLoading || !text?.trim()) return;
-      setChatMessages((prev) => [...prev, { role: "user", content: text }]);
-      setChatChoices([]);
-      setChatLoading(true);
-
-      const newHistory = [
-        ...chatHistoryRef.current,
-        { role: "user", content: text },
-      ];
-
-      try {
-        const systemPrompt = buildWasabiPrompt({
-          platformDbIds: platformIds
-            ? Object.entries(platformIds)
-                .map(([k, v]) => `${k}: ${v}`)
-                .join("\n")
-            : "",
-        });
-
-        const { text: reply, history } = await runAgent({
-          messages: newHistory,
-          systemPrompt,
-          tools: SYSTEM_TOOLS,
-          model: "claude-sonnet-4-20250514",
-          workerUrl: user.workerUrl,
-          claudeKey: user.claudeKey,
-          executeTool: toolExecutor,
-          abortRef: chatAbortRef,
-          maxTokens: 2048,
-        });
-
-        chatHistoryRef.current = history;
-        const extracted = extractChoices(reply);
-        let cleanReply = reply;
-        for (const c of extracted) {
-          cleanReply = cleanReply.replace(c.raw, "").trim();
-        }
-        setChatMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: cleanReply },
-        ]);
-        setChatChoices(extracted);
-      } catch (err) {
-        console.error("System chat error:", err);
-        setChatMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: `Error: ${err.message}` },
-        ]);
-      } finally {
-        setChatLoading(false);
-      }
-    },
-    [chatLoading, user, platformIds, toolExecutor]
-  );
-
-  const handleChatChoice = useCallback(
-    (choice) => {
-      handleChatSend({
-        text: typeof choice === "string" ? choice : choice.label,
-      });
-    },
-    [handleChatSend]
-  );
+  // Chat tab removed — use WasabiPanel for all chat
 
   return (
     <div
@@ -522,10 +428,10 @@ export default function SystemManager() {
             Connections
           </button>
           <button
-            style={tabBtn(tab === "chat")}
-            onClick={() => setTab("chat")}
+            style={tabBtn(tab === "workspaces")}
+            onClick={() => setTab("workspaces")}
           >
-            Chat
+            Workspaces
           </button>
           <button
             style={tabBtn(tab === "settings")}
@@ -913,29 +819,8 @@ export default function SystemManager() {
           </div>
         )}
 
-        {/* ═══ CHAT TAB ═══ */}
-        {tab === "chat" && (
-          <div
-            style={{
-              height: "100%",
-              display: "flex",
-              flexDirection: "column",
-              minHeight: 0,
-            }}
-          >
-            <ChatUI
-              messages={chatMessages}
-              onSend={handleChatSend}
-              isLoading={chatLoading}
-              choices={chatChoices}
-              onChoice={handleChatChoice}
-              allowFiles={true}
-              agentName="Wasabi"
-              agentIcon={<WasabiOrb size={28} />}
-              placeholder="System chat -- query KB, check configs..."
-            />
-          </div>
-        )}
+        {/* ═══ WORKSPACES TAB ═══ */}
+        {tab === "workspaces" && <WorkspacesTab />}
 
         {/* ═══ SETTINGS TAB ═══ */}
         {tab === "settings" && <SettingsTab />}
@@ -1244,6 +1129,97 @@ function SettingsTab() {
           confirmLabel="Reset Everything"
           onConfirm={handleFactoryReset}
           onCancel={() => setShowResetConfirm(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Workspaces Tab (embedded WorkspaceSettings per workspace)
+// ════════════════════════════════════════════════════════════════════════════
+
+function WorkspacesTab() {
+  const { pages, updatePageConfig } = usePlatform();
+  const [selectedId, setSelectedId] = useState(null);
+
+  // Filter workspace pages
+  const workspaces = (pages || []).filter(
+    (p) => (p.page_type || p.pageType) === "workspace"
+  );
+
+  // Auto-select first workspace if none selected
+  const selected = workspaces.find((w) => w.id === selectedId) || workspaces[0] || null;
+
+  const handleUpdate = useCallback(
+    (updates) => {
+      if (selected) updatePageConfig(selected.id, updates);
+    },
+    [selected, updatePageConfig]
+  );
+
+  if (workspaces.length === 0) {
+    return (
+      <div style={{ padding: "40px 24px", textAlign: "center" }}>
+        <div style={{
+          fontSize: 14, color: C.darkMuted, fontFamily: FONT, marginBottom: 8,
+        }}>
+          No workspaces found
+        </div>
+        <div style={{
+          fontSize: 12, color: C.darkMuted + "88", fontFamily: FONT, lineHeight: 1.5,
+        }}>
+          Create a workspace from the sidebar to configure AI instructions, model selection, and knowledge base settings.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Workspace selector (shown only when multiple workspaces exist) */}
+      {workspaces.length > 1 && (
+        <div style={{ padding: "16px 24px 0", flexShrink: 0 }}>
+          <div style={{
+            fontSize: 10, color: C.darkMuted, fontFamily: FONT,
+            textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10,
+          }}>
+            Select Workspace
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {workspaces.map((w) => {
+              const isActive = selected?.id === w.id;
+              return (
+                <button
+                  key={w.id}
+                  onClick={() => setSelectedId(w.id)}
+                  style={{
+                    padding: "6px 14px",
+                    border: `1px solid ${isActive ? C.accent : C.darkBorder}`,
+                    background: isActive ? C.accent + "18" : C.darkSurf,
+                    borderRadius: RADIUS.pill,
+                    color: isActive ? C.accent : C.darkMuted,
+                    fontFamily: FONT,
+                    fontSize: 12,
+                    fontWeight: isActive ? 600 : 400,
+                    cursor: "pointer",
+                    outline: "none",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  {w.name || "Untitled Workspace"}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Embedded workspace settings */}
+      {selected && (
+        <WorkspaceSettings
+          pageConfig={selected}
+          onUpdate={handleUpdate}
         />
       )}
     </div>

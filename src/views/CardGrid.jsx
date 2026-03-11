@@ -1,24 +1,23 @@
 // ─── Card Grid View ───
 // Schema-agnostic card layout with search, filtering, and badge pills.
 
-import React, { useState, useMemo, useCallback, useRef } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import { C, FONT, RADIUS, getStatusColor } from "../design/tokens.js";
 import { readField, getFieldType, getFieldOptions, getOptionNames, displayValue, searchableText, resolveField } from "./_viewHelpers.js";
 import { cellStyles, CellDisplay } from "./_CellComponents.jsx";
 import { buildProp } from "../notion/properties.js";
-import RecordDetail from "./RecordDetail.jsx";
-import NewRecordModal from "./NewRecordModal.jsx";
+import { useRecordDetail } from "../hooks/useRecordDetail.js";
+import RecordDetailPortals from "../components/RecordDetailPortals.jsx";
+import ViewToolbar from "../components/ViewToolbar.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 
 export default function CardGrid({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, onViewConfigChange, pageConfig }) {
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState(config.activeFilters || {});
-  const [detailPage, setDetailPage] = useState(null);
-  const lastCardClickRef = useRef({ id: null, time: 0 });
+  const record = useRecordDetail();
   const [addOpen, setAddOpen] = useState(false);
   const [addTitle, setAddTitle] = useState("");
   const [addSaving, setAddSaving] = useState(false);
-  const [showNewModal, setShowNewModal] = useState(false);
 
   // Resolve fields from config or auto-detect
   const titleField = resolveField(schema, config.titleField, ["title"]);
@@ -102,99 +101,22 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", fontFamily: FONT }}>
-      {/* Toolbar */}
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "12px 20px",
-        borderBottom: `1px solid ${C.edgeLine}`,
-        flexWrap: "wrap",
-      }}>
-        {/* Search */}
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          background: C.darkSurf2,
-          border: `1px solid ${C.darkBorder}`,
-          borderRadius: RADIUS.md,
-          padding: "0 10px",
-          height: 34,
-          minWidth: 180,
-          flex: "0 1 240px",
-        }}>
-          <span style={{ fontSize: 13, color: C.darkMuted, flexShrink: 0 }}>&#x1F50D;</span>
-          <input
-            style={{
-              flex: 1, border: "none", outline: "none", background: "transparent",
-              fontFamily: FONT, fontSize: 13, color: C.darkText, padding: "0 6px", height: "100%",
-            }}
-            placeholder="Search cards..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {search && (
-            <span
-              style={{ fontSize: 14, color: C.darkMuted, cursor: "pointer", padding: "0 2px" }}
-              onClick={() => setSearch("")}
-            >&times;</span>
-          )}
-        </div>
-
-        {/* Filter dropdowns */}
-        {filterFields.map((f) => (
-          <select
-            key={f.name}
-            value={filters[f.name] || ""}
-            onChange={(e) => {
-              const newFilters = { ...filters, [f.name]: e.target.value || undefined };
-              setFilters(newFilters);
-              if (onViewConfigChange) onViewConfigChange({ activeFilters: newFilters });
-            }}
-            style={{
-              background: C.darkSurf2,
-              border: `1px solid ${C.darkBorder}`,
-              borderRadius: RADIUS.md,
-              padding: "6px 10px",
-              fontSize: 12,
-              fontFamily: FONT,
-              color: C.darkMuted,
-              cursor: "pointer",
-              appearance: "none",
-              outline: "none",
-              minWidth: 110,
-              height: 34,
-            }}
-          >
-            <option value="">{f.name}</option>
-            {f.options.map((opt) => (
-              <option key={opt.name} value={opt.name}>{opt.name}</option>
-            ))}
-          </select>
-        ))}
-
-        {/* Record count */}
-        <span style={{ fontSize: 12, color: C.darkMuted, marginLeft: "auto" }}>
-          {processedData.length === data.length
-            ? `${data.length} records`
-            : `${processedData.length} of ${data.length}`}
-        </span>
-
-        {/* Add new */}
-        {onCreate && (
-          <button
-            onClick={() => setShowNewModal(true)}
-            style={{
-              background: "transparent", border: `1px dashed ${C.darkBorder}`,
-              borderRadius: RADIUS.md, padding: "4px 12px", color: C.darkMuted,
-              fontSize: 11, cursor: "pointer", fontFamily: FONT, outline: "none",
-              transition: "border-color 0.15s, color 0.15s",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent + "66"; e.currentTarget.style.color = C.darkText; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; e.currentTarget.style.color = C.darkMuted; }}
-          >+ New</button>
-        )}
-      </div>
+      <ViewToolbar
+        search={{ value: search, onChange: setSearch, placeholder: "Search cards..." }}
+        filters={filterFields.map((f) => ({
+          name: f.name,
+          options: f.options,
+          value: filters[f.name] || "",
+          onChange: (val) => {
+            const newFilters = { ...filters, [f.name]: val || undefined };
+            setFilters(newFilters);
+            if (onViewConfigChange) onViewConfigChange({ activeFilters: newFilters });
+          },
+        }))}
+        recordCount={data.length}
+        filteredCount={processedData.length}
+        onCreate={onCreate ? () => record.openNew() : undefined}
+      />
 
       {/* Card Grid */}
       <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
@@ -243,14 +165,7 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
                       dispatchNeuronSelect({ node_type: "row", node_id: page.id, node_label: title || "Untitled" });
                       return;
                     }
-                    const now = Date.now();
-                    const last = lastCardClickRef.current;
-                    if (last.id === page.id && now - last.time < 1000) {
-                      setDetailPage(page);
-                      lastCardClickRef.current = { id: null, time: 0 };
-                    } else {
-                      lastCardClickRef.current = { id: page.id, time: now };
-                    }
+                    record.handleCardClick(page, page.id);
                   }}
                   onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent + "66"; }}
                   onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
@@ -349,25 +264,15 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
         )}
       </div>
 
-      {detailPage && (
-        <RecordDetail
-          page={detailPage}
-          schema={schema}
-          onClose={() => setDetailPage(null)}
-          onUpdate={onUpdate}
-          onDelete={onDelete ? (ids) => { onDelete(ids); setDetailPage(null); } : undefined}
-          pageConfigId={pageConfig?.id}
-        />
-      )}
-
-      {showNewModal && onCreate && (
-        <NewRecordModal
-          schema={schema}
-          databaseId={config.databaseId || pageConfig?.databaseIds?.[0] || pageConfig?.id}
-          onCreate={onCreate}
-          onClose={() => setShowNewModal(false)}
-        />
-      )}
+      <RecordDetailPortals
+        hook={record}
+        schema={schema}
+        pageConfigId={pageConfig?.id}
+        databaseId={config.databaseId || pageConfig?.databaseIds?.[0] || pageConfig?.id}
+        onUpdate={onUpdate}
+        onCreate={onCreate}
+        onDelete={onDelete}
+      />
     </div>
   );
 }

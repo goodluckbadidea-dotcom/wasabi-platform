@@ -17,37 +17,11 @@ import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createToolExecutor } from "../agent/toolExecutor.js";
 import { routeModel, shouldEscalate, SONNET } from "../agent/aiRouter.js";
 import { loadCachedNeurons } from "../neurons/neuronStorage.js";
+import { buildDataSummary, getTokenBudget, findWorkspaceAncestor } from "../agent/dataSummary.js";
 import BatchQueue from "./BatchQueue.jsx";
 import * as api from "../lib/api.js";
 // Legacy Notion imports removed — notifications now stored in D1
 import { timeAgo } from "../utils/helpers.js";
-
-// ── Dynamic token budget based on message complexity ──
-function getTokenBudget(text, conversationDepth) {
-  if (text.length < 80 && conversationDepth < 3) return { maxTokens: 1024, maxIterations: 6 };
-  if (/build|create|design|setup|implement|system|track|manage/i.test(text) && text.length > 150)
-    return { maxTokens: 4096, maxIterations: 12 };
-  if (/analyze|summarize|compare|report|show|find/i.test(text))
-    return { maxTokens: 2048, maxIterations: 8 };
-  return { maxTokens: 2048, maxIterations: 8 };
-}
-
-// Walk up the page tree to find the workspace ancestor
-function findWorkspaceAncestor(pageId, pages) {
-  if (!pageId || !pages?.length) return null;
-  const byId = {};
-  for (const p of pages) byId[p.id] = p;
-  let current = byId[pageId];
-  const visited = new Set();
-  while (current) {
-    if (visited.has(current.id)) break;
-    visited.add(current.id);
-    const pt = current.page_type || current.pageType;
-    if (pt === "workspace") return current;
-    current = current.parentId ? byId[current.parentId] : null;
-  }
-  return null;
-}
 
 // ── Tab button style ──
 const tabBtn = (active) => ({
@@ -77,7 +51,7 @@ function getStatusCol() {
   };
 }
 
-export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
+export default function WasabiPanel({ onClose, isThinking, activePageConfig, activePageData }) {
   const { user, platformIds, pages, batchQueue, addToQueue, updateQueueItem, removeQueueItem, addPage } =
     usePlatform();
   const [tab, setTab] = useState("log");
@@ -294,10 +268,15 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
           return `- **${p.name || "Untitled"}** (${pt || p.type || "page"})${source}${dbStr}${extraStr}`;
         }).join("\n");
 
+        // Build page context — now includes schema + data summary when available
+        const pageSchema = activePageData?.schema;
+        const pageData = activePageData?.data;
+        const dataSummary = (pageData && pageSchema) ? buildDataSummary(pageData, pageSchema) : "";
+
         const currentPageContext = activePageConfig ? {
           pageName: activePageConfig.name,
           databaseIds: activePageConfig.databaseIds || [],
-          schemaText: "",
+          schemaText: pageSchema ? JSON.stringify(pageSchema, null, 2) : "",
         } : undefined;
 
         // Auto-search KB for relevant context
@@ -350,6 +329,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
             : "",
           workspaceSummary: workspaceSummary || undefined,
           currentPageContext,
+          dataSummary,
           kbContext,
           neuronSummary,
           currentDate: new Date().toISOString().split("T")[0],

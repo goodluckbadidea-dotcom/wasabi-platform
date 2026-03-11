@@ -1,6 +1,6 @@
 // ─── Page Shell ───
 // Loads a page config, fetches data, renders the active view.
-// Page header controls (edit, refresh, count) are lifted to TopHeader via onRegisterControls.
+// Page header controls (refresh, sync, settings) are rendered inline in SubPageNav.
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
@@ -25,7 +25,7 @@ export default function PageShell({
   pageConfig,
   activeViewIndex = 0,
   onSetActiveView,
-  onRegisterControls, // callback to lift page controls to TopHeader
+  onPageDataReady,    // callback to lift page data/schema to App for WasabiPanel
 }) {
   const { user, updatePageConfig } = usePlatform();
 
@@ -97,6 +97,13 @@ export default function PageShell({
     fetchData();
   }, [fetchData]);
 
+  // Lift page data to App for WasabiPanel context-aware chat
+  useEffect(() => {
+    if (onPageDataReady) {
+      onPageDataReady(data?.length && schema ? { data, schema } : null);
+    }
+  }, [data, schema, onPageDataReady]);
+
   // Periodic refresh
   const refreshMs = pageConfig.refreshInterval ?? DEFAULT_REFRESH_MS;
   useEffect(() => {
@@ -115,27 +122,7 @@ export default function PageShell({
     [pageConfig, updatePageConfig]
   );
 
-  // ── Register page controls for TopHeader ──
-  useEffect(() => {
-    if (!onRegisterControls) return;
-
-    const isDataPage = !isDocumentPage && !isLinkedSheetPage && !isSheetPage;
-    onRegisterControls({
-      recordCount: isDataPage ? data.length : null,
-      refreshMs,
-      onRefreshChange: handleRefreshChange,
-      onRefresh: fetchData,
-      onOpenViewSettings: () => setShowViewSettings(true),
-      isStandaloneTable,
-      showSync,
-      onToggleSync: isStandaloneTable ? () => setShowSync((prev) => !prev) : null,
-    });
-  }, [data.length, refreshMs, isStandaloneTable, showSync, isDocumentPage, isLinkedSheetPage, isSheetPage, onRegisterControls, handleRefreshChange, fetchData]);
-
-  // Unregister on unmount
-  useEffect(() => {
-    return () => onRegisterControls?.(null);
-  }, [onRegisterControls]);
+  // Page controls (refresh, sync, settings) are rendered inline in SubPageNav below.
 
   // ── Inline edits ──
   const handleUpdate = useCallback(
@@ -343,6 +330,12 @@ export default function PageShell({
         onRenameView={handleRenameView}
         onReorderViews={handleReorderViews}
         onAddView={() => setShowViewPicker(true)}
+        refreshMs={(!isDocumentPage && !isLinkedSheetPage && !isSheetPage) ? refreshMs : undefined}
+        onRefreshChange={handleRefreshChange}
+        onRefresh={(!isDocumentPage && !isLinkedSheetPage && !isSheetPage) ? fetchData : undefined}
+        onOpenViewSettings={() => setShowViewSettings(true)}
+        showSync={showSync}
+        onToggleSync={isStandaloneTable ? () => setShowSync((prev) => !prev) : undefined}
       />
 
       {/* Sync panel (collapsible, standalone tables only) */}

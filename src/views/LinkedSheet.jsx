@@ -11,6 +11,7 @@ import { fetchSheetData, detectColumnTypes, getSourceLabel } from "../sheets/she
 import { debounce, formatDate, truncate, timeAgo } from "../utils/helpers.js";
 import { IconConnect } from "../design/icons.jsx";
 import LinkPicker from "../core/LinkPicker.jsx";
+import ViewToolbar from "../components/ViewToolbar.jsx";
 
 // ─── Styles (mirrors Table.jsx token usage) ───
 
@@ -211,7 +212,6 @@ export default function LinkedSheet({ config = {}, pageConfig }) {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [sortField, setSortField] = useState(null);
   const [sortDir, setSortDir] = useState(null); // "asc" | "desc" | null
-  const [searchFocused, setSearchFocused] = useState(false);
   const [hoveredRow, setHoveredRow] = useState(null);
 
   // Cell linking state
@@ -229,11 +229,7 @@ export default function LinkedSheet({ config = {}, pageConfig }) {
     debounce((v) => setDebouncedSearch(v), 200)
   ).current;
 
-  const handleSearchChange = useCallback((e) => {
-    const v = e.target.value;
-    setSearch(v);
-    debouncedSetSearch(v);
-  }, [debouncedSetSearch]);
+  // handleSearchChange moved inline to ViewToolbar search.onChange
 
   // ── Fetch data ──
   const fetchData = useCallback(async () => {
@@ -422,61 +418,18 @@ export default function LinkedSheet({ config = {}, pageConfig }) {
 
   return (
     <div style={styles.wrapper}>
-      {/* Toolbar */}
-      <div style={styles.toolbar}>
-        {/* Search */}
-        <div
-          style={{
-            ...styles.searchWrap,
-            ...(searchFocused ? { borderColor: C.accent, boxShadow: `0 0 0 2px ${C.accent}33` } : {}),
-          }}
-        >
-          <span style={styles.searchIcon}>&#128269;</span>
-          <input
-            style={styles.searchInput}
-            type="text"
-            placeholder="Search..."
-            value={search}
-            onChange={handleSearchChange}
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setSearchFocused(false)}
-          />
-        </div>
-
-        {/* Read-only badge */}
-        <div style={styles.badge}>
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.darkMuted }} />
-          Read-only · Linked Sheet
-        </div>
-
-        {/* Refresh */}
-        <button
-          style={styles.refreshBtn}
-          onClick={fetchData}
-          title="Refresh sheet data"
-          onMouseEnter={(e) => { e.currentTarget.style.background = C.darkBorder; e.currentTarget.style.color = C.darkText; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = C.darkSurf2; e.currentTarget.style.color = C.darkMuted; }}
-        >
-          &#x21bb;
-        </button>
-
-        {/* Count */}
-        <span style={styles.countLabel}>
-          {processedRows.length === sheetData.rows.length
-            ? `${sheetData.rows.length} rows`
-            : `${processedRows.length} of ${sheetData.rows.length} rows`}
-        </span>
-
-        {/* Source link */}
-        <a
-          href={sheetUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={styles.sourceLink}
-        >
-          {getSourceLabel(sheetType || sheetData.sheetType)} &rarr;
-        </a>
-      </div>
+      <ViewToolbar
+        search={{ value: search, onChange: (val) => { setSearch(val); debouncedSetSearch(val); }, placeholder: "Search..." }}
+        onRefresh={fetchData}
+        recordCount={sheetData.rows.length}
+        filteredCount={processedRows.length}
+        sourceBadge="Read-only · Linked Sheet"
+        trailing={
+          <a href={sheetUrl} target="_blank" rel="noopener noreferrer" style={styles.sourceLink}>
+            {getSourceLabel(sheetType || sheetData.sheetType)} &rarr;
+          </a>
+        }
+      />
 
       {/* Cached timestamp + truncation notice */}
       {(sheetData.cachedAt || sheetData.truncated) && (

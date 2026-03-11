@@ -4,8 +4,17 @@
 
 import React, { useState } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
-import { IconPlus, IconClose } from "../design/icons.jsx";
+import { IconPlus, IconClose, IconRefresh, IconEdit } from "../design/icons.jsx";
 import InlineEdit from "./InlineEdit.jsx";
+
+const REFRESH_OPTIONS = [
+  { label: "15s", value: 15000 },
+  { label: "30s", value: 30000 },
+  { label: "1m", value: 60000 },
+  { label: "2m", value: 120000 },
+  { label: "5m", value: 300000 },
+  { label: "Manual", value: 0 },
+];
 
 // ── View type display labels ──
 const VIEW_TYPE_LABELS = {
@@ -81,6 +90,13 @@ export default function SubPageNav({
   onRenameView,
   onAddView,
   onReorderViews,
+  // Page-level controls (previously in TopHeader)
+  refreshMs,
+  onRefreshChange,
+  onRefresh,
+  onOpenViewSettings,
+  showSync,
+  onToggleSync,
 }) {
   const ns = buildNavStyles();
   const [hoveredTab, setHoveredTab] = useState(null);
@@ -194,6 +210,79 @@ export default function SubPageNav({
         >
           <IconPlus size={10} color={C.darkMuted} />
         </button>
+
+        {/* Spacer pushes page controls to the right */}
+        <div style={{ flex: 1 }} />
+
+        {/* Page-level controls */}
+        {onOpenViewSettings && (
+          <button
+            onClick={onOpenViewSettings}
+            style={ns.addViewBtn}
+            title="View settings"
+            onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          >
+            <IconEdit size={11} color={C.darkMuted} />
+          </button>
+        )}
+
+        {onToggleSync && (
+          <button
+            onClick={onToggleSync}
+            style={{
+              ...ns.addViewBtn,
+              fontSize: 10,
+              fontFamily: FONT,
+              color: showSync ? C.accent : C.darkMuted,
+              background: showSync ? C.accent + "18" : "transparent",
+              border: showSync ? `1px solid ${C.accent}44` : "1px solid transparent",
+              padding: "3px 8px",
+              borderRadius: RADIUS.md,
+            }}
+            title="Sync settings"
+            onMouseEnter={(e) => { if (!showSync) e.currentTarget.style.background = C.darkSurf2; }}
+            onMouseLeave={(e) => { if (!showSync) e.currentTarget.style.background = "transparent"; }}
+          >
+            Sync
+          </button>
+        )}
+
+        {refreshMs != null && (
+          <select
+            style={{
+              background: C.darkSurf2,
+              border: `1px solid ${C.darkBorder}`,
+              borderRadius: RADIUS.md,
+              padding: "2px 6px",
+              fontSize: 10,
+              fontFamily: FONT,
+              color: C.darkMuted,
+              cursor: "pointer",
+              outline: "none",
+              height: 24,
+              flexShrink: 0,
+            }}
+            value={refreshMs}
+            onChange={(e) => onRefreshChange?.(Number(e.target.value))}
+          >
+            {REFRESH_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        )}
+
+        {onRefresh && (
+          <button
+            onClick={onRefresh}
+            style={ns.addViewBtn}
+            title="Refresh data"
+            onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          >
+            <IconRefresh size={12} color={C.darkMuted} />
+          </button>
+        )}
       </div>
     </div>
   );

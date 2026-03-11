@@ -7,18 +7,16 @@ import { readField, getFieldType, getFieldOptions, getOptionNames, displayValue,
 import { buildProp } from "../notion/properties.js";
 import { cellStyles, CellDisplay } from "./_CellComponents.jsx";
 import FilterChips, { applyChipFilters } from "./FilterChips.jsx";
-import RecordDetail from "./RecordDetail.jsx";
-import NewRecordModal from "./NewRecordModal.jsx";
+import { useRecordDetail } from "../hooks/useRecordDetail.js";
+import RecordDetailPortals from "../components/RecordDetailPortals.jsx";
+import ViewToolbar from "../components/ViewToolbar.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
 
 export default function Kanban({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, onViewConfigChange, pageConfig }) {
   const [dragState, setDragState] = useState(null); // { pageId, fromCol, startX, startY, isDragging }
   const [dropTarget, setDropTarget] = useState(null); // column option name
-  const [detailPage, setDetailPage] = useState(null);
-  const [showNewModal, setShowNewModal] = useState(false);
-  const [newModalPrefill, setNewModalPrefill] = useState({});
-  const lastCardClickRef = useRef({ id: null, time: 0 });
+  const record = useRecordDetail();
   const ghostRef = useRef(null);
   const columnRefs = useRef({});
 
@@ -184,14 +182,7 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
       if (!dragState.isDragging) {
         // Mouse didn't move beyond threshold — treat as slow-double-click
         if (dragState.page) {
-          const now = Date.now();
-          const last = lastCardClickRef.current;
-          if (last.id === dragState.pageId && now - last.time < 1000) {
-            setDetailPage(dragState.page);
-            lastCardClickRef.current = { id: null, time: 0 };
-          } else {
-            lastCardClickRef.current = { id: dragState.pageId, time: now };
-          }
+          record.handleCardClick(dragState.page, dragState.pageId);
         }
       } else {
         // Execute drop
@@ -221,9 +212,8 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
     if (columnField && colName && colName !== "__uncategorized__") {
       prefill[columnField] = colName;
     }
-    setNewModalPrefill(prefill);
-    setShowNewModal(true);
-  }, [columnField]);
+    record.openNew(prefill);
+  }, [columnField, record]);
 
   if (!schema) {
     return (
@@ -256,21 +246,14 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
         onFilterChange={handleChipFilterChange}
       />
 
-      {/* Toolbar */}
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        padding: "10px 20px",
-        borderBottom: `1px solid ${C.edgeLine}`,
-        gap: 12,
-      }}>
-        <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: C.darkMuted }}>
-          Grouped by {columnField}
-        </span>
-        <span style={{ fontSize: 12, color: C.darkMuted, marginLeft: "auto" }}>
-          {filteredData.length} records
-        </span>
-      </div>
+      <ViewToolbar
+        leading={
+          <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: C.darkMuted }}>
+            Grouped by {columnField}
+          </span>
+        }
+        recordCount={filteredData.length}
+      />
 
       {/* Columns */}
       <div style={{
@@ -446,27 +429,15 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
         })}
       </div>
 
-      {detailPage && (
-        <RecordDetail
-          page={detailPage}
-          schema={schema}
-          onClose={() => setDetailPage(null)}
-          onUpdate={onUpdate}
-          onDelete={onDelete ? (ids) => { onDelete(ids); setDetailPage(null); } : undefined}
-          pageConfigId={pageConfig?.id}
-        />
-      )}
-
-      {/* New Record Modal */}
-      {showNewModal && onCreate && (
-        <NewRecordModal
-          schema={schema}
-          onClose={() => setShowNewModal(false)}
-          onCreate={onCreate}
-          databaseId={targetDatabaseId}
-          prefill={newModalPrefill}
-        />
-      )}
+      <RecordDetailPortals
+        hook={record}
+        schema={schema}
+        pageConfigId={pageConfig?.id}
+        databaseId={targetDatabaseId}
+        onUpdate={onUpdate}
+        onCreate={onCreate}
+        onDelete={onDelete}
+      />
     </div>
   );
 }

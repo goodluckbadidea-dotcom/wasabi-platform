@@ -66,13 +66,13 @@ function AppContent() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [viewStates, setViewStates] = useState({}); // { [pageId]: activeViewIndex }
   const [builderTemplate, setBuilderTemplate] = useState(null);
-  const [pageControls, setPageControls] = useState(null); // lifted from PageShell for TopHeader
+  const [activePageData, setActivePageData] = useState(null); // { data, schema } from PageShell for WasabiPanel chat
 
   // ── Clear page controls when navigating away ──
   const prevActivePage = useRef(activePage);
   useEffect(() => {
     if (prevActivePage.current !== activePage) {
-      setPageControls(null);
+      setActivePageData(null);
       prevActivePage.current = activePage;
     }
   }, [activePage]);
@@ -232,14 +232,10 @@ function AppContent() {
       );
     }
 
-    // Global dashboard
-    if (activePage === "dashboard" && globalDashboard) {
-      return (
-        <Dashboard
-          dashboardConfig={globalDashboard}
-          isGlobal
-        />
-      );
+    // Global dashboard → redirect to home (widget grid is now in HomePage)
+    if (activePage === "dashboard") {
+      setActivePage(null);
+      return null;
     }
 
     // Dashboard page type (folder-level dashboards)
@@ -296,7 +292,7 @@ function AppContent() {
           pageConfig={activePageConfig}
           activeViewIndex={activeViewIndex}
           onSetActiveView={setActiveView}
-          onRegisterControls={setPageControls}
+          onPageDataReady={setActivePageData}
         />
       );
     }
@@ -339,7 +335,7 @@ function AppContent() {
       )}
 
       {/* ── Top Header Bar ── */}
-      <TopHeader pageControls={pageControls} />
+      <TopHeader />
 
       {/* ── Neuron Overlay (glass pane for selection mode) ── */}
       <NeuronOverlay />
@@ -365,6 +361,7 @@ function AppContent() {
               onClose={() => setWasabiPanelOpen(false)}
               isThinking={false}
               activePageConfig={activePageConfig}
+              activePageData={activePageData}
             />
           </div>
         )}

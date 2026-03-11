@@ -6,8 +6,8 @@ import React, { useState, useMemo, useCallback } from "react";
 import { C, FONT, RADIUS, SHADOW, getSolidPillColor } from "../design/tokens.js";
 import { readProp } from "../notion/properties.js";
 import { IconChevronLeft, IconChevronRight } from "../design/icons.jsx";
-import RecordDetail from "./RecordDetail.jsx";
-import NewRecordModal from "./NewRecordModal.jsx";
+import { useRecordDetail } from "../hooks/useRecordDetail.js";
+import RecordDetailPortals from "../components/RecordDetailPortals.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 
 // ── Helpers ──
@@ -242,9 +242,7 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [popover, setPopover] = useState(null); // { x, y, date, events }
-  const [detailPage, setDetailPage] = useState(null);
-  const [showNewModal, setShowNewModal] = useState(false);
-  const [newModalPrefill, setNewModalPrefill] = useState({});
+  const record = useRecordDetail();
 
   const dateField = resolveDateField(schema, config);
   const titleField = resolveTitleField(schema);
@@ -338,8 +336,7 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
     if (events.length === 0 && onCreate && targetDatabaseId) {
       const prefill = {};
       if (dateField) prefill[dateField] = key;
-      setNewModalPrefill(prefill);
-      setShowNewModal(true);
+      record.openNew(prefill);
       return;
     }
     if (events.length === 0) return;
@@ -411,7 +408,7 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
 
         {onCreate && targetDatabaseId && (
           <button
-            onClick={() => { setNewModalPrefill({}); setShowNewModal(true); }}
+            onClick={() => record.openNew()}
             style={{
               padding: "5px 14px", borderRadius: RADIUS.pill,
               border: `1px solid ${C.accent}44`, background: C.accent + "18",
@@ -463,8 +460,7 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
                           setPopover(null);
                           const prefill = {};
                           if (dateField) prefill[dateField] = key;
-                          setNewModalPrefill(prefill);
-                          setShowNewModal(true);
+                          record.openNew(prefill);
                         }}
                         title="Add event"
                       >+</span>
@@ -513,7 +509,7 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
                     dispatchNeuronSelect({ node_type: "row", node_id: ev.page?.id, node_label: ev.title || "Untitled" });
                     return;
                   }
-                  setDetailPage(ev.page); setPopover(null);
+                  record.openDetail(ev.page); setPopover(null);
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
@@ -528,33 +524,15 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
         </>
       )}
 
-      {/* Record Detail Panel */}
-      {detailPage && (
-        <RecordDetail
-          page={detailPage}
-          schema={schema}
-          onClose={() => setDetailPage(null)}
-          onUpdate={async (pageId, properties) => {
-            if (!onUpdate) return;
-            for (const [fieldName, payload] of Object.entries(properties)) {
-              await onUpdate(pageId, fieldName, payload);
-            }
-          }}
-          onDelete={onDelete ? (ids) => { onDelete(ids); setDetailPage(null); } : undefined}
-          pageConfigId={pageConfig?.id}
-        />
-      )}
-
-      {/* New Record Modal */}
-      {showNewModal && onCreate && (
-        <NewRecordModal
-          schema={schema}
-          onClose={() => setShowNewModal(false)}
-          onCreate={onCreate}
-          databaseId={targetDatabaseId}
-          prefill={newModalPrefill}
-        />
-      )}
+      <RecordDetailPortals
+        hook={record}
+        schema={schema}
+        pageConfigId={pageConfig?.id}
+        databaseId={targetDatabaseId}
+        onUpdate={onUpdate}
+        onCreate={onCreate}
+        onDelete={onDelete}
+      />
     </div>
   );
 }
