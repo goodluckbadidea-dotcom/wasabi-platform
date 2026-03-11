@@ -54,7 +54,7 @@ function getTypeIcon(schema, fieldName) { return TYPE_ICON_MAP[getFieldType(sche
 // ─── Constants ───
 
 const ROW_HEIGHT = 36;
-const VIRT_BUFFER = 10;
+const VIRT_BUFFER = 20;
 
 const EDITABLE_TYPES = new Set([
   "title", "rich_text", "number", "select", "status",
@@ -174,10 +174,9 @@ const styles = {
   },
 
   table: {
-    minWidth: "100%",
     borderCollapse: "collapse",
     fontSize: 13,
-    tableLayout: "auto",
+    tableLayout: "fixed",
   },
 
   th: {
@@ -210,12 +209,14 @@ const styles = {
     verticalAlign: "middle",
     fontSize: 13,
     lineHeight: 1.45,
-    maxWidth: 280,
+    boxSizing: "border-box",
+    overflow: "hidden",
   },
 
   row: {
     transition: "background 0.12s",
     cursor: "default",
+    overflow: "hidden",
   },
 
   rowHover: {
@@ -868,9 +869,10 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const scrollAreaRef = useRef(null);
 
   // ── Virtualization ──
-  const [scrollTop, setScrollTop] = useState(0);
+  const scrollTopRef = useRef(0);
   const scrollRAF = useRef(null);
   const [containerHeight, setContainerHeight] = useState(600);
+  const [visibleRange, setVisibleRange] = useState({ start: 0, end: 40 });
 
   // Stable containerHeight via ResizeObserver
   useEffect(() => {
@@ -883,6 +885,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
 
   // ── Cell Linking ──
   const { resolveLinksForView, createLink, removeLink, getLinksForTarget } = useLinks();
@@ -1204,6 +1207,15 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
 
     return rows;
   }, [data, filters, chipFilters, debouncedSearch, sortField, sortDir, columns, schema]);
+
+  // Re-sync visible range when data or container size changes
+  useEffect(() => {
+    const st = scrollTopRef.current;
+    const totalRows = processedData.length;
+    const newStart = Math.min(totalRows, Math.max(0, Math.floor(st / ROW_HEIGHT) - VIRT_BUFFER));
+    const newEnd = Math.min(totalRows, Math.ceil((st + containerHeight) / ROW_HEIGHT) + VIRT_BUFFER);
+    setVisibleRange({ start: newStart, end: newEnd });
+  }, [processedData.length, containerHeight]);
 
   // Column sort handler — cycles asc -> desc -> none
   const handleSort = useCallback((field) => {
@@ -1855,8 +1867,14 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           if (scrollRAF.current) cancelAnimationFrame(scrollRAF.current);
           const target = e.target;
           scrollRAF.current = requestAnimationFrame(() => {
-            const newTop = target.scrollTop;
-            setScrollTop(prev => prev === newTop ? prev : newTop);
+            const st = target.scrollTop;
+            scrollTopRef.current = st;
+            const totalRows = processedData.length;
+            const newStart = Math.min(totalRows, Math.max(0, Math.floor(st / ROW_HEIGHT) - VIRT_BUFFER));
+            const newEnd = Math.min(totalRows, Math.ceil((st + containerHeight) / ROW_HEIGHT) + VIRT_BUFFER);
+            setVisibleRange(prev =>
+              prev.start === newStart && prev.end === newEnd ? prev : { start: newStart, end: newEnd }
+            );
           });
         }}
       >
@@ -1874,7 +1892,14 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
             </button>
           </div>
         ) : (
-          <table style={styles.table}>
+          <table style={{ ...styles.table, width: 52 + columns.reduce((sum, col) => sum + (colWidths[col] || 120), 0) + (isD1Table ? 44 : 0) }}>
+            <colgroup>
+              <col style={{ width: 52 }} />
+              {columns.map((col) => (
+                <col key={col} style={{ width: colWidths[col] || 120 }} />
+              ))}
+              {isD1Table && <col style={{ width: 44 }} />}
+            </colgroup>
             <thead>
               <tr>
                 {/* Select-all checkbox */}
@@ -2070,18 +2095,17 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
               {/* Virtualized rows */}
               {(() => {
                 const totalRows = processedData.length;
-                const visibleStart = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - VIRT_BUFFER);
-                const visibleEnd = Math.min(totalRows, Math.ceil((scrollTop + containerHeight) / ROW_HEIGHT) + VIRT_BUFFER);
+                const visibleStart = visibleRange.start;
+                const visibleEnd = Math.min(totalRows, visibleRange.end);
                 const visibleRows = processedData.slice(visibleStart, visibleEnd);
+                const colSpan = columns.length + (isD1Table ? 2 : 1);
 
                 return (
                   <>
-                    {/* Top spacer */}
-                    {visibleStart > 0 && (
-                      <tr style={{ height: visibleStart * ROW_HEIGHT }}>
-                        <td colSpan={columns.length + (isD1Table ? 2 : 1)} />
-                      </tr>
-                    )}
+                    {/* Top spacer — always rendered for stable scrollHeight */}
+                    <tr style={{ height: visibleStart * ROW_HEIGHT }}>
+                      <td colSpan={colSpan} style={{ padding: 0, border: "none" }} />
+                    </tr>
                     {visibleRows.map((page, localIdx) => {
                       const rowIdx = visibleStart + localIdx;
                       const pageId = page.id;
@@ -2118,8 +2142,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                           }}
                         >
                           {/* Row number + checkbox + expand */}
-                          <td style={{ ...styles.td, width: 52, minWidth: 52, padding: "4px 4px", textAlign: "center" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 3, justifyContent: "center" }}>
+                          <td style={{ ...styles.td, width: 52, minWidth: 52, padding: 0, textAlign: "center", position: "relative" }}>
+                            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", gap: 3, justifyContent: "center", overflow: "hidden" }}>
                               <span
                                 style={styles.toggle(isSelected)}
                                 onClick={() => toggleRow(pageId)}
@@ -2158,12 +2182,12 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                 style={{
                                   ...styles.td,
                                   height: ROW_HEIGHT,
-                                  padding: "4px 8px",
-                                  overflow: "hidden",
+                                  padding: 0,
+                                  position: "relative",
                                   ...(colWidths[col] ? { width: colWidths[col], minWidth: colWidths[col] } : {}),
                                   ...(isSaving ? { opacity: 0.55 } : {}),
                                   ...(failMsg ? { background: "#E0525210" } : {}),
-                                  ...(isFocused ? { outline: `2px solid ${C.accent}`, outlineOffset: -2, zIndex: 1, position: "relative" } : {}),
+                                  ...(isFocused ? { outline: `2px solid ${C.accent}`, outlineOffset: -2, zIndex: 1 } : {}),
                                 }}
                                 onClick={() => {
                                   setFocusedCell({ row: rowIdx, col: colIdx });
@@ -2175,6 +2199,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                 onMouseEnter={() => setHoveredCell({ pageId, field: col })}
                                 onMouseLeave={() => setHoveredCell(null)}
                               >
+                                <div style={{ position: "absolute", inset: 0, overflow: "hidden", padding: "4px 8px", display: "flex", alignItems: "center" }}>
                                 {isEditing ? (
                                   <CellEditor
                                     value={value}
@@ -2188,7 +2213,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                     onCreateOption={(optName) => handleCreateOption(col, optName)}
                                   />
                                 ) : (
-                                  <div style={{ position: "relative" }}>
+                                  <div style={{ position: "relative", width: "100%", minWidth: 0 }}>
                                     <CellDisplay
                                       value={value}
                                       type={type}
@@ -2234,18 +2259,17 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                     )}
                                   </div>
                                 )}
+                                </div>
                               </td>
                             );
                           })}
                         </tr>
                       );
                     })}
-                    {/* Bottom spacer */}
-                    {visibleEnd < totalRows && (
-                      <tr style={{ height: (totalRows - visibleEnd) * ROW_HEIGHT }}>
-                        <td colSpan={columns.length + (isD1Table ? 2 : 1)} />
-                      </tr>
-                    )}
+                    {/* Bottom spacer — always rendered for stable scrollHeight */}
+                    <tr style={{ height: Math.max(0, (totalRows - visibleEnd) * ROW_HEIGHT) }}>
+                      <td colSpan={colSpan} style={{ padding: 0, border: "none" }} />
+                    </tr>
                   </>
                 );
               })()}
