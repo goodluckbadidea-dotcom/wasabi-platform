@@ -192,6 +192,15 @@ CREATE TABLE IF NOT EXISTS files (
   meta TEXT DEFAULT '{}',
   created_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS rule_snapshots (
+  rule_id TEXT NOT NULL,
+  record_id TEXT NOT NULL,
+  field_name TEXT NOT NULL,
+  value_hash TEXT NOT NULL,
+  updated_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (rule_id, record_id, field_name)
+);
 `;
 
 const D1_INDEXES = `
@@ -202,6 +211,7 @@ CREATE INDEX IF NOT EXISTS idx_record_comments_lookup ON record_comments(record_
 CREATE INDEX IF NOT EXISTS idx_nn_neuron ON neuron_nodes(neuron_id);
 CREATE INDEX IF NOT EXISTS idx_nn_nodeid ON neuron_nodes(node_id);
 CREATE INDEX IF NOT EXISTS idx_files_page ON files(page_id);
+CREATE INDEX IF NOT EXISTS idx_snapshots_rule ON rule_snapshots(rule_id);
 `;
 
 // ─── Auth Middleware ───
@@ -252,6 +262,11 @@ async function getMondayKey(env) {
 }
 
 export default {
+  // ─── Server-Side Automation Cron ───
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runAutomationTick(env));
+  },
+
   async fetch(request, env, ctx) {
     // CORS preflight
     if (request.method === "OPTIONS") {
@@ -2880,6 +2895,564 @@ async function handleSearchKB(env, body) {
     .slice(0, 10);
 
   return jsonResponse({ results: matches });
+}
+
+// ─── Server-Side Automation Engine ───
+
+/**
+ * Main automation tick — called every 2 minutes by Cloudflare cron.
+ * Queries enabled rules, evaluates triggers with field-level change detection,
+ * and executes matched rules server-side (no browser required).
+ */
+async function runAutomationTick(env) {
+  const LOG = "[AutoCron]";
+  const MAX_RULES_PER_TICK = 5;
+  const MAX_AGENT_ITERATIONS = 8;
+  const AGENT_MAX_TOKENS = 2048;
+
+  try {
+    // 1. Fetch all enabled rules
+    const { results: rawRules } = await env.DB.prepare(
+      "SELECT * FROM automation_rules WHERE enabled = 1"
+    ).all();
+
+    if (!rawRules || rawRules.length === 0) {
+      console.log(LOG, "No enabled rules — skipping tick");
+      return;
+    }
+
+    console.log(LOG, `Found ${rawRules.length} enabled rule(s)`);
+
+    const rules = rawRules.map((r) => ({
+      id: r.id,
+      name: r.name,
+      description: r.description || "",
+      trigger: r.trigger_type,
+      triggerConfig: safeParseJSON(r.trigger_config),
+      actionConfig: safeParseJSON(r.action_config),
+      instruction: safeParseJSON(r.action_config).instruction || "",
+      databaseId: safeParseJSON(r.action_config).database_id || r.scope_table_id || "",
+      enabled: !!r.enabled,
+      lastFired: r.last_fired_at || null,
+      fireCount: r.fire_count || 0,
+      ownerPage: safeParseJSON(r.action_config).owner_page || "",
+    }));
+
+    // 2. Evaluate each rule
+    const now = new Date();
+    const toExecute = [];
+
+    for (const rule of rules) {
+      if (toExecute.length >= MAX_RULES_PER_TICK) break;
+
+      try {
+        const result = await evaluateRuleServer(rule, now, env);
+        if (result.shouldFire) {
+          toExecute.push({ rule, changedRecords: result.changedRecords || [] });
+        }
+      } catch (err) {
+        console.error(LOG, `Trigger eval failed for "${rule.name}":`, err.message);
+      }
+    }
+
+    if (toExecute.length === 0) {
+      console.log(LOG, "No rules triggered this tick");
+      return;
+    }
+
+    console.log(LOG, `${toExecute.length} rule(s) triggered — executing`);
+
+    // 3. Get Claude key for agent-based rules
+    let claudeKey = null;
+    try {
+      const row = await env.DB.prepare("SELECT value FROM connections WHERE key = 'claude'").first();
+      claudeKey = row?.value || null;
+    } catch {}
+
+    // 4. Execute triggered rules
+    for (const { rule, changedRecords } of toExecute) {
+      try {
+        await executeRuleServer(rule, changedRecords, claudeKey, env);
+
+        // Update last_fired_at and fire_count
+        await env.DB.prepare(
+          "UPDATE automation_rules SET last_fired_at = datetime('now'), fire_count = fire_count + 1, updated_at = datetime('now') WHERE id = ?"
+        ).bind(rule.id).run();
+
+        console.log(LOG, `Rule "${rule.name}" fired successfully`);
+      } catch (err) {
+        console.error(LOG, `Rule "${rule.name}" execution failed:`, err.message);
+      }
+    }
+  } catch (err) {
+    console.error(LOG, "Tick failed:", err.message);
+  }
+}
+
+/**
+ * Server-side trigger evaluation with field-level change detection via snapshots.
+ */
+async function evaluateRuleServer(rule, now, env) {
+  switch (rule.trigger) {
+    case "schedule": {
+      const intervalMin = rule.triggerConfig?.interval_minutes;
+      if (!intervalMin || intervalMin <= 0) return { shouldFire: false };
+      if (!rule.lastFired) return { shouldFire: true, changedRecords: [] };
+      const lastMs = new Date(rule.lastFired).getTime();
+      if (isNaN(lastMs)) return { shouldFire: true, changedRecords: [] };
+      return {
+        shouldFire: (now.getTime() - lastMs) >= intervalMin * 60_000,
+        changedRecords: [],
+      };
+    }
+
+    case "field_change":
+    case "status_change": {
+      if (!rule.databaseId) return { shouldFire: false };
+      return await detectFieldChanges(rule, env);
+    }
+
+    case "page_created": {
+      if (!rule.databaseId) return { shouldFire: false };
+      return await detectNewRecords(rule, env);
+    }
+
+    case "manual":
+    default:
+      return { shouldFire: false };
+  }
+}
+
+/**
+ * Field-level change detection using rule_snapshots table.
+ * Hashes the watched field (or all fields) for each record and compares to stored snapshots.
+ * Returns specific changed records with old/new values.
+ */
+async function detectFieldChanges(rule, env) {
+  const watchedField = rule.triggerConfig?.field || null;
+
+  // Get current records from D1 table
+  let rows;
+  try {
+    const result = await env.DB.prepare(
+      "SELECT id, cells, updated_at FROM table_rows WHERE table_id = ? AND archived = 0 ORDER BY updated_at DESC LIMIT 200"
+    ).bind(rule.databaseId).all();
+    rows = (result.results || []).map((r) => ({
+      id: r.id,
+      cells: safeParseJSON(r.cells),
+      updated_at: r.updated_at,
+    }));
+  } catch (err) {
+    console.error("[AutoCron] Failed to query table for field changes:", err.message);
+    return { shouldFire: false };
+  }
+
+  if (rows.length === 0) return { shouldFire: false };
+
+  // Get existing snapshots for this rule
+  const { results: existingSnaps } = await env.DB.prepare(
+    "SELECT record_id, field_name, value_hash FROM rule_snapshots WHERE rule_id = ?"
+  ).bind(rule.id).all();
+
+  const snapMap = new Map();
+  for (const snap of existingSnaps || []) {
+    snapMap.set(`${snap.record_id}::${snap.field_name}`, snap.value_hash);
+  }
+
+  // Compare current values against snapshots
+  const changedRecords = [];
+  const upserts = [];
+
+  for (const row of rows) {
+    const fieldsToCheck = watchedField
+      ? [watchedField]
+      : Object.keys(row.cells);
+
+    for (const field of fieldsToCheck) {
+      const value = row.cells[field];
+      const valueStr = value === null || value === undefined ? "" : String(value);
+      const hash = simpleHash(valueStr);
+      const key = `${row.id}::${field}`;
+      const oldHash = snapMap.get(key);
+
+      if (oldHash !== undefined && oldHash !== hash) {
+        // Value changed
+        changedRecords.push({
+          id: row.id,
+          cells: row.cells,
+          changed_field: field,
+          new_value: value,
+          old_hash: oldHash,
+        });
+      }
+
+      // Upsert snapshot (always update to latest)
+      upserts.push({ ruleId: rule.id, recordId: row.id, field, hash });
+    }
+  }
+
+  // Batch upsert snapshots
+  if (upserts.length > 0) {
+    const batchSize = 50;
+    for (let i = 0; i < upserts.length; i += batchSize) {
+      const batch = upserts.slice(i, i + batchSize);
+      const stmts = batch.map((u) =>
+        env.DB.prepare(
+          "INSERT OR REPLACE INTO rule_snapshots (rule_id, record_id, field_name, value_hash, updated_at) VALUES (?, ?, ?, ?, datetime('now'))"
+        ).bind(u.ruleId, u.recordId, u.field, u.hash)
+      );
+      await env.DB.batch(stmts);
+    }
+  }
+
+  // For first run (no existing snapshots), don't fire — just seed
+  if (existingSnaps.length === 0) {
+    console.log("[AutoCron]", `Rule "${rule.name}": seeded ${upserts.length} snapshots (first run, no fire)`);
+    return { shouldFire: false };
+  }
+
+  return {
+    shouldFire: changedRecords.length > 0,
+    changedRecords: changedRecords.slice(0, 10),
+  };
+}
+
+/**
+ * Detect newly created records since rule last fired.
+ */
+async function detectNewRecords(rule, env) {
+  const lastFiredISO = rule.lastFired
+    ? new Date(rule.lastFired).toISOString()
+    : new Date(Date.now() - 24 * 60 * 60_000).toISOString();
+
+  try {
+    const { results } = await env.DB.prepare(
+      "SELECT id, cells, created_at FROM table_rows WHERE table_id = ? AND archived = 0 AND created_at > ? ORDER BY created_at DESC LIMIT 50"
+    ).bind(rule.databaseId, lastFiredISO).all();
+
+    const newRecords = (results || []).map((r) => ({
+      id: r.id,
+      cells: safeParseJSON(r.cells),
+      created_at: r.created_at,
+    }));
+
+    return {
+      shouldFire: newRecords.length > 0,
+      changedRecords: newRecords.slice(0, 10),
+    };
+  } catch (err) {
+    console.error("[AutoCron] Failed to detect new records:", err.message);
+    return { shouldFire: false };
+  }
+}
+
+/**
+ * Execute a rule server-side. Fast path for notifications, slow path for Claude agent.
+ */
+async function executeRuleServer(rule, changedRecords, claudeKey, env) {
+  const instruction = (rule.instruction || "").trim();
+
+  // Build template data from first changed record
+  const firstRecord = changedRecords[0] || {};
+  const templateData = {
+    name: rule.name,
+    description: rule.description,
+    databaseId: rule.databaseId,
+    matched_count: changedRecords.length,
+    changed_field: firstRecord.changed_field || "",
+    new_value: firstRecord.new_value || "",
+    ...(firstRecord.cells || {}),
+  };
+
+  // Also get the table schema to help with column names
+  let schemaColumns = [];
+  try {
+    const schemaRow = await env.DB.prepare(
+      "SELECT columns FROM table_schemas WHERE id = ?"
+    ).bind(rule.databaseId).first();
+    if (schemaRow) {
+      schemaColumns = JSON.parse(schemaRow.columns || "[]");
+    }
+  } catch {}
+
+  // Try to find the "title" column (first column, or one named "Name"/"Title")
+  const titleCol = schemaColumns.find((c) => c.name === "Name" || c.name === "Title" || c.type === "title")
+    || schemaColumns[0];
+  if (titleCol && firstRecord.cells) {
+    templateData.record_name = firstRecord.cells[titleCol.name] || "";
+  }
+
+  // ── Fast path: direct notification ──
+  if (instruction.startsWith("post_notification:")) {
+    const messageTemplate = instruction.slice("post_notification:".length).trim();
+    const message = expandTemplateServer(messageTemplate, templateData);
+
+    await env.DB.prepare(
+      "INSERT INTO notifications (id, message, type, status, source, created_at) VALUES (?, ?, 'alert', 'unread', ?, datetime('now'))"
+    ).bind(crypto.randomUUID(), message, `automation:${rule.name}`).run();
+
+    console.log("[AutoCron]", `Fast-path notification: "${message}"`);
+    return { path: "fast", message };
+  }
+
+  // ── Slow path: Claude agent ──
+  if (!claudeKey) {
+    console.warn("[AutoCron]", `Rule "${rule.name}" needs Claude API key for agent execution — skipping`);
+    return { path: "skipped", reason: "no_claude_key" };
+  }
+
+  // Build a rich system prompt with actual record data
+  const changedSummary = changedRecords.slice(0, 5).map((r) => {
+    const name = titleCol ? (r.cells?.[titleCol.name] || r.id) : r.id;
+    const field = r.changed_field || "record";
+    const val = r.new_value !== undefined ? ` → "${r.new_value}"` : "";
+    return `- ${name}: ${field} changed${val}`;
+  }).join("\n");
+
+  const systemPrompt = [
+    `You are an automation agent for rule "${rule.name}".`,
+    rule.description ? `Description: ${rule.description}` : null,
+    `Instruction: ${instruction}`,
+    rule.databaseId ? `Target database ID: ${rule.databaseId}` : null,
+    schemaColumns.length > 0
+      ? `Database columns: ${schemaColumns.map((c) => `${c.name} (${c.type})`).join(", ")}`
+      : null,
+    changedRecords.length > 0
+      ? `\nTriggered by ${changedRecords.length} changed record(s):\n${changedSummary}`
+      : null,
+    "\nComplete the instruction efficiently. Do not ask follow-up questions.",
+    "Use the available tools to query data, update records, or post notifications.",
+  ].filter(Boolean).join("\n");
+
+  const userMessage = changedRecords.length > 0
+    ? `Execute this automation now. ${instruction}\n\nChanged records: ${JSON.stringify(changedRecords.slice(0, 5).map((r) => ({ id: r.id, ...r.cells, _changed: r.changed_field, _new_value: r.new_value })))}`
+    : `Execute this automation now. ${instruction}`;
+
+  // Server-side tool definitions (subset for automation)
+  const serverTools = [
+    {
+      name: "query_database",
+      description: "Query a D1 table for records. Returns rows with all cell values.",
+      input_schema: {
+        type: "object",
+        properties: {
+          database_id: { type: "string", description: "The D1 table ID to query." },
+        },
+        required: ["database_id"],
+      },
+    },
+    {
+      name: "update_page",
+      description: "Update a record's cells in a D1 table.",
+      input_schema: {
+        type: "object",
+        properties: {
+          page_id: { type: "string", description: "The row ID to update." },
+          database_id: { type: "string", description: "The D1 table ID." },
+          properties: { type: "object", description: "Key-value pairs of cell values to update." },
+        },
+        required: ["page_id", "properties"],
+      },
+    },
+    {
+      name: "create_page",
+      description: "Create a new record in a D1 table.",
+      input_schema: {
+        type: "object",
+        properties: {
+          database_id: { type: "string", description: "The D1 table ID." },
+          properties: { type: "object", description: "Key-value pairs for the new record's cells." },
+        },
+        required: ["database_id", "properties"],
+      },
+    },
+    {
+      name: "post_notification",
+      description: "Post a notification to the user's feed.",
+      input_schema: {
+        type: "object",
+        properties: {
+          message: { type: "string", description: "The notification message." },
+          type: { type: "string", enum: ["notification", "alert", "summary"], description: "Type." },
+          source: { type: "string", description: "Source label." },
+        },
+        required: ["message"],
+      },
+    },
+  ];
+
+  // Run the agent loop server-side
+  const messages = [{ role: "user", content: userMessage }];
+  let finalText = "";
+
+  for (let iter = 0; iter < 8; iter++) {
+    const body = {
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 2048,
+      system: systemPrompt,
+      messages,
+      tools: serverTools,
+    };
+
+    const res = await fetch(CLAUDE_API, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": claudeKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (res.status === 429 || res.status === 529) {
+      await sleep(Math.min(2000 * Math.pow(2, iter), 30000));
+      continue;
+    }
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      throw new Error(`Claude API error (${res.status}): ${errText}`);
+    }
+
+    const data = await res.json();
+    messages.push({ role: "assistant", content: data.content });
+
+    // Extract text
+    const textBlocks = (data.content || []).filter((b) => b.type === "text").map((b) => b.text);
+    if (textBlocks.length > 0) finalText = textBlocks.join("\n");
+
+    // If no tool use, we're done
+    const toolBlocks = (data.content || []).filter((b) => b.type === "tool_use");
+    if (data.stop_reason !== "tool_use" || toolBlocks.length === 0) break;
+
+    // Execute tool calls against D1 directly
+    const toolResults = [];
+    for (const block of toolBlocks) {
+      let result;
+      try {
+        result = await executeServerTool(block.name, block.input, env);
+      } catch (err) {
+        result = JSON.stringify({ error: err.message });
+      }
+      toolResults.push({
+        type: "tool_result",
+        tool_use_id: block.id,
+        content: typeof result === "string" ? result : JSON.stringify(result),
+      });
+    }
+
+    messages.push({ role: "user", content: toolResults });
+  }
+
+  console.log("[AutoCron]", `Agent completed for "${rule.name}": ${finalText.slice(0, 200)}`);
+  return { path: "agent", text: finalText };
+}
+
+/**
+ * Execute a tool call directly against D1 (no HTTP round-trip).
+ */
+async function executeServerTool(toolName, input, env) {
+  switch (toolName) {
+    case "query_database": {
+      const tableId = input.database_id;
+      if (!tableId) return JSON.stringify({ error: "database_id required" });
+
+      const { results } = await env.DB.prepare(
+        "SELECT id, cells, created_at, updated_at FROM table_rows WHERE table_id = ? AND archived = 0 ORDER BY sort_order, created_at LIMIT 100"
+      ).bind(tableId).all();
+
+      const rows = (results || []).map((r) => ({
+        id: r.id,
+        ...safeParseJSON(r.cells),
+        _created: r.created_at,
+        _updated: r.updated_at,
+      }));
+
+      return JSON.stringify({ count: rows.length, rows });
+    }
+
+    case "create_page": {
+      const tableId = input.database_id;
+      if (!tableId) return JSON.stringify({ error: "database_id required" });
+
+      const id = crypto.randomUUID();
+      const cells = input.properties || {};
+
+      await env.DB.prepare(
+        "INSERT INTO table_rows (id, table_id, cells, sort_order, metadata, created_at, updated_at) VALUES (?, ?, ?, 0, '{}', datetime('now'), datetime('now'))"
+      ).bind(id, tableId, JSON.stringify(cells)).run();
+
+      return JSON.stringify({ success: true, id });
+    }
+
+    case "update_page": {
+      const rowId = input.page_id;
+      const tableId = input.database_id;
+      if (!rowId) return JSON.stringify({ error: "page_id required" });
+
+      // Merge cells
+      const existing = tableId
+        ? await env.DB.prepare("SELECT cells FROM table_rows WHERE id = ? AND table_id = ?").bind(rowId, tableId).first()
+        : await env.DB.prepare("SELECT cells FROM table_rows WHERE id = ?").bind(rowId).first();
+
+      const currentCells = existing ? safeParseJSON(existing.cells) : {};
+      const merged = { ...currentCells, ...(input.properties || {}) };
+
+      if (tableId) {
+        await env.DB.prepare(
+          "UPDATE table_rows SET cells = ?, updated_at = datetime('now') WHERE id = ? AND table_id = ?"
+        ).bind(JSON.stringify(merged), rowId, tableId).run();
+      } else {
+        await env.DB.prepare(
+          "UPDATE table_rows SET cells = ?, updated_at = datetime('now') WHERE id = ?"
+        ).bind(JSON.stringify(merged), rowId).run();
+      }
+
+      return JSON.stringify({ success: true, id: rowId });
+    }
+
+    case "post_notification": {
+      const id = crypto.randomUUID();
+      const message = input.message || "";
+      const type = input.type || "notification";
+      const source = input.source || "automation";
+
+      await env.DB.prepare(
+        "INSERT INTO notifications (id, message, type, status, source, created_at) VALUES (?, ?, ?, 'unread', ?, datetime('now'))"
+      ).bind(id, message, type, source).run();
+
+      return JSON.stringify({ success: true, id });
+    }
+
+    default:
+      return JSON.stringify({ error: `Unknown tool: ${toolName}` });
+  }
+}
+
+/**
+ * Simple string hash for snapshot comparison (non-cryptographic, fast).
+ */
+function simpleHash(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0; // Convert to 32-bit integer
+  }
+  return String(hash);
+}
+
+/**
+ * Expand {{template}} variables in a string.
+ */
+function expandTemplateServer(template, data) {
+  if (!template) return "";
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+    const val = data[key];
+    if (val === null || val === undefined) return "";
+    if (typeof val === "object") return JSON.stringify(val);
+    return String(val);
+  });
 }
 
 function safeParseJSON(str) {

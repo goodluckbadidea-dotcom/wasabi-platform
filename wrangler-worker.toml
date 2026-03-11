@@ -15,4 +15,7 @@ database_id = "74c85b52-e230-43c1-8d7d-631402b6a682"
 binding = "DOCS"
 bucket_name = "wasabi-docs"
 
+[triggers]
+crons = ["*/2 * * * *"]
+
 # WASABI_SECRET set via: npx wrangler secret put WASABI_SECRET -c wrangler-worker.toml

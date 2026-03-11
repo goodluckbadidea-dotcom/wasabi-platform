@@ -220,6 +220,10 @@ const CREATE_PAGE_CONFIG = {
         type: "string",
         description: "Custom system prompt for this page's agent. Describe its role and knowledge.",
       },
+      parent_id: {
+        type: "string",
+        description: "Parent workspace or folder ID for the new page.",
+      },
     },
     required: ["name", "databaseIds", "views"],
   },

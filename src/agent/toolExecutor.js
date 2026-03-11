@@ -561,6 +561,7 @@ export function createToolExecutor({
         const pageConfig = {
           name,
           icon: icon || "page",
+          parentId: toolInput.parent_id || null,
           databaseIds: databaseIds || [],
           agentConfig: {
             model: "claude-haiku-4-5-20251001",

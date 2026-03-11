@@ -17,8 +17,17 @@ import LinkPicker from "../core/LinkPicker.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
 import { updateTableSchema, getTableSchema } from "../lib/api.js";
+import { usePlatform } from "../context/PlatformContext.jsx";
+import { updateDatabase } from "../notion/client.js";
 import SelectPicker from "../components/SelectPicker.jsx";
 import MultiSelectPicker from "../components/MultiSelectPicker.jsx";
+
+// D1 type → Notion property type mapping
+const D1_TO_NOTION_TYPE = {
+  text: "rich_text", number: "number", select: "select",
+  multi_select: "multi_select", date: "date", checkbox: "checkbox",
+  url: "url", email: "email", phone: "phone_number", status: "status",
+};
 
 // ─── Column Types ───
 const COLUMN_TYPES = [
@@ -43,11 +52,6 @@ TYPE_ICON_MAP["phone_number"] = "\uD83D\uDCDE";
 TYPE_ICON_MAP["last_edited_time"] = "\uD83D\uDCC5";
 TYPE_ICON_MAP["created_time"] = "\uD83D\uDCC5";
 
-const D1_TO_NOTION_TYPE = {
-  text: "rich_text", number: "number", select: "select",
-  multi_select: "multi_select", date: "date", checkbox: "checkbox",
-  url: "url", email: "email", phone: "phone_number", status: "status",
-};
 function mapD1TypeForUI(d1Type) { return D1_TO_NOTION_TYPE[d1Type] || d1Type; }
 function getTypeIcon(schema, fieldName) { return TYPE_ICON_MAP[getFieldType(schema, fieldName)] || null; }
 
@@ -546,7 +550,7 @@ function CellEditor({ value, type, options, schemaOptions, onCommit, onCancel, i
         options={schemaOptions || options.map((o) => ({ name: o }))}
         onSelect={(selected) => onCommit(selected)}
         onClose={onCancel}
-        allowCreate={!!isD1Table}
+        allowCreate={!!canEditSchema}
         onCreateOption={onCreateOption}
         anchor={anchor ? { top: anchor.bottom, left: anchor.left, width: anchor.width } : undefined}
         initialChar={initialChar}
@@ -564,7 +568,7 @@ function CellEditor({ value, type, options, schemaOptions, onCommit, onCancel, i
         options={schemaOptions || options.map((o) => ({ name: o }))}
         onChange={(newVals) => onCommit(newVals)}
         onClose={onCancel}
-        allowCreate={!!isD1Table}
+        allowCreate={!!canEditSchema}
         onCreateOption={onCreateOption}
         anchor={anchor ? { top: anchor.bottom, left: anchor.left, width: anchor.width } : undefined}
         initialChar={initialChar}
@@ -808,6 +812,7 @@ function CellDisplay({ value, type, fieldName, schema, onClick }) {
 // ─── Main Table Component ───
 
 export default function Table({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onSaveFilters, onViewConfigChange }) {
+  const { user } = usePlatform();
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState(config.sort?.field || config.sortField || null);
   const [sortDir, setSortDir] = useState(config.sort?.direction || config.sortDir || (config.sortField ? "asc" : null)); // "asc" | "desc" | null
@@ -855,7 +860,19 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const [addColName, setAddColName] = useState("");
   const [addColType, setAddColType] = useState("text");
   const [colDrag, setColDrag] = useState(null); // { col, startX, overCol }
-  const isD1Table = pageConfig?.page_type === "database" || pageConfig?.pageType === "database";
+  // ── Source type detection (D1 / Notion / external) ──
+  const sourceType = useMemo(() => {
+    const pt = pageConfig?.page_type || pageConfig?.pageType;
+    if (pt === "database") return "d1";
+    if (pt === "linked_notion") return "notion";
+    if (pt === "linked_sheet" || pt === "linked_monday") return "external_readonly";
+    // Fallback: if we have a schema and page ID but no linked_ prefix, treat as D1
+    if (schema?.allFields?.length > 0 && pageConfig?.id && !String(pt || "").startsWith("linked_")) return "d1";
+    return "unknown";
+  }, [pageConfig?.page_type, pageConfig?.pageType, pageConfig?.id, schema?.allFields?.length]);
+  const canEditSchema = sourceType === "d1" || sourceType === "notion";
+  const isD1Table = sourceType === "d1";
+  const isNotionTable = sourceType === "notion";
 
   // ── Ghost Row (inline new record creation) ──
   const [ghostValues, setGhostValues] = useState({});
@@ -975,34 +992,47 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     }
   }, [hiddenColumns, onViewConfigChange]);
 
-  // Rename column (D1 tables only)
+  // ── Notion DB helper ──
+  const notionDbId = isNotionTable ? (pageConfig?.databaseIds?.[0] || null) : null;
+  const workerUrl = user?.workerUrl;
+  const notionKey = user?.notionKey;
+
+  // Rename column (D1 + Notion)
   const handleRenameCol = useCallback(async (oldName, newName) => {
     if (!newName.trim() || newName === oldName) { setRenamingCol(null); return; }
-    if (!isD1Table || !pageConfig?.id) { setRenamingCol(null); return; }
+    if (!canEditSchema || !pageConfig?.id) { setRenamingCol(null); return; }
     try {
-      const schemaRes = await getTableSchema(pageConfig.id);
-      const cols = (schemaRes?.columns || []).map((c) =>
-        c.name === oldName ? { ...c, name: newName.trim() } : c
-      );
-      await updateTableSchema(pageConfig.id, cols);
+      if (isNotionTable && notionDbId && workerUrl && notionKey) {
+        await updateDatabase(workerUrl, notionKey, notionDbId, { properties: { [oldName]: { name: newName.trim() } } });
+      } else {
+        const schemaRes = await getTableSchema(pageConfig.id);
+        const cols = (schemaRes?.columns || []).map((c) =>
+          c.name === oldName ? { ...c, name: newName.trim() } : c
+        );
+        await updateTableSchema(pageConfig.id, cols);
+      }
       if (onRefresh) onRefresh();
     } catch (err) { console.error("Rename column failed:", err); }
     setRenamingCol(null);
-  }, [isD1Table, pageConfig?.id, onRefresh]);
+  }, [canEditSchema, isNotionTable, notionDbId, workerUrl, notionKey, pageConfig?.id, onRefresh]);
 
-  // Delete column (D1 tables only)
+  // Delete column (D1 + Notion)
   const handleDeleteCol = useCallback(async (col) => {
-    if (!isD1Table || !pageConfig?.id) return;
+    if (!canEditSchema || !pageConfig?.id) return;
     try {
-      const schemaRes = await getTableSchema(pageConfig.id);
-      const cols = (schemaRes?.columns || []).filter((c) => c.name !== col);
-      await updateTableSchema(pageConfig.id, cols);
+      if (isNotionTable && notionDbId && workerUrl && notionKey) {
+        await updateDatabase(workerUrl, notionKey, notionDbId, { properties: { [col]: null } });
+      } else {
+        const schemaRes = await getTableSchema(pageConfig.id);
+        const cols = (schemaRes?.columns || []).filter((c) => c.name !== col);
+        await updateTableSchema(pageConfig.id, cols);
+      }
       if (onRefresh) onRefresh();
     } catch (err) { console.error("Delete column failed:", err); }
     setColCtxMenu(null);
-  }, [isD1Table, pageConfig?.id, onRefresh]);
+  }, [canEditSchema, isNotionTable, notionDbId, workerUrl, notionKey, pageConfig?.id, onRefresh]);
 
-  // Change column type (D1 tables only)
+  // Change column type (D1 tables only — Notion has restrictions)
   const handleChangeColType = useCallback(async (col, newType) => {
     if (!isD1Table || !pageConfig?.id) return;
     try {
@@ -1016,19 +1046,29 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     setColCtxMenu(null);
   }, [isD1Table, pageConfig?.id, onRefresh]);
 
-  // Add new column (D1 tables only)
+  // Add new column (D1 + Notion)
   const handleAddCol = useCallback(async () => {
-    if (!addColName.trim() || !isD1Table || !pageConfig?.id) return;
+    if (!addColName.trim() || !canEditSchema || !pageConfig?.id) return;
     try {
-      const schemaRes = await getTableSchema(pageConfig.id);
-      const cols = [...(schemaRes?.columns || []), { id: `col_${Date.now()}`, name: addColName.trim(), type: addColType }];
-      await updateTableSchema(pageConfig.id, cols);
+      if (isNotionTable && notionDbId && workerUrl && notionKey) {
+        const notionType = D1_TO_NOTION_TYPE[addColType] || "rich_text";
+        const propDef = { [notionType]: {} };
+        // Add default options for select/multi_select/status
+        if (["select", "multi_select"].includes(addColType)) {
+          propDef[notionType] = { options: [] };
+        }
+        await updateDatabase(workerUrl, notionKey, notionDbId, { properties: { [addColName.trim()]: propDef } });
+      } else {
+        const schemaRes = await getTableSchema(pageConfig.id);
+        const cols = [...(schemaRes?.columns || []), { id: `col_${Date.now()}`, name: addColName.trim(), type: addColType }];
+        await updateTableSchema(pageConfig.id, cols);
+      }
       setAddColOpen(false);
       setAddColName("");
       setAddColType("text");
       if (onRefresh) onRefresh();
     } catch (err) { console.error("Add column failed:", err); }
-  }, [addColName, addColType, isD1Table, pageConfig?.id, onRefresh]);
+  }, [addColName, addColType, canEditSchema, isNotionTable, isD1Table, notionDbId, workerUrl, notionKey, pageConfig?.id, onRefresh]);
 
   // Column reorder via drag
   const handleColDragStart = useCallback((col, e) => {
@@ -1283,21 +1323,27 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
 
   // Create option handler for SelectPicker/MultiSelectPicker (adds to D1 schema)
   const handleCreateOption = useCallback(async (fieldName, newOptionName) => {
-    if (!isD1Table || !pageConfig?.id) return;
+    if (!canEditSchema || !pageConfig?.id) return;
     try {
-      const schemaRes = await getTableSchema(pageConfig.id);
-      const cols = (schemaRes?.columns || []).map((c) => {
-        if (c.name === fieldName) {
-          const existing = c.options || [];
-          if (!existing.some((o) => (typeof o === "string" ? o : o.name) === newOptionName)) {
-            return { ...c, options: [...existing, { name: newOptionName }] };
+      if (isNotionTable && notionDbId && workerUrl && notionKey) {
+        // For Notion: we can't easily add a single option without knowing the existing ones,
+        // but the Notion API supports adding options through the update endpoint
+        // The simplest approach: let Notion handle it via page update (option auto-created)
+      } else {
+        const schemaRes = await getTableSchema(pageConfig.id);
+        const cols = (schemaRes?.columns || []).map((c) => {
+          if (c.name === fieldName) {
+            const existing = c.options || [];
+            if (!existing.some((o) => (typeof o === "string" ? o : o.name) === newOptionName)) {
+              return { ...c, options: [...existing, { name: newOptionName }] };
+            }
           }
-        }
-        return c;
-      });
-      await updateTableSchema(pageConfig.id, cols);
+          return c;
+        });
+        await updateTableSchema(pageConfig.id, cols);
+      }
     } catch (err) { console.error("Create option failed:", err); }
-  }, [isD1Table, pageConfig?.id]);
+  }, [canEditSchema, isNotionTable, notionDbId, workerUrl, notionKey, pageConfig?.id]);
 
   // Checkbox direct toggle
   const handleCheckboxToggle = useCallback((pageId, field, currentValue) => {
@@ -1892,13 +1938,13 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
             </button>
           </div>
         ) : (
-          <table style={{ ...styles.table, width: 52 + columns.reduce((sum, col) => sum + (colWidths[col] || 120), 0) + (isD1Table ? 44 : 0) }}>
+          <table style={{ ...styles.table, width: 52 + columns.reduce((sum, col) => sum + (colWidths[col] || 120), 0) + (canEditSchema ? 44 : 0) }}>
             <colgroup>
               <col style={{ width: 52 }} />
               {columns.map((col) => (
                 <col key={col} style={{ width: colWidths[col] || 120 }} />
               ))}
-              {isD1Table && <col style={{ width: 44 }} />}
+              {canEditSchema && <col style={{ width: 44 }} />}
             </colgroup>
             <thead>
               <tr>
@@ -1993,7 +2039,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                   );
                 })}
                 {/* Add column button */}
-                {isD1Table && (
+                {canEditSchema && (
                   <th style={{ ...styles.th, width: 44, minWidth: 44, textAlign: "center", padding: "10px 8px", position: "sticky", right: 0, zIndex: 2, background: C.darkSurf }}>
                     {addColOpen ? (
                       <div
@@ -2098,7 +2144,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                 const visibleStart = visibleRange.start;
                 const visibleEnd = Math.min(totalRows, visibleRange.end);
                 const visibleRows = processedData.slice(visibleStart, visibleEnd);
-                const colSpan = columns.length + (isD1Table ? 2 : 1);
+                const colSpan = columns.length + (canEditSchema ? 2 : 1);
 
                 return (
                   <>
@@ -2452,8 +2498,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
               onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
             >{"\uD83D\uDC41\uFE0F"} Hide Column</div>
-            {/* Rename (D1 only) */}
-            {isD1Table && (
+            {/* Rename (D1 + Notion) */}
+            {canEditSchema && (
               <div
                 style={ctxItem}
                 onClick={() => { setRenamingCol(colCtxMenu.col); setRenameValue(colCtxMenu.col); setColCtxMenu(null); }}
@@ -2461,7 +2507,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                 onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
               >{"\u270F\uFE0F"} Rename</div>
             )}
-            {/* Type Change (D1 only) */}
+            {/* Type Change (D1 only — Notion type changes are restricted) */}
             {isD1Table && (
               <>
                 <div style={{ borderTop: `1px solid ${C.edgeLine}`, margin: "2px 0" }} />
@@ -2493,8 +2539,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                 })}
               </>
             )}
-            {/* Delete (D1 only) */}
-            {isD1Table && (
+            {/* Delete (D1 + Notion) */}
+            {canEditSchema && (
               <>
                 <div style={{ borderTop: `1px solid ${C.edgeLine}`, margin: "2px 0" }} />
                 <div

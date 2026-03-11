@@ -71,6 +71,11 @@ export default function Navigation({
 
     if (!config) return;
 
+    // Universal: auto-parent all page types when inside a folder
+    if (activeFolder && !config.parentId) {
+      config.parentId = activeFolder;
+    }
+
     try {
       const id = await savePageConfig(config);
       addPage({ ...config, id });

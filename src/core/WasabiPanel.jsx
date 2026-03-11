@@ -11,7 +11,7 @@ import { IconClose, IconLog, IconChat, IconBell, IconSend, IconPaperclip } from 
 import WasabiFlame from "./WasabiFlame.jsx";
 import WasabiOrb from "./WasabiOrb.jsx";
 import ChatUI from "./ChatUI.jsx";
-import { runAgent, extractChoices } from "../agent/runAgent.js";
+import { runAgent, runAgentMultiPhase, shouldUseMultiPhase, extractChoices } from "../agent/runAgent.js";
 import { WASABI_TOOLS } from "../agent/tools.js";
 import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createToolExecutor } from "../agent/toolExecutor.js";
@@ -21,6 +21,16 @@ import BatchQueue from "./BatchQueue.jsx";
 import * as api from "../lib/api.js";
 // Legacy Notion imports removed — notifications now stored in D1
 import { timeAgo } from "../utils/helpers.js";
+
+// ── Dynamic token budget based on message complexity ──
+function getTokenBudget(text, conversationDepth) {
+  if (text.length < 80 && conversationDepth < 3) return { maxTokens: 1024, maxIterations: 6 };
+  if (/build|create|design|setup|implement|system|track|manage/i.test(text) && text.length > 150)
+    return { maxTokens: 4096, maxIterations: 12 };
+  if (/analyze|summarize|compare|report|show|find/i.test(text))
+    return { maxTokens: 2048, maxIterations: 8 };
+  return { maxTokens: 2048, maxIterations: 8 };
+}
 
 // Walk up the page tree to find the workspace ancestor
 function findWorkspaceAncestor(pageId, pages) {
@@ -200,6 +210,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
           rulesDbId: platformIds?.rulesDbId, onPageCreated: addPage,
         });
 
+        const batchBudget = getTokenBudget(item.text, 0);
         const { text: reply } = await runAgent({
           messages: [{ role: "user", content: item.text }],
           systemPrompt,
@@ -208,8 +219,8 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
           workerUrl: bUrl,
           claudeKey: user?.claudeKey || "",
           executeTool: (name, input) => executor(name, input),
-          maxTokens: 1024,
-          maxIterations: 6,
+          maxTokens: batchBudget.maxTokens,
+          maxIterations: batchBudget.maxIterations,
         });
 
         updateQueueItem(item.id, { status: "actioned", result: reply });
@@ -301,13 +312,27 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
           }
         } catch (_) { /* KB search is best-effort */ }
 
-        // Build neuron summary from cached data
+        // Build neuron summary from cached data + proactive query for relevant connections
         const cachedNeurons = loadCachedNeurons();
-        const neuronSummary = cachedNeurons.length > 0
+        let neuronSummary = cachedNeurons.length > 0
           ? cachedNeurons.slice(0, 20).map((n) =>
               `- ${n.name || "(unnamed)"} (${n.node_count || 0} nodes, id: ${n.id})`
             ).join("\n")
           : "";
+
+        // Proactive neuron query for non-trivial messages
+        if (agentText.length > 50) {
+          try {
+            const neuronResult = await toolExecutor("query_neurons", { query: agentText });
+            const parsed = typeof neuronResult === "string" ? JSON.parse(neuronResult) : neuronResult;
+            if (parsed?.neurons?.length > 0) {
+              const connections = parsed.neurons.slice(0, 5).map((n) =>
+                `- **${n.name || "Connection"}**: ${(n.nodes || []).map((nd) => nd.label || nd.source_title || "?").join(" ↔ ")}`
+              ).join("\n");
+              if (connections) neuronSummary += (neuronSummary ? "\n\n### Relevant Connections\n" : "") + connections;
+            }
+          } catch (_) { /* neuron query is best-effort */ }
+        }
 
         // Find workspace ancestor for custom AI instructions
         let workspaceInstructions = "";
@@ -343,19 +368,40 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
         });
         setLastTier(tier);
 
-        let { text: reply, history, toolCalls } = await runAgent({
-          messages: newHistory,
-          systemPrompt,
-          tools: WASABI_TOOLS,
-          model,
-          workerUrl: wUrl,
-          claudeKey: user?.claudeKey || "",
-          executeTool: toolExecutor,
-          abortRef: chatAbortRef,
-          maxTokens: 2048,
-          tier,
-          routeReason: reason,
-        });
+        const chatBudget = getTokenBudget(agentText, chatHistoryRef.current.length);
+        const useMultiPhase = shouldUseMultiPhase(agentText) && chatHistoryRef.current.length <= 2;
+
+        let { text: reply, history, toolCalls } = useMultiPhase
+          ? await runAgentMultiPhase({
+              messages: newHistory,
+              systemPrompt,
+              orientTools: WASABI_TOOLS,
+              executeTools: WASABI_TOOLS,
+              model,
+              workerUrl: wUrl,
+              claudeKey: user?.claudeKey || "",
+              executeTool: toolExecutor,
+              onToolCall: undefined,
+              abortRef: chatAbortRef,
+              maxTokens: chatBudget.maxTokens,
+              tier,
+              routeReason: reason,
+              preContext: neuronSummary || "",
+            })
+          : await runAgent({
+              messages: newHistory,
+              systemPrompt,
+              tools: WASABI_TOOLS,
+              model,
+              workerUrl: wUrl,
+              claudeKey: user?.claudeKey || "",
+              executeTool: toolExecutor,
+              abortRef: chatAbortRef,
+              maxTokens: chatBudget.maxTokens,
+              maxIterations: chatBudget.maxIterations,
+              tier,
+              routeReason: reason,
+            });
 
         // Auto-escalation: if Haiku gave a weak response, retry with Sonnet
         if (tier === "haiku" && !modelOverride && shouldEscalate(reply, agentText, toolCalls.length > 0)) {
@@ -370,7 +416,8 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig }) {
             claudeKey: user?.claudeKey || "",
             executeTool: toolExecutor,
             abortRef: chatAbortRef,
-            maxTokens: 2048,
+            maxTokens: chatBudget.maxTokens,
+            maxIterations: chatBudget.maxIterations,
             tier: "sonnet",
             routeReason: "auto_escalation",
           });

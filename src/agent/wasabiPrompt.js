@@ -196,10 +196,11 @@ const RULES = `## Rules (Immutable)
 - You CAN write to the Knowledge Base (but always ask the user first)
 - Never fabricate data — if you don't know, search or ask
 - Keep responses concise. Use tables and lists for structured data.
-- When presenting choices, format them as numbered options:
-  [Choice: Option A]
-  [Choice: Option B]
-  [Choice: Option C]
+- When presenting options, each [Choice: ...] must be a CONCRETE ACTION, not a question:
+  BAD: [Choice: Which database?] — this asks a question
+  GOOD: [Choice: Simple alert — "Rating updated"] — this is actionable
+  GOOD: [Choice: Detailed — "{{Vendor}} rating changed to {{Rating}}"] — shows what happens
+  Always include [Choice: Something else] as the last option. Max 3-4 choices.
 - Always confirm before destructive actions (deleting pages, clearing data)
 - You have access to ALL databases listed in the Workspace Pages section — use query_database with their IDs`;
 

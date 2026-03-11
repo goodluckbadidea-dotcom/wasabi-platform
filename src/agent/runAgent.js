@@ -212,6 +212,122 @@ async function callClaude({
   throw lastError || new Error("Claude API call failed after retries");
 }
 
+// ─── Multi-Phase Execution ───
+
+/**
+ * Read-only tools for the orient phase (cheap, fast context gathering).
+ */
+const ORIENT_TOOL_NAMES = new Set([
+  "query_database",
+  "search_knowledge_base",
+  "query_neurons",
+  "get_page",
+]);
+
+/**
+ * Run a two-phase agent: Orient (gather context cheaply) → Execute (act with full context).
+ * Only triggered for complex requests (long text + system-building keywords).
+ *
+ * @param {object} opts - Same as runAgent, plus:
+ * @param {Array} opts.orientTools - Read-only tools for orient phase
+ * @param {Array} opts.executeTools - Full tools for execute phase
+ * @param {string} opts.orientModel - Model for orient phase (default: haiku)
+ * @param {string} [opts.preContext] - Any pre-gathered context (neurons, KB, etc.)
+ */
+export async function runAgentMultiPhase({
+  messages,
+  systemPrompt,
+  orientTools,
+  executeTools,
+  model,
+  orientModel = "claude-haiku-4-5-20251001",
+  workerUrl,
+  claudeKey,
+  executeTool,
+  onToolCall,
+  abortRef,
+  maxTokens = 4096,
+  tier = "unknown",
+  routeReason = "",
+  preContext = "",
+}) {
+  // ── Phase 1: Orient (cheap, read-only) ──
+  const orientSystemPrompt = [
+    systemPrompt,
+    "\n## Orient Phase",
+    "You are in the ORIENT phase. Gather context first before taking action.",
+    "Search the knowledge base, check neurons for connections, and query relevant databases.",
+    "Summarize your findings concisely. Do NOT create, update, or modify anything yet.",
+    preContext ? `\n## Pre-gathered Context\n${preContext}` : null,
+  ].filter(Boolean).join("\n");
+
+  // Filter tools to read-only subset
+  const readOnlyTools = (orientTools || []).filter((t) => ORIENT_TOOL_NAMES.has(t.name));
+
+  let orientFindings = "";
+
+  if (readOnlyTools.length > 0) {
+    try {
+      const orientResult = await runAgent({
+        messages,
+        systemPrompt: orientSystemPrompt,
+        tools: readOnlyTools,
+        model: orientModel,
+        workerUrl,
+        claudeKey,
+        executeTool,
+        onToolCall,
+        abortRef,
+        maxIterations: 4,
+        maxTokens: 1024,
+        tier: "haiku",
+        routeReason: "orient_phase",
+      });
+
+      orientFindings = orientResult.text || "";
+    } catch (err) {
+      console.warn("[MultiPhase] Orient phase failed, proceeding to execute:", err.message);
+    }
+  }
+
+  if (abortRef?.current) return { text: "", history: messages, toolCalls: [] };
+
+  // ── Phase 2: Execute (full model, full tools) ──
+  const executeSystemPrompt = [
+    systemPrompt,
+    orientFindings
+      ? `\n## Pre-gathered Context (from orient phase)\n${orientFindings}`
+      : null,
+    preContext && !orientFindings
+      ? `\n## Pre-gathered Context\n${preContext}`
+      : null,
+  ].filter(Boolean).join("\n");
+
+  return await runAgent({
+    messages,
+    systemPrompt: executeSystemPrompt,
+    tools: executeTools || [],
+    model,
+    workerUrl,
+    claudeKey,
+    executeTool,
+    onToolCall,
+    abortRef,
+    maxIterations: 12,
+    maxTokens,
+    tier,
+    routeReason: routeReason || "execute_phase",
+  });
+}
+
+/**
+ * Check if a user message warrants multi-phase execution.
+ */
+export function shouldUseMultiPhase(text) {
+  if (!text || text.length < 200) return false;
+  return /build|create.*system|design|setup|implement|track.*across|manage.*multiple|automat/i.test(text);
+}
+
 /**
  * Extract choices from agent response text.
  * Looks for lines like "1. **Option Name** — description"
@@ -229,7 +345,12 @@ export function extractChoices(text) {
     choices.push({ label: match[1].trim(), raw: match[0] });
   }
 
-  if (choices.length > 0) return choices;
+  if (choices.length > 0) {
+    if (!choices.some(c => /something else|other|custom/i.test(c.label))) {
+      choices.push({ label: "Something else", raw: "[Choice: Something else]" });
+    }
+    return choices;
+  }
 
   // Pattern: numbered bold options — "1. **Label** — description"
   const lines = text.split("\n");
@@ -238,6 +359,10 @@ export function extractChoices(text) {
     if (m) {
       choices.push({ label: m[1].trim(), raw: line.trim() });
     }
+  }
+
+  if (choices.length > 0 && !choices.some(c => /something else|other|custom/i.test(c.label))) {
+    choices.push({ label: "Something else", raw: "[Choice: Something else]" });
   }
 
   return choices;

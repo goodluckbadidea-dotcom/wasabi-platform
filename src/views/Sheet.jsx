@@ -1127,6 +1127,7 @@ export default function Sheet({ pageConfig }) {
             style={{ flex: 1, maxWidth: 180, background: C.dark, border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
               padding: "3px 8px", fontSize: 12, fontFamily: FONT, color: C.darkText, outline: "none" }}
             autoFocus
+            autoComplete="off"
             onKeyDown={(e) => { if (e.key === "Enter") findNext(); if (e.key === "Escape") setFindOpen(false); }}
           />
           <input
@@ -1135,6 +1136,7 @@ export default function Sheet({ pageConfig }) {
             placeholder="Replace..."
             style={{ flex: 1, maxWidth: 180, background: C.dark, border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
               padding: "3px 8px", fontSize: 12, fontFamily: FONT, color: C.darkText, outline: "none" }}
+            autoComplete="off"
             onKeyDown={(e) => { if (e.key === "Enter") replaceOne(); }}
           />
           <span style={{ fontSize: 10, color: C.darkMuted, minWidth: 50 }}>
@@ -1250,13 +1252,34 @@ export default function Sheet({ pageConfig }) {
                   </th>
                 );
               })}
+              {/* Add column button */}
+              <th
+                style={{
+                  ...ss.headerCell,
+                  width: 36,
+                  minWidth: 36,
+                  maxWidth: 36,
+                  padding: 0,
+                  cursor: "pointer",
+                  border: `1px dashed ${C.darkBorder}`,
+                  background: C.darkSurf,
+                  color: C.darkMuted,
+                  transition: "color 0.15s, background 0.15s",
+                }}
+                title="Add column"
+                onClick={() => handleStructure("insertCol", colCount + 1)}
+                onMouseEnter={(e) => { e.currentTarget.style.color = C.accent; e.currentTarget.style.background = C.darkSurf2 || C.darkSurf; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = C.darkMuted; e.currentTarget.style.background = C.darkSurf; }}
+              >
+                +
+              </th>
               {rightSpacerWidth > 0 && <th style={{ width: rightSpacerWidth, padding: 0, border: "none" }} />}
             </tr>
           </thead>
           <tbody>
             {/* Top spacer */}
             {visibleRowRange.start > 0 && (
-              <tr><td colSpan={colCount + 1} style={{ height: visibleRowRange.start * ROW_HEIGHT, padding: 0, border: "none" }} /></tr>
+              <tr><td colSpan={colCount + 2} style={{ height: visibleRowRange.start * ROW_HEIGHT, padding: 0, border: "none" }} /></tr>
             )}
             {Array.from({ length: visibleRowRange.end - visibleRowRange.start }, (_, i) => {
               const ri = visibleRowRange.start + i;
@@ -1427,6 +1450,7 @@ export default function Sheet({ pageConfig }) {
                             }}
                             style={ss.input}
                             autoFocus
+                            autoComplete="off"
                           />
                         ) : isUrl ? (
                           <a href={display} target="_blank" rel="noopener noreferrer"
@@ -1466,7 +1490,7 @@ export default function Sheet({ pageConfig }) {
             })}
             {/* Bottom spacer */}
             {visibleRowRange.end < rowCount && (
-              <tr><td colSpan={colCount + 1} style={{ height: (rowCount - visibleRowRange.end) * ROW_HEIGHT, padding: 0, border: "none" }} /></tr>
+              <tr><td colSpan={colCount + 2} style={{ height: (rowCount - visibleRowRange.end) * ROW_HEIGHT, padding: 0, border: "none" }} /></tr>
             )}
           </tbody>
         </table>

@@ -110,12 +110,19 @@ export function evaluateTrigger(rule, currentTime) {
 export async function executeRule(rule, opts, contextData = {}) {
   const { workerUrl, claudeKey } = opts;
 
+  // Spread first changed record's cells into templateData for {{field}} resolution
+  const firstRecord = contextData.changed_records?.[0] || {};
   const templateData = {
     name: rule.name,
     description: rule.description,
     databaseId: rule.databaseId,
     ownerPage: rule.ownerPage,
     fireCount: rule.fireCount,
+    matched_count: contextData.matched_count || 0,
+    changed_field: firstRecord.changed_field || "",
+    new_value: firstRecord.new_value || "",
+    record_name: firstRecord.name || "",
+    ...(firstRecord.cells || {}),
     ...contextData,
   };
 
@@ -151,17 +158,34 @@ export async function executeRule(rule, opts, contextData = {}) {
     kbDbId: "d1",
   });
 
+  // Build rich context summary for the agent
+  const changedRecords = contextData.changed_records || [];
+  const changedSummary = changedRecords.slice(0, 5).map((r) => {
+    const label = r.name || r.id;
+    const field = r.changed_field || "record";
+    const val = r.new_value !== undefined && r.new_value !== null ? ` → "${r.new_value}"` : "";
+    return `- ${label}: ${field} changed${val}`;
+  }).join("\n");
+
   const systemPrompt = [
     `You are an automation agent for rule "${rule.name}".`,
     rule.description ? `Description: ${rule.description}` : null,
     `Instruction: ${instruction}`,
-    rule.databaseId ? `Database: ${rule.databaseId}` : null,
-    "Complete the instruction efficiently. Do not ask follow-up questions.",
+    rule.databaseId ? `Database ID: ${rule.databaseId}` : null,
+    changedRecords.length > 0
+      ? `\nTriggered by ${changedRecords.length} changed record(s):\n${changedSummary}`
+      : null,
+    "\nComplete the instruction efficiently. Do not ask follow-up questions.",
+    "Use query_database to look up data, update_page to modify records, and post_notification for alerts.",
   ].filter(Boolean).join("\n");
+
+  const userMessage = changedRecords.length > 0
+    ? `Execute this automation now. ${instruction}\n\nChanged records: ${JSON.stringify(changedRecords.slice(0, 5))}`
+    : `Execute this automation now. ${instruction}`;
 
   const result = await runAgent({
     messages: [
-      { role: "user", content: `Execute this automation now. ${instruction}` },
+      { role: "user", content: userMessage },
     ],
     systemPrompt,
     tools: AUTO_TOOLS,
@@ -169,8 +193,8 @@ export async function executeRule(rule, opts, contextData = {}) {
     workerUrl,
     claudeKey,
     executeTool,
-    maxIterations: 6,
-    maxTokens: 1024,
+    maxIterations: 8,
+    maxTokens: 2048,
   });
 
   console.log(LOG_PREFIX, `Agent finished for rule "${rule.name}":`, result.text?.slice(0, 200));
@@ -233,10 +257,40 @@ async function checkEventTrigger(rule, opts) {
   switch (rule.trigger) {
     case "status_change":
     case "field_change": {
-      // For D1 tables, fire on any recent changes
+      // Extract the watched field from trigger config
+      const watchedField = cfg.field || null;
+
+      // Filter to records that were actually modified since last fired
+      const recentlyModified = results.filter((page) => {
+        const editTime = page.last_edited_time;
+        if (!editTime) return true; // can't check, include it
+        return new Date(editTime).getTime() > new Date(lastFiredISO).getTime();
+      });
+
+      if (recentlyModified.length === 0) {
+        return { shouldFire: false, contextData: {} };
+      }
+
+      // Build rich context with actual record data
+      const changedRecords = recentlyModified.slice(0, 10).map((page) => {
+        const cells = page.properties || {};
+        // Find a title/name field
+        const name = Object.values(cells).find((v) => typeof v === "string" && v.length > 0) || page.id;
+        return {
+          id: page.id,
+          name: typeof name === "string" ? name : page.id,
+          changed_field: watchedField || "(any)",
+          new_value: watchedField ? (cells[watchedField] ?? "") : null,
+          cells,
+        };
+      });
+
       return {
         shouldFire: true,
-        contextData: { matched_count: results.length },
+        contextData: {
+          matched_count: recentlyModified.length,
+          changed_records: changedRecords,
+        },
       };
     }
     case "page_created": {
@@ -245,9 +299,20 @@ async function checkEventTrigger(rule, opts) {
         if (!createdTime) return false;
         return new Date(createdTime).getTime() > new Date(lastFiredISO).getTime();
       });
+
+      const newRecords = created.slice(0, 10).map((page) => {
+        const cells = page.properties || {};
+        const name = Object.values(cells).find((v) => typeof v === "string" && v.length > 0) || page.id;
+        return { id: page.id, name: typeof name === "string" ? name : page.id, cells };
+      });
+
       return {
         shouldFire: created.length > 0,
-        contextData: { new_count: created.length },
+        contextData: {
+          new_count: created.length,
+          matched_count: created.length,
+          changed_records: newRecords,
+        },
       };
     }
     default:
@@ -343,6 +408,15 @@ export function createAutomationEngine(opts) {
       if (_executing.has(rule.id)) {
         console.log(LOG_PREFIX, `Rule "${rule.name}" already executing — skipping`);
         continue;
+      }
+
+      // Dedup: skip if server cron already fired this rule within the tick window
+      if (rule.lastFired) {
+        const lastFiredMs = new Date(rule.lastFired).getTime();
+        if (!isNaN(lastFiredMs) && (now.getTime() - lastFiredMs) < _currentIntervalMs) {
+          console.log(LOG_PREFIX, `Rule "${rule.name}" already fired within tick window — skipping (server dedup)`);
+          continue;
+        }
       }
 
       const verdict = evaluateTrigger(rule, now);

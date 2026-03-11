@@ -6,7 +6,7 @@
 import React, { useState, useCallback, useRef, useMemo } from "react";
 import ChatUI from "../core/ChatUI.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { runAgent, extractChoices } from "../agent/runAgent.js";
+import { runAgent, runAgentMultiPhase, shouldUseMultiPhase, extractChoices } from "../agent/runAgent.js";
 import { WASABI_TOOLS } from "../agent/tools.js";
 import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createToolExecutor } from "../agent/toolExecutor.js";
@@ -99,6 +99,16 @@ function buildDataSummary(data, schema) {
   }
 
   return lines.join("\n");
+}
+
+// ── Dynamic token budget based on message complexity ──
+function getTokenBudget(text, conversationDepth) {
+  if (text.length < 80 && conversationDepth < 3) return { maxTokens: 1024, maxIterations: 6 };
+  if (/build|create|design|setup|implement|system|track|manage/i.test(text) && text.length > 150)
+    return { maxTokens: 4096, maxIterations: 12 };
+  if (/analyze|summarize|compare|report|show|find/i.test(text))
+    return { maxTokens: 2048, maxIterations: 8 };
+  return { maxTokens: 2048, maxIterations: 8 };
 }
 
 // Walk up the page tree to find the workspace ancestor
@@ -224,19 +234,38 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
 
       const conn = getConnection();
       const wUrl = user?.workerUrl || conn?.workerUrl;
-      let { text: reply, history, toolCalls } = await runAgent({
-        messages: newHistory,
-        systemPrompt,
-        tools: WASABI_TOOLS,
-        model,
-        workerUrl: wUrl,
-        claudeKey: user?.claudeKey || "",
-        executeTool: toolExecutor,
-        abortRef,
-        maxTokens: 2048,
-        tier,
-        routeReason: reason,
-      });
+      const chatBudget = getTokenBudget(agentText, historyRef.current.length);
+      const useMultiPhase = shouldUseMultiPhase(agentText) && historyRef.current.length <= 2;
+
+      let { text: reply, history, toolCalls } = useMultiPhase
+        ? await runAgentMultiPhase({
+            messages: newHistory,
+            systemPrompt,
+            orientTools: WASABI_TOOLS,
+            executeTools: WASABI_TOOLS,
+            model,
+            workerUrl: wUrl,
+            claudeKey: user?.claudeKey || "",
+            executeTool: toolExecutor,
+            abortRef,
+            maxTokens: chatBudget.maxTokens,
+            tier,
+            routeReason: reason,
+          })
+        : await runAgent({
+            messages: newHistory,
+            systemPrompt,
+            tools: WASABI_TOOLS,
+            model,
+            workerUrl: wUrl,
+            claudeKey: user?.claudeKey || "",
+            executeTool: toolExecutor,
+            abortRef,
+            maxTokens: chatBudget.maxTokens,
+            maxIterations: chatBudget.maxIterations,
+            tier,
+            routeReason: reason,
+          });
 
       // Auto-escalation: if Haiku gave a weak response, retry with Sonnet
       if (tier === "haiku" && !modelOverride && shouldEscalate(reply, agentText, toolCalls.length > 0)) {
@@ -251,7 +280,8 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
           claudeKey: user?.claudeKey || "",
           executeTool: toolExecutor,
           abortRef,
-          maxTokens: 2048,
+          maxTokens: chatBudget.maxTokens,
+          maxIterations: chatBudget.maxIterations,
           tier: "sonnet",
           routeReason: "auto_escalation",
         });

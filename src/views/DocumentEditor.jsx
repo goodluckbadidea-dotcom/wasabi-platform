@@ -115,6 +115,8 @@ function walkNodesWithHref(node, annotations, href, segments) {
       const ann = { ...annotations };
       if (tag === "strong" || tag === "b") ann.bold = true;
       else if (tag === "em" || tag === "i") ann.italic = true;
+      else if (tag === "s" || tag === "strike" || tag === "del") ann.strikethrough = true;
+      else if (tag === "u") ann.underline = true;
       else if (tag === "code") ann.code = true;
       walkNodesWithHref(child, ann, href, segments);
     }
@@ -159,7 +161,8 @@ function sameAnnotations(a, b) {
     !!a.italic === !!b.italic &&
     !!a.strikethrough === !!b.strikethrough &&
     !!a.underline === !!b.underline &&
-    !!a.code === !!b.code
+    !!a.code === !!b.code &&
+    (a.color || "default") === (b.color || "default")
   );
 }
 
