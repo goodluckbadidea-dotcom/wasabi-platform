@@ -414,7 +414,7 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
   }, [schema]);
 
   return (
-    <div style={ds.overlay} onClick={onClose}>
+    <div style={ds.overlay} onClick={onClose} onKeyDown={(e) => e.stopPropagation()}>
       <div style={ds.drawer} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div style={ds.header}>

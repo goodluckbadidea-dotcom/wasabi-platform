@@ -318,8 +318,11 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
     if (!el) return;
 
     const handleKeyDown = (e) => {
-      // Don't capture when typing in search input
-      if (e.target.tagName === "INPUT") return;
+      // Don't capture when typing in inputs, textareas, selects, or contentEditable
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" ||
+          e.target.tagName === "SELECT" || e.target.isContentEditable) return;
+      // Don't capture when a modal is open
+      if (detailPage || showNewModal) return;
 
       switch (e.key) {
         case "ArrowUp":
@@ -366,7 +369,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
 
     el.addEventListener("keydown", handleKeyDown);
     return () => el.removeEventListener("keydown", handleKeyDown);
-  }, [rows.length, zoomIndex, zoom.pxPerDay, todayOffset, handleZoomChange]);
+  }, [rows.length, zoomIndex, zoom.pxPerDay, todayOffset, handleZoomChange, detailPage, showNewModal]);
 
   // Scroll selected row into view
   useEffect(() => {

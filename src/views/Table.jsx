@@ -3,6 +3,7 @@
 // The primary view for any Notion database.
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { C, FONT, RADIUS, SHADOW, getStatusColor, getSolidPillColor } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { ANIM, injectAnimations } from "../design/animations.js";
@@ -169,10 +170,11 @@ const styles = {
     overflowY: "auto",
     overflowX: "auto",
     background: C.darkSurf,
+    WebkitOverflowScrolling: "touch",
   },
 
   table: {
-    width: "100%",
+    minWidth: "100%",
     borderCollapse: "collapse",
     fontSize: 13,
     tableLayout: "auto",
@@ -868,6 +870,19 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   // ── Virtualization ──
   const [scrollTop, setScrollTop] = useState(0);
   const scrollRAF = useRef(null);
+  const [containerHeight, setContainerHeight] = useState(600);
+
+  // Stable containerHeight via ResizeObserver
+  useEffect(() => {
+    const el = scrollAreaRef.current;
+    if (!el) return;
+    setContainerHeight(el.clientHeight);
+    const ro = new ResizeObserver(([entry]) => {
+      setContainerHeight(entry.contentRect.height);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // ── Cell Linking ──
   const { resolveLinksForView, createLink, removeLink, getLinksForTarget } = useLinks();
@@ -1838,8 +1853,10 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
         style={styles.scrollArea}
         onScroll={(e) => {
           if (scrollRAF.current) cancelAnimationFrame(scrollRAF.current);
+          const target = e.target;
           scrollRAF.current = requestAnimationFrame(() => {
-            setScrollTop(e.target.scrollTop);
+            const newTop = target.scrollTop;
+            setScrollTop(prev => prev === newTop ? prev : newTop);
           });
         }}
       >
@@ -1857,7 +1874,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
             </button>
           </div>
         ) : (
-          <table style={{ ...styles.table, tableLayout: "fixed" }}>
+          <table style={styles.table}>
             <thead>
               <tr>
                 {/* Select-all checkbox */}
@@ -1885,14 +1902,18 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                       style={{
                         ...styles.th,
                         ...(isActive ? styles.thActive : {}),
-                        ...(colWidths[col] ? { width: colWidths[col], minWidth: colWidths[col] } : {}),
+                        minWidth: colWidths[col] || 120,
+                        ...(colWidths[col] ? { width: colWidths[col] } : {}),
                         ...(isDragOver ? { borderLeft: `2px solid ${C.accent}` } : {}),
                         position: "relative",
                         cursor: colDrag ? "grabbing" : "pointer",
                       }}
                       onClick={(e) => {
-                        if (isD1Table && e.detail === 2) { e.stopPropagation(); setRenamingCol(col); setRenameValue(col); return; }
-                        handleSort(col);
+                        e.preventDefault();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const menuW = 180;
+                        const x = Math.min(rect.left, window.innerWidth - menuW);
+                        setColCtxMenu({ col, x, y: rect.bottom + 2 });
                       }}
                       onContextMenu={(e) => handleColRightClick(col, e)}
                       onMouseDown={(e) => { if (e.button === 0 && !e.target.closest("[data-resize]")) handleColDragStart(col, e); }}
@@ -1948,7 +1969,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                 })}
                 {/* Add column button */}
                 {isD1Table && (
-                  <th style={{ ...styles.th, width: 44, minWidth: 44, textAlign: "center", padding: "10px 8px" }}>
+                  <th style={{ ...styles.th, width: 44, minWidth: 44, textAlign: "center", padding: "10px 8px", position: "sticky", right: 0, zIndex: 2, background: C.darkSurf }}>
                     {addColOpen ? (
                       <div
                         style={{
@@ -2048,7 +2069,6 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
             <tbody>
               {/* Virtualized rows */}
               {(() => {
-                const containerHeight = scrollAreaRef.current?.clientHeight || 600;
                 const totalRows = processedData.length;
                 const visibleStart = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - VIRT_BUFFER);
                 const visibleEnd = Math.min(totalRows, Math.ceil((scrollTop + containerHeight) / ROW_HEIGHT) + VIRT_BUFFER);
@@ -2373,8 +2393,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
       )}
 
       {/* Cell Link Picker */}
-      {/* Column Context Menu */}
-      {colCtxMenu && (
+      {/* Column Context Menu (portal to escape overflow:hidden + transform ancestors) */}
+      {colCtxMenu && createPortal(
         <>
           <div style={{ position: "fixed", inset: 0, zIndex: 299 }} onMouseDown={() => setColCtxMenu(null)} />
           <div
@@ -2462,7 +2482,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
               </>
             )}
           </div>
-        </>
+        </>,
+        document.body
       )}
 
       {linkPickerCell && (

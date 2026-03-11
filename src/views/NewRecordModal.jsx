@@ -104,7 +104,7 @@ export default function NewRecordModal({ schema, onClose, onCreate, databaseId, 
   }, [values, fields, titleField, onCreate, databaseId, onClose]);
 
   return (
-    <div style={ms.overlay} onClick={onClose}>
+    <div style={ms.overlay} onClick={onClose} onKeyDown={(e) => e.stopPropagation()}>
       <div style={ms.modal} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div style={ms.header}>
