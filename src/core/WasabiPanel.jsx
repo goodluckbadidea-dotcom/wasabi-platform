@@ -497,7 +497,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
         // ── Build execution hints from classification ──
         let classifierHints = "";
         if (classification.strategy === "parallel_fetch" && classification.data_sources?.length >= 2) {
-          classifierHints = `\n## Execution Hint\nThis query involves ${classification.data_sources.length} data sources: ${classification.data_sources.join(", ")}. Use \`delegate_task\` to query each source in parallel with separate sub-agents, then synthesize the results. This is faster and cheaper than sequential queries.`;
+          classifierHints = `\n## Execution Hint\nThis query involves ${classification.data_sources.length} data sources: ${classification.data_sources.join(", ")}. Query each source directly for accurate results.`;
         }
         if (classification.estimated_tools >= 5 && classification.plan_summary) {
           classifierHints += `\n## Query Plan\nBriefly state your plan in one sentence before executing, then proceed: "${classification.plan_summary}"`;

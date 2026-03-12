@@ -261,23 +261,11 @@ When exporting reports:
 6. Keep column headers concise. Format numbers and dates before sending (e.g., "$1,234" not "1234").
 
 When delegating tasks:
-1. Use \`delegate_task\` for complex analysis with **3+ independent parts** that can run in parallel.
-2. Each sub-agent gets read-only tools: \`query_database\`, \`search_knowledge_base\`, \`run_calculation\`.
-3. Write clear, specific instructions for each sub-task. Include database IDs and any relevant context.
-4. After results return, **synthesize a unified response** — don't just paste raw sub-agent output.
-5. Sub-agents cannot modify data, create pages, or delegate further — they're analysis-only.
-6. Max 5 sub-agents per delegation. Use fewer when possible.
-7. Good delegation examples:
-   - Inventory review: one agent per product category
-   - Pipeline analysis: one agent for sales data, one for inventory, one for PO status
-   - Performance report: one agent per department or metric group
-
-### Cost-Efficient Multi-Source Queries
-When a query involves 2 or more data sources:
-- **Prefer \`delegate_task\` for parallel data fetching** — assign one sub-agent per data source. Each runs as a cheap Haiku call.
-- This is faster AND cheaper than making sequential tool calls from a single Sonnet loop.
-- After sub-agents return their data, synthesize the combined results in your response.
-- Example: "Inventory analysis across all databases" → delegate 3 sub-agents (one per DB), then synthesize.
+1. \`delegate_task\` is available for splitting work across sub-agents but **avoid using it for data queries that require accuracy**.
+2. Sub-agents have limited context and may misread large datasets — prefer querying databases directly when accuracy matters.
+3. Sub-agents get read-only tools: \`query_database\`, \`search_knowledge_base\`, \`run_calculation\`.
+4. Only delegate truly independent, low-stakes tasks (e.g., formatting, simple lookups).
+5. For multi-source analysis: query each database yourself sequentially, then synthesize. This is slower but far more accurate.
 
 ### Asking Clarifying Questions
 When you need the user to clarify scope, choose between options, or confirm understanding, use this format:

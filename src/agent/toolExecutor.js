@@ -1077,7 +1077,7 @@ export function createToolExecutor({
 
         try {
           const { runAgent } = await import("./runAgent.js");
-          const { HAIKU } = await import("./aiRouter.js");
+          const { SONNET } = await import("./aiRouter.js");
           const { WASABI_TOOLS: allTools } = await import("./tools.js");
 
           // Sub-agents get read-only tools only
@@ -1097,12 +1097,12 @@ export function createToolExecutor({
                   role: "user",
                   content: `${task.instruction}\n\n${task.context ? `Context:\n${task.context}` : ""}`,
                 }];
-                const systemPrompt = "You are a focused analysis sub-agent. Answer the specific question using the tools available. Be precise, cite data sources, and return a structured summary. Do NOT fabricate data — only report what tools return.";
+                const systemPrompt = "You are a focused analysis sub-agent. Answer the specific question using the tools available. Be precise with numbers — report EXACTLY what tools return, do not round, estimate, or summarize counts unless asked. Cite specific records.";
                 const result = await runAgent({
                   messages,
                   tools: subAgentTools,
                   systemPrompt,
-                  model: HAIKU,
+                  model: SONNET,
                   workerUrl,
                   claudeKey,
                   executeTool: subExecutor,
