@@ -122,6 +122,7 @@ export function routeWithClassification({
   classification,
   override = null,
   conversationDepth = 0,
+  hasSpecificKBContext = false,
 }) {
   // Explicit override always wins
   if (override === "sonnet")
@@ -131,6 +132,11 @@ export function routeWithClassification({
 
   if (!classification) {
     return { model: HAIKU, tier: "haiku", reason: "no_classification" };
+  }
+
+  // Domain-specific KB context (non-general tags) → always Sonnet for accuracy
+  if (hasSpecificKBContext) {
+    return { model: SONNET, tier: "sonnet", reason: "kb_domain_context" };
   }
 
   // Simple queries with NO data tools → Haiku (greetings, simple text answers)

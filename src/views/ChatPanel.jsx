@@ -109,12 +109,17 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
 
       // Auto-search KB for relevant context (call D1 API directly, not toolExecutor)
       let kbContext = "";
+      let hasSpecificKBContext = false;
       try {
         const kbResult = await apiSearchKB(agentText);
         if (kbResult?.results?.length > 0) {
           kbContext = kbResult.results.slice(0, 5).map((r) =>
             `- **${r.key || r.title || "Note"}** [${r.category || "general"}]: ${(r.content || r.value || "").slice(0, 300)}`
           ).join("\n");
+          // Check if any KB hit has a non-general tag (domain-specific context → force Sonnet)
+          hasSpecificKBContext = kbResult.results.slice(0, 5).some((r) =>
+            r.category && r.category !== "general"
+          );
         }
       } catch (_) { /* KB search is best-effort */ }
 
@@ -194,6 +199,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
         classification,
         override: modelOverride,
         conversationDepth: historyRef.current.length,
+        hasSpecificKBContext,
       });
       setLastTier(tier);
 

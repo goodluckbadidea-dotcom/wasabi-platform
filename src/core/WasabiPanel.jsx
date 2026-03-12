@@ -377,12 +377,17 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
         // Auto-search KB for relevant context (call D1 API directly, not toolExecutor)
         setChatStatus("Searching knowledge base...");
         let kbContext = "";
+        let hasSpecificKBContext = false;
         try {
           const kbResult = await api.searchKB(agentText);
           if (kbResult?.results?.length > 0) {
             kbContext = kbResult.results.slice(0, 5).map((r) =>
               `- **${r.key || r.title || "Note"}** [${r.category || "general"}]: ${(r.content || r.value || "").slice(0, 300)}`
             ).join("\n");
+            // Check if any KB hit has a non-general tag (domain-specific context → force Sonnet)
+            hasSpecificKBContext = kbResult.results.slice(0, 5).some((r) =>
+              r.category && r.category !== "general"
+            );
           }
         } catch (_) { /* KB search is best-effort */ }
 
@@ -491,6 +496,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
           classification,
           override: modelOverride,
           conversationDepth: chatHistoryRef.current.length,
+          hasSpecificKBContext,
         });
         setLastTier(tier);
 
