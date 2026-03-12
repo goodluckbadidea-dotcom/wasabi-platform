@@ -895,6 +895,138 @@ export function createToolExecutor({
         }
       }
 
+      // ─── Calculation Sandbox ───
+
+      case "run_calculation": {
+        const { datasets, code, description } = toolInput;
+        if (!code) return JSON.stringify({ error: "No code provided." });
+
+        try {
+          // ── Helper functions available in the sandbox ──
+          const sum = (arr) => {
+            if (!Array.isArray(arr)) return 0;
+            return arr.reduce((a, b) => a + (Number(b) || 0), 0);
+          };
+          const avg = (arr) => {
+            if (!Array.isArray(arr) || arr.length === 0) return 0;
+            return sum(arr) / arr.length;
+          };
+          const min = (arr) => {
+            const nums = (arr || []).map(Number).filter((n) => !isNaN(n));
+            return nums.length ? Math.min(...nums) : 0;
+          };
+          const max = (arr) => {
+            const nums = (arr || []).map(Number).filter((n) => !isNaN(n));
+            return nums.length ? Math.max(...nums) : 0;
+          };
+          const groupBy = (arr, key) => {
+            const groups = {};
+            for (const item of (arr || [])) {
+              const k = String(item?.[key] ?? "_none");
+              (groups[k] = groups[k] || []).push(item);
+            }
+            return groups;
+          };
+          const sortBy = (arr, key, dir = "asc") =>
+            [...(arr || [])].sort((a, b) => {
+              const va = a?.[key], vb = b?.[key];
+              const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+              return dir === "desc" ? -cmp : cmp;
+            });
+          const unique = (arr, key) =>
+            [...new Set((arr || []).map((item) => (key ? item?.[key] : item)))].filter((v) => v != null);
+          const round = (n, d = 2) => {
+            const factor = Math.pow(10, d);
+            return Math.round((Number(n) || 0) * factor) / factor;
+          };
+          const dateAdd = (dateStr, days) => {
+            const d = new Date(dateStr);
+            d.setDate(d.getDate() + days);
+            return d.toISOString().split("T")[0];
+          };
+          const dateDiff = (dateStr1, dateStr2) => {
+            const d1 = new Date(dateStr1);
+            const d2 = new Date(dateStr2);
+            return Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
+          };
+          const weeksBetween = (dateStr1, dateStr2) => {
+            return round(dateDiff(dateStr1, dateStr2) / 7, 1);
+          };
+
+          // ── Execute in sandbox ──
+          // Try as expression first (IIFE), fall back to statements with implicit return
+          let fnBody;
+          const trimmed = code.trim();
+          if (trimmed.startsWith("(function") || trimmed.startsWith("(()")) {
+            // IIFE — wrap in return
+            fnBody = `"use strict";\nreturn (${trimmed});`;
+          } else if (trimmed.includes("return ")) {
+            // Contains return statement — wrap in a block
+            fnBody = `"use strict";\n${trimmed}`;
+          } else {
+            // Pure expression or statements — try as expression first
+            fnBody = `"use strict";\nreturn (${trimmed});`;
+          }
+
+          let fn;
+          try {
+            fn = new Function(
+              "datasets",
+              "sum", "avg", "min", "max",
+              "groupBy", "sortBy", "unique", "round",
+              "dateAdd", "dateDiff", "weeksBetween",
+              fnBody
+            );
+          } catch {
+            // Expression parse failed — try as statements (last expression not returned)
+            fn = new Function(
+              "datasets",
+              "sum", "avg", "min", "max",
+              "groupBy", "sortBy", "unique", "round",
+              "dateAdd", "dateDiff", "weeksBetween",
+              `"use strict";\n${trimmed}`
+            );
+          }
+
+          const result = fn(
+            datasets || {},
+            sum, avg, min, max,
+            groupBy, sortBy, unique, round,
+            dateAdd, dateDiff, weeksBetween
+          );
+
+          // Serialize result (handle large outputs gracefully)
+          const serialized = JSON.stringify(result);
+          const isTruncated = serialized.length > 50000;
+
+          if (isTruncated && Array.isArray(result)) {
+            // For arrays, return a subset with a note
+            const subset = result.slice(0, Math.min(result.length, 200));
+            return JSON.stringify({
+              success: true,
+              description: description || "Calculation completed",
+              result: subset,
+              totalRows: result.length,
+              truncated: true,
+              note: `Result had ${result.length} rows. Showing first ${subset.length}. Ask the user if they need more detail on specific items.`,
+            });
+          }
+
+          return JSON.stringify({
+            success: true,
+            description: description || "Calculation completed",
+            result,
+            truncated: isTruncated,
+          });
+        } catch (err) {
+          return JSON.stringify({
+            error: `Calculation failed: ${err.message}`,
+            description: description || "",
+            hint: "Check your code syntax. Use an IIFE: (function() { ... return result; })()",
+          });
+        }
+      }
+
       default:
         return JSON.stringify({ error: `Unknown tool: ${toolName}` });
     }

@@ -159,6 +159,45 @@ When working with neurons (connections):
 5. Each neuron can optionally have a name (e.g., "Q3 Launch Plan")
 6. After finding neuron connections, selectively query only the connected sources — not everything
 
+When performing calculations or quantitative analysis:
+**Use \`run_calculation\` for any math beyond simple arithmetic.** Do NOT do complex calculations in your head — write code and let it execute deterministically.
+
+USE \`run_calculation\` when you need to:
+- Project inventory/revenue/capacity forward over multiple periods
+- Calculate running balances, cumulative totals, or compounding values
+- Compare values across many records (shortfall analysis, surplus detection)
+- Apply formulas from KB rules (par calculations, reorder points, scoring models)
+- Run what-if scenarios ("what if this PO is 2 weeks late?")
+- Score, rank, or sort items by multi-factor criteria
+- Compute rates, trends, or moving averages from historical data
+- Cross-reference datasets (match SKUs across inventory + sales + POs)
+
+DO NOT use \`run_calculation\` for:
+- Simple counts ("how many records have status X?" — just count the query results)
+- Single arithmetic operations ("what's 150 / 12?" — just say 12.5)
+- Displaying raw query results without transformation
+
+Workflow:
+1. Query all required data first (query_database / cross_database_query)
+2. Check KB for any domain rules, formulas, or thresholds that apply
+3. Call \`run_calculation\` with:
+   - \`datasets\`: the queried data as named arrays (e.g., { inventory: [...], sales: [...] })
+   - \`code\`: JavaScript IIFE that processes the data. Example:
+     \`(function() {
+       const rates = {};
+       for (const s of datasets.sales) {
+         rates[s.SKU] = (rates[s.SKU] || 0) + Number(s.Quantity || 0);
+       }
+       return Object.entries(rates).map(([sku, total]) => ({
+         sku, totalSold: total, weeklyRate: round(total / 12, 1)
+       }));
+     })()\`
+   - \`description\`: what the calculation does (shown to user)
+4. Interpret the results — present findings in tables, highlight critical items, make recommendations
+5. Show your methodology: briefly explain what was calculated and which data fed into it
+
+Available helpers: sum(arr), avg(arr), min(arr), max(arr), groupBy(arr, key), sortBy(arr, key, dir), unique(arr, key), round(n, decimals), dateAdd(dateStr, days), dateDiff(dateStr1, dateStr2), weeksBetween(dateStr1, dateStr2)
+
 Always offer clickable choices when there are multiple valid paths forward.`;
 
 const SYSTEM_BUILDER = `## Building Complete Systems

@@ -398,6 +398,43 @@ const CREATE_NEURON = {
   },
 };
 
+// ─── CALCULATION TOOL ───
+
+const RUN_CALCULATION = {
+  name: "run_calculation",
+  description: `Execute JavaScript code against queried datasets for precise, deterministic calculations. Use this instead of doing math in your head — especially for projections, running balances, time-series analysis, scoring, ranking, what-if scenarios, cumulative calculations, or anything involving more than simple arithmetic.
+
+How to use:
+1. First query your data with query_database or cross_database_query
+2. Pass the query results as named datasets
+3. Write JavaScript that processes the data and returns structured results
+4. The result is returned to you for interpretation
+
+Available in the sandbox:
+- \`datasets\` — object with your named data arrays
+- Helper functions: sum(arr), avg(arr), min(arr), max(arr), groupBy(arr, key), sortBy(arr, key, dir), unique(arr, key), round(n, decimals), dateAdd(dateStr, days), dateDiff(dateStr1, dateStr2), weeksBetween(dateStr1, dateStr2)
+
+Your code must return a value — use an IIFE: (function() { ... return result; })()`,
+  input_schema: {
+    type: "object",
+    properties: {
+      datasets: {
+        type: "object",
+        description: "Named datasets from previous query results. Pass the actual record arrays. E.g., { inventory: [...records...], sales: [...records...], purchaseOrders: [...records...] }",
+      },
+      code: {
+        type: "string",
+        description: "JavaScript code to execute. Access data via `datasets` object and helpers via function names. Must return JSON-serializable data. Use an IIFE: (function() { const results = []; ... return results; })()",
+      },
+      description: {
+        type: "string",
+        description: "Brief description of what this calculation does (shown to user for transparency).",
+      },
+    },
+    required: ["datasets", "code", "description"],
+  },
+};
+
 // ─── TOOL SETS ───
 
 export const WASABI_TOOLS = [
@@ -418,6 +455,7 @@ export const WASABI_TOOLS = [
   SMART_MATCH_RECORDS,
   QUERY_NEURONS,
   CREATE_NEURON,
+  RUN_CALCULATION,
 ];
 
 export const AUTO_TOOLS = [
