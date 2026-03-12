@@ -133,28 +133,24 @@ export function routeWithClassification({
     return { model: HAIKU, tier: "haiku", reason: "no_classification" };
   }
 
-  // Simple queries → Haiku
-  if (classification.complexity === "simple") {
-    return { model: HAIKU, tier: "haiku", reason: "classifier_simple" };
+  // Simple queries with NO data tools → Haiku (greetings, simple text answers)
+  if (classification.complexity === "simple" && classification.estimated_tools <= 1) {
+    return { model: HAIKU, tier: "haiku", reason: "classifier_simple_no_tools" };
   }
 
-  // Parallel fetch → Sonnet (needs synthesis capabilities)
-  if (classification.strategy === "parallel_fetch") {
-    return { model: SONNET, tier: "sonnet", reason: "classifier_parallel_synthesis" };
-  }
+  // Everything involving data tools (2+ estimated) → Sonnet
+  // Haiku hallucinates data when synthesizing database query results
+  const reason = classification.strategy === "parallel_fetch"
+    ? "classifier_parallel_synthesis"
+    : classification.complexity === "complex"
+      ? "classifier_complex"
+      : classification.estimated_tools >= 2
+        ? "classifier_data_query"
+        : conversationDepth > 8
+          ? "classifier_deep_conversation"
+          : "classifier_moderate_with_tools";
 
-  // Complex or high tool count → Sonnet
-  if (classification.complexity === "complex" || classification.estimated_tools >= 5) {
-    return { model: SONNET, tier: "sonnet", reason: "classifier_complex" };
-  }
-
-  // Deep conversations → Sonnet (more context to track)
-  if (conversationDepth > 8) {
-    return { model: SONNET, tier: "sonnet", reason: "classifier_deep_conversation" };
-  }
-
-  // Moderate → Haiku (with auto-escalation safety net)
-  return { model: HAIKU, tier: "haiku", reason: "classifier_moderate" };
+  return { model: SONNET, tier: "sonnet", reason };
 }
 
 /**

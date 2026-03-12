@@ -129,6 +129,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
   const [lastTier, setLastTier] = useState(null); // tracks last auto-routed tier
   const chatHistoryRef = useRef([]);
   const chatAbortRef = useRef(false);
+  const pendingClassificationRef = useRef(null); // stored when showing clarifying questions
 
   // ── Tool approval state (for "confirm" mode) ──
   const [pendingApproval, setPendingApproval] = useState(null);
@@ -372,15 +373,14 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
           schemaText: pageSchema ? JSON.stringify(pageSchema, null, 2) : "",
         } : undefined;
 
-        // Auto-search KB for relevant context
+        // Auto-search KB for relevant context (call D1 API directly, not toolExecutor)
         setChatStatus("Searching knowledge base...");
         let kbContext = "";
         try {
-          const kbResult = await toolExecutor("search_knowledge_base", { query: agentText });
-          const parsed = typeof kbResult === "string" ? JSON.parse(kbResult) : kbResult;
-          if (parsed?.results?.length > 0) {
-            kbContext = parsed.results.slice(0, 5).map((r) =>
-              `- **${r.key || r.title || "Note"}**: ${(r.content || r.value || "").slice(0, 300)}`
+          const kbResult = await api.searchKB(agentText);
+          if (kbResult?.results?.length > 0) {
+            kbContext = kbResult.results.slice(0, 5).map((r) =>
+              `- **${r.key || r.title || "Note"}** [${r.category || "general"}]: ${(r.content || r.value || "").slice(0, 300)}`
             ).join("\n");
           }
         } catch (_) { /* KB search is best-effort */ }
@@ -448,16 +448,27 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
         const wUrl = user?.workerUrl || conn?.workerUrl;
 
         // ── Query Classification (Haiku pre-check) ──
-        setChatStatus("Analyzing query...");
-        const classification = await classifyQuery({
-          text: agentText,
-          workspaceSummary: workspaceSummary || "",
-          tools: WASABI_TOOLS,
-          workerUrl: wUrl,
-          claudeKey: user?.claudeKey || "",
-          conversationDepth: chatHistoryRef.current.length,
-        });
-        console.log("[QueryClassifier]", classification.strategy, classification.complexity, `est:${classification.estimated_tools} tools`);
+        // If we have a stored classification from a clarification exchange, reuse it
+        let classification;
+        const storedClassification = pendingClassificationRef.current;
+
+        if (storedClassification) {
+          // User is answering a clarifying question — use the original classification
+          classification = storedClassification;
+          pendingClassificationRef.current = null; // consume it
+          console.log("[QueryClassifier] Reusing stored classification:", classification.strategy, classification.complexity, `est:${classification.estimated_tools} tools`);
+        } else {
+          setChatStatus("Analyzing query...");
+          classification = await classifyQuery({
+            text: agentText,
+            workspaceSummary: workspaceSummary || "",
+            tools: WASABI_TOOLS,
+            workerUrl: wUrl,
+            claudeKey: user?.claudeKey || "",
+            conversationDepth: chatHistoryRef.current.length,
+          });
+          console.log("[QueryClassifier]", classification.strategy, classification.complexity, `est:${classification.estimated_tools} tools`);
+        }
 
         // ── Short-circuit: clarify first (or show plan for expensive queries) ──
         if (classification.needs_clarification || (classification.estimated_tools >= 5 && classification.plan_summary)) {
@@ -466,6 +477,8 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
             const extracted = extractQuestions(clarifyMsg);
             setChatMessages((prev) => [...prev, { role: "assistant", content: clarifyMsg.replace(/\[Q:.*?\]/g, "").trim() }]);
             setChatChoices(extracted);
+            // Store classification so the user's answer inherits the complexity
+            pendingClassificationRef.current = { ...classification, needs_clarification: false };
             setChatLoading(false);
             setChatStatus("");
             return;

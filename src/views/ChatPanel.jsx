@@ -10,7 +10,7 @@ import { runAgent, runAgentMultiPhase, extractQuestions } from "../agent/runAgen
 import { WASABI_TOOLS } from "../agent/tools.js";
 import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createToolExecutor } from "../agent/toolExecutor.js";
-import { getConnection } from "../lib/api.js";
+import { getConnection, searchKB as apiSearchKB } from "../lib/api.js";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import WasabiOrb from "../core/WasabiOrb.jsx";
 import { loadCachedNeurons } from "../neurons/neuronStorage.js";
@@ -30,6 +30,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
   const [lastTier, setLastTier] = useState(null); // tracks last auto-routed tier
   const historyRef = useRef([]);
   const abortRef = useRef(false);
+  const pendingClassificationRef = useRef(null); // stored when showing clarifying questions
 
   // ── Tool approval state (for "confirm" mode) ──
   const [pendingApproval, setPendingApproval] = useState(null);
@@ -105,14 +106,13 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
         }
       } catch (_) { /* best effort */ }
 
-      // Auto-search KB for relevant context
+      // Auto-search KB for relevant context (call D1 API directly, not toolExecutor)
       let kbContext = "";
       try {
-        const kbResult = await toolExecutor("search_knowledge_base", { query: agentText });
-        const parsed = typeof kbResult === "string" ? JSON.parse(kbResult) : kbResult;
-        if (parsed?.results?.length > 0) {
-          kbContext = parsed.results.slice(0, 5).map((r) =>
-            `- **${r.key || r.title || "Note"}**: ${(r.content || r.value || "").slice(0, 300)}`
+        const kbResult = await apiSearchKB(agentText);
+        if (kbResult?.results?.length > 0) {
+          kbContext = kbResult.results.slice(0, 5).map((r) =>
+            `- **${r.key || r.title || "Note"}** [${r.category || "general"}]: ${(r.content || r.value || "").slice(0, 300)}`
           ).join("\n");
         }
       } catch (_) { /* KB search is best-effort */ }
@@ -151,16 +151,27 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
       const conn = getConnection();
       const wUrl = user?.workerUrl || conn?.workerUrl;
 
-      setChatStatus("Analyzing query...");
-      const classification = await classifyQuery({
-        text: agentText,
-        workspaceSummary: "", // Page-level chat — no workspace summary needed
-        tools: WASABI_TOOLS,
-        workerUrl: wUrl,
-        claudeKey: user?.claudeKey || "",
-        conversationDepth: historyRef.current.length,
-      });
-      console.log("[QueryClassifier]", classification.strategy, classification.complexity, `est:${classification.estimated_tools} tools`);
+      // If we have a stored classification from a clarification exchange, reuse it
+      let classification;
+      const storedClassification = pendingClassificationRef.current;
+
+      if (storedClassification) {
+        // User is answering a clarifying question — use the original classification
+        classification = storedClassification;
+        pendingClassificationRef.current = null; // consume it
+        console.log("[QueryClassifier] Reusing stored classification:", classification.strategy, classification.complexity, `est:${classification.estimated_tools} tools`);
+      } else {
+        setChatStatus("Analyzing query...");
+        classification = await classifyQuery({
+          text: agentText,
+          workspaceSummary: "", // Page-level chat — no workspace summary needed
+          tools: WASABI_TOOLS,
+          workerUrl: wUrl,
+          claudeKey: user?.claudeKey || "",
+          conversationDepth: historyRef.current.length,
+        });
+        console.log("[QueryClassifier]", classification.strategy, classification.complexity, `est:${classification.estimated_tools} tools`);
+      }
 
       // ── Short-circuit: clarify first (or show plan for expensive queries) ──
       if (classification.needs_clarification || (classification.estimated_tools >= 5 && classification.plan_summary)) {
@@ -169,6 +180,8 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
           const extracted = extractQuestions(clarifyMsg);
           setDisplayMessages((prev) => [...prev, { role: "assistant", content: clarifyMsg.replace(/\[Q:.*?\]/g, "").trim() }]);
           setChoices(extracted);
+          // Store classification so the user's answer inherits the complexity
+          pendingClassificationRef.current = { ...classification, needs_clarification: false };
           setIsLoading(false);
           setChatStatus("");
           return;
