@@ -109,6 +109,55 @@ export function shouldEscalate(responseText, userText, hadToolCalls) {
 }
 
 /**
+ * Route using query classifier output for smarter model selection.
+ * Falls back to keyword-based routeModel if no classification is provided.
+ *
+ * @param {object} opts
+ * @param {object}      opts.classification     - Result from queryClassifier
+ * @param {string|null} [opts.override]         - "sonnet" | "haiku" | null
+ * @param {number}      [opts.conversationDepth] - Number of messages so far
+ * @returns {{ model: string, tier: "haiku"|"sonnet", reason: string }}
+ */
+export function routeWithClassification({
+  classification,
+  override = null,
+  conversationDepth = 0,
+}) {
+  // Explicit override always wins
+  if (override === "sonnet")
+    return { model: SONNET, tier: "sonnet", reason: "user_override" };
+  if (override === "haiku")
+    return { model: HAIKU, tier: "haiku", reason: "user_override" };
+
+  if (!classification) {
+    return { model: HAIKU, tier: "haiku", reason: "no_classification" };
+  }
+
+  // Simple queries → Haiku
+  if (classification.complexity === "simple") {
+    return { model: HAIKU, tier: "haiku", reason: "classifier_simple" };
+  }
+
+  // Parallel fetch → Sonnet (needs synthesis capabilities)
+  if (classification.strategy === "parallel_fetch") {
+    return { model: SONNET, tier: "sonnet", reason: "classifier_parallel_synthesis" };
+  }
+
+  // Complex or high tool count → Sonnet
+  if (classification.complexity === "complex" || classification.estimated_tools >= 5) {
+    return { model: SONNET, tier: "sonnet", reason: "classifier_complex" };
+  }
+
+  // Deep conversations → Sonnet (more context to track)
+  if (conversationDepth > 8) {
+    return { model: SONNET, tier: "sonnet", reason: "classifier_deep_conversation" };
+  }
+
+  // Moderate → Haiku (with auto-escalation safety net)
+  return { model: HAIKU, tier: "haiku", reason: "classifier_moderate" };
+}
+
+/**
  * Check if a request is cacheable.
  * Only pure text responses (no tool use) from single-turn conversations.
  *

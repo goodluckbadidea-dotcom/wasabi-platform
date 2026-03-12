@@ -406,49 +406,31 @@ export async function runAgentMultiPhase({
 }
 
 /**
- * Check if a user message warrants multi-phase execution.
+ * Extract questions from agent response text.
+ * Uses the [Q: question | A: option1 | A: option2] format.
+ * Returns structured question objects for the UI to render.
+ *
+ * @param {string} text - Agent response text
+ * @returns {{ questions: Array<{ question: string, options: Array<{ label: string }>, raw: string }> }}
  */
-export function shouldUseMultiPhase(text) {
-  if (!text || text.length < 200) return false;
-  return /build|create.*system|design|setup|implement|track.*across|manage.*multiple|automat/i.test(text);
-}
-
-/**
- * Extract choices from agent response text.
- * Looks for lines like "1. **Option Name** — description"
- * or button-style markers like [Choice: Label]
- */
-export function extractChoices(text) {
+export function extractQuestions(text) {
   if (!text) return [];
 
-  const choices = [];
+  const questions = [];
 
-  // Pattern: [Choice: Label] or [choice: Label]
-  const choiceRegex = /\[(?:Choice|choice|CHOICE):\s*(.+?)\]/g;
+  // Match [Q: question text | A: answer1 | A: answer2 | ...]
+  const regex = /\[Q:\s*(.+?)\s*(?:\|\s*A:\s*(.+?))\s*(?:\|\s*A:\s*(.+?))?\s*(?:\|\s*A:\s*(.+?))?\s*(?:\|\s*A:\s*(.+?))?\s*\]/g;
   let match;
-  while ((match = choiceRegex.exec(text)) !== null) {
-    choices.push({ label: match[1].trim(), raw: match[0] });
-  }
-
-  if (choices.length > 0) {
-    if (!choices.some(c => /something else|other|custom/i.test(c.label))) {
-      choices.push({ label: "Something else", raw: "[Choice: Something else]" });
+  while ((match = regex.exec(text)) !== null) {
+    const question = match[1].trim();
+    const options = [];
+    for (let i = 2; i <= 5; i++) {
+      if (match[i]) options.push({ label: match[i].trim() });
     }
-    return choices;
-  }
-
-  // Pattern: numbered bold options — "1. **Label** — description"
-  const lines = text.split("\n");
-  for (const line of lines) {
-    const m = line.match(/^\d+\.\s+\*\*(.+?)\*\*/);
-    if (m) {
-      choices.push({ label: m[1].trim(), raw: line.trim() });
+    if (question && options.length >= 2) {
+      questions.push({ question, options, raw: match[0] });
     }
   }
 
-  if (choices.length > 0 && !choices.some(c => /something else|other|custom/i.test(c.label))) {
-    choices.push({ label: "Something else", raw: "[Choice: Something else]" });
-  }
-
-  return choices;
+  return questions;
 }

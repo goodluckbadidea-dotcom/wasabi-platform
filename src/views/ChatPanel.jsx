@@ -6,7 +6,7 @@
 import React, { useState, useCallback, useRef, useMemo } from "react";
 import ChatUI from "../core/ChatUI.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { runAgent, runAgentMultiPhase, shouldUseMultiPhase, extractChoices } from "../agent/runAgent.js";
+import { runAgent, runAgentMultiPhase, extractQuestions } from "../agent/runAgent.js";
 import { WASABI_TOOLS } from "../agent/tools.js";
 import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createToolExecutor } from "../agent/toolExecutor.js";
@@ -14,7 +14,8 @@ import { getConnection } from "../lib/api.js";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import WasabiOrb from "../core/WasabiOrb.jsx";
 import { loadCachedNeurons } from "../neurons/neuronStorage.js";
-import { routeModel, shouldEscalate, SONNET } from "../agent/aiRouter.js";
+import { routeWithClassification, shouldEscalate, SONNET } from "../agent/aiRouter.js";
+import { classifyQuery, formatClassifierResponse } from "../agent/queryClassifier.js";
 import { buildDataSummary, getTokenBudget, findWorkspaceAncestor } from "../agent/dataSummary.js";
 import { getGoogleStatus } from "../lib/api.js";
 import { fetchGoogleContext } from "../google/googleContext.js";
@@ -146,27 +147,68 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
         googleContext,
       });
 
-      // ── Haiku-first smart routing ──
-      const { model, tier, reason } = routeModel({
+      // ── Query Classification (Haiku pre-check) ──
+      const conn = getConnection();
+      const wUrl = user?.workerUrl || conn?.workerUrl;
+
+      setChatStatus("Analyzing query...");
+      const classification = await classifyQuery({
         text: agentText,
+        workspaceSummary: "", // Page-level chat — no workspace summary needed
+        tools: WASABI_TOOLS,
+        workerUrl: wUrl,
+        claudeKey: user?.claudeKey || "",
+        conversationDepth: historyRef.current.length,
+      });
+      console.log("[QueryClassifier]", classification.strategy, classification.complexity, `est:${classification.estimated_tools} tools`);
+
+      // ── Short-circuit: clarify first ──
+      if (classification.strategy === "clarify" && classification.clarifying_questions?.length > 0) {
+        const clarifyMsg = formatClassifierResponse(classification);
+        if (clarifyMsg) {
+          const extracted = extractQuestions(clarifyMsg);
+          setDisplayMessages((prev) => [...prev, { role: "assistant", content: clarifyMsg.replace(/\[Q:.*?\]/g, "").trim() }]);
+          setChoices(extracted);
+          setIsLoading(false);
+          setChatStatus("");
+          return;
+        }
+      }
+
+      // ── Smart model routing using classification ──
+      const { model, tier, reason } = routeWithClassification({
+        classification,
         override: modelOverride,
         conversationDepth: historyRef.current.length,
-        toolCount: WASABI_TOOLS.length,
       });
       setLastTier(tier);
 
+      // ── Build execution hints from classification ──
+      let classifierHints = "";
+      if (classification.strategy === "parallel_fetch" && classification.data_sources?.length >= 2) {
+        classifierHints = `\n## Execution Hint\nThis query involves ${classification.data_sources.length} data sources: ${classification.data_sources.join(", ")}. Use \`delegate_task\` to query each source in parallel with separate sub-agents, then synthesize the results.`;
+      }
+      if (classification.estimated_tools >= 5 && classification.plan_summary) {
+        classifierHints += `\n## Query Plan\nBriefly state your plan in one sentence before executing, then proceed: "${classification.plan_summary}"`;
+      }
+
+      const finalSystemPrompt = classifierHints
+        ? systemPrompt + classifierHints
+        : systemPrompt;
+
       setChatStatus("Thinking...");
-      const conn = getConnection();
-      const wUrl = user?.workerUrl || conn?.workerUrl;
       const chatBudget = getTokenBudget(agentText, historyRef.current.length);
-      const useMultiPhase = shouldUseMultiPhase(agentText) && historyRef.current.length <= 2;
+
+      const useMultiPhase = classification.complexity === "complex"
+        && classification.estimated_tools >= 5
+        && historyRef.current.length <= 2;
 
       const onAgentStatus = (s) => setChatStatus(s);
 
       let { text: reply, history, toolCalls, stopReason } = useMultiPhase
         ? await runAgentMultiPhase({
             messages: newHistory,
-            systemPrompt,
+            systemPrompt: finalSystemPrompt,
             orientTools: WASABI_TOOLS,
             executeTools: WASABI_TOOLS,
             model,
@@ -182,7 +224,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
           })
         : await runAgent({
             messages: newHistory,
-            systemPrompt,
+            systemPrompt: finalSystemPrompt,
             tools: WASABI_TOOLS,
             model,
             workerUrl: wUrl,
@@ -204,7 +246,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
         setChatStatus("Escalating to Sonnet...");
         const escalated = await runAgent({
           messages: newHistory,
-          systemPrompt,
+          systemPrompt: finalSystemPrompt,
           tools: WASABI_TOOLS,
           model: SONNET,
           workerUrl: wUrl,
@@ -225,7 +267,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
 
       historyRef.current = history;
 
-      const extracted = extractChoices(reply);
+      const extracted = extractQuestions(reply);
       let cleanReply = reply;
       for (const c of extracted) {
         cleanReply = cleanReply.replace(c.raw, "").trim();

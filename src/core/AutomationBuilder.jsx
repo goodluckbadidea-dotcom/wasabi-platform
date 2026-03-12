@@ -6,7 +6,7 @@ import React, { useState, useCallback, useRef, useEffect } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import ChatUI from "./ChatUI.jsx";
-import { runAgent, extractChoices } from "../agent/runAgent.js";
+import { runAgent, extractQuestions } from "../agent/runAgent.js";
 import { WASABI_TOOLS } from "../agent/tools.js";
 import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createToolExecutor } from "../agent/toolExecutor.js";
@@ -378,7 +378,7 @@ ${rulesListStr}`;
       historyRef.current = history;
 
       // Extract choices from response
-      const extracted = extractChoices(reply);
+      const extracted = extractQuestions(reply);
       let cleanReply = reply;
       for (const c of extracted) {
         cleanReply = cleanReply.replace(c.raw, "").trim();

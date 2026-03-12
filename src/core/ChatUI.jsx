@@ -215,7 +215,7 @@ export default function ChatUI({
           </div>
         )}
 
-        {/* Choices */}
+        {/* Questions / Choices */}
         {choices.length > 0 && !isLoading && (
           <div style={{
             ...S.msgOuter,
@@ -226,29 +226,66 @@ export default function ChatUI({
               maxWidth: maxMsgW,
               width: "100%",
               display: "flex",
-              flexWrap: "wrap",
-              gap: 8,
+              flexDirection: "column",
+              gap: 10,
               padding: compact ? "4px 0" : "4px 44px",
             }}>
-              {choices.map((choice, i) => (
-                <button
-                  key={i}
-                  onClick={() => onChoice?.(choice)}
-                  style={{
-                    ...S.btnChoice,
-                    animation: ANIM.settleIn(0.05 + i * 0.03),
-                  }}
-                  onMouseEnter={(e) => {
-                    e.target.style.background = C.accent + "28";
-                    e.target.style.borderColor = C.accent + "66";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.background = C.accent + "14";
-                    e.target.style.borderColor = C.accent + "44";
-                  }}
-                >
-                  {choice.label || choice}
-                </button>
+              {choices.map((item, i) => (
+                item.question ? (
+                  /* New format: question + answer options */
+                  <div key={i} style={{ animation: ANIM.settleIn(0.05 + i * 0.04) }}>
+                    <div style={{
+                      fontSize: 12,
+                      color: C.darkMuted,
+                      marginBottom: 6,
+                      fontWeight: 500,
+                    }}>
+                      {item.question}
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {item.options.map((opt, j) => (
+                        <button
+                          key={j}
+                          onClick={() => onChoice?.({ label: opt.label || opt })}
+                          style={{
+                            ...S.btnChoice,
+                            animation: ANIM.settleIn(0.08 + i * 0.04 + j * 0.02),
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.background = C.accent + "28";
+                            e.target.style.borderColor = C.accent + "66";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.background = C.accent + "14";
+                            e.target.style.borderColor = C.accent + "44";
+                          }}
+                        >
+                          {opt.label || opt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  /* Legacy format: flat choice button */
+                  <button
+                    key={i}
+                    onClick={() => onChoice?.(item)}
+                    style={{
+                      ...S.btnChoice,
+                      animation: ANIM.settleIn(0.05 + i * 0.03),
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.background = C.accent + "28";
+                      e.target.style.borderColor = C.accent + "66";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.background = C.accent + "14";
+                      e.target.style.borderColor = C.accent + "44";
+                    }}
+                  >
+                    {item.label || item}
+                  </button>
+                )
               ))}
             </div>
           </div>
