@@ -9,7 +9,7 @@ import { queryAll, createPage, updatePage, createDatabase } from "../notion/clie
 
 const KB_SCHEMA = [
   { name: "Key", type: "title" },
-  { name: "Category", type: "select", options: ["page_config", "user_preference", "business_context", "learned_pattern", "database_schema"] },
+  { name: "Category", type: "select", options: ["general", "project", "preference", "workflow", "reference"] },
   { name: "Content", type: "rich_text" },
   { name: "Source", type: "select", options: ["conversation", "automation", "system"] },
   { name: "Last Referenced", type: "date" },

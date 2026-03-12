@@ -238,8 +238,8 @@ const UPDATE_KNOWLEDGE_BASE = {
       key: { type: "string", description: "Unique key for this knowledge entry." },
       category: {
         type: "string",
-        enum: ["page_config", "user_preference", "business_context", "learned_pattern", "database_schema"],
-        description: "Category of knowledge.",
+        enum: ["general", "project", "preference", "workflow", "reference"],
+        description: "Category: general (default), project (project-specific context), preference (user preferences), workflow (process/SOP), reference (data definitions & schemas).",
       },
       content: { type: "string", description: "The knowledge content to store." },
     },
@@ -256,7 +256,7 @@ const SEARCH_KNOWLEDGE_BASE = {
       query: { type: "string", description: "Search query text." },
       category: {
         type: "string",
-        enum: ["page_config", "user_preference", "business_context", "learned_pattern", "database_schema"],
+        enum: ["general", "project", "preference", "workflow", "reference"],
         description: "Optional category filter.",
       },
     },
