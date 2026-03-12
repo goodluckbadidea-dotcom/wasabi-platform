@@ -15,8 +15,9 @@ import { templatesToPromptText } from "../config/templates.js";
  * @param {string} opts.currentDate - Today's date (YYYY-MM-DD)
  * @param {string} opts.workspaceInstructions - Custom AI instructions from workspace settings
  * @param {string} opts.agentMode - Agent behavior mode: "auto" | "confirm" | "plan"
+ * @param {string} opts.googleContext - Google Gmail/Calendar auto-context
  */
-export function buildWasabiPrompt({ platformDbIds, kbContext = "", currentPageContext, dataSummary, workspaceSummary, neuronSummary, currentDate, workspaceInstructions, agentMode }) {
+export function buildWasabiPrompt({ platformDbIds, kbContext = "", currentPageContext, dataSummary, workspaceSummary, neuronSummary, currentDate, workspaceInstructions, agentMode, googleContext }) {
   let pageSection = "";
   if (currentPageContext) {
     const { pageName, databaseIds, schemaText } = currentPageContext;
@@ -63,6 +64,7 @@ ${platformDbIds ? `\n## Platform Database IDs\n${platformDbIds}` : ""}
 ${kbContext ? `\n## Your Knowledge Base Context\n${kbContext}` : ""}
 ${workspaceSummary ? `\n## Workspace Pages\n${workspaceSummary}` : ""}
 ${neuronSummary ? `\n## Neuron Connections\nThe user has created the following neuron connections (semantic links between items):\n${neuronSummary}` : ""}
+${googleContext ? `\n${googleContext}` : ""}
 ${pageSection}`;
 }
 

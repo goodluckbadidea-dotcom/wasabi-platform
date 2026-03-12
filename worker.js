@@ -307,6 +307,70 @@ export default {
         return await handleDeleteConnection(env, key);
       }
 
+      // ─── Google OAuth + API Proxy ───
+      if (path === "/google/auth-url" && request.method === "GET") {
+        return handleGoogleAuthUrl(request, env);
+      }
+      if (path === "/google/callback" && request.method === "GET") {
+        return await handleGoogleCallback(request, env);
+      }
+      if (path === "/google/status" && request.method === "GET") {
+        return await handleGoogleStatus(env);
+      }
+      if (path === "/google/disconnect" && request.method === "POST") {
+        return await handleGoogleDisconnect(env);
+      }
+      // Gmail proxy
+      if (path === "/google/gmail/summary" && request.method === "GET") {
+        return await handleGmailSummary(env);
+      }
+      if (path === "/google/gmail/messages" && request.method === "POST") {
+        const body = await request.json();
+        return await handleGmailSearch(env, body);
+      }
+      if (path.match(/^\/google\/gmail\/messages\/[^/]+$/) && request.method === "GET") {
+        const msgId = path.split("/google/gmail/messages/")[1];
+        return await handleGmailGetMessage(env, msgId);
+      }
+      if (path === "/google/gmail/send" && request.method === "POST") {
+        const body = await request.json();
+        return await handleGmailSend(env, body);
+      }
+      if (path === "/google/gmail/drafts" && request.method === "POST") {
+        const body = await request.json();
+        return await handleGmailCreateDraft(env, body);
+      }
+      if (path.match(/^\/google\/gmail\/modify\/[^/]+$/) && request.method === "POST") {
+        const msgId = path.split("/google/gmail/modify/")[1];
+        const body = await request.json();
+        return await handleGmailModify(env, msgId, body);
+      }
+      // Calendar proxy
+      if (path === "/google/calendar/summary" && request.method === "GET") {
+        return await handleCalendarSummary(env);
+      }
+      if (path === "/google/calendar/events" && request.method === "GET") {
+        const params = Object.fromEntries(url.searchParams);
+        return await handleCalendarListEvents(env, params);
+      }
+      if (path === "/google/calendar/events" && request.method === "POST") {
+        const body = await request.json();
+        return await handleCalendarCreateEvent(env, body);
+      }
+      if (path.match(/^\/google\/calendar\/events\/[^/]+$/) && request.method === "PATCH") {
+        const eventId = path.split("/google/calendar/events/")[1];
+        const body = await request.json();
+        return await handleCalendarUpdateEvent(env, eventId, body);
+      }
+      if (path.match(/^\/google\/calendar\/events\/[^/]+$/) && request.method === "DELETE") {
+        const eventId = path.split("/google/calendar/events/")[1];
+        return await handleCalendarDeleteEvent(env, eventId);
+      }
+      if (path === "/google/calendar/freebusy" && request.method === "POST") {
+        const body = await request.json();
+        return await handleCalendarFreeBusy(env, body);
+      }
+
       // ─── Page Config CRUD ───
       // Schema routes matched before single-page routes to avoid ID collision
       const schemaMatch = path.match(/^\/pages\/([^/]+)\/schema$/);
@@ -1154,6 +1218,705 @@ async function handleDeleteConnection(env, key) {
   try {
     await env.DB.prepare("DELETE FROM connections WHERE key = ?").bind(key).run();
     return jsonResponse({ ok: true, key });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// ─── Google OAuth & API Handlers ───
+
+const GOOGLE_SCOPES = [
+  "https://www.googleapis.com/auth/gmail.modify",
+  "https://www.googleapis.com/auth/gmail.send",
+  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/calendar",
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/userinfo.email",
+].join(" ");
+
+/**
+ * Get a valid Google access token, refreshing if expired.
+ * Returns { access_token, email } or null if not connected.
+ */
+async function getGoogleAccessToken(env) {
+  let row;
+  try {
+    row = await env.DB.prepare("SELECT value FROM connections WHERE key = 'google'").first();
+  } catch { return null; }
+  if (!row?.value) return null;
+
+  const tokens = JSON.parse(row.value);
+  if (!tokens.access_token || !tokens.refresh_token) return null;
+
+  // Check if token is still valid (with 60s buffer)
+  if (tokens.expires_at && Date.now() < tokens.expires_at - 60000) {
+    return tokens;
+  }
+
+  // Refresh the token
+  const clientId = env.GOOGLE_CLIENT_ID;
+  const clientSecret = env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return null;
+
+  try {
+    const res = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: tokens.refresh_token,
+        grant_type: "refresh_token",
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+
+    const updated = {
+      ...tokens,
+      access_token: data.access_token,
+      expires_at: Date.now() + (data.expires_in || 3600) * 1000,
+    };
+
+    // Persist refreshed tokens
+    await env.DB.prepare(
+      `UPDATE connections SET value = ?, updated_at = datetime('now') WHERE key = 'google'`
+    ).bind(JSON.stringify(updated)).run();
+
+    return updated;
+  } catch {
+    return null;
+  }
+}
+
+function handleGoogleAuthUrl(request, env) {
+  const clientId = env.GOOGLE_CLIENT_ID;
+  if (!clientId) return jsonResponse({ _error: "GOOGLE_CLIENT_ID not configured" }, 500);
+
+  const workerUrl = new URL(request.url).origin;
+  const redirectUri = `${workerUrl}/google/callback`;
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: GOOGLE_SCOPES,
+    access_type: "offline",
+    prompt: "consent",
+    state: workerUrl,
+  });
+
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+  return jsonResponse({ url });
+}
+
+async function handleGoogleCallback(request, env) {
+  const url = new URL(request.url);
+  const code = url.searchParams.get("code");
+  const error = url.searchParams.get("error");
+
+  if (error) {
+    return new Response(callbackHTML("error", error), {
+      status: 400,
+      headers: { ...CORS, "Content-Type": "text/html" },
+    });
+  }
+
+  if (!code) {
+    return new Response(callbackHTML("error", "No authorization code received"), {
+      status: 400,
+      headers: { ...CORS, "Content-Type": "text/html" },
+    });
+  }
+
+  const clientId = env.GOOGLE_CLIENT_ID;
+  const clientSecret = env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    return new Response(callbackHTML("error", "Google OAuth not configured"), {
+      status: 500,
+      headers: { ...CORS, "Content-Type": "text/html" },
+    });
+  }
+
+  const workerUrl = url.origin;
+  const redirectUri = `${workerUrl}/google/callback`;
+
+  try {
+    // Exchange code for tokens
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code",
+      }),
+    });
+
+    if (!tokenRes.ok) {
+      const errText = await tokenRes.text();
+      return new Response(callbackHTML("error", `Token exchange failed: ${errText}`), {
+        status: 502,
+        headers: { ...CORS, "Content-Type": "text/html" },
+      });
+    }
+
+    const tokenData = await tokenRes.json();
+
+    // Fetch user email
+    let email = "";
+    try {
+      const userRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      });
+      if (userRes.ok) {
+        const userData = await userRes.json();
+        email = userData.email || "";
+      }
+    } catch {}
+
+    // Store tokens in D1
+    const tokens = {
+      access_token: tokenData.access_token,
+      refresh_token: tokenData.refresh_token,
+      expires_at: Date.now() + (tokenData.expires_in || 3600) * 1000,
+      email,
+      scopes: GOOGLE_SCOPES,
+    };
+
+    await env.DB.prepare(
+      `INSERT INTO connections (key, value, metadata, updated_at)
+       VALUES ('google', ?, '{}', datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+    ).bind(JSON.stringify(tokens)).run();
+
+    return new Response(callbackHTML("success", email), {
+      status: 200,
+      headers: { ...CORS, "Content-Type": "text/html" },
+    });
+  } catch (err) {
+    return new Response(callbackHTML("error", err.message), {
+      status: 500,
+      headers: { ...CORS, "Content-Type": "text/html" },
+    });
+  }
+}
+
+/** Generate HTML for the OAuth callback popup page. */
+function callbackHTML(status, detail) {
+  const isSuccess = status === "success";
+  return `<!DOCTYPE html><html><head><title>Wasabi - Google Auth</title>
+<style>body{font-family:system-ui;background:#080809;color:#F2F2F3;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+.card{text-align:center;padding:40px;border-radius:12px;background:#101012;border:1px solid #242428}
+.icon{font-size:48px;margin-bottom:16px}
+.msg{font-size:14px;color:#4E4E58;margin-top:8px}</style></head>
+<body><div class="card">
+<div class="icon">${isSuccess ? "&#10003;" : "&#10007;"}</div>
+<h2>${isSuccess ? "Connected!" : "Connection Failed"}</h2>
+<p class="msg">${isSuccess ? `Signed in as ${detail}` : detail}</p>
+<p class="msg">You can close this window.</p>
+</div>
+<script>
+try{window.opener&&window.opener.postMessage({type:"google-oauth-${status}",detail:"${detail}"},"*")}catch(e){}
+setTimeout(function(){window.close()},3000);
+</script></body></html>`;
+}
+
+async function handleGoogleStatus(env) {
+  try {
+    const row = await env.DB.prepare("SELECT value FROM connections WHERE key = 'google'").first();
+    if (!row?.value) return jsonResponse({ connected: false });
+    const tokens = JSON.parse(row.value);
+    return jsonResponse({
+      connected: true,
+      email: tokens.email || "",
+      scopes: tokens.scopes || "",
+    });
+  } catch (err) {
+    return jsonResponse({ connected: false, error: err.message });
+  }
+}
+
+async function handleGoogleDisconnect(env) {
+  try {
+    // Try to revoke the token
+    const row = await env.DB.prepare("SELECT value FROM connections WHERE key = 'google'").first();
+    if (row?.value) {
+      const tokens = JSON.parse(row.value);
+      if (tokens.access_token) {
+        await fetch(`https://oauth2.googleapis.com/revoke?token=${tokens.access_token}`, {
+          method: "POST",
+        }).catch(() => {});
+      }
+    }
+    // Remove from D1
+    await env.DB.prepare("DELETE FROM connections WHERE key = 'google'").run();
+    return jsonResponse({ ok: true });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// ─── Gmail API Proxy Handlers ───
+
+const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
+
+async function handleGmailSummary(env) {
+  const tokens = await getGoogleAccessToken(env);
+  if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
+
+  try {
+    // Get unread count
+    const unreadRes = await fetch(`${GMAIL_API}/messages?q=is:unread+in:inbox&maxResults=1`, {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    const unreadData = await unreadRes.json();
+    const unread = unreadData.resultSizeEstimate || 0;
+
+    // Get recent messages (just headers)
+    const recentRes = await fetch(`${GMAIL_API}/messages?maxResults=5&labelIds=INBOX`, {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    const recentData = await recentRes.json();
+    const messages = recentData.messages || [];
+
+    // Fetch headers for each recent message
+    const recent = await Promise.all(
+      messages.slice(0, 5).map(async (m) => {
+        try {
+          const msgRes = await fetch(`${GMAIL_API}/messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`, {
+            headers: { Authorization: `Bearer ${tokens.access_token}` },
+          });
+          const msg = await msgRes.json();
+          const headers = msg.payload?.headers || [];
+          return {
+            id: m.id,
+            threadId: m.threadId,
+            subject: headers.find((h) => h.name === "Subject")?.value || "(no subject)",
+            from: headers.find((h) => h.name === "From")?.value || "",
+            date: headers.find((h) => h.name === "Date")?.value || "",
+            snippet: msg.snippet || "",
+            labelIds: msg.labelIds || [],
+          };
+        } catch { return null; }
+      })
+    );
+
+    return jsonResponse({ unread, recent: recent.filter(Boolean) });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleGmailSearch(env, body) {
+  const tokens = await getGoogleAccessToken(env);
+  if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
+
+  const { q, maxResults = 20, labelIds } = body;
+  try {
+    let url = `${GMAIL_API}/messages?maxResults=${maxResults}`;
+    if (q) url += `&q=${encodeURIComponent(q)}`;
+    if (labelIds) url += `&labelIds=${encodeURIComponent(labelIds)}`;
+
+    const listRes = await fetch(url, {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    const listData = await listRes.json();
+    const messageIds = listData.messages || [];
+
+    // Fetch metadata for each message
+    const messages = await Promise.all(
+      messageIds.slice(0, maxResults).map(async (m) => {
+        try {
+          const msgRes = await fetch(`${GMAIL_API}/messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Date`, {
+            headers: { Authorization: `Bearer ${tokens.access_token}` },
+          });
+          const msg = await msgRes.json();
+          const headers = msg.payload?.headers || [];
+          return {
+            id: m.id,
+            threadId: m.threadId,
+            subject: headers.find((h) => h.name === "Subject")?.value || "(no subject)",
+            from: headers.find((h) => h.name === "From")?.value || "",
+            to: headers.find((h) => h.name === "To")?.value || "",
+            date: headers.find((h) => h.name === "Date")?.value || "",
+            snippet: msg.snippet || "",
+            labelIds: msg.labelIds || [],
+          };
+        } catch { return null; }
+      })
+    );
+
+    return jsonResponse({
+      messages: messages.filter(Boolean),
+      resultSizeEstimate: listData.resultSizeEstimate || 0,
+      nextPageToken: listData.nextPageToken || null,
+    });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleGmailGetMessage(env, messageId) {
+  const tokens = await getGoogleAccessToken(env);
+  if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
+
+  try {
+    const res = await fetch(`${GMAIL_API}/messages/${messageId}?format=full`, {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      return jsonResponse({ _error: `Gmail API error: ${errText}` }, res.status);
+    }
+    const msg = await res.json();
+
+    // Extract body
+    let body = "";
+    let htmlBody = "";
+    function extractBody(part) {
+      if (part.mimeType === "text/plain" && part.body?.data) {
+        body = atob(part.body.data.replace(/-/g, "+").replace(/_/g, "/"));
+      } else if (part.mimeType === "text/html" && part.body?.data) {
+        htmlBody = atob(part.body.data.replace(/-/g, "+").replace(/_/g, "/"));
+      }
+      if (part.parts) part.parts.forEach(extractBody);
+    }
+    if (msg.payload) extractBody(msg.payload);
+
+    const headers = msg.payload?.headers || [];
+    return jsonResponse({
+      id: msg.id,
+      threadId: msg.threadId,
+      subject: headers.find((h) => h.name === "Subject")?.value || "",
+      from: headers.find((h) => h.name === "From")?.value || "",
+      to: headers.find((h) => h.name === "To")?.value || "",
+      cc: headers.find((h) => h.name === "Cc")?.value || "",
+      date: headers.find((h) => h.name === "Date")?.value || "",
+      body,
+      htmlBody,
+      snippet: msg.snippet || "",
+      labelIds: msg.labelIds || [],
+    });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleGmailSend(env, body) {
+  const tokens = await getGoogleAccessToken(env);
+  if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
+
+  const { to, subject, bodyText, threadId, inReplyTo, references } = body;
+  if (!to || !bodyText) return jsonResponse({ _error: "Missing 'to' or 'bodyText'" }, 400);
+
+  try {
+    // Build RFC 2822 message
+    const lines = [
+      `To: ${to}`,
+      `Subject: ${subject || "(no subject)"}`,
+      `Content-Type: text/plain; charset=utf-8`,
+    ];
+    if (inReplyTo) lines.push(`In-Reply-To: ${inReplyTo}`);
+    if (references) lines.push(`References: ${references}`);
+    lines.push("", bodyText);
+
+    const raw = btoa(unescape(encodeURIComponent(lines.join("\r\n"))))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+    const payload = { raw };
+    if (threadId) payload.threadId = threadId;
+
+    const res = await fetch(`${GMAIL_API}/messages/send`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${tokens.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      return jsonResponse({ _error: `Send failed: ${errText}` }, res.status);
+    }
+    const result = await res.json();
+    return jsonResponse({ ok: true, id: result.id, threadId: result.threadId });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleGmailCreateDraft(env, body) {
+  const tokens = await getGoogleAccessToken(env);
+  if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
+
+  const { to, subject, bodyText } = body;
+  if (!bodyText) return jsonResponse({ _error: "Missing 'bodyText'" }, 400);
+
+  try {
+    const lines = [
+      to ? `To: ${to}` : "",
+      `Subject: ${subject || ""}`,
+      `Content-Type: text/plain; charset=utf-8`,
+      "",
+      bodyText,
+    ].filter(Boolean);
+
+    const raw = btoa(unescape(encodeURIComponent(lines.join("\r\n"))))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+    const res = await fetch(`${GMAIL_API}/drafts`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${tokens.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ message: { raw } }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      return jsonResponse({ _error: `Draft creation failed: ${errText}` }, res.status);
+    }
+    const result = await res.json();
+    return jsonResponse({ ok: true, id: result.id, messageId: result.message?.id });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleGmailModify(env, messageId, body) {
+  const tokens = await getGoogleAccessToken(env);
+  if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
+
+  const { action, addLabelIds, removeLabelIds } = body;
+
+  // Map friendly actions to label modifications
+  let add = addLabelIds || [];
+  let remove = removeLabelIds || [];
+  if (action === "archive") remove = [...remove, "INBOX"];
+  else if (action === "trash") add = [...add, "TRASH"];
+  else if (action === "star") add = [...add, "STARRED"];
+  else if (action === "unstar") remove = [...remove, "STARRED"];
+  else if (action === "mark_read") remove = [...remove, "UNREAD"];
+  else if (action === "mark_unread") add = [...add, "UNREAD"];
+
+  try {
+    const res = await fetch(`${GMAIL_API}/messages/${messageId}/modify`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${tokens.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ addLabelIds: add, removeLabelIds: remove }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      return jsonResponse({ _error: `Modify failed: ${errText}` }, res.status);
+    }
+    const result = await res.json();
+    return jsonResponse({ ok: true, id: result.id, labelIds: result.labelIds });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// ─── Calendar API Proxy Handlers ───
+
+const GCAL_API = "https://www.googleapis.com/calendar/v3";
+
+async function handleCalendarSummary(env) {
+  const tokens = await getGoogleAccessToken(env);
+  if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
+
+  try {
+    const now = new Date().toISOString();
+    const endOfDay = new Date();
+    endOfDay.setDate(endOfDay.getDate() + 2);
+
+    const res = await fetch(
+      `${GCAL_API}/calendars/primary/events?timeMin=${encodeURIComponent(now)}&timeMax=${encodeURIComponent(endOfDay.toISOString())}&maxResults=5&singleEvents=true&orderBy=startTime`,
+      { headers: { Authorization: `Bearer ${tokens.access_token}` } }
+    );
+    if (!res.ok) {
+      const errText = await res.text();
+      return jsonResponse({ _error: `Calendar API error: ${errText}` }, res.status);
+    }
+    const data = await res.json();
+    const upcoming = (data.items || []).map((e) => ({
+      id: e.id,
+      summary: e.summary || "(no title)",
+      start: e.start?.dateTime || e.start?.date || "",
+      end: e.end?.dateTime || e.end?.date || "",
+      location: e.location || "",
+      status: e.status,
+    }));
+    return jsonResponse({ upcoming });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleCalendarListEvents(env, params) {
+  const tokens = await getGoogleAccessToken(env);
+  if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
+
+  try {
+    const qs = new URLSearchParams();
+    if (params.timeMin) qs.set("timeMin", params.timeMin);
+    if (params.timeMax) qs.set("timeMax", params.timeMax);
+    qs.set("maxResults", params.maxResults || "50");
+    qs.set("singleEvents", "true");
+    qs.set("orderBy", "startTime");
+
+    const res = await fetch(`${GCAL_API}/calendars/primary/events?${qs}`, {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      return jsonResponse({ _error: `Calendar API error: ${errText}` }, res.status);
+    }
+    const data = await res.json();
+    const events = (data.items || []).map((e) => ({
+      id: e.id,
+      summary: e.summary || "",
+      description: e.description || "",
+      start: e.start?.dateTime || e.start?.date || "",
+      end: e.end?.dateTime || e.end?.date || "",
+      location: e.location || "",
+      status: e.status,
+      attendees: (e.attendees || []).map((a) => ({ email: a.email, responseStatus: a.responseStatus })),
+      htmlLink: e.htmlLink || "",
+    }));
+    return jsonResponse({ events, nextPageToken: data.nextPageToken || null });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleCalendarCreateEvent(env, body) {
+  const tokens = await getGoogleAccessToken(env);
+  if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
+
+  const { summary, description, start, end, location, attendees } = body;
+  if (!summary || !start || !end) return jsonResponse({ _error: "Missing summary, start, or end" }, 400);
+
+  try {
+    const event = {
+      summary,
+      description: description || "",
+      location: location || "",
+      start: start.includes("T") ? { dateTime: start } : { date: start },
+      end: end.includes("T") ? { dateTime: end } : { date: end },
+    };
+    if (attendees?.length) {
+      event.attendees = attendees.map((email) => (typeof email === "string" ? { email } : email));
+    }
+
+    const res = await fetch(`${GCAL_API}/calendars/primary/events`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${tokens.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(event),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      return jsonResponse({ _error: `Create event failed: ${errText}` }, res.status);
+    }
+    const result = await res.json();
+    return jsonResponse({
+      ok: true,
+      id: result.id,
+      summary: result.summary,
+      start: result.start?.dateTime || result.start?.date,
+      htmlLink: result.htmlLink,
+    });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleCalendarUpdateEvent(env, eventId, body) {
+  const tokens = await getGoogleAccessToken(env);
+  if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
+
+  try {
+    const update = {};
+    if (body.summary !== undefined) update.summary = body.summary;
+    if (body.description !== undefined) update.description = body.description;
+    if (body.location !== undefined) update.location = body.location;
+    if (body.start) update.start = body.start.includes("T") ? { dateTime: body.start } : { date: body.start };
+    if (body.end) update.end = body.end.includes("T") ? { dateTime: body.end } : { date: body.end };
+    if (body.attendees) update.attendees = body.attendees.map((e) => (typeof e === "string" ? { email: e } : e));
+
+    const res = await fetch(`${GCAL_API}/calendars/primary/events/${eventId}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${tokens.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(update),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      return jsonResponse({ _error: `Update event failed: ${errText}` }, res.status);
+    }
+    const result = await res.json();
+    return jsonResponse({ ok: true, id: result.id, summary: result.summary });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleCalendarDeleteEvent(env, eventId) {
+  const tokens = await getGoogleAccessToken(env);
+  if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
+
+  try {
+    const res = await fetch(`${GCAL_API}/calendars/primary/events/${eventId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    if (!res.ok && res.status !== 204) {
+      const errText = await res.text();
+      return jsonResponse({ _error: `Delete event failed: ${errText}` }, res.status);
+    }
+    return jsonResponse({ ok: true });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleCalendarFreeBusy(env, body) {
+  const tokens = await getGoogleAccessToken(env);
+  if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
+
+  const { timeMin, timeMax } = body;
+  if (!timeMin || !timeMax) return jsonResponse({ _error: "Missing timeMin or timeMax" }, 400);
+
+  try {
+    const res = await fetch(`${GCAL_API}/freeBusy`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${tokens.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        timeMin,
+        timeMax,
+        items: [{ id: "primary" }],
+      }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      return jsonResponse({ _error: `FreeBusy query failed: ${errText}` }, res.status);
+    }
+    const data = await res.json();
+    const busy = data.calendars?.primary?.busy || [];
+    return jsonResponse({ busy });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
   }

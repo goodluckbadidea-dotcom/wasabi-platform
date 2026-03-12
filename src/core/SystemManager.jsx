@@ -12,7 +12,7 @@ import ConfirmDialog from "./ConfirmDialog.jsx";
 import { IconGear } from "../design/icons.jsx";
 import { getSessionUsage, getUsageHistory, formatCost, formatTokens, getTierBreakdown } from "../utils/costTracker.js";
 import * as api from "../lib/api.js";
-import { getConnections, setConnection as apiSetConnection, deleteConnection as apiDeleteConnection, checkHealth, factoryReset as apiFactoryReset, clearConnection } from "../lib/api.js";
+import { getConnections, setConnection as apiSetConnection, deleteConnection as apiDeleteConnection, checkHealth, factoryReset as apiFactoryReset, clearConnection, getGoogleAuthUrl, getGoogleStatus, disconnectGoogle } from "../lib/api.js";
 
 // ── Tab button style (matches WasabiPanel) ──
 const tabBtn = (active) => ({
@@ -256,6 +256,70 @@ function ConnectionRow({ def, connected, onSave, onDelete }) {
   );
 }
 
+// ── Google OAuth connection row ──
+function GoogleConnectionRow({ connected, email, onConnect, onDisconnect, loading }) {
+  return (
+    <div style={{
+      background: C.darkSurf,
+      border: `1px solid ${connected ? C.accent + "33" : C.darkBorder}`,
+      borderRadius: RADIUS.lg,
+      padding: "14px 16px",
+      marginBottom: 10,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {/* Status dot */}
+        <span style={{
+          width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+          background: connected ? C.accent : C.darkMuted + "44",
+        }} />
+        {/* Name */}
+        <span style={{ fontSize: 13, fontWeight: 500, color: C.darkText, fontFamily: FONT }}>
+          Google
+        </span>
+        <span style={{ flex: 1, fontSize: 10, color: C.darkMuted, fontFamily: FONT }}>
+          Gmail + Calendar
+        </span>
+        {/* Status */}
+        <span style={{ fontSize: 10, color: connected ? C.accent : C.darkMuted, fontFamily: FONT }}>
+          {connected ? `Connected as ${email}` : "Not connected"}
+        </span>
+        {/* Action */}
+        {connected ? (
+          <button
+            onClick={onDisconnect}
+            disabled={loading}
+            style={{
+              background: "transparent", border: `1px solid #FF480044`, borderRadius: RADIUS.sm,
+              color: "#FF6B3D", fontFamily: FONT, fontSize: 11, padding: "3px 10px",
+              cursor: loading ? "default" : "pointer", opacity: loading ? 0.5 : 1,
+            }}
+          >
+            Disconnect
+          </button>
+        ) : (
+          <button
+            onClick={onConnect}
+            disabled={loading}
+            style={{
+              background: C.accent, border: "none", borderRadius: RADIUS.sm,
+              color: "#fff", fontFamily: FONT, fontSize: 11, fontWeight: 600,
+              padding: "4px 14px", cursor: loading ? "default" : "pointer",
+              opacity: loading ? 0.5 : 1,
+            }}
+          >
+            {loading ? "..." : "Connect with Google"}
+          </button>
+        )}
+      </div>
+      <p style={{ fontSize: 11, color: C.darkMuted, marginTop: 6, marginLeft: 18, lineHeight: 1.4 }}>
+        {connected
+          ? "Gmail inbox, calendar events, and Google account access for Wasabi."
+          : "Connect your Google account to access Gmail, Calendar, and more through Wasabi."}
+      </p>
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // SystemManager
 // ════════════════════════════════════════════════════════════════════════════
@@ -281,16 +345,67 @@ export default function SystemManager() {
   const [connectionsLoading, setConnectionsLoading] = useState(false);
   const connectionsFetched = useRef(false);
 
+  // ── Google OAuth state ──
+  const [googleStatus, setGoogleStatus] = useState({ connected: false, email: "" });
+  const [googleLoading, setGoogleLoading] = useState(false);
+
   // Load connections when tab activates
   useEffect(() => {
     if (tab !== "connections" || connectionsFetched.current) return;
     connectionsFetched.current = true;
     setConnectionsLoading(true);
-    getConnections()
-      .then((data) => setConnections(data.connections || []))
+    Promise.all([
+      getConnections().then((data) => setConnections(data.connections || [])),
+      getGoogleStatus().then(setGoogleStatus).catch(() => {}),
+    ])
       .catch((err) => console.warn("Failed to load connections:", err))
       .finally(() => setConnectionsLoading(false));
   }, [tab]);
+
+  // Google OAuth: open popup and listen for result
+  const handleGoogleConnect = useCallback(async () => {
+    setGoogleLoading(true);
+    try {
+      const { url } = await getGoogleAuthUrl();
+      const popup = window.open(url, "google-auth", "width=500,height=700,left=200,top=100");
+
+      // Listen for postMessage from callback page
+      const onMessage = (e) => {
+        if (e.data?.type?.startsWith("google-oauth-")) {
+          window.removeEventListener("message", onMessage);
+          // Refresh status
+          getGoogleStatus().then(setGoogleStatus).catch(() => {});
+          setGoogleLoading(false);
+        }
+      };
+      window.addEventListener("message", onMessage);
+
+      // Fallback: poll if popup closes without message
+      const pollId = setInterval(() => {
+        if (popup?.closed) {
+          clearInterval(pollId);
+          window.removeEventListener("message", onMessage);
+          getGoogleStatus().then(setGoogleStatus).catch(() => {});
+          setGoogleLoading(false);
+        }
+      }, 1000);
+    } catch (err) {
+      console.error("Google OAuth failed:", err);
+      setGoogleLoading(false);
+    }
+  }, []);
+
+  const handleGoogleDisconnect = useCallback(async () => {
+    setGoogleLoading(true);
+    try {
+      await disconnectGoogle();
+      setGoogleStatus({ connected: false, email: "" });
+    } catch (err) {
+      console.error("Google disconnect failed:", err);
+    } finally {
+      setGoogleLoading(false);
+    }
+  }, []);
 
   const handleSaveConnection = useCallback(async (key, value, metadata) => {
     await apiSetConnection(key, value, metadata);
@@ -806,15 +921,24 @@ export default function SystemManager() {
                 Loading connections...
               </div>
             ) : (
-              CONNECTION_DEFS.map((def) => (
-                <ConnectionRow
-                  key={def.key}
-                  def={def}
-                  connected={connections.some((c) => c.key === def.key)}
-                  onSave={handleSaveConnection}
-                  onDelete={handleDeleteConnection}
+              <>
+                {CONNECTION_DEFS.map((def) => (
+                  <ConnectionRow
+                    key={def.key}
+                    def={def}
+                    connected={connections.some((c) => c.key === def.key)}
+                    onSave={handleSaveConnection}
+                    onDelete={handleDeleteConnection}
+                  />
+                ))}
+                <GoogleConnectionRow
+                  connected={googleStatus.connected}
+                  email={googleStatus.email}
+                  onConnect={handleGoogleConnect}
+                  onDisconnect={handleGoogleDisconnect}
+                  loading={googleLoading}
                 />
-              ))
+              </>
             )}
           </div>
         )}

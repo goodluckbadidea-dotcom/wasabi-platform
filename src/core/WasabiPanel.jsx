@@ -19,6 +19,7 @@ import { createToolExecutor } from "../agent/toolExecutor.js";
 import { routeModel, shouldEscalate, SONNET } from "../agent/aiRouter.js";
 import { loadCachedNeurons } from "../neurons/neuronStorage.js";
 import { buildDataSummary, getTokenBudget, findWorkspaceAncestor } from "../agent/dataSummary.js";
+import { fetchGoogleContext } from "../google/googleContext.js";
 import BatchQueue from "./BatchQueue.jsx";
 import * as api from "../lib/api.js";
 // Legacy Notion imports removed — notifications now stored in D1
@@ -406,6 +407,15 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
           } catch (_) { /* neuron query is best-effort */ }
         }
 
+        // Fetch Google context (best effort, cached 5 min)
+        let googleContext = "";
+        try {
+          const gStatus = await api.getGoogleStatus();
+          if (gStatus?.connected) {
+            googleContext = await fetchGoogleContext();
+          }
+        } catch (_) { /* best effort */ }
+
         // Find workspace ancestor for custom AI instructions + agent mode
         let workspaceInstructions = "";
         let agentMode = "auto";
@@ -430,6 +440,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
           currentDate: new Date().toISOString().split("T")[0],
           workspaceInstructions,
           agentMode,
+          googleContext,
         });
 
         const conn = api.getConnection();

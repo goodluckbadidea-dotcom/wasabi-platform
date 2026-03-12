@@ -500,3 +500,94 @@ export function getFileUrl(fileId) {
 export async function deleteFile(fileId) {
   return apiFetch(`/files/${fileId}`, { method: "DELETE" });
 }
+
+// ─── Google OAuth ───
+
+export async function getGoogleAuthUrl() {
+  return apiFetch("/google/auth-url", { method: "GET" });
+}
+
+export async function getGoogleStatus() {
+  return apiFetch("/google/status", { method: "GET" });
+}
+
+export async function disconnectGoogle() {
+  return apiFetch("/google/disconnect", { method: "POST" });
+}
+
+// ─── Gmail ───
+
+export async function getGmailSummary() {
+  return apiFetch("/google/gmail/summary", { method: "GET" });
+}
+
+export async function searchEmails(query, maxResults = 20, labelIds) {
+  return apiFetch("/google/gmail/messages", {
+    method: "POST",
+    body: { q: query, maxResults, labelIds },
+  });
+}
+
+export async function getEmail(messageId) {
+  return apiFetch(`/google/gmail/messages/${messageId}`, { method: "GET" });
+}
+
+export async function sendEmail({ to, subject, bodyText, threadId, inReplyTo, references }) {
+  return apiFetch("/google/gmail/send", {
+    method: "POST",
+    body: { to, subject, bodyText, threadId, inReplyTo, references },
+  });
+}
+
+export async function createDraft({ to, subject, bodyText }) {
+  return apiFetch("/google/gmail/drafts", {
+    method: "POST",
+    body: { to, subject, bodyText },
+  });
+}
+
+export async function modifyEmail(messageId, action) {
+  return apiFetch(`/google/gmail/modify/${messageId}`, {
+    method: "POST",
+    body: typeof action === "string" ? { action } : action,
+  });
+}
+
+// ─── Google Calendar ───
+
+export async function getCalendarSummary() {
+  return apiFetch("/google/calendar/summary", { method: "GET" });
+}
+
+export async function listCalendarEvents(timeMin, timeMax, maxResults = 50) {
+  const params = new URLSearchParams();
+  if (timeMin) params.set("timeMin", timeMin);
+  if (timeMax) params.set("timeMax", timeMax);
+  if (maxResults) params.set("maxResults", String(maxResults));
+  return apiFetch(`/google/calendar/events?${params}`, { method: "GET" });
+}
+
+export async function createCalendarEvent({ summary, start, end, description, location, attendees }) {
+  return apiFetch("/google/calendar/events", {
+    method: "POST",
+    body: { summary, start, end, description, location, attendees },
+  });
+}
+
+export async function updateCalendarEvent(eventId, updates) {
+  return apiFetch(`/google/calendar/events/${eventId}`, {
+    method: "PATCH",
+    body: updates,
+  });
+}
+
+export async function deleteCalendarEvent(eventId) {
+  return apiFetch(`/google/calendar/events/${eventId}`, { method: "DELETE" });
+}
+
+export async function checkFreeBusy(timeMin, timeMax) {
+  return apiFetch("/google/calendar/freebusy", {
+    method: "POST",
+    body: { timeMin, timeMax },
+  });
+}

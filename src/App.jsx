@@ -26,11 +26,16 @@ import SystemManager from "./core/SystemManager.jsx";
 import KnowledgeBase from "./core/KnowledgeBase.jsx";
 import AutomationPage from "./core/AutomationPage.jsx";
 import NotificationFeed from "./views/NotificationFeed.jsx";
+import GmailView from "./views/GmailView.jsx";
+import CalendarView from "./views/CalendarView.jsx";
 import HomePage from "./core/HomePage.jsx";
 import Dashboard from "./core/Dashboard.jsx";
 import WorkspaceSettings from "./views/WorkspaceSettings.jsx";
 import { ErrorBoundary } from "./core/ErrorBoundary.jsx";
 import { createAutomationEngine } from "./agent/automations.js";
+import { getGoogleStatus } from "./lib/api.js";
+import { cleanupGoogleNeuronNodes } from "./google/googleNeuronCleanup.js";
+import { loadCachedNeurons } from "./neurons/neuronStorage.js";
 import { useKeyboardShortcuts } from "./utils/useKeyboardShortcuts.js";
 import CommandPalette from "./core/CommandPalette.jsx";
 import NeuronOverlay from "./neurons/NeuronOverlay.jsx";
@@ -105,6 +110,21 @@ function AppContent() {
       engineRef.current = null;
     };
   }, [isAuthenticated, isSetup, user]);
+
+  // ── Google Neuron Cleanup (background, max once per hour) ──
+  useEffect(() => {
+    if (!isAuthenticated || !isSetup) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const status = await getGoogleStatus();
+        if (cancelled || !status?.connected) return;
+        const neurons = loadCachedNeurons();
+        await cleanupGoogleNeuronNodes(neurons);
+      } catch (_) { /* best effort */ }
+    })();
+    return () => { cancelled = true; };
+  }, [isAuthenticated, isSetup]);
 
   // Template selection handler — hooks MUST be called before any early returns
   const handleStartTemplate = useCallback(
@@ -261,6 +281,16 @@ function AppContent() {
     // Knowledge Base
     if (activePage === "knowledge-base") {
       return <KnowledgeBase automationEngine={engineRef.current} />;
+    }
+
+    // Gmail
+    if (activePage === "gmail") {
+      return <GmailView />;
+    }
+
+    // Calendar
+    if (activePage === "calendar") {
+      return <CalendarView />;
     }
 
     // System manager

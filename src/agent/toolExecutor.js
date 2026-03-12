@@ -1126,6 +1126,63 @@ export function createToolExecutor({
         }
       }
 
+      // ── Gmail Tools ──
+      case "search_emails": {
+        const result = await api.searchEmails(input.query || "", input.max_results || 10, input.label);
+        return JSON.stringify(result);
+      }
+      case "get_email": {
+        const result = await api.getEmail(input.message_id);
+        return JSON.stringify(result);
+      }
+      case "send_email": {
+        const result = await api.sendEmail({
+          to: input.to,
+          subject: input.subject,
+          bodyText: input.body,
+          threadId: input.thread_id,
+        });
+        return JSON.stringify(result);
+      }
+      case "modify_email": {
+        const result = await api.modifyEmail(input.message_id, input.action);
+        return JSON.stringify(result);
+      }
+      case "create_draft": {
+        const result = await api.createDraft({
+          to: input.to,
+          subject: input.subject,
+          bodyText: input.body,
+        });
+        return JSON.stringify(result);
+      }
+
+      // ── Calendar Tools ──
+      case "list_calendar_events": {
+        const result = await api.listCalendarEvents(input.start_date, input.end_date, input.max_results);
+        return JSON.stringify(result);
+      }
+      case "create_calendar_event": {
+        const result = await api.createCalendarEvent({
+          summary: input.summary,
+          start: input.start,
+          end: input.end,
+          description: input.description,
+          location: input.location,
+          attendees: input.attendees,
+        });
+        return JSON.stringify(result);
+      }
+      case "update_calendar_event": {
+        const { event_id, ...updates } = input;
+        const result = await api.updateCalendarEvent(event_id, updates);
+        return JSON.stringify(result);
+      }
+      case "delete_calendar_event": {
+        const result = await api.deleteCalendarEvent(input.event_id);
+        return JSON.stringify(result);
+      }
+
       default:
         return JSON.stringify({ error: `Unknown tool: ${toolName}` });
     }

@@ -505,6 +505,146 @@ const DELEGATE_TASK = {
   },
 };
 
+// ─── GMAIL TOOLS ───
+
+const SEARCH_EMAILS = {
+  name: "search_emails",
+  description: "Search the user's Gmail inbox. Uses Gmail search syntax (e.g. 'from:alice subject:budget', 'is:unread', 'after:2026/03/01'). Returns matching emails with subject, sender, date, and snippet.",
+  input_schema: {
+    type: "object",
+    properties: {
+      query: { type: "string", description: "Gmail search query. Examples: 'from:alice@co.com', 'subject:invoice', 'is:unread in:inbox', 'after:2026/03/01 before:2026/03/10'." },
+      max_results: { type: "number", description: "Maximum number of emails to return (default 10, max 30)." },
+      label: { type: "string", description: "Optional label filter: 'INBOX', 'SENT', 'DRAFT', 'STARRED', 'TRASH'." },
+    },
+    required: ["query"],
+  },
+};
+
+const GET_EMAIL = {
+  name: "get_email",
+  description: "Get the full content of an email by its message ID. Returns subject, from, to, cc, date, body text, and labels.",
+  input_schema: {
+    type: "object",
+    properties: {
+      message_id: { type: "string", description: "The Gmail message ID." },
+    },
+    required: ["message_id"],
+  },
+};
+
+const SEND_EMAIL = {
+  name: "send_email",
+  description: "Send an email. Can also reply to an existing thread by providing thread_id.",
+  input_schema: {
+    type: "object",
+    properties: {
+      to: { type: "string", description: "Recipient email address." },
+      subject: { type: "string", description: "Email subject line." },
+      body: { type: "string", description: "Email body text (plain text)." },
+      thread_id: { type: "string", description: "Optional: Gmail thread ID to reply to." },
+    },
+    required: ["to", "body"],
+  },
+};
+
+const MODIFY_EMAIL = {
+  name: "modify_email",
+  description: "Modify an email: archive, trash, star, unstar, mark as read, or mark as unread.",
+  input_schema: {
+    type: "object",
+    properties: {
+      message_id: { type: "string", description: "The Gmail message ID." },
+      action: {
+        type: "string",
+        enum: ["archive", "trash", "star", "unstar", "mark_read", "mark_unread"],
+        description: "Action to perform on the email.",
+      },
+    },
+    required: ["message_id", "action"],
+  },
+};
+
+const CREATE_EMAIL_DRAFT = {
+  name: "create_draft",
+  description: "Create a draft email without sending it. The user can review and send it later.",
+  input_schema: {
+    type: "object",
+    properties: {
+      to: { type: "string", description: "Recipient email address (optional for drafts)." },
+      subject: { type: "string", description: "Email subject line." },
+      body: { type: "string", description: "Email body text (plain text)." },
+    },
+    required: ["body"],
+  },
+};
+
+// ─── CALENDAR TOOLS ───
+
+const LIST_CALENDAR_EVENTS = {
+  name: "list_calendar_events",
+  description: "List Google Calendar events for a date range. Returns event titles, times, locations, and attendees.",
+  input_schema: {
+    type: "object",
+    properties: {
+      start_date: { type: "string", description: "Start of date range in ISO 8601 format (e.g. '2026-03-11T00:00:00Z')." },
+      end_date: { type: "string", description: "End of date range in ISO 8601 format." },
+      max_results: { type: "number", description: "Maximum events to return (default 20)." },
+    },
+    required: ["start_date", "end_date"],
+  },
+};
+
+const CREATE_CALENDAR_EVENT = {
+  name: "create_calendar_event",
+  description: "Create a new event on the user's Google Calendar.",
+  input_schema: {
+    type: "object",
+    properties: {
+      summary: { type: "string", description: "Event title." },
+      start: { type: "string", description: "Start time in ISO 8601 format (e.g. '2026-03-12T14:30:00-07:00'). For all-day events use date only: '2026-03-12'." },
+      end: { type: "string", description: "End time in ISO 8601 format. For all-day events use the next day: '2026-03-13'." },
+      description: { type: "string", description: "Optional event description." },
+      location: { type: "string", description: "Optional event location." },
+      attendees: {
+        type: "array",
+        items: { type: "string" },
+        description: "Optional: array of attendee email addresses.",
+      },
+    },
+    required: ["summary", "start", "end"],
+  },
+};
+
+const UPDATE_CALENDAR_EVENT = {
+  name: "update_calendar_event",
+  description: "Update an existing Google Calendar event. Only provide fields you want to change.",
+  input_schema: {
+    type: "object",
+    properties: {
+      event_id: { type: "string", description: "The Google Calendar event ID." },
+      summary: { type: "string", description: "New event title." },
+      start: { type: "string", description: "New start time in ISO 8601 format." },
+      end: { type: "string", description: "New end time in ISO 8601 format." },
+      description: { type: "string", description: "New event description." },
+      location: { type: "string", description: "New event location." },
+    },
+    required: ["event_id"],
+  },
+};
+
+const DELETE_CALENDAR_EVENT = {
+  name: "delete_calendar_event",
+  description: "Delete an event from Google Calendar.",
+  input_schema: {
+    type: "object",
+    properties: {
+      event_id: { type: "string", description: "The Google Calendar event ID to delete." },
+    },
+    required: ["event_id"],
+  },
+};
+
 // ─── TOOL SETS ───
 
 export const WASABI_TOOLS = [
@@ -529,6 +669,17 @@ export const WASABI_TOOLS = [
   BATCH_OPERATIONS,
   EXPORT_REPORT,
   DELEGATE_TASK,
+  // Gmail tools
+  SEARCH_EMAILS,
+  GET_EMAIL,
+  SEND_EMAIL,
+  MODIFY_EMAIL,
+  CREATE_EMAIL_DRAFT,
+  // Calendar tools
+  LIST_CALENDAR_EVENTS,
+  CREATE_CALENDAR_EVENT,
+  UPDATE_CALENDAR_EVENT,
+  DELETE_CALENDAR_EVENT,
 ];
 
 export const AUTO_TOOLS = [

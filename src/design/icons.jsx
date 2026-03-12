@@ -618,3 +618,12 @@ export function IconGrid({ size = 20, color = d, ...rest }) {
     </Icon>
   );
 }
+
+export function IconMail({ size = 20, color = d, ...rest }) {
+  return (
+    <Icon size={size} {...rest}>
+      <rect x="3" y="5" width="18" height="14" rx="2" stroke={color} strokeWidth="1.5" fill="none" />
+      <path d="M3 7l9 6 9-6" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </Icon>
+  );
+}

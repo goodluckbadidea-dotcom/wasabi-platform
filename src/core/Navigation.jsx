@@ -3,7 +3,7 @@
 // Hierarchy: Workspace > Folder > Dashboard/Page > View
 // Bottom nav: Home, Knowledge Base, Automations, System, Wasabi
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { C, FONT, RADIUS, VIEW_PALETTE } from "../design/tokens.js";
 import { ANIM, TRANSITION } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
@@ -11,8 +11,9 @@ import { savePageConfig, archivePageConfig, createFolderConfig, createWorkspaceC
 import { archivePage } from "../notion/client.js";
 import {
   IconBolt, IconGear, IconStar, IconSearch, IconBrain, IconBell,
-  IconChevronLeft, IconChevronRight,
+  IconChevronLeft, IconChevronRight, IconMail, IconCalendar,
 } from "../design/icons.jsx";
+import { getGoogleStatus, getGmailSummary, getCalendarSummary } from "../lib/api.js";
 import WasabiFlame from "./WasabiFlame.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
 import SidebarTree from "./SidebarTree.jsx";
@@ -40,6 +41,50 @@ export default function Navigation({
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
+
+  // ── Google status + sidebar widgets ──
+  const [googleConnected, setGoogleConnected] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [nextEventLabel, setNextEventLabel] = useState("");
+  const googlePollRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function checkGoogle() {
+      try {
+        const status = await getGoogleStatus();
+        if (cancelled) return;
+        setGoogleConnected(!!status?.connected);
+        if (status?.connected) {
+          // Fetch summaries in parallel
+          const [gmailRes, calRes] = await Promise.allSettled([
+            getGmailSummary(),
+            getCalendarSummary(),
+          ]);
+          if (cancelled) return;
+          if (gmailRes.status === "fulfilled") {
+            setUnreadCount(gmailRes.value?.unread || 0);
+          }
+          if (calRes.status === "fulfilled") {
+            const upcoming = calRes.value?.upcoming;
+            if (upcoming?.length > 0) {
+              const ev = upcoming[0];
+              const time = ev.start?.dateTime
+                ? new Date(ev.start.dateTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                : "";
+              setNextEventLabel(time ? `${time} ${(ev.summary || "").slice(0, 16)}` : (ev.summary || "").slice(0, 20));
+            } else {
+              setNextEventLabel("");
+            }
+          }
+        }
+      } catch (_) { /* best effort */ }
+    }
+    checkGoogle();
+    // Re-poll every 5 min
+    googlePollRef.current = setInterval(checkGoogle, 5 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(googlePollRef.current); };
+  }, []);
 
   // Active view index (from App.jsx viewStates)
   const activeViewIndex = viewStates?.[activePage] ?? 0;
@@ -296,6 +341,52 @@ export default function Navigation({
           <IconBolt size={collapsed ? 16 : 14} color={activePage === "automations" ? "#fff" : C.darkMuted} />
           {!collapsed && <span style={bottomLabelStyle(activePage === "automations")}>Automations</span>}
         </button>
+
+        {/* Gmail (only when Google connected) */}
+        {googleConnected && (
+          <button
+            onClick={() => setActivePage("gmail")}
+            title="Gmail"
+            style={bottomBtnStyle(activePage === "gmail")}
+            onMouseEnter={(e) => { if (activePage !== "gmail") e.currentTarget.style.background = C.darkSurf2; }}
+            onMouseLeave={(e) => { if (activePage !== "gmail") e.currentTarget.style.background = "transparent"; }}
+          >
+            <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+              <IconMail size={collapsed ? 16 : 14} color={activePage === "gmail" ? "#fff" : C.darkMuted} />
+              {unreadCount > 0 && (
+                <span style={{
+                  position: "absolute", top: -5, right: -8,
+                  background: C.accent, color: "#fff",
+                  fontSize: 8, fontWeight: 700, fontFamily: FONT,
+                  borderRadius: 999, minWidth: 14, height: 14,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  padding: "0 3px", lineHeight: 1,
+                }}>
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
+            </div>
+            {!collapsed && <span style={bottomLabelStyle(activePage === "gmail")}>Gmail</span>}
+          </button>
+        )}
+
+        {/* Calendar (only when Google connected) */}
+        {googleConnected && (
+          <button
+            onClick={() => setActivePage("calendar")}
+            title="Calendar"
+            style={bottomBtnStyle(activePage === "calendar")}
+            onMouseEnter={(e) => { if (activePage !== "calendar") e.currentTarget.style.background = C.darkSurf2; }}
+            onMouseLeave={(e) => { if (activePage !== "calendar") e.currentTarget.style.background = "transparent"; }}
+          >
+            <IconCalendar size={collapsed ? 16 : 14} color={activePage === "calendar" ? "#fff" : C.darkMuted} />
+            {!collapsed && (
+              <span style={bottomLabelStyle(activePage === "calendar")}>
+                {nextEventLabel || "Calendar"}
+              </span>
+            )}
+          </button>
+        )}
 
         {/* System */}
         <button

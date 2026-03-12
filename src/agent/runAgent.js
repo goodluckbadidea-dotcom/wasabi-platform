@@ -16,6 +16,10 @@ const WRITE_TOOL_NAMES = new Set([
   "create_neuron", "update_knowledge_base", "post_notification",
   "process_uploaded_files", "smart_match_records", "export_report",
   "delegate_task",
+  // Gmail write tools
+  "send_email", "modify_email", "create_draft",
+  // Calendar write tools
+  "create_calendar_event", "update_calendar_event", "delete_calendar_event",
 ]);
 
 /**

@@ -16,6 +16,8 @@ import WasabiOrb from "../core/WasabiOrb.jsx";
 import { loadCachedNeurons } from "../neurons/neuronStorage.js";
 import { routeModel, shouldEscalate, SONNET } from "../agent/aiRouter.js";
 import { buildDataSummary, getTokenBudget, findWorkspaceAncestor } from "../agent/dataSummary.js";
+import { getGoogleStatus } from "../lib/api.js";
+import { fetchGoogleContext } from "../google/googleContext.js";
 
 export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
   const { user, platformIds, addPage, pages } = usePlatform();
@@ -93,6 +95,15 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
           ).join("\n")
         : "";
 
+      // Fetch Google context (best effort, cached 5 min)
+      let googleContext = "";
+      try {
+        const gStatus = await getGoogleStatus();
+        if (gStatus?.connected) {
+          googleContext = await fetchGoogleContext();
+        }
+      } catch (_) { /* best effort */ }
+
       // Auto-search KB for relevant context
       let kbContext = "";
       try {
@@ -132,6 +143,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
         currentDate: new Date().toISOString().split("T")[0],
         workspaceInstructions,
         agentMode,
+        googleContext,
       });
 
       // ── Haiku-first smart routing ──
