@@ -42,6 +42,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
       configDbId: platformIds?.configDbId,
       rulesDbId: platformIds?.rulesDbId,
       onPageCreated: addPage,
+      claudeKey: user?.claudeKey || "",
     });
     return executor(toolName, toolInput);
   }, [user, platformIds, addPage]);

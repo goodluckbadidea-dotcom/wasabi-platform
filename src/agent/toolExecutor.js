@@ -184,6 +184,7 @@ export function createToolExecutor({
   configDbId,
   rulesDbId,
   onPageCreated,
+  claudeKey,
 }) {
   return async function executeTool(toolName, toolInput) {
     switch (toolName) {
@@ -1024,6 +1025,103 @@ export function createToolExecutor({
             description: description || "",
             hint: "Check your code syntax. Use an IIFE: (function() { ... return result; })()",
           });
+        }
+      }
+
+      // ─── Batch Operations ───
+
+      case "batch_operations": {
+        const ops = (toolInput.operations || []).slice(0, 50);
+        if (!ops.length) return JSON.stringify({ error: "No operations provided." });
+
+        const results = [];
+        for (const op of ops) {
+          try {
+            const result = await executeTool(op.action, op.params);
+            results.push({ action: op.action, success: true, result: typeof result === "string" ? JSON.parse(result) : result });
+          } catch (err) {
+            results.push({ action: op.action, success: false, error: err.message });
+          }
+        }
+        const succeeded = results.filter((r) => r.success).length;
+        return JSON.stringify({
+          success: true,
+          total: results.length,
+          succeeded,
+          failed: results.length - succeeded,
+          results,
+        });
+      }
+
+      // ─── Export Report ───
+
+      case "export_report": {
+        // Return structured data for the frontend to handle (Blob download / print dialog)
+        return JSON.stringify({
+          __exportAction: true,
+          format: toolInput.format,
+          title: toolInput.title,
+          headers: toolInput.headers,
+          rows: toolInput.rows,
+          summary: toolInput.summary || "",
+        });
+      }
+
+      // ─── Delegate Task (Sub-Agents) ───
+
+      case "delegate_task": {
+        if (!claudeKey) return JSON.stringify({ error: "delegate_task requires API key configuration." });
+
+        const tasks = (toolInput.tasks || []).slice(0, 5);
+        if (!tasks.length) return JSON.stringify({ error: "No tasks provided." });
+
+        try {
+          const { runAgent } = await import("./runAgent.js");
+          const { HAIKU } = await import("./aiRouter.js");
+          const { WASABI_TOOLS: allTools } = await import("./tools.js");
+
+          // Sub-agents get read-only tools only
+          const readOnlyNames = new Set(["query_database", "search_knowledge_base", "run_calculation"]);
+          const subAgentTools = allTools.filter((t) => readOnlyNames.has(t.name));
+
+          // Create a read-only sub-executor (no claudeKey — prevents recursive delegation)
+          const subExecutor = createToolExecutor({
+            workerUrl, notionKey, mondayKey, parentPageId,
+            kbDbId, notifDbId, configDbId, rulesDbId,
+          });
+
+          const results = await Promise.all(
+            tasks.map(async (task) => {
+              try {
+                const messages = [{
+                  role: "user",
+                  content: `${task.instruction}\n\n${task.context ? `Context:\n${task.context}` : ""}`,
+                }];
+                const systemPrompt = "You are a focused analysis sub-agent. Answer the specific question using the tools available. Be precise, cite data sources, and return a structured summary. Do NOT fabricate data — only report what tools return.";
+                const result = await runAgent({
+                  messages,
+                  tools: subAgentTools,
+                  systemPrompt,
+                  model: HAIKU,
+                  claudeKey,
+                  executeTool: subExecutor,
+                  maxIterations: 3,
+                });
+                return { label: task.label, success: true, result: result.response };
+              } catch (err) {
+                return { label: task.label, success: false, error: err.message };
+              }
+            })
+          );
+
+          const succeeded = results.filter((r) => r.success).length;
+          const formatted = results.map((r) =>
+            `### ${r.label}\n${r.success ? r.result : `Error: ${r.error}`}`
+          ).join("\n\n");
+
+          return `Sub-agent results (${succeeded}/${results.length} completed):\n\n${formatted}`;
+        } catch (err) {
+          return JSON.stringify({ error: `delegate_task failed: ${err.message}` });
         }
       }
 

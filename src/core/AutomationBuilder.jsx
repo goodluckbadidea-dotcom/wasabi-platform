@@ -299,6 +299,7 @@ export default function AutomationBuilder({ automationEngine }) {
       onPageCreated: (pageConfig) => {
         addPage(pageConfig);
       },
+      claudeKey: user?.claudeKey || "",
     });
     return executor(toolName, toolInput);
   }, [user, platformIds, addPage]);

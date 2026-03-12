@@ -23,6 +23,7 @@ import BatchQueue from "./BatchQueue.jsx";
 import * as api from "../lib/api.js";
 // Legacy Notion imports removed — notifications now stored in D1
 import { timeAgo } from "../utils/helpers.js";
+import { downloadCSV, printPDF } from "../utils/reportExport.js";
 
 // ── Tab button style ──
 const tabBtn = (active) => ({
@@ -233,6 +234,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
           parentPageId: platformIds?.rootPageId, kbDbId: platformIds?.kbDbId,
           notifDbId: platformIds?.notifDbId, configDbId: platformIds?.configDbId,
           rulesDbId: platformIds?.rulesDbId, onPageCreated: addPage,
+          claudeKey: user?.claudeKey || "",
         });
 
         const batchBudget = getTokenBudget(item.text, 0);
@@ -261,10 +263,10 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
 
   // ── Chat: send message to Wasabi ──
   const toolExecutor = useCallback(
-    (toolName, toolInput) => {
+    async (toolName, toolInput) => {
       const conn = api.getConnection();
       const wUrl = user?.workerUrl || conn?.workerUrl;
-      if (!wUrl) return Promise.resolve("{}");
+      if (!wUrl) return "{}";
       const executor = createToolExecutor({
         workerUrl: wUrl,
         notionKey: user?.notionKey || "",
@@ -275,8 +277,25 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
         configDbId: platformIds?.configDbId,
         rulesDbId: platformIds?.rulesDbId,
         onPageCreated: addPage,
+        claudeKey: user?.claudeKey || "",
       });
-      return executor(toolName, toolInput);
+      const result = await executor(toolName, toolInput);
+
+      // Handle export_report side effects (CSV download / PDF print dialog)
+      if (toolName === "export_report") {
+        try {
+          const parsed = typeof result === "string" ? JSON.parse(result) : result;
+          if (parsed?.__exportAction) {
+            if (parsed.format === "csv") {
+              downloadCSV(parsed.title, parsed.headers, parsed.rows);
+            } else if (parsed.format === "pdf") {
+              printPDF(parsed.title, parsed.headers, parsed.rows, parsed.summary);
+            }
+          }
+        } catch { /* export handling is best-effort */ }
+      }
+
+      return result;
     },
     [user, platformIds, addPage]
   );

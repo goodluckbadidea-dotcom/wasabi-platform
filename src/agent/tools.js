@@ -435,6 +435,76 @@ Your code must return a value — use an IIFE: (function() { ... return result; 
   },
 };
 
+// ─── BATCH & EXPORT TOOLS ───
+
+const BATCH_OPERATIONS = {
+  name: "batch_operations",
+  description: "Execute multiple create/update operations in a single call. Use this when you need to create or update 3+ records at once. Each operation is executed sequentially and results are collected. Max 50 operations per batch.",
+  input_schema: {
+    type: "object",
+    properties: {
+      operations: {
+        type: "array",
+        description: "Array of operations. Each has: action ('create_page' or 'update_page'), and params (same input as that tool).",
+        items: {
+          type: "object",
+          properties: {
+            action: { type: "string", enum: ["create_page", "update_page"], description: "Which tool to execute." },
+            params: { type: "object", description: "Same input as the individual tool (create_page or update_page)." },
+          },
+          required: ["action", "params"],
+        },
+      },
+    },
+    required: ["operations"],
+  },
+};
+
+const EXPORT_REPORT = {
+  name: "export_report",
+  description: "Export data as a downloadable report. CSV downloads directly as a file. PDF opens a print dialog so the user can save as PDF. Query the data first, then format into headers and rows arrays.",
+  input_schema: {
+    type: "object",
+    properties: {
+      format: { type: "string", enum: ["csv", "pdf"], description: "Export format." },
+      title: { type: "string", description: "Report title (used as filename and header)." },
+      headers: { type: "array", items: { type: "string" }, description: "Column headers." },
+      rows: {
+        type: "array",
+        items: { type: "array" },
+        description: "Row data as arrays of values (one per row, matching headers order).",
+      },
+      summary: { type: "string", description: "Optional summary text shown at the top of PDF reports." },
+    },
+    required: ["format", "title", "headers", "rows"],
+  },
+};
+
+const DELEGATE_TASK = {
+  name: "delegate_task",
+  description: "Delegate sub-tasks to parallel analysis agents for complex multi-part questions. Each sub-agent runs independently with read-only tools (query_database, search_knowledge_base, run_calculation). Max 5 sub-agents. Use when breaking down large analysis into 3+ focused, independent parts.",
+  input_schema: {
+    type: "object",
+    properties: {
+      tasks: {
+        type: "array",
+        maxItems: 5,
+        description: "Array of sub-tasks. Each gets its own agent.",
+        items: {
+          type: "object",
+          properties: {
+            label: { type: "string", description: "Short label for this sub-task (e.g. 'Inventory Analysis')." },
+            instruction: { type: "string", description: "What this sub-agent should analyze or compute. Be specific." },
+            context: { type: "string", description: "Relevant data or context to pass to the sub-agent (e.g. database IDs, query results, rules)." },
+          },
+          required: ["label", "instruction"],
+        },
+      },
+    },
+    required: ["tasks"],
+  },
+};
+
 // ─── TOOL SETS ───
 
 export const WASABI_TOOLS = [
@@ -456,6 +526,9 @@ export const WASABI_TOOLS = [
   QUERY_NEURONS,
   CREATE_NEURON,
   RUN_CALCULATION,
+  BATCH_OPERATIONS,
+  EXPORT_REPORT,
+  DELEGATE_TASK,
 ];
 
 export const AUTO_TOOLS = [

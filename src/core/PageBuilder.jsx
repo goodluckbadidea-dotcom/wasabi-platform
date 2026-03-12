@@ -65,6 +65,7 @@ export default function PageBuilder({ initialTemplate = null, WasabiFlameIcon = 
       onPageCreated: (pageConfig) => {
         addPage(pageConfig);
       },
+      claudeKey: user?.claudeKey || "",
     });
     return executor(toolName, toolInput);
   }, [user, platformIds, addPage]);

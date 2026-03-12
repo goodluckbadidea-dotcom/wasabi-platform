@@ -156,6 +156,7 @@ export async function executeRule(rule, opts, contextData = {}) {
     notionKey: opts.notionKey || null,
     notifDbId: "d1",
     kbDbId: "d1",
+    claudeKey: opts.claudeKey || "",
   });
 
   // Build rich context summary for the agent

@@ -4,6 +4,7 @@
 
 import React from "react";
 import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
+import InlineChart from "../components/InlineChart.jsx";
 
 /**
  * Render a markdown string into React elements.
@@ -29,6 +30,30 @@ export function renderMarkdown(text) {
         i++;
       }
       i++; // skip closing ```
+
+      // Inline chart — parse JSON config and render as SVG
+      if (lang === "wasabi-chart") {
+        try {
+          const config = JSON.parse(codeLines.join("\n"));
+          elements.push(
+            React.createElement(InlineChart, { key: elements.length, config })
+          );
+        } catch {
+          // Invalid JSON — fall through to render as normal code block
+          elements.push(
+            React.createElement("pre", {
+              key: elements.length,
+              style: {
+                fontFamily: MONO, fontSize: 12, background: C.dark, color: C.darkText,
+                borderRadius: RADIUS.lg, padding: "14px 18px", overflowX: "auto",
+                lineHeight: 1.55, margin: "8px 0",
+              },
+            }, React.createElement("code", null, codeLines.join("\n")))
+          );
+        }
+        continue;
+      }
+
       elements.push(
         React.createElement("pre", {
           key: elements.length,
