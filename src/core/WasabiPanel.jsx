@@ -4,8 +4,9 @@
 // Opens when user clicks the flame character at bottom of sidebar.
 // No emojis — all SVG icons.
 
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
+import { TRANSITION } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { IconClose, IconLog, IconChat, IconBell, IconSend, IconPaperclip } from "../design/icons.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
@@ -51,10 +52,59 @@ function getStatusCol() {
   };
 }
 
+const DEFAULT_WIDTH = 320;
+const MIN_WIDTH = 280;
+const MAX_WIDTH = 640;
+
 export default function WasabiPanel({ onClose, isThinking, activePageConfig, activePageData }) {
   const { user, platformIds, pages, batchQueue, addToQueue, updateQueueItem, removeQueueItem, addPage } =
     usePlatform();
   const [tab, setTab] = useState("log");
+
+  // ── Resize state ──
+  const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef({ startX: 0, startWidth: 0 });
+  const isResized = panelWidth !== DEFAULT_WIDTH;
+
+  // Drag handlers
+  const handleDragStart = useCallback((e) => {
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startWidth: panelWidth };
+    setIsDragging(true);
+  }, [panelWidth]);
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleDragMove = (e) => {
+      const delta = e.clientX - dragRef.current.startX;
+      const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, dragRef.current.startWidth + delta));
+      setPanelWidth(newWidth);
+    };
+
+    const handleDragEnd = () => {
+      setIsDragging(false);
+    };
+
+    document.addEventListener("mousemove", handleDragMove);
+    document.addEventListener("mouseup", handleDragEnd);
+
+    // Prevent text selection while dragging
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    return () => {
+      document.removeEventListener("mousemove", handleDragMove);
+      document.removeEventListener("mouseup", handleDragEnd);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [isDragging]);
+
+  const handleMinimize = useCallback(() => {
+    setPanelWidth(DEFAULT_WIDTH);
+  }, []);
 
   // ── Log state ──
   const [logInput, setLogInput] = useState("");
@@ -460,15 +510,17 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
   return (
     <div
       style={{
-        width: 320,
+        width: panelWidth,
         flexShrink: 0,
-        borderRight: `1px solid ${C.darkBorder}`,
+        borderRight: "none",
         background: C.darkSurf,
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
         minHeight: 0,
         fontFamily: FONT,
+        position: "relative",
+        transition: isDragging ? "none" : TRANSITION.panelResize,
       }}
     >
       {/* ── Header ── */}
@@ -501,31 +553,56 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
           >
             Wasabi
           </span>
-          <button
-            onClick={onClose}
-            title="Close"
-            style={{
-              marginLeft: "auto",
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              color: C.darkMuted,
-              padding: 4,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: RADIUS.sm,
-              transition: "color 0.12s",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = C.darkText;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = C.darkMuted;
-            }}
-          >
-            <IconClose size={12} color="currentColor" />
-          </button>
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 2 }}>
+            {/* Minimize button — only visible when panel has been resized */}
+            {isResized && (
+              <button
+                onClick={handleMinimize}
+                title="Reset to default size"
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: C.darkMuted,
+                  padding: 4,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: RADIUS.sm,
+                  transition: "color 0.12s",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = C.darkText; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = C.darkMuted; }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="4 14 10 14 10 20" />
+                  <polyline points="20 10 14 10 14 4" />
+                  <line x1="14" y1="10" x2="21" y2="3" />
+                  <line x1="3" y1="21" x2="10" y2="14" />
+                </svg>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              title="Close"
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: C.darkMuted,
+                padding: 4,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: RADIUS.sm,
+                transition: "color 0.12s",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = C.darkText; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = C.darkMuted; }}
+            >
+              <IconClose size={12} color="currentColor" />
+            </button>
+          </div>
         </div>
 
         {/* Tab bar */}
@@ -811,6 +888,25 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
           </div>
         </div>
       )}
+
+      {/* ── Drag handle (right edge) ── */}
+      <div
+        onMouseDown={handleDragStart}
+        style={{
+          position: "absolute",
+          top: 0,
+          right: 0,
+          width: 6,
+          height: "100%",
+          cursor: "col-resize",
+          zIndex: 20,
+          background: isDragging ? C.accent + "44" : "transparent",
+          borderRight: `1px solid ${C.darkBorder}`,
+          transition: "background 0.15s",
+        }}
+        onMouseEnter={(e) => { if (!isDragging) e.currentTarget.style.background = C.accent + "22"; }}
+        onMouseLeave={(e) => { if (!isDragging) e.currentTarget.style.background = "transparent"; }}
+      />
     </div>
   );
 }

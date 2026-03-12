@@ -230,4 +230,6 @@ export const TRANSITION = {
   panel: "transform 0.3s cubic-bezier(0.22, 1.2, 0.36, 1), opacity 0.25s ease",
   // Color/background fade
   color: "background 0.15s ease, color 0.15s ease, border-color 0.15s ease",
+  // Panel resize — smooth deceleration, no overshoot (matches sidebar easing)
+  panelResize: "width 0.28s cubic-bezier(0.25, 1, 0.5, 1)",
 };
