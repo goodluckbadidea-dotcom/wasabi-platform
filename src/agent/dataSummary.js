@@ -102,12 +102,12 @@ export function buildDataSummary(data, schema) {
  * @returns {{ maxTokens: number, maxIterations: number }}
  */
 export function getTokenBudget(text, conversationDepth) {
-  if (text.length < 80 && conversationDepth < 3) return { maxTokens: 1024, maxIterations: 6 };
   if (/build|create|design|setup|implement|system|track|manage/i.test(text) && text.length > 150)
-    return { maxTokens: 4096, maxIterations: 12 };
+    return { maxTokens: 6144, maxIterations: 12 };
   if (/analyze|summarize|compare|report|show|find/i.test(text))
-    return { maxTokens: 2048, maxIterations: 8 };
-  return { maxTokens: 2048, maxIterations: 8 };
+    return { maxTokens: 4096, maxIterations: 8 };
+  if (text.length < 60 && conversationDepth < 3) return { maxTokens: 2048, maxIterations: 6 };
+  return { maxTokens: 4096, maxIterations: 8 };
 }
 
 /**
