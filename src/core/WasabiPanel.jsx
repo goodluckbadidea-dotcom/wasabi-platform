@@ -459,8 +459,8 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
         });
         console.log("[QueryClassifier]", classification.strategy, classification.complexity, `est:${classification.estimated_tools} tools`);
 
-        // ── Short-circuit: clarify first ──
-        if (classification.strategy === "clarify" && classification.clarifying_questions?.length > 0) {
+        // ── Short-circuit: clarify first (or show plan for expensive queries) ──
+        if (classification.needs_clarification || (classification.estimated_tools >= 5 && classification.plan_summary)) {
           const clarifyMsg = formatClassifierResponse(classification);
           if (clarifyMsg) {
             const extracted = extractQuestions(clarifyMsg);

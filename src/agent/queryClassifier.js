@@ -35,12 +35,16 @@ Rules:
 - "simple": greeting, single lookup, quick question → 1-2 tools. strategy: "direct"
 - "moderate": focused analysis on 1 data source → 2-4 tools. strategy: "direct"
 - "complex": multi-source analysis, cross-referencing, reports → 5+ tools
-  - If the user's intent is vague or could go multiple directions → strategy: "clarify", needs_clarification: true
-  - If intent is clear but needs multiple data sources → strategy: "parallel_fetch"
-- clarifying_questions: only include when needs_clarification is true. Max 3 questions, 2-4 options each.
-  Questions should help you understand SCOPE (which data, time range, depth) not repeat the query.
+  - ALWAYS set needs_clarification: true for complex queries (even if intent seems clear)
+  - ALWAYS include 1-3 clarifying_questions that help narrow scope or confirm approach
+  - If 2+ data sources needed → strategy: "parallel_fetch"
+  - Otherwise → strategy: "clarify"
+- clarifying_questions: REQUIRED for any query with estimated_tools >= 3. Max 3 questions, 2-4 options each.
+  Good questions narrow scope: time range, which products/categories, level of detail, output format.
+  Even when the user gave detailed instructions, ask about priorities: "Which aspect matters most?"
+  or confirm understanding: "Just to confirm, you want X and Y — anything else to include?"
 - data_sources: list the specific workspace sources you'd need to query (by name from the available list)
-- plan_summary: always filled — a brief sentence describing the execution approach`;
+- plan_summary: ALWAYS filled for estimated_tools >= 3 — a brief sentence describing the execution approach`;
 
 /** Skip classifier for trivially simple messages. */
 function shouldSkipClassifier(text) {
@@ -182,21 +186,39 @@ export async function classifyQuery({
  * @returns {string} Formatted response text
  */
 export function formatClassifierResponse(classification) {
-  if (!classification.needs_clarification || !classification.clarifying_questions?.length) {
-    return "";
-  }
+  const hasQuestions = classification.clarifying_questions?.length > 0;
+  const hasPlan = !!classification.plan_summary;
+  const isExpensive = classification.estimated_tools >= 5;
 
-  const lines = ["A few things to clarify before I dive in:\n"];
+  // Nothing to show
+  if (!hasQuestions && !hasPlan) return "";
 
-  for (const q of classification.clarifying_questions) {
-    if (q.question && q.options?.length >= 2) {
-      const optStr = q.options.map((o) => `A: ${o}`).join(" | ");
-      lines.push(`[Q: ${q.question} | ${optStr}]`);
+  const lines = [];
+
+  // Add clarifying questions
+  if (hasQuestions) {
+    lines.push("Before I dive in, a few things to clarify:\n");
+    for (const q of classification.clarifying_questions) {
+      if (q.question && q.options?.length >= 2) {
+        const optStr = q.options.map((o) => `A: ${o}`).join(" | ");
+        lines.push(`[Q: ${q.question} | ${optStr}]`);
+      }
     }
   }
 
-  if (classification.plan_summary) {
-    lines.push(`\n*My initial plan: ${classification.plan_summary}*`);
+  // Add plan summary with confirmation for expensive queries
+  if (hasPlan) {
+    if (hasQuestions) {
+      lines.push(`\n**My plan:** ${classification.plan_summary}`);
+    } else if (isExpensive) {
+      // No questions but expensive — show plan and ask for confirmation
+      lines.push(`Here's my plan: **${classification.plan_summary}**`);
+      if (classification.data_sources?.length > 0) {
+        lines.push(`\nI'll query ${classification.data_sources.length} data source${classification.data_sources.length > 1 ? "s" : ""}: ${classification.data_sources.join(", ")}`);
+      }
+      lines.push(`\nEstimated complexity: ~${classification.estimated_tools} tool calls.`);
+      lines.push(`\n[Q: Ready to proceed? | A: Yes, go ahead | A: Let me refine the scope | A: Cancel]`);
+    }
   }
 
   return lines.join("\n");
