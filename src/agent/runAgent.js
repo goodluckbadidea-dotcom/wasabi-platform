@@ -9,6 +9,36 @@ import { getConnection } from "../lib/api.js";
 
 const MAX_BACKOFF = 60000;
 
+/**
+ * Trim conversation history to prevent stale data from poisoning responses.
+ * Keeps the last N user/assistant message pairs. Tool-result messages (which
+ * contain raw query data) from older turns are dropped — they're the biggest
+ * source of "hallucination anchoring" where Claude repeats wrong numbers from
+ * earlier failed attempts.
+ *
+ * @param {Array} messages - Full conversation history
+ * @param {number} [maxPairs=3] - Keep last N user→assistant exchanges
+ * @returns {Array} Trimmed messages
+ */
+export function trimHistory(messages, maxPairs = 3) {
+  if (!messages || messages.length <= maxPairs * 2) return messages;
+
+  // Find boundaries of user/assistant pairs (ignoring tool_result role)
+  const pairBoundaries = [];
+  for (let i = 0; i < messages.length; i++) {
+    if (messages[i].role === "user" && !Array.isArray(messages[i].content)) {
+      // This is a real user message (not a tool_result block)
+      pairBoundaries.push(i);
+    }
+  }
+
+  if (pairBoundaries.length <= maxPairs) return messages;
+
+  // Keep messages from the (maxPairs)th-from-last user message onward
+  const cutoff = pairBoundaries[pairBoundaries.length - maxPairs];
+  return messages.slice(cutoff);
+}
+
 /** Tools that modify data — used by onToolApproval gate in "confirm" mode. */
 const WRITE_TOOL_NAMES = new Set([
   "create_page", "update_page", "batch_operations", "create_database",

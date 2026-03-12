@@ -6,7 +6,7 @@
 import React, { useState, useCallback, useRef, useMemo } from "react";
 import ChatUI from "../core/ChatUI.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { runAgent, runAgentMultiPhase, extractQuestions } from "../agent/runAgent.js";
+import { runAgent, runAgentMultiPhase, extractQuestions, trimHistory } from "../agent/runAgent.js";
 import { WASABI_TOOLS } from "../agent/tools.js";
 import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createToolExecutor } from "../agent/toolExecutor.js";
@@ -86,7 +86,8 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
     }
 
     const userMsg = { role: "user", content: agentText };
-    const newHistory = [...historyRef.current, userMsg];
+    // Trim old history to prevent stale data from anchoring hallucinations
+    const newHistory = [...trimHistory(historyRef.current, 3), userMsg];
 
     try {
       // Build neuron summary from cached data

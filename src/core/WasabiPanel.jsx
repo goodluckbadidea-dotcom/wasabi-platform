@@ -12,7 +12,7 @@ import { IconClose, IconLog, IconChat, IconBell, IconSend, IconPaperclip } from 
 import WasabiFlame from "./WasabiFlame.jsx";
 import WasabiOrb from "./WasabiOrb.jsx";
 import ChatUI from "./ChatUI.jsx";
-import { runAgent, runAgentMultiPhase, extractQuestions } from "../agent/runAgent.js";
+import { runAgent, runAgentMultiPhase, extractQuestions, trimHistory } from "../agent/runAgent.js";
 import { WASABI_TOOLS } from "../agent/tools.js";
 import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createToolExecutor } from "../agent/toolExecutor.js";
@@ -340,7 +340,8 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
         agentText += `\n\nUploaded Files:\n${fileContents}`;
       }
 
-      const newHistory = [...chatHistoryRef.current, { role: "user", content: agentText }];
+      // Trim old history to prevent stale data from anchoring hallucinations
+      const newHistory = [...trimHistory(chatHistoryRef.current, 3), { role: "user", content: agentText }];
 
       try {
         // Build workspace summary so Wasabi knows about all pages + all data sources
