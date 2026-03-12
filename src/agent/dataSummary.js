@@ -16,7 +16,7 @@ export function buildDataSummary(data, schema) {
   if (!data?.length || !schema) return "";
 
   const lines = [];
-  lines.push(`## Current Data Summary (${data.length} records)`);
+  lines.push(`## Current Data Summary (${data.length} total records — this is a PREVIEW only, always use \`query_database\` for accurate counts and analysis)`);
 
   // Title field
   const titleField = schema.title?.name;
@@ -87,7 +87,7 @@ export function buildDataSummary(data, schema) {
     }
 
     if (data.length > 15) {
-      lines.push(`\n*...and ${data.length - 15} more records. Use \`query_database\` for full data.*`);
+      lines.push(`\n*⚠ Showing 15 of ${data.length} records. This sample is INCOMPLETE — you MUST use \`query_database\` to get accurate totals and full data. Never count or analyze from this sample alone.*`);
     }
   }
 
