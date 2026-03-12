@@ -1103,11 +1103,12 @@ export function createToolExecutor({
                   tools: subAgentTools,
                   systemPrompt,
                   model: HAIKU,
+                  workerUrl,
                   claudeKey,
                   executeTool: subExecutor,
                   maxIterations: 3,
                 });
-                return { label: task.label, success: true, result: result.response };
+                return { label: task.label, success: true, result: result.text };
               } catch (err) {
                 return { label: task.label, success: false, error: err.message };
               }

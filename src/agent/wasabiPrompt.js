@@ -14,8 +14,9 @@ import { templatesToPromptText } from "../config/templates.js";
  * @param {string} opts.workspaceSummary - Summary of all workspace pages (for global chat)
  * @param {string} opts.currentDate - Today's date (YYYY-MM-DD)
  * @param {string} opts.workspaceInstructions - Custom AI instructions from workspace settings
+ * @param {string} opts.agentMode - Agent behavior mode: "auto" | "confirm" | "plan"
  */
-export function buildWasabiPrompt({ platformDbIds, kbContext = "", currentPageContext, dataSummary, workspaceSummary, neuronSummary, currentDate, workspaceInstructions }) {
+export function buildWasabiPrompt({ platformDbIds, kbContext = "", currentPageContext, dataSummary, workspaceSummary, neuronSummary, currentDate, workspaceInstructions, agentMode }) {
   let pageSection = "";
   if (currentPageContext) {
     const { pageName, databaseIds, schemaText } = currentPageContext;
@@ -32,10 +33,14 @@ ${dataSummary ? `\n${dataSummary}` : ""}`;
   const dateContext = `## Context
 - **Today's date**: ${now} (${dayOfWeek})`;
 
+  // Build agent behavior mode section
+  const behaviorSection = getAgentBehaviorPrompt(agentMode);
+
   return `${IDENTITY}
 
 ${dateContext}
 ${workspaceInstructions ? `\n## Workspace Instructions\n${workspaceInstructions}` : ""}
+${behaviorSection}
 
 ${CAPABILITIES}
 
@@ -59,6 +64,40 @@ ${kbContext ? `\n## Your Knowledge Base Context\n${kbContext}` : ""}
 ${workspaceSummary ? `\n## Workspace Pages\n${workspaceSummary}` : ""}
 ${neuronSummary ? `\n## Neuron Connections\nThe user has created the following neuron connections (semantic links between items):\n${neuronSummary}` : ""}
 ${pageSection}`;
+}
+
+/**
+ * Get agent behavior prompt text based on the active mode.
+ * "auto" = no additional instructions (default behavior).
+ * "confirm" = ask permission before write operations.
+ * "plan" = present a plan before taking any actions.
+ */
+function getAgentBehaviorPrompt(mode) {
+  if (mode === "confirm") {
+    return `\n## Agent Behavior: Ask Permission
+Before executing any action that creates, updates, or deletes data, you MUST:
+1. Tell the user exactly what you plan to do (which tool, what data, how many records)
+2. Present confirmation choices: [Choice: Yes, proceed] [Choice: No, cancel]
+3. Wait for the user to confirm before calling the tool
+Read-only operations (queries, searches, calculations) can run without asking.
+If the user already gave clear intent in their message (e.g. "create a Products database"), you can present what you'll do and ask for a single confirmation rather than asking step by step.`;
+  }
+
+  if (mode === "plan") {
+    return `\n## Agent Behavior: Plan Mode
+For every request that requires action, you MUST follow this workflow:
+1. First analyze the request and gather any needed context (queries and searches are allowed without a plan)
+2. Present a **numbered plan** of all actions you intend to take
+3. For each step include: what tool you will use, which database or page is affected, and the expected outcome
+4. End with: [Choice: Execute plan] [Choice: Modify plan] [Choice: Cancel]
+5. Only execute the plan after the user selects "Execute plan"
+6. During execution, follow the plan step-by-step and report progress
+Never execute write operations without presenting and getting approval for a plan first.
+For simple questions or queries that don't modify data, you can respond directly without a plan.`;
+  }
+
+  // "auto" or unset — no additional behavior instructions
+  return "";
 }
 
 const IDENTITY = `# You are Wasabi

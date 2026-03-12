@@ -9,6 +9,15 @@ import { getConnection } from "../lib/api.js";
 
 const MAX_BACKOFF = 60000;
 
+/** Tools that modify data — used by onToolApproval gate in "confirm" mode. */
+const WRITE_TOOL_NAMES = new Set([
+  "create_page", "update_page", "batch_operations", "create_database",
+  "update_database", "create_page_config", "create_automation_rule",
+  "create_neuron", "update_knowledge_base", "post_notification",
+  "process_uploaded_files", "smart_match_records", "export_report",
+  "delegate_task",
+]);
+
 /**
  * Run an agent loop: send messages to Claude, execute tool calls, repeat.
  *
@@ -21,6 +30,7 @@ const MAX_BACKOFF = 60000;
  * @param {string} opts.claudeKey - Anthropic API key
  * @param {Function} opts.executeTool - (toolName, toolInput) => result string
  * @param {Function} [opts.onToolCall] - Callback: (toolName, toolInput, result) => void
+ * @param {Function} [opts.onToolApproval] - Async callback: (writeBlocks) => boolean — gate for write tools
  * @param {Function} [opts.onStatus] - Callback: (statusText) => void — live progress updates
  * @param {object} [opts.abortRef] - { current: boolean } for cancellation
  * @param {number} [opts.maxIterations] - Max loop iterations (default 12)
@@ -38,6 +48,7 @@ export async function runAgent({
   claudeKey,
   executeTool,
   onToolCall,
+  onToolApproval,
   onStatus,
   abortRef,
   maxIterations = 12,
@@ -94,8 +105,11 @@ export async function runAgent({
       finalText = textBlocks.join("\n");
     }
 
-    // If no tool calls, we're done
-    if (response.stop_reason !== "tool_use" || toolBlocks.length === 0) {
+    // If no tool calls, we're done.
+    // Note: only check toolBlocks — Claude can return tool_use blocks even with
+    // stop_reason !== "tool_use" (edge case). If we break without executing them,
+    // the history has dangling tool_use IDs that cause 400 errors on the next turn.
+    if (toolBlocks.length === 0) {
       break;
     }
 
@@ -103,6 +117,47 @@ export async function runAgent({
     if (onStatus) {
       const toolNames = toolBlocks.map((b) => b.name.replace(/_/g, " "));
       onStatus(`Running: ${toolNames.join(", ")}...`);
+    }
+
+    // ── Tool approval gate (for "confirm" mode) ──
+    // If onToolApproval is set, separate write tools from read-only tools.
+    // Write tools require user approval; read-only tools execute freely.
+    if (onToolApproval) {
+      const writeBlocks = toolBlocks.filter((b) => WRITE_TOOL_NAMES.has(b.name));
+      const readBlocks = toolBlocks.filter((b) => !WRITE_TOOL_NAMES.has(b.name));
+
+      if (writeBlocks.length > 0) {
+        if (onStatus) onStatus("Waiting for approval...");
+        const approved = await onToolApproval(writeBlocks);
+
+        if (!approved) {
+          // User denied — return rejection results for write tools, execute reads normally
+          const rejectionResults = writeBlocks.map((b) => ({
+            type: "tool_result",
+            tool_use_id: b.id,
+            content: JSON.stringify({ error: "User declined this action." }),
+          }));
+
+          const readResults = await Promise.all(
+            readBlocks.map(async (block) => {
+              const { id, name, input } = block;
+              let result;
+              try {
+                result = await executeTool(name, input);
+                if (typeof result !== "string") result = JSON.stringify(result);
+              } catch (err) {
+                result = JSON.stringify({ error: err.message });
+              }
+              allToolCalls.push({ name, input, result });
+              if (onToolCall) onToolCall(name, input, result);
+              return { type: "tool_result", tool_use_id: id, content: result };
+            })
+          );
+
+          history.push({ role: "user", content: [...readResults, ...rejectionResults] });
+          continue; // Next iteration — Claude sees rejections and responds
+        }
+      }
     }
 
     // Execute all tool calls in parallel
@@ -263,6 +318,7 @@ export async function runAgentMultiPhase({
   claudeKey,
   executeTool,
   onToolCall,
+  onToolApproval,
   onStatus,
   abortRef,
   maxTokens = 4096,
@@ -335,6 +391,7 @@ export async function runAgentMultiPhase({
     claudeKey,
     executeTool,
     onToolCall,
+    onToolApproval, // Only active in execute phase — orient phase is read-only
     onStatus,
     abortRef,
     maxIterations: 12,

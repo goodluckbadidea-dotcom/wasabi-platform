@@ -128,6 +128,26 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
   const chatHistoryRef = useRef([]);
   const chatAbortRef = useRef(false);
 
+  // ── Tool approval state (for "confirm" mode) ──
+  const [pendingApproval, setPendingApproval] = useState(null);
+  // { tools: [{ id, name, input }], resolve: (approved: boolean) => void }
+
+  const handleToolApproval = useCallback(async (writeBlocks) => {
+    return new Promise((resolve) => {
+      setPendingApproval({
+        tools: writeBlocks.map((b) => ({ id: b.id, name: b.name, input: b.input })),
+        resolve,
+      });
+    });
+  }, []);
+
+  const handleApprovalDecision = useCallback((approved) => {
+    if (pendingApproval?.resolve) {
+      pendingApproval.resolve(approved);
+    }
+    setPendingApproval(null);
+  }, [pendingApproval]);
+
   // ── Notifications state ──
   const [notifications, setNotifications] = useState([]);
   const [notifLoading, setNotifLoading] = useState(false);
@@ -386,12 +406,14 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
           } catch (_) { /* neuron query is best-effort */ }
         }
 
-        // Find workspace ancestor for custom AI instructions
+        // Find workspace ancestor for custom AI instructions + agent mode
         let workspaceInstructions = "";
+        let agentMode = "auto";
         if (activePageConfig) {
           const wsConfig = findWorkspaceAncestor(activePageConfig.id || activePageConfig.parentId, pages);
           const wsSettings = wsConfig?.settings || wsConfig?.config?.settings;
           if (wsSettings?.aiInstructions) workspaceInstructions = wsSettings.aiInstructions;
+          if (wsSettings?.agentMode) agentMode = wsSettings.agentMode;
         }
 
         const systemPrompt = buildWasabiPrompt({
@@ -407,6 +429,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
           neuronSummary,
           currentDate: new Date().toISOString().split("T")[0],
           workspaceInstructions,
+          agentMode,
         });
 
         const conn = api.getConnection();
@@ -438,6 +461,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
               claudeKey: user?.claudeKey || "",
               executeTool: toolExecutor,
               onToolCall: undefined,
+              onToolApproval: agentMode === "confirm" ? handleToolApproval : undefined,
               onStatus: onAgentStatus,
               abortRef: chatAbortRef,
               maxTokens: chatBudget.maxTokens,
@@ -453,6 +477,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
               workerUrl: wUrl,
               claudeKey: user?.claudeKey || "",
               executeTool: toolExecutor,
+              onToolApproval: agentMode === "confirm" ? handleToolApproval : undefined,
               onStatus: onAgentStatus,
               abortRef: chatAbortRef,
               maxTokens: chatBudget.maxTokens,
@@ -513,7 +538,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
         setChatStatus("");
       }
     },
-    [chatLoading, user, platformIds, pages, activePageConfig, toolExecutor, modelOverride]
+    [chatLoading, user, platformIds, pages, activePageConfig, toolExecutor, modelOverride, handleToolApproval]
   );
 
   const handleChatChoice = useCallback(
@@ -793,6 +818,87 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
             placeholder="Ask Wasabi anything..."
             compact={true}
           />
+
+          {/* ── Tool Approval Card (confirm mode) ── */}
+          {pendingApproval && (
+            <div style={{
+              position: "absolute",
+              bottom: 80,
+              left: 12,
+              right: 12,
+              background: C.darkSurf,
+              border: `1px solid ${C.accent}44`,
+              borderRadius: RADIUS.lg,
+              padding: "14px 16px",
+              zIndex: 20,
+              boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: C.accent, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Approve Actions
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+                {pendingApproval.tools.map((tool, i) => (
+                  <div key={i} style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "6px 10px",
+                    background: C.darkSurf2,
+                    borderRadius: RADIUS.md,
+                    fontSize: 12,
+                    color: C.darkText,
+                  }}>
+                    <span style={{ fontWeight: 600, color: C.accent, fontSize: 11, flexShrink: 0 }}>
+                      {tool.name.replace(/_/g, " ")}
+                    </span>
+                    <span style={{ color: C.darkMuted, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {tool.name === "create_page" && tool.input?.title ? `"${tool.input.title}"` :
+                       tool.name === "update_page" && tool.input?.page_id ? `page ${tool.input.page_id.slice(0, 8)}...` :
+                       tool.name === "batch_operations" && tool.input?.operations ? `${tool.input.operations.length} operations` :
+                       tool.input?.database_id ? `db ${tool.input.database_id.slice(0, 8)}...` :
+                       ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={() => handleApprovalDecision(true)}
+                  style={{
+                    flex: 1,
+                    padding: "8px 14px",
+                    background: C.accent,
+                    border: "none",
+                    borderRadius: RADIUS.md,
+                    color: "#fff",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    fontFamily: FONT,
+                  }}
+                >
+                  Approve
+                </button>
+                <button
+                  onClick={() => handleApprovalDecision(false)}
+                  style={{
+                    flex: 1,
+                    padding: "8px 14px",
+                    background: "transparent",
+                    border: `1px solid ${C.darkBorder}`,
+                    borderRadius: RADIUS.md,
+                    color: C.darkMuted,
+                    fontSize: 12,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                    fontFamily: FONT,
+                  }}
+                >
+                  Deny
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

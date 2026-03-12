@@ -11,7 +11,7 @@ import { WASABI_TOOLS } from "../agent/tools.js";
 import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createToolExecutor } from "../agent/toolExecutor.js";
 import { getConnection } from "../lib/api.js";
-import { C } from "../design/tokens.js";
+import { C, FONT, RADIUS } from "../design/tokens.js";
 import WasabiOrb from "../core/WasabiOrb.jsx";
 import { loadCachedNeurons } from "../neurons/neuronStorage.js";
 import { routeModel, shouldEscalate, SONNET } from "../agent/aiRouter.js";
@@ -27,6 +27,23 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
   const [lastTier, setLastTier] = useState(null); // tracks last auto-routed tier
   const historyRef = useRef([]);
   const abortRef = useRef(false);
+
+  // ── Tool approval state (for "confirm" mode) ──
+  const [pendingApproval, setPendingApproval] = useState(null);
+
+  const handleToolApproval = useCallback(async (writeBlocks) => {
+    return new Promise((resolve) => {
+      setPendingApproval({
+        tools: writeBlocks.map((b) => ({ id: b.id, name: b.name, input: b.input })),
+        resolve,
+      });
+    });
+  }, []);
+
+  const handleApprovalDecision = useCallback((approved) => {
+    if (pendingApproval?.resolve) pendingApproval.resolve(approved);
+    setPendingApproval(null);
+  }, [pendingApproval]);
 
   // Single Wasabi executor — full tool access, no scoping
   const toolExecutor = useCallback((toolName, toolInput) => {
@@ -95,10 +112,11 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
         dbIds.push(pageConfig.id);
       }
 
-      // Find workspace ancestor for custom AI instructions
+      // Find workspace ancestor for custom AI instructions + agent mode
       const wsConfig = findWorkspaceAncestor(pageConfig.id || pageConfig.parentId, pages);
       const wsSettings = wsConfig?.settings || wsConfig?.config?.settings;
       const workspaceInstructions = wsSettings?.aiInstructions || "";
+      const agentMode = wsSettings?.agentMode || "auto";
 
       // Build Wasabi prompt with page context + data summary
       const systemPrompt = buildWasabiPrompt({
@@ -113,6 +131,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
         kbContext,
         currentDate: new Date().toISOString().split("T")[0],
         workspaceInstructions,
+        agentMode,
       });
 
       // ── Haiku-first smart routing ──
@@ -142,6 +161,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
             workerUrl: wUrl,
             claudeKey: user?.claudeKey || "",
             executeTool: toolExecutor,
+            onToolApproval: agentMode === "confirm" ? handleToolApproval : undefined,
             onStatus: onAgentStatus,
             abortRef,
             maxTokens: chatBudget.maxTokens,
@@ -156,6 +176,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
             workerUrl: wUrl,
             claudeKey: user?.claudeKey || "",
             executeTool: toolExecutor,
+            onToolApproval: agentMode === "confirm" ? handleToolApproval : undefined,
             onStatus: onAgentStatus,
             abortRef,
             maxTokens: chatBudget.maxTokens,
@@ -214,7 +235,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
       setIsLoading(false);
       setChatStatus("");
     }
-  }, [isLoading, user, platformIds, pageConfig, schema, dataSummary, toolExecutor, modelOverride]);
+  }, [isLoading, user, platformIds, pageConfig, schema, dataSummary, toolExecutor, modelOverride, handleToolApproval, pages]);
 
   const handleChoice = useCallback((choice) => {
     handleSend({ text: typeof choice === "string" ? choice : choice.label });
@@ -263,18 +284,101 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
         </button>
       </div>
 
-      <ChatUI
-        messages={displayMessages}
-        onSend={handleSend}
-        isLoading={isLoading}
-        statusText={chatStatus}
-        choices={choices}
-        onChoice={handleChoice}
-        allowFiles={true}
-        agentName="Wasabi"
-        agentIcon={<WasabiOrb size={28} />}
-        placeholder={`Ask Wasabi about ${pageConfig.name}...`}
-      />
+      <div style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <ChatUI
+          messages={displayMessages}
+          onSend={handleSend}
+          isLoading={isLoading}
+          statusText={chatStatus}
+          choices={choices}
+          onChoice={handleChoice}
+          allowFiles={true}
+          agentName="Wasabi"
+          agentIcon={<WasabiOrb size={28} />}
+          placeholder={`Ask Wasabi about ${pageConfig.name}...`}
+        />
+
+        {/* ── Tool Approval Card (confirm mode) ── */}
+        {pendingApproval && (
+          <div style={{
+            position: "absolute",
+            bottom: 80,
+            left: 12,
+            right: 12,
+            background: C.darkSurf,
+            border: `1px solid ${C.accent}44`,
+            borderRadius: RADIUS.lg,
+            padding: "14px 16px",
+            zIndex: 20,
+            boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: C.accent, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Approve Actions
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+              {pendingApproval.tools.map((tool, i) => (
+                <div key={i} style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "6px 10px",
+                  background: C.darkSurf2,
+                  borderRadius: RADIUS.md,
+                  fontSize: 12,
+                  color: C.darkText,
+                }}>
+                  <span style={{ fontWeight: 600, color: C.accent, fontSize: 11, flexShrink: 0 }}>
+                    {tool.name.replace(/_/g, " ")}
+                  </span>
+                  <span style={{ color: C.darkMuted, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {tool.name === "create_page" && tool.input?.title ? `"${tool.input.title}"` :
+                     tool.name === "update_page" && tool.input?.page_id ? `page ${tool.input.page_id.slice(0, 8)}...` :
+                     tool.name === "batch_operations" && tool.input?.operations ? `${tool.input.operations.length} operations` :
+                     tool.input?.database_id ? `db ${tool.input.database_id.slice(0, 8)}...` :
+                     ""}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => handleApprovalDecision(true)}
+                style={{
+                  flex: 1,
+                  padding: "8px 14px",
+                  background: C.accent,
+                  border: "none",
+                  borderRadius: RADIUS.md,
+                  color: "#fff",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  fontFamily: FONT,
+                }}
+              >
+                Approve
+              </button>
+              <button
+                onClick={() => handleApprovalDecision(false)}
+                style={{
+                  flex: 1,
+                  padding: "8px 14px",
+                  background: "transparent",
+                  border: `1px solid ${C.darkBorder}`,
+                  borderRadius: RADIUS.md,
+                  color: C.darkMuted,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                  fontFamily: FONT,
+                }}
+              >
+                Deny
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
