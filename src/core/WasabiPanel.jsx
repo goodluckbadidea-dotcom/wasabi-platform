@@ -70,6 +70,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
   // ── Chat state ──
   const [chatMessages, setChatMessages] = useState([]);
   const [chatLoading, setChatLoading] = useState(false);
+  const [chatStatus, setChatStatus] = useState(""); // live status text during agent runs
   const [chatChoices, setChatChoices] = useState([]);
   const [modelOverride, setModelOverride] = useState(null); // null = auto, "haiku" | "sonnet"
   const [lastTier, setLastTier] = useState(null); // tracks last auto-routed tier
@@ -236,6 +237,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
       setChatMessages((prev) => [...prev, { role: "user", content: text || "(files attached)" }]);
       setChatChoices([]);
       setChatLoading(true);
+      setChatStatus("Preparing...");
 
       // Build agent message with file contents
       let agentText = text || "";
@@ -280,6 +282,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
         } : undefined;
 
         // Auto-search KB for relevant context
+        setChatStatus("Searching knowledge base...");
         let kbContext = "";
         try {
           const kbResult = await toolExecutor("search_knowledge_base", { query: agentText });
@@ -301,6 +304,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
 
         // Proactive neuron query for non-trivial messages
         if (agentText.length > 50) {
+          setChatStatus("Querying neurons...");
           try {
             const neuronResult = await toolExecutor("query_neurons", { query: agentText });
             const parsed = typeof neuronResult === "string" ? JSON.parse(neuronResult) : neuronResult;
@@ -348,10 +352,13 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
         });
         setLastTier(tier);
 
+        setChatStatus("Thinking...");
         const chatBudget = getTokenBudget(agentText, chatHistoryRef.current.length);
         const useMultiPhase = shouldUseMultiPhase(agentText) && chatHistoryRef.current.length <= 2;
 
-        let { text: reply, history, toolCalls } = useMultiPhase
+        const onAgentStatus = (s) => setChatStatus(s);
+
+        let { text: reply, history, toolCalls, stopReason } = useMultiPhase
           ? await runAgentMultiPhase({
               messages: newHistory,
               systemPrompt,
@@ -362,6 +369,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
               claudeKey: user?.claudeKey || "",
               executeTool: toolExecutor,
               onToolCall: undefined,
+              onStatus: onAgentStatus,
               abortRef: chatAbortRef,
               maxTokens: chatBudget.maxTokens,
               tier,
@@ -376,6 +384,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
               workerUrl: wUrl,
               claudeKey: user?.claudeKey || "",
               executeTool: toolExecutor,
+              onStatus: onAgentStatus,
               abortRef: chatAbortRef,
               maxTokens: chatBudget.maxTokens,
               maxIterations: chatBudget.maxIterations,
@@ -387,6 +396,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
         if (tier === "haiku" && !modelOverride && shouldEscalate(reply, agentText, toolCalls.length > 0)) {
           console.log("[AI Router] Global chat auto-escalating to Sonnet:", reason);
           setLastTier("sonnet");
+          setChatStatus("Escalating to Sonnet...");
           const escalated = await runAgent({
             messages: newHistory,
             systemPrompt,
@@ -395,6 +405,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
             workerUrl: wUrl,
             claudeKey: user?.claudeKey || "",
             executeTool: toolExecutor,
+            onStatus: onAgentStatus,
             abortRef: chatAbortRef,
             maxTokens: chatBudget.maxTokens,
             maxIterations: chatBudget.maxIterations,
@@ -404,6 +415,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
           reply = escalated.text;
           history = escalated.history;
           toolCalls = escalated.toolCalls;
+          stopReason = escalated.stopReason;
         }
 
         chatHistoryRef.current = history;
@@ -412,9 +424,13 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
         for (const c of extracted) {
           cleanReply = cleanReply.replace(c.raw, "").trim();
         }
+
+        // Detect truncated responses (Claude hit max_tokens)
+        const truncated = stopReason === "max_tokens";
+
         setChatMessages((prev) => [
           ...prev,
-          { role: "assistant", content: cleanReply },
+          { role: "assistant", content: cleanReply, truncated },
         ]);
         setChatChoices(extracted);
       } catch (err) {
@@ -425,6 +441,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
         ]);
       } finally {
         setChatLoading(false);
+        setChatStatus("");
       }
     },
     [chatLoading, user, platformIds, pages, activePageConfig, toolExecutor, modelOverride]
@@ -671,6 +688,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
             messages={chatMessages}
             onSend={handleChatSend}
             isLoading={chatLoading}
+            statusText={chatStatus}
             choices={chatChoices}
             onChoice={handleChatChoice}
             allowFiles={true}

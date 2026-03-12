@@ -21,12 +21,13 @@ const MAX_BACKOFF = 60000;
  * @param {string} opts.claudeKey - Anthropic API key
  * @param {Function} opts.executeTool - (toolName, toolInput) => result string
  * @param {Function} [opts.onToolCall] - Callback: (toolName, toolInput, result) => void
+ * @param {Function} [opts.onStatus] - Callback: (statusText) => void — live progress updates
  * @param {object} [opts.abortRef] - { current: boolean } for cancellation
  * @param {number} [opts.maxIterations] - Max loop iterations (default 12)
  * @param {number} [opts.maxTokens] - Max tokens per response (default 2048)
  * @param {string} [opts.tier] - Routing tier: "haiku"|"sonnet"|"unknown"
  * @param {string} [opts.routeReason] - Why this tier was chosen
- * @returns {Promise<{ text: string, history: Array, toolCalls: Array }>}
+ * @returns {Promise<{ text: string, history: Array, toolCalls: Array, stopReason: string }>}
  */
 export async function runAgent({
   messages,
@@ -37,6 +38,7 @@ export async function runAgent({
   claudeKey,
   executeTool,
   onToolCall,
+  onStatus,
   abortRef,
   maxIterations = 12,
   maxTokens = 2048,
@@ -46,9 +48,16 @@ export async function runAgent({
   const history = [...messages];
   const allToolCalls = [];
   let finalText = "";
+  let lastStopReason = "end_turn";
 
   for (let iter = 0; iter < maxIterations; iter++) {
     if (abortRef?.current) break;
+
+    // Notify caller which iteration we're on
+    if (onStatus) {
+      if (iter === 0) onStatus("Thinking...");
+      else onStatus(`Running tools (step ${iter})...`);
+    }
 
     // Call Claude via worker proxy
     const response = await callClaude({
@@ -63,6 +72,8 @@ export async function runAgent({
       tier,
       routeReason,
     });
+
+    lastStopReason = response.stop_reason || "end_turn";
 
     // Extract text and tool use blocks
     const textBlocks = [];
@@ -86,6 +97,12 @@ export async function runAgent({
     // If no tool calls, we're done
     if (response.stop_reason !== "tool_use" || toolBlocks.length === 0) {
       break;
+    }
+
+    // Notify caller about tool execution
+    if (onStatus) {
+      const toolNames = toolBlocks.map((b) => b.name.replace(/_/g, " "));
+      onStatus(`Running: ${toolNames.join(", ")}...`);
     }
 
     // Execute all tool calls in parallel
@@ -115,7 +132,7 @@ export async function runAgent({
     history.push({ role: "user", content: toolResults });
   }
 
-  return { text: finalText, history, toolCalls: allToolCalls };
+  return { text: finalText, history, toolCalls: allToolCalls, stopReason: lastStopReason };
 }
 
 /**
@@ -233,6 +250,7 @@ const ORIENT_TOOL_NAMES = new Set([
  * @param {Array} opts.executeTools - Full tools for execute phase
  * @param {string} opts.orientModel - Model for orient phase (default: haiku)
  * @param {string} [opts.preContext] - Any pre-gathered context (neurons, KB, etc.)
+ * @param {Function} [opts.onStatus] - Callback: (statusText) => void — live progress updates
  */
 export async function runAgentMultiPhase({
   messages,
@@ -245,6 +263,7 @@ export async function runAgentMultiPhase({
   claudeKey,
   executeTool,
   onToolCall,
+  onStatus,
   abortRef,
   maxTokens = 4096,
   tier = "unknown",
@@ -267,6 +286,7 @@ export async function runAgentMultiPhase({
   let orientFindings = "";
 
   if (readOnlyTools.length > 0) {
+    if (onStatus) onStatus("Gathering context...");
     try {
       const orientResult = await runAgent({
         messages,
@@ -277,6 +297,7 @@ export async function runAgentMultiPhase({
         claudeKey,
         executeTool,
         onToolCall,
+        onStatus,
         abortRef,
         maxIterations: 4,
         maxTokens: 1024,
@@ -303,6 +324,8 @@ export async function runAgentMultiPhase({
       : null,
   ].filter(Boolean).join("\n");
 
+  if (onStatus) onStatus("Executing...");
+
   return await runAgent({
     messages,
     systemPrompt: executeSystemPrompt,
@@ -312,6 +335,7 @@ export async function runAgentMultiPhase({
     claudeKey,
     executeTool,
     onToolCall,
+    onStatus,
     abortRef,
     maxIterations: 12,
     maxTokens,

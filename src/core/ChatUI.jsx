@@ -15,6 +15,7 @@ export default function ChatUI({
   messages = [],
   onSend,
   isLoading = false,
+  statusText = "", // Live status text shown below thinking dots
   choices = [],
   onChoice,
   allowFiles = true,
@@ -146,8 +147,32 @@ export default function ChatUI({
                     {agentIcon || agentName.charAt(0)}
                   </div>
                 )}
-                <div style={S.bubbleAssistant}>
-                  {renderMarkdown(msg.content)}
+                <div style={{ flex: 1 }}>
+                  <div style={S.bubbleAssistant}>
+                    {renderMarkdown(msg.content)}
+                  </div>
+                  {msg.truncated && (
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      marginTop: 6,
+                      padding: "5px 10px",
+                      background: "rgba(224,160,48,0.08)",
+                      border: "1px solid rgba(224,160,48,0.2)",
+                      borderRadius: 8,
+                      fontSize: 11,
+                      color: "#E0A030",
+                      lineHeight: 1.4,
+                    }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                      </svg>
+                      Response was cut short. Try asking me to continue or rephrase with a more specific question.
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -166,13 +191,25 @@ export default function ChatUI({
                   {agentIcon || agentName.charAt(0)}
                 </div>
               )}
-              <div style={{ display: "flex", gap: 4, padding: "12px 0", alignItems: "center" }}>
-                {[0, 1, 2].map((i) => (
-                  <div key={i} style={{
-                    ...S.thinkingDot(i),
-                    animation: ANIM.bounce(i),
-                  }} />
-                ))}
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "12px 0" }}>
+                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                  {[0, 1, 2].map((i) => (
+                    <div key={i} style={{
+                      ...S.thinkingDot(i),
+                      animation: ANIM.bounce(i),
+                    }} />
+                  ))}
+                </div>
+                {statusText && (
+                  <div style={{
+                    fontSize: 11,
+                    color: C.darkMuted,
+                    letterSpacing: "0.01em",
+                    animation: ANIM.fadeIn(0.1),
+                  }}>
+                    {statusText}
+                  </div>
+                )}
               </div>
             </div>
           </div>

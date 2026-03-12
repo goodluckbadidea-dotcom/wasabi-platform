@@ -21,6 +21,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
   const { user, platformIds, addPage, pages } = usePlatform();
   const [displayMessages, setDisplayMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [chatStatus, setChatStatus] = useState("");
   const [choices, setChoices] = useState([]);
   const [modelOverride, setModelOverride] = useState(null); // null = auto, "haiku" | "sonnet"
   const [lastTier, setLastTier] = useState(null); // tracks last auto-routed tier
@@ -54,6 +55,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
     setDisplayMessages((prev) => [...prev, { role: "user", content: text }]);
     setChoices([]);
     setIsLoading(true);
+    setChatStatus("Preparing...");
 
     let agentText = text;
     if (files?.length) {
@@ -121,12 +123,15 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
       });
       setLastTier(tier);
 
+      setChatStatus("Thinking...");
       const conn = getConnection();
       const wUrl = user?.workerUrl || conn?.workerUrl;
       const chatBudget = getTokenBudget(agentText, historyRef.current.length);
       const useMultiPhase = shouldUseMultiPhase(agentText) && historyRef.current.length <= 2;
 
-      let { text: reply, history, toolCalls } = useMultiPhase
+      const onAgentStatus = (s) => setChatStatus(s);
+
+      let { text: reply, history, toolCalls, stopReason } = useMultiPhase
         ? await runAgentMultiPhase({
             messages: newHistory,
             systemPrompt,
@@ -136,6 +141,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
             workerUrl: wUrl,
             claudeKey: user?.claudeKey || "",
             executeTool: toolExecutor,
+            onStatus: onAgentStatus,
             abortRef,
             maxTokens: chatBudget.maxTokens,
             tier,
@@ -149,6 +155,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
             workerUrl: wUrl,
             claudeKey: user?.claudeKey || "",
             executeTool: toolExecutor,
+            onStatus: onAgentStatus,
             abortRef,
             maxTokens: chatBudget.maxTokens,
             maxIterations: chatBudget.maxIterations,
@@ -160,6 +167,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
       if (tier === "haiku" && !modelOverride && shouldEscalate(reply, agentText, toolCalls.length > 0)) {
         console.log("[AI Router] Auto-escalating to Sonnet:", reason);
         setLastTier("sonnet");
+        setChatStatus("Escalating to Sonnet...");
         const escalated = await runAgent({
           messages: newHistory,
           systemPrompt,
@@ -168,6 +176,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
           workerUrl: wUrl,
           claudeKey: user?.claudeKey || "",
           executeTool: toolExecutor,
+          onStatus: onAgentStatus,
           abortRef,
           maxTokens: chatBudget.maxTokens,
           maxIterations: chatBudget.maxIterations,
@@ -177,6 +186,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
         reply = escalated.text;
         history = escalated.history;
         toolCalls = escalated.toolCalls;
+        stopReason = escalated.stopReason;
       }
 
       historyRef.current = history;
@@ -187,7 +197,8 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
         cleanReply = cleanReply.replace(c.raw, "").trim();
       }
 
-      setDisplayMessages((prev) => [...prev, { role: "assistant", content: cleanReply }]);
+      const truncated = stopReason === "max_tokens";
+      setDisplayMessages((prev) => [...prev, { role: "assistant", content: cleanReply, truncated }]);
       setChoices(extracted);
 
       // Refresh data after agent actions
@@ -200,6 +211,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
       ]);
     } finally {
       setIsLoading(false);
+      setChatStatus("");
     }
   }, [isLoading, user, platformIds, pageConfig, schema, dataSummary, toolExecutor, modelOverride]);
 
@@ -254,6 +266,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
         messages={displayMessages}
         onSend={handleSend}
         isLoading={isLoading}
+        statusText={chatStatus}
         choices={choices}
         onChoice={handleChoice}
         allowFiles={true}
