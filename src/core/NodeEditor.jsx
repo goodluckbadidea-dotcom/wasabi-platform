@@ -3,9 +3,9 @@
 // Visual automation builder with drag-and-drop nodes and wire connections.
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { C, FONT, RADIUS } from "../design/tokens.js";
+import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { uuid } from "../utils/helpers.js";
+import { uuid, timeAgo } from "../utils/helpers.js";
 import NodeCanvas from "../views/NodeCanvas.jsx";
 import NodeConfigPanel from "../views/NodeConfigPanel.jsx";
 import { NODE_WIDTH, NODE_TYPE_COLORS, getNodeHeight } from "../views/NodeRenderer.jsx";
@@ -316,7 +316,147 @@ function FlowListPanel({ flows, activeFlowId, onSelect, onNew, onDelete, onRenam
 
 // ── Node Palette Toolbar ──
 
-function NodePalette({ onAddNode, onRun, onSave, saveStatus, isRunning }) {
+// ── Execution History Panel ──
+
+function ExecutionHistoryPanel({ executions, loading, onClose, onReplay }) {
+  const STATUS_COLORS = {
+    completed: "#4CAF50",
+    running: "#2196F3",
+    failed: "#E05252",
+  };
+
+  return (
+    <div style={{
+      position: "absolute",
+      bottom: 0, left: 0, right: 0,
+      maxHeight: 220,
+      background: C.darkSurf,
+      borderTop: `1px solid ${C.darkBorder}`,
+      display: "flex", flexDirection: "column",
+      zIndex: 20,
+    }}>
+      {/* Header */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "8px 14px",
+        borderBottom: `1px solid ${C.darkBorder}`,
+      }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: "#fff", fontFamily: FONT, flex: 1 }}>
+          Execution History
+        </span>
+        <button
+          onClick={onClose}
+          style={{
+            background: "none", border: "none", cursor: "pointer",
+            color: C.darkMuted, fontSize: 14, padding: 2, outline: "none",
+          }}
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* Content */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "6px 14px 10px" }}>
+        {loading ? (
+          <span style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>Loading...</span>
+        ) : executions.length === 0 ? (
+          <span style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>No executions yet. Run the flow to see history.</span>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {executions.map((exec) => {
+              const statusColor = STATUS_COLORS[exec.status] || C.darkMuted;
+              const nodeStates = exec.node_states || {};
+              const nodeCount = Object.keys(nodeStates).length;
+              const successCount = Object.values(nodeStates).filter((s) => s === "success").length;
+              const errorCount = Object.values(nodeStates).filter((s) => s === "error").length;
+              const duration = exec.completed_at && exec.started_at
+                ? Math.round((new Date(exec.completed_at) - new Date(exec.started_at)) / 1000)
+                : null;
+
+              return (
+                <div
+                  key={exec.id}
+                  onClick={() => onReplay(exec)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    padding: "6px 10px",
+                    borderRadius: RADIUS.sm,
+                    background: C.darkBg,
+                    cursor: "pointer",
+                    transition: "background 0.1s",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = C.darkBg; }}
+                >
+                  {/* Status dot */}
+                  <span style={{
+                    width: 7, height: 7, borderRadius: "50%",
+                    background: statusColor, flexShrink: 0,
+                  }} />
+
+                  {/* Time */}
+                  <span style={{ fontSize: 10, color: "#fff", fontFamily: MONO, minWidth: 65 }}>
+                    {timeAgo(exec.started_at)}
+                  </span>
+
+                  {/* Status label */}
+                  <span style={{
+                    fontSize: 8, fontWeight: 600, fontFamily: FONT,
+                    color: statusColor,
+                    background: statusColor + "18",
+                    padding: "2px 6px", borderRadius: 3,
+                    textTransform: "uppercase", letterSpacing: "0.04em",
+                  }}>
+                    {exec.status}
+                  </span>
+
+                  {/* Trigger source */}
+                  <span style={{
+                    fontSize: 8, fontFamily: MONO, color: C.darkMuted,
+                    background: C.darkSurf2, padding: "1px 5px", borderRadius: 2,
+                    textTransform: "uppercase",
+                  }}>
+                    {exec.trigger_source}
+                  </span>
+
+                  {/* Node progress */}
+                  {nodeCount > 0 && (
+                    <span style={{ fontSize: 10, fontFamily: MONO, color: C.darkMuted }}>
+                      {successCount}/{nodeCount} nodes
+                      {errorCount > 0 && <span style={{ color: "#E05252" }}> ({errorCount} err)</span>}
+                    </span>
+                  )}
+
+                  {/* Duration */}
+                  {duration !== null && (
+                    <span style={{ fontSize: 10, fontFamily: MONO, color: C.darkMuted, marginLeft: "auto" }}>
+                      {duration}s
+                    </span>
+                  )}
+
+                  {/* Error snippet */}
+                  {exec.error && (
+                    <span style={{
+                      fontSize: 10, fontFamily: MONO, color: "#E05252",
+                      flex: 1, overflow: "hidden", textOverflow: "ellipsis",
+                      whiteSpace: "nowrap", maxWidth: 200,
+                    }}>
+                      {exec.error}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Node Palette ──
+
+function NodePalette({ onAddNode, onRun, onSave, saveStatus, isRunning, onToggleHistory, showHistory }) {
   return (
     <div
       style={{
@@ -385,6 +525,27 @@ function NodePalette({ onAddNode, onRun, onSave, saveStatus, isRunning }) {
       }}>
         {saveStatus === "saving" ? "Saving..." : saveStatus === "saved" ? "Saved" : saveStatus === "error" ? "Save failed" : ""}
       </span>
+
+      {/* History button */}
+      <button
+        onClick={onToggleHistory}
+        style={{
+          padding: "5px 12px",
+          background: showHistory ? C.accent + "18" : "transparent",
+          border: `1px solid ${showHistory ? C.accent + "44" : C.darkBorder}`,
+          borderRadius: RADIUS.md,
+          cursor: "pointer",
+          outline: "none",
+          fontFamily: FONT,
+          fontSize: 11,
+          color: showHistory ? C.accent : C.darkText,
+          whiteSpace: "nowrap",
+        }}
+        onMouseEnter={(e) => { if (!showHistory) e.currentTarget.style.background = C.darkSurf2; }}
+        onMouseLeave={(e) => { if (!showHistory) e.currentTarget.style.background = "transparent"; }}
+      >
+        History
+      </button>
 
       {/* Save button */}
       <button
@@ -495,6 +656,9 @@ export default function NodeEditor({ automationEngine }) {
   const [draftConnection, setDraftConnection] = useState(null);
   const [executionStates, setExecutionStates] = useState({});
   const [isRunning, setIsRunning] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [flowExecutions, setFlowExecutions] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   // ── Rules state (simple automation rules from D1) ──
   const [rules, setRules] = useState([]);
@@ -712,6 +876,19 @@ export default function NodeEditor({ automationEngine }) {
     }
   }, [activeFlowId, flows, nodes, connections]);
 
+  // ── Toggle execution history panel ──
+  const handleToggleHistory = useCallback(() => {
+    const nextState = !showHistory;
+    setShowHistory(nextState);
+    if (nextState && activeFlowId) {
+      setHistoryLoading(true);
+      api.listFlowExecutions({ flow_id: activeFlowId, limit: 20 })
+        .then((res) => setFlowExecutions(res?.executions || []))
+        .catch(() => setFlowExecutions([]))
+        .finally(() => setHistoryLoading(false));
+    }
+  }, [showHistory, activeFlowId]);
+
   // ── Run flow (manual execution with visual trace) ──
   const handleRunFlow = useCallback(async () => {
     if (!activeFlowId || isRunning) return;
@@ -915,27 +1092,46 @@ export default function NodeEditor({ automationEngine }) {
           onSave={handleSaveFlow}
           saveStatus={saveStatus}
           isRunning={isRunning}
+          onToggleHistory={handleToggleHistory}
+          showHistory={showHistory}
         />
 
         {/* Canvas */}
-        <NodeCanvas
-          nodes={nodes}
-          connections={connections}
-          selectedNodeId={selectedNodeId}
-          executionStates={executionStates}
-          draftConnection={draftConnection}
-          zoom={zoom}
-          pan={pan}
-          onZoomChange={setZoom}
-          onPanChange={setPan}
-          onCanvasClick={handleCanvasClick}
-          onNodeSelect={handleNodeSelect}
-          onNodeMove={handleMoveNode}
-          onPortMouseDown={handlePortMouseDown}
-          onPortMouseUp={handlePortMouseUp}
-          onMouseMoveCanvas={handleMouseMoveCanvas}
-          onMouseUpCanvas={handleMouseUpCanvas}
-        />
+        <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+          <NodeCanvas
+            nodes={nodes}
+            connections={connections}
+            selectedNodeId={selectedNodeId}
+            executionStates={executionStates}
+            draftConnection={draftConnection}
+            zoom={zoom}
+            pan={pan}
+            onZoomChange={setZoom}
+            onPanChange={setPan}
+            onCanvasClick={handleCanvasClick}
+            onNodeSelect={handleNodeSelect}
+            onNodeMove={handleMoveNode}
+            onPortMouseDown={handlePortMouseDown}
+            onPortMouseUp={handlePortMouseUp}
+            onMouseMoveCanvas={handleMouseMoveCanvas}
+            onMouseUpCanvas={handleMouseUpCanvas}
+          />
+
+          {/* Execution History Sliding Panel */}
+          {showHistory && (
+            <ExecutionHistoryPanel
+              executions={flowExecutions}
+              loading={historyLoading}
+              onClose={() => setShowHistory(false)}
+              onReplay={(exec) => {
+                // Overlay node states from a past execution
+                const states = exec.node_states || {};
+                setExecutionStates(states);
+                setTimeout(() => setExecutionStates({}), 4000);
+              }}
+            />
+          )}
+        </div>
       </div>
 
       {/* Config panel (when node selected) */}
