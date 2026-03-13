@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
-import { IconFunction, IconPlus, IconSearch, IconTrash } from "../design/icons.jsx";
+import { IconFunction, IconPlus, IconSearch, IconTrash, IconPlay } from "../design/icons.jsx";
 import * as api from "../lib/api.js";
 import { timeAgo } from "../utils/helpers.js";
 import FunctionBuilder from "./FunctionBuilder.jsx";
@@ -36,7 +36,7 @@ export default function FunctionsPanel({ onOpenChat }) {
     setLoading(true);
     try {
       const res = await api.listCustomFunctions();
-      setFunctions(res?.functions || res?.data || []);
+      setFunctions(res?.entries || res?.functions || res?.data || []);
     } catch (err) {
       console.error("[Functions] Failed to load:", err);
       setFunctions([]);
@@ -242,43 +242,102 @@ function FunctionCard({ fn, isHovered, isDeleting, onHover, onRun, onDelete }) {
         background: C.darkSurf,
         border: `1px solid ${isHovered ? C.accent + "44" : C.darkBorder}`,
         borderRadius: RADIUS.lg,
-        padding: "14px 18px",
-        cursor: "pointer",
+        padding: 0,
         transition: "border-color 0.12s",
         opacity: isDeleting ? 0.5 : 1,
+        overflow: "hidden",
       }}
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
-      onClick={onRun}
     >
-      {/* Top row: name + status */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-        {/* Type badge */}
-        <span style={{
-          fontSize: 9, fontWeight: 600,
-          color: TYPE_COLORS[fn.type] || C.darkMuted,
-          background: (TYPE_COLORS[fn.type] || C.darkMuted) + "18",
-          padding: "2px 8px", borderRadius: 3, textTransform: "uppercase",
-          letterSpacing: "0.04em", fontFamily: FONT,
-        }}>
-          {fn.type || "transform"}
-        </span>
+      {/* Card body — clickable area */}
+      <div style={{ padding: "14px 18px 10px", cursor: "pointer" }} onClick={onRun}>
+        {/* Top row: name + status */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          {/* Type badge */}
+          <span style={{
+            fontSize: 9, fontWeight: 600,
+            color: TYPE_COLORS[fn.type] || C.darkMuted,
+            background: (TYPE_COLORS[fn.type] || C.darkMuted) + "18",
+            padding: "2px 8px", borderRadius: 3, textTransform: "uppercase",
+            letterSpacing: "0.04em", fontFamily: FONT,
+          }}>
+            {fn.type || "transform"}
+          </span>
 
-        {/* Name */}
-        <span style={{
-          fontSize: 14, fontWeight: 600, color: "#fff",
-          fontFamily: FONT, flex: 1,
-          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-        }}>
-          {fn.name || "Untitled"}
-        </span>
+          {/* Name */}
+          <span style={{
+            fontSize: 14, fontWeight: 600, color: "#fff",
+            fontFamily: FONT, flex: 1,
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          }}>
+            {fn.name || "Untitled"}
+          </span>
 
-        {/* Status dot */}
-        <span style={{
-          width: 8, height: 8, borderRadius: "50%",
-          background: STATUS_COLORS[fn.status] || STATUS_COLORS.draft,
-          flexShrink: 0,
-        }} />
+          {/* Status badge */}
+          <span style={{
+            fontSize: 8, fontWeight: 600, fontFamily: FONT,
+            color: STATUS_COLORS[fn.status] || STATUS_COLORS.draft,
+            background: (STATUS_COLORS[fn.status] || STATUS_COLORS.draft) + "18",
+            padding: "2px 8px", borderRadius: 3, textTransform: "uppercase",
+            letterSpacing: "0.04em",
+          }}>
+            {fn.status || "draft"}
+          </span>
+        </div>
+
+        {/* Description */}
+        {fn.description && (
+          <p style={{
+            fontSize: 12, color: C.darkMuted, fontFamily: FONT,
+            margin: "0 0 8px", lineHeight: 1.4,
+            display: "-webkit-box", WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical", overflow: "hidden",
+          }}>
+            {fn.description}
+          </p>
+        )}
+
+        {/* Meta row */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 12,
+          fontSize: 10, color: C.darkMuted, fontFamily: MONO,
+        }}>
+          {inputCount > 0 && (
+            <span>{inputCount} input{inputCount !== 1 ? "s" : ""}</span>
+          )}
+          {fn.version > 1 && <span>v{fn.version}</span>}
+          {fn.last_run_at && <span>Last run {timeAgo(fn.last_run_at)}</span>}
+          {fn.last_run_status && (
+            <span style={{
+              color: fn.last_run_status === "success" ? "#4CAF50" : "#E05252",
+            }}>
+              {fn.last_run_status}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Action bar — always visible */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 6,
+        padding: "8px 18px 10px",
+        borderTop: `1px solid ${C.darkBorder}`,
+      }}>
+        {/* Run button */}
+        <button
+          onClick={(e) => { e.stopPropagation(); onRun(); }}
+          style={{
+            display: "flex", alignItems: "center", gap: 5,
+            background: `linear-gradient(135deg, #7DC143, ${C.accent})`,
+            border: "none", borderRadius: RADIUS.sm,
+            color: "#fff", fontFamily: FONT, fontSize: 11, fontWeight: 600,
+            padding: "5px 14px", cursor: "pointer", outline: "none",
+          }}
+        >
+          <IconPlay size={10} color="#fff" />
+          Run
+        </button>
 
         {/* History toggle */}
         <button
@@ -287,65 +346,39 @@ function FunctionCard({ fn, isHovered, isDeleting, onHover, onRun, onDelete }) {
             background: showHistory ? C.darkSurf2 : "transparent",
             border: `1px solid ${showHistory ? C.accent + "33" : C.darkBorder}`,
             borderRadius: RADIUS.sm, color: showHistory ? C.accent : C.darkMuted,
-            fontFamily: FONT, fontSize: 9, padding: "2px 8px",
+            fontFamily: FONT, fontSize: 10, padding: "4px 10px",
             cursor: "pointer", outline: "none",
           }}
         >
           History
         </button>
 
-        {/* Actions on hover */}
-        {isHovered && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onDelete(); }}
-            style={{
-              background: "transparent", border: `1px solid #E0525233`,
-              borderRadius: RADIUS.sm, color: "#E05252",
-              fontFamily: FONT, fontSize: 10, padding: "2px 8px",
-              cursor: "pointer", outline: "none",
-            }}
-          >
-            Delete
-          </button>
-        )}
+        <div style={{ flex: 1 }} />
+
+        {/* Delete button */}
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          style={{
+            display: "flex", alignItems: "center", gap: 4,
+            background: "transparent",
+            border: `1px solid ${isHovered ? "#E0525244" : C.darkBorder}`,
+            borderRadius: RADIUS.sm, color: isHovered ? "#E05252" : C.darkMuted,
+            fontFamily: FONT, fontSize: 10, padding: "4px 10px",
+            cursor: "pointer", outline: "none",
+            transition: "color 0.12s, border-color 0.12s",
+          }}
+        >
+          <IconTrash size={10} color={isHovered ? "#E05252" : C.darkMuted} />
+          Delete
+        </button>
       </div>
 
-      {/* Description */}
-      {fn.description && (
-        <p style={{
-          fontSize: 12, color: C.darkMuted, fontFamily: FONT,
-          margin: "0 0 8px", lineHeight: 1.4,
-          display: "-webkit-box", WebkitLineClamp: 2,
-          WebkitBoxOrient: "vertical", overflow: "hidden",
-        }}>
-          {fn.description}
-        </p>
-      )}
-
-      {/* Meta row */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 12,
-        fontSize: 10, color: C.darkMuted, fontFamily: MONO,
-      }}>
-        {inputCount > 0 && (
-          <span>{inputCount} input{inputCount !== 1 ? "s" : ""}</span>
-        )}
-        {fn.version > 1 && <span>v{fn.version}</span>}
-        {fn.last_run_at && <span>Last run {timeAgo(fn.last_run_at)}</span>}
-        {fn.last_run_status && (
-          <span style={{
-            color: fn.last_run_status === "success" ? "#4CAF50" : "#E05252",
-          }}>
-            {fn.last_run_status}
-          </span>
-        )}
-      </div>
-
-      {/* Execution History */}
+      {/* Execution History (expandable) */}
       {showHistory && (
         <div style={{
-          marginTop: 10, paddingTop: 10,
+          padding: "8px 18px 12px",
           borderTop: `1px solid ${C.darkBorder}`,
+          background: C.darkBg + "80",
         }}>
           {historyLoading ? (
             <span style={{ fontSize: 10, color: C.darkMuted, fontFamily: FONT }}>Loading...</span>
