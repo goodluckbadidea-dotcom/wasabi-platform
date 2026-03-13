@@ -2,10 +2,11 @@
 // Right-side panel (280px) for editing the selected node's configuration.
 // Shows type-specific config fields.
 
-import React, { useCallback } from "react";
+import React, { useCallback, useState, useEffect } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { NODE_TYPE_COLORS } from "./NodeRenderer.jsx";
 import { IconTrash, IconClose } from "../design/icons.jsx";
+import * as api from "../lib/api.js";
 
 // ── Field Renderer ──
 
@@ -247,6 +248,58 @@ function TransformConfig({ config, onChange }) {
   );
 }
 
+// ── Function Transform Config ──
+
+function FunctionTransformConfig({ config, onChange }) {
+  const [functions, setFunctions] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    api.listCustomFunctions({ status: "active" })
+      .then((res) => setFunctions(res?.entries || []))
+      .catch(() => setFunctions([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <>
+      <ConfigField label="Function">
+        {loading ? (
+          <div style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT, padding: "6px 0" }}>
+            Loading functions...
+          </div>
+        ) : functions.length === 0 ? (
+          <div style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT, padding: "6px 0" }}>
+            No active functions. Create one from the Functions panel.
+          </div>
+        ) : (
+          <SelectInput
+            value={config.functionId || ""}
+            onChange={(v) => {
+              const fn = functions.find((f) => f.id === v);
+              onChange({ ...config, functionId: v, functionName: fn?.name || "" });
+            }}
+            options={[
+              { value: "", label: "Select a function..." },
+              ...functions.map((fn) => ({ value: fn.id, label: `${fn.name} (${fn.type})` })),
+            ]}
+          />
+        )}
+      </ConfigField>
+      {config.functionId && config.functionName && (
+        <div style={{
+          fontSize: 10, color: C.darkMuted, fontFamily: FONT,
+          padding: "4px 8px", background: C.darkBg,
+          borderRadius: RADIUS.sm, marginBottom: 12,
+        }}>
+          Selected: <span style={{ color: "#fff", fontWeight: 500 }}>{config.functionName}</span>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ── Config form dispatcher ──
 
 function ConfigForm({ node, onConfigChange }) {
@@ -277,6 +330,8 @@ function ConfigForm({ node, onConfigChange }) {
       return <ActionNotifyConfig config={config} onChange={onChange} />;
     case "template":
       return <TransformConfig config={config} onChange={onChange} />;
+    case "execute_function":
+      return <FunctionTransformConfig config={config} onChange={onChange} />;
     default:
       return (
         <div style={{ fontSize: 12, color: C.darkMuted, padding: "8px 0", fontFamily: FONT }}>

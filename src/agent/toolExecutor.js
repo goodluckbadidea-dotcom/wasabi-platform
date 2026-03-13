@@ -75,7 +75,7 @@ const _sbWeeksBetween = (dateStr1, dateStr2) => {
  * @param {string} [description] - human-readable description for result metadata
  * @returns {{ success: boolean, result: any, truncated?: boolean, totalRows?: number, description?: string }}
  */
-function executeSandbox(code, datasets, description = "Calculation completed") {
+export function executeSandbox(code, datasets, description = "Calculation completed") {
   let fnBody;
   const trimmed = code.trim();
   if (trimmed.startsWith("(function") || trimmed.startsWith("(()")) {

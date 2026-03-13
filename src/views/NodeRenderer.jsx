@@ -35,6 +35,7 @@ const SUBTYPE_LABELS = {
   create_page: "Create Page",
   post_notification: "Notify",
   template: "Template",
+  execute_function: "Function",
   prompt: "Wasabi AI",
 };
 
@@ -67,6 +68,8 @@ function getConfigSummary(node) {
       return c.message ? c.message.slice(0, 28) + (c.message.length > 28 ? "..." : "") : "Set message...";
     case "template":
       return c.template ? c.template.slice(0, 28) + (c.template.length > 28 ? "..." : "") : "Set template...";
+    case "execute_function":
+      return c.functionName || "Select function...";
     case "prompt":
       return c.prompt ? c.prompt.slice(0, 28) + (c.prompt.length > 28 ? "..." : "") : "Write prompt...";
     default:

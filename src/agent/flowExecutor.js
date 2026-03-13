@@ -6,6 +6,7 @@ import { expandTemplate } from "./automations.js";
 import { updatePage, createPage } from "../notion/client.js";
 import * as api from "../lib/api.js";
 import { safeJSON } from "../utils/helpers.js";
+import { executeSandbox } from "./toolExecutor.js";
 
 /**
  * Topologically sort nodes starting from trigger nodes,
@@ -90,14 +91,28 @@ function evaluateCondition(config, inputData) {
 
 /**
  * Gather inputs for a node from upstream node outputs.
+ * Handles both object and array outputs from upstream nodes.
  */
 function gatherInputs(node, connections, nodeOutputs) {
   const incomingConns = connections.filter((c) => c.toNode === node.id);
-  let merged = {};
 
+  // Single upstream: pass output directly (preserves arrays)
+  if (incomingConns.length === 1) {
+    const output = nodeOutputs[incomingConns[0].fromNode];
+    if (output && typeof output === "object") return output;
+    return {};
+  }
+
+  // Multiple upstream: merge objects, key arrays by port label
+  let merged = {};
   for (const conn of incomingConns) {
     const output = nodeOutputs[conn.fromNode];
-    if (output && typeof output === "object") {
+    if (!output || typeof output !== "object") continue;
+    if (Array.isArray(output)) {
+      // Find the port label to use as key
+      const fromPort = conn.fromPort || conn.fromNode;
+      merged[fromPort] = output;
+    } else {
       merged = { ...merged, ...output };
     }
   }
@@ -180,7 +195,7 @@ export async function executeFlow(flow, opts, contextData, onNodeStart, onNodeCo
           break;
 
         case "transform":
-          result = executeTransform(node, inputs);
+          result = await executeTransform(node, inputs);
           break;
 
         default:
@@ -279,12 +294,66 @@ async function executeAction(node, inputs, opts) {
 }
 
 /**
- * Execute a transform node (template expansion).
+ * Execute a transform node (template expansion or function execution).
  */
-function executeTransform(node, inputs) {
+async function executeTransform(node, inputs) {
+  if (node.subtype === "execute_function") {
+    return await executeFunctionNode(node, inputs);
+  }
   const template = node.config?.template || "";
   const result = expandTemplate(template, inputs);
   return { ...inputs, result, _transformed: true };
+}
+
+/**
+ * Execute a custom function node in a flow.
+ * Fetches the function from D1, runs it in the sandbox, returns result.
+ */
+async function executeFunctionNode(node, inputs) {
+  const { functionId } = node.config || {};
+  if (!functionId) throw new Error("No function selected for this node.");
+
+  const fn = await api.getCustomFunction(functionId);
+  if (!fn || fn._error) throw new Error(`Function not found: ${functionId}`);
+
+  // Build datasets from upstream inputs — pass them as a single dataset
+  const datasets = {};
+  if (inputs && typeof inputs === "object") {
+    // If upstream provides named datasets, use them directly
+    // Otherwise wrap the full input as "data"
+    const keys = Object.keys(inputs);
+    if (keys.length > 0) {
+      // Check if inputs look like raw data (has results array) or named datasets
+      if (inputs.results && Array.isArray(inputs.results)) {
+        datasets.data = inputs.results;
+      } else {
+        Object.assign(datasets, inputs);
+      }
+    }
+  }
+
+  const execStart = Date.now();
+  const result = executeSandbox(fn.code, datasets, fn.description || fn.name);
+  const durationMs = Date.now() - execStart;
+
+  // Log execution to audit trail (non-blocking)
+  try {
+    api.createFunctionExecution({
+      function_id: functionId,
+      function_name: fn.name || "",
+      trigger_source: "flow",
+      status: result.success ? "success" : "error",
+      input_summary: JSON.stringify({ datasets: Object.keys(datasets) }),
+      output_summary: JSON.stringify({ type: typeof result.result }),
+      duration_ms: durationMs,
+      error: result.success ? "" : "execution failed",
+    }).catch(() => {});
+  } catch { /* ignore */ }
+
+  if (!result.success) throw new Error(`Function "${fn.name}" execution failed`);
+
+  // Return result alongside upstream inputs for downstream nodes
+  return { ...inputs, result: result.result, _functionResult: true };
 }
 
 /**

@@ -12,6 +12,7 @@ import { NODE_WIDTH, NODE_TYPE_COLORS, getNodeHeight } from "../views/NodeRender
 import {
   IconPlay, IconDatabase, IconCalendar, IconBolt, IconCondition,
   IconEdit, IconPlus, IconBell, IconTransform, IconTrash, IconClose,
+  IconFunction,
 } from "../design/icons.jsx";
 import { loadCachedFlows, saveFlow, loadFlows, deleteFlow } from "../config/flowStorage.js";
 import * as api from "../lib/api.js";
@@ -29,6 +30,7 @@ const NODE_PALETTE = [
   { type: "action",    subtype: "create_page",        label: "Create",       Icon: IconPlus,      category: "Actions" },
   { type: "action",    subtype: "post_notification",  label: "Notify",       Icon: IconBell,      category: "Actions" },
   { type: "transform", subtype: "template",           label: "Template",     Icon: IconTransform, category: "Transform" },
+  { type: "transform", subtype: "execute_function",    label: "Function",     Icon: IconFunction,  category: "Transform" },
 ];
 
 // ── Default Node Factories ──
@@ -54,6 +56,8 @@ function getDefaultConfig(type, subtype) {
       return { message: "", type: "notification" };
     case "template":
       return { template: "" };
+    case "execute_function":
+      return { functionId: "", functionName: "" };
     default:
       return {};
   }
