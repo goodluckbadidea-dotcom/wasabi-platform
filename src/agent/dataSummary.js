@@ -16,80 +16,44 @@ export function buildDataSummary(data, schema) {
   if (!data?.length || !schema) return "";
 
   const lines = [];
-  lines.push(`## Current Data Summary (${data.length} total records — this is a PREVIEW only, always use \`query_database\` for accurate counts and analysis)`);
+  lines.push(`## Current Page Data (${data.length} records) — SCHEMA ONLY`);
+  lines.push(`⚠ **NO data values are shown here.** You MUST call \`query_database\` to get actual values. Do NOT guess, estimate, or fabricate any data.`);
 
   // Title field
   const titleField = schema.title?.name;
+  if (titleField) lines.push(`- Title column: "${titleField}"`);
 
-  // Property distributions for select/status fields
+  // Column types (schema info only — no actual values)
   const catFields = [...(schema.statuses || []), ...(schema.selects || [])];
-  for (const field of catFields.slice(0, 5)) {
-    const counts = {};
+  if (catFields.length > 0) {
+    lines.push(`- Select/Status columns: ${catFields.slice(0, 6).map((f) => `"${f.name}"`).join(", ")}`);
+  }
+
+  if (schema.numbers?.length > 0) {
+    lines.push(`- Number columns: ${schema.numbers.slice(0, 6).map((f) => `"${f.name}"`).join(", ")}`);
+  }
+
+  if (schema.dates?.length > 0) {
+    lines.push(`- Date columns: ${schema.dates.slice(0, 4).map((f) => `"${f.name}"`).join(", ")}`);
+  }
+
+  if (schema.richTexts?.length > 0) {
+    lines.push(`- Text columns: ${schema.richTexts.slice(0, 4).map((f) => `"${f.name}"`).join(", ")}`);
+  }
+
+  // Available category values (helpful for filtering, but NO counts)
+  for (const field of catFields.slice(0, 3)) {
+    const uniqueVals = new Set();
     for (const page of data) {
       const val = readField(page, field.name);
-      if (val) counts[val] = (counts[val] || 0) + 1;
+      if (val) uniqueVals.add(val);
     }
-    if (Object.keys(counts).length > 0) {
-      const dist = Object.entries(counts)
-        .sort((a, b) => b[1] - a[1])
-        .map(([k, v]) => `${k}: ${v}`)
-        .join(", ");
-      lines.push(`- **${field.name}**: ${dist}`);
+    if (uniqueVals.size > 0 && uniqueVals.size <= 20) {
+      lines.push(`- "${field.name}" values: ${[...uniqueVals].sort().join(", ")}`);
     }
   }
 
-  // Number summaries
-  for (const field of (schema.numbers || []).slice(0, 4)) {
-    const vals = data.map((p) => readField(p, field.name)).filter((v) => v != null && !isNaN(v));
-    if (vals.length > 0) {
-      const sum = vals.reduce((a, b) => a + Number(b), 0);
-      const min = Math.min(...vals);
-      const max = Math.max(...vals);
-      const avg = (sum / vals.length).toFixed(1);
-      lines.push(`- **${field.name}**: min=${min}, max=${max}, avg=${avg}, total=${sum} (${vals.length} values)`);
-    }
-  }
-
-  // Date ranges
-  for (const field of (schema.dates || []).slice(0, 3)) {
-    const dates = data.map((p) => {
-      const val = readField(p, field.name);
-      if (!val) return null;
-      return typeof val === "object" ? val.start : val;
-    }).filter(Boolean).sort();
-    if (dates.length > 0) {
-      lines.push(`- **${field.name}**: ${dates[0]} to ${dates[dates.length - 1]} (${dates.length} values)`);
-    }
-  }
-
-  // First 15 records as compact table
-  if (titleField) {
-    const keyFields = [];
-    if (catFields.length > 0) keyFields.push(catFields[0].name);
-    if (schema.numbers?.length > 0) keyFields.push(schema.numbers[0].name);
-    if (schema.dates?.length > 0) keyFields.push(schema.dates[0].name);
-    if (keyFields.length === 0 && schema.richTexts?.length > 0) keyFields.push(schema.richTexts[0].name);
-
-    const headers = [titleField, ...keyFields.slice(0, 3)];
-    lines.push("");
-    lines.push(`### Sample Records`);
-    lines.push(`| ${headers.join(" | ")} |`);
-    lines.push(`| ${headers.map(() => "---").join(" | ")} |`);
-
-    for (const page of data.slice(0, 15)) {
-      const cells = headers.map((h) => {
-        const val = readField(page, h);
-        if (val === null || val === undefined) return "";
-        if (typeof val === "object" && val.start) return val.start;
-        return String(val).slice(0, 40);
-      });
-      lines.push(`| ${cells.join(" | ")} |`);
-    }
-
-    if (data.length > 15) {
-      lines.push(`\n*⚠ Showing 15 of ${data.length} records. This sample is INCOMPLETE — you MUST use \`query_database\` to get accurate totals and full data. Never count or analyze from this sample alone.*`);
-    }
-  }
+  lines.push(`\n**CRITICAL**: The data above is schema metadata ONLY. Every number, status, or fact you present to the user MUST come from a \`query_database\` tool call result. Never present data you haven't queried for.`);
 
   return lines.join("\n");
 }
@@ -104,9 +68,12 @@ export function buildDataSummary(data, schema) {
 export function getTokenBudget(text, conversationDepth) {
   if (/build|create|design|setup|implement|system|track|manage/i.test(text) && text.length > 150)
     return { maxTokens: 6144, maxIterations: 12 };
+  // Data-related queries need enough tokens for tool calls + formatted results
+  if (/\b(sku|inventory|stock|sales|revenue|cost|price|quantity|remaining|weeks|margin|profit|calculate|per\s|by\s)\b/i.test(text))
+    return { maxTokens: 4096, maxIterations: 8 };
   if (/analyze|summarize|compare|report|show|find/i.test(text))
     return { maxTokens: 4096, maxIterations: 8 };
-  if (text.length < 60 && conversationDepth < 3) return { maxTokens: 2048, maxIterations: 6 };
+  if (text.length < 40 && conversationDepth < 3) return { maxTokens: 2048, maxIterations: 6 };
   return { maxTokens: 4096, maxIterations: 8 };
 }
 

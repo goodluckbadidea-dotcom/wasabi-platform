@@ -84,6 +84,12 @@ export function shouldEscalate(responseText, userText, hadToolCalls) {
   // Don't escalate if there were tool calls (agent is working)
   if (hadToolCalls) return false;
 
+  // ALWAYS escalate if user asked a data question but model didn't use tools
+  // This catches the case where the model tries to answer from memory/prompt data
+  if (DATA_ANALYSIS.test(userText) || /\b(sku|inventory|stock|sales|revenue|cost|price|quantity|remaining|weeks|margin|profit|per\s|by\s)\b/i.test(userText)) {
+    return true;
+  }
+
   // Don't escalate very short prompts (they should have short answers)
   if (userText.length < 30) return false;
 
@@ -140,7 +146,11 @@ export function routeWithClassification({
   }
 
   // Simple queries with NO data tools → Haiku (greetings, simple text answers)
+  // BUT: if data_sources were detected, always route to Sonnet regardless of complexity
   if (classification.complexity === "simple" && classification.estimated_tools <= 1) {
+    if (classification.data_sources?.length > 0) {
+      return { model: SONNET, tier: "sonnet", reason: "classifier_simple_but_has_data_sources" };
+    }
     return { model: HAIKU, tier: "haiku", reason: "classifier_simple_no_tools" };
   }
 

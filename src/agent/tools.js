@@ -5,7 +5,7 @@
 
 const QUERY_DATABASE = {
   name: "query_database",
-  description: "Query any data source by its page ID. Supports D1 tables, D1 sheets, linked Google Sheets (read-only), linked Monday.com boards, and linked Notion databases. Returns matching records with all properties.",
+  description: "Query any data source by its page ID. Supports D1 tables, D1 sheets, linked Google Sheets (read-only), linked Monday.com boards, and linked Notion databases. Returns matching records with all properties. NOTE: Results are capped at 200 rows (50 for direct Notion). If `truncated: true` in the response, not all data was returned — tell the user how many records you received vs. the total count. ONLY use the EXACT values returned — NEVER estimate, round, or fabricate missing data.",
   input_schema: {
     type: "object",
     properties: {

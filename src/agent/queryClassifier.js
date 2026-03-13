@@ -48,9 +48,11 @@ Rules:
 
 /** Skip classifier for trivially simple messages. */
 function shouldSkipClassifier(text) {
-  if (!text || text.length < 40) return true;
-  // Single-word or very short messages
-  if (text.split(/\s+/).length <= 5) return true;
+  if (!text || text.length < 15) return true;
+  // Single-word or very short messages (but NOT data queries)
+  const isDataQuery = /\b(sku|inventory|stock|sales|revenue|cost|price|quantity|total|average|sum|count|remaining|weeks|margin|profit|calculate|analyze|compare|show me|report|per\s|by\s|in\s|for\s|from\s|database|table|sheet)\b/i.test(text);
+  if (isDataQuery) return false; // Never skip classification for data queries
+  if (text.split(/\s+/).length <= 3) return true;
   // Greetings and simple questions
   if (/^(hi|hey|hello|thanks|thank you|ok|sure|yes|no|got it)\b/i.test(text)) return true;
   return false;
