@@ -270,7 +270,11 @@ async function fetchLinkedMondayRows(pageConfig, mondayKey) {
   });
 }
 
-/** Convert sheet grid cells { "A1": {v:...}, "B2": {v:...} } into row objects with headers. */
+/**
+ * Convert sheet grid cells { "A1": {v:...}, "B2": {v:...} } into row objects with headers.
+ * Detects whether row 1 contains headers or data values.
+ * Always collects all numeric values into _allCellValues for easy aggregation.
+ */
 function sheetCellsToRows(cells, colCount = 26) {
   if (!cells || typeof cells !== "object") return [];
 
@@ -295,18 +299,51 @@ function sheetCellsToRows(cells, colCount = 26) {
   }
   if (maxRow === 0) return [];
 
-  // Read row 1 as headers
-  const headers = {};
+  // Read row 1 values
+  const row1Values = {};
+  let row1Count = 0;
+  let row1NumericCount = 0;
   for (const col of colLabels) {
     const cell = cells[`${col}1`];
     const val = cell && typeof cell === "object" ? cell.v : cell;
-    if (val) headers[col] = String(val).trim();
+    if (val !== undefined && val !== null && val !== "") {
+      row1Values[col] = val;
+      row1Count++;
+      const num = Number(val);
+      if (!isNaN(num) && String(val).trim() !== "") row1NumericCount++;
+    }
   }
 
-  // Build rows (starting from row 2)
+  // Detect if row 1 is headers or data:
+  // If most row 1 values are numeric, treat as data (not headers)
+  const row1IsData = row1Count > 0 && (row1NumericCount / row1Count) > 0.5;
+
+  // Build headers (only if row 1 looks like headers)
+  const headers = {};
+  if (!row1IsData) {
+    for (const [col, val] of Object.entries(row1Values)) {
+      headers[col] = String(val).trim();
+    }
+  }
+
+  // Collect ALL numeric values across the entire sheet for easy aggregation
+  const allCellValues = [];
+  for (const key of Object.keys(cells)) {
+    if (key === "_meta") continue;
+    const cell = cells[key];
+    const val = cell && typeof cell === "object" ? cell.v : cell;
+    if (val === undefined || val === null || val === "") continue;
+    const num = Number(val);
+    if (!isNaN(num) && String(val).trim() !== "") allCellValues.push(num);
+  }
+
+  // Build rows (start from row 1 if it's data, row 2 if it's headers)
+  const startRow = row1IsData ? 1 : 2;
   const rows = [];
-  for (let r = 2; r <= maxRow; r++) {
-    const row = { _row: r };
+  for (let r = startRow; r <= maxRow; r++) {
+    const row = {};
+    // _row is non-enumerable so it doesn't pollute Object.values()/entries() sums
+    Object.defineProperty(row, "_row", { value: r, enumerable: false });
     let hasData = false;
     for (const col of colLabels) {
       const cell = cells[`${col}${r}`];
@@ -319,6 +356,10 @@ function sheetCellsToRows(cells, colCount = 26) {
     }
     if (hasData) rows.push(row);
   }
+
+  // Attach metadata for aggregation helpers
+  rows._allCellValues = allCellValues;
+  rows._row1IsData = row1IsData;
   return rows;
 }
 
@@ -386,6 +427,8 @@ export function createToolExecutor({
               results: rows.slice(0, 200),
               truncated: rows.length > 200,
               storage: "sheet",
+              _allCellValues: rows._allCellValues || [],
+              _row1IsData: rows._row1IsData || false,
             });
           } catch (err) {
             return JSON.stringify({ error: `Failed to read sheet: ${err.message}`, storage: "sheet" });
@@ -1129,6 +1172,11 @@ export function createToolExecutor({
                   return filtered;
                 });
               }
+              // Attach sheet metadata for easy aggregation (e.g. sum all values)
+              if (parsed.storage === "sheet" && parsed._allCellValues?.length) {
+                rows._allCellValues = parsed._allCellValues;
+                rows._row1IsData = parsed._row1IsData || false;
+              }
               datasets[key] = rows;
             }
           }
@@ -1227,6 +1275,11 @@ export function createToolExecutor({
                   for (const col of colSet) { if (row[col] !== undefined) filtered[col] = row[col]; }
                   return filtered;
                 });
+              }
+              // Attach sheet metadata for easy aggregation (e.g. sum all values)
+              if (parsed.storage === "sheet" && parsed._allCellValues?.length) {
+                rows._allCellValues = parsed._allCellValues;
+                rows._row1IsData = parsed._row1IsData || false;
               }
               datasets[key] = rows;
             }

@@ -245,6 +245,8 @@ Workflow:
 
 Available helpers: sum(arr), avg(arr), min(arr), max(arr), groupBy(arr, key), sortBy(arr, key, dir), unique(arr, key), round(n, decimals), dateAdd(dateStr, days), dateDiff(dateStr1, dateStr2), weeksBetween(dateStr1, dateStr2)
 
+Sheet data tips: Sheet datasets have column-letter keys (A, B, C...) or header names. To sum ALL numeric values in a sheet, use \`sum(datasets.mySheet._allCellValues)\` — a flat array of every numeric value. Row objects only contain data columns — no metadata keys pollute Object.values().
+
 When performing bulk operations:
 1. **Plan before executing.** Present a numbered list of what you will create/update and ask for confirmation BEFORE calling \`batch_operations\`.
 2. Use \`batch_operations\` when creating or updating 3+ records at once — it groups them into one call.

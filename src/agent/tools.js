@@ -472,6 +472,8 @@ const SAVE_CUSTOM_FUNCTION = {
 
 The code must define a function called 'execute' that receives a single object parameter with named datasets (matching input keys) and returns a result matching the declared output schema. Available sandbox helpers: sum, avg, min, max, groupBy, sortBy, unique, round, dateAdd, dateDiff, weeksBetween.
 
+Sheet data: When a dataset comes from a sheet, each row has column-letter keys (A, B, C...) or header names. For aggregating all values on a sheet, use datasets.mySheet._allCellValues which is a flat array of every numeric value in the sheet. Example: sum(datasets.mySheet._allCellValues).
+
 Example: function execute({ sales, inventory }) { return Object.keys(groupBy(sales, "SKU")).map(sku => ({ sku, total: sum(sales.filter(r => r.SKU === sku).map(r => r.Units)) })); }`,
   input_schema: {
     type: "object",
