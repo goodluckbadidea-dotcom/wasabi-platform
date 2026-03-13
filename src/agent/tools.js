@@ -488,7 +488,7 @@ Example: function execute({ sales, inventory }) { return Object.keys(groupBy(sal
       },
       inputs: {
         type: "object",
-        description: "Declares input data sources. Each key is a dataset name. Value: { source: 'query_database', database_id: 'xxx', columns: ['col1', 'col2'] }.",
+        description: "Declares input data sources. Each key is a dataset name. Value options: { source: 'query_database', database_id: 'xxx', columns: ['col1', 'col2'] } for database queries, or { source: 'external_api', url: 'https://...', method: 'GET', headers: {}, transform_path: 'data.results' } for external API data. The transform_path drills into the JSON response to extract the relevant data array.",
       },
       outputs: {
         type: "object",

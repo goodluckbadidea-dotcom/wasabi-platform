@@ -209,9 +209,38 @@ export async function executeFlow(flow, opts, contextData, onNodeStart, onNodeCo
       await sleep(200);
 
     } catch (err) {
-      console.error(`[FlowExecutor] Node "${node.label}" (${node.id}) failed:`, err);
-      nodeOutputs[node.id] = { _error: err.message };
-      onNodeComplete?.(node.id, null, "error");
+      // Retry logic: if node has retryCount > 0, retry with exponential backoff
+      const retryCount = node.config?.retryCount || 0;
+      let retried = false;
+
+      if (retryCount > 0) {
+        for (let attempt = 1; attempt <= retryCount; attempt++) {
+          await sleep(500 * Math.pow(2, attempt - 1)); // 500ms, 1s, 2s...
+          try {
+            const inputs = gatherInputs(node, connections, nodeOutputs);
+            let result;
+            switch (node.type) {
+              case "action": result = await executeAction(node, inputs, opts); break;
+              case "transform": result = await executeTransform(node, inputs); break;
+              default: result = inputs;
+            }
+            nodeOutputs[node.id] = result;
+            onNodeComplete?.(node.id, result, "success");
+            retried = true;
+            break;
+          } catch (retryErr) {
+            if (attempt === retryCount) {
+              console.error(`[FlowExecutor] Node "${node.label}" failed after ${retryCount} retries:`, retryErr);
+            }
+          }
+        }
+      }
+
+      if (!retried) {
+        console.error(`[FlowExecutor] Node "${node.label}" (${node.id}) failed:`, err);
+        nodeOutputs[node.id] = { _error: err.message };
+        onNodeComplete?.(node.id, null, "error");
+      }
     }
   }
 
@@ -352,7 +381,10 @@ async function executeFunctionNode(node, inputs) {
 
   if (!result.success) throw new Error(`Function "${fn.name}" execution failed`);
 
-  // Return result alongside upstream inputs for downstream nodes
+  // Wrap result with output key if configured (for chained pipelines)
+  if (node.config?.outputKey) {
+    return { ...inputs, [node.config.outputKey]: result.result, _functionResult: true };
+  }
   return { ...inputs, result: result.result, _functionResult: true };
 }
 

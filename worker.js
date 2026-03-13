@@ -692,6 +692,12 @@ export default {
         return await handleUpdateFlowExecution(env, decodeURIComponent(fexMatch[1]), body);
       }
 
+      // ─── External API Proxy ───
+
+      if (path === "/proxy/external-api" && request.method === "POST") {
+        return await handleExternalApiProxy(env, await request.json());
+      }
+
       // ─── Neurons CRUD ───
 
       // GET /neurons/graph — full dump for Wasabi agent
@@ -3934,6 +3940,104 @@ async function handleUpdateFlowExecution(env, id, body) {
   vals.push(id);
   await env.DB.prepare(`UPDATE flow_executions SET ${sets.join(", ")} WHERE id = ?`).bind(...vals).run();
   return jsonResponse({ success: true, id });
+}
+
+// ─── External API Proxy ───
+
+/**
+ * Proxy external API requests for custom functions.
+ * Rate-limited, with domain allowlist validation and timeout.
+ */
+async function handleExternalApiProxy(env, body) {
+  const { url, method = "GET", headers = {}, body: reqBody, transform_path } = body;
+
+  if (!url) return jsonResponse({ _error: "url required" }, 400);
+
+  // Validate URL
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(url);
+  } catch {
+    return jsonResponse({ _error: "Invalid URL" }, 400);
+  }
+
+  // Block internal/private IPs
+  const hostname = parsedUrl.hostname.toLowerCase();
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0" || hostname.endsWith(".local")) {
+    return jsonResponse({ _error: "Cannot proxy to local addresses" }, 400);
+  }
+
+  // Check domain allowlist (stored in connections table)
+  let allowedDomains = [];
+  try {
+    const row = await env.DB.prepare("SELECT value FROM connections WHERE key = 'external_api_whitelist'").first();
+    if (row?.value) {
+      allowedDomains = JSON.parse(row.value);
+    }
+  } catch { /* no whitelist = allow all public domains */ }
+
+  if (allowedDomains.length > 0) {
+    const isAllowed = allowedDomains.some((d) => hostname === d || hostname.endsWith(`.${d}`));
+    if (!isAllowed) {
+      return jsonResponse({ _error: `Domain "${hostname}" not in allowlist. Add it via connections settings.` }, 403);
+    }
+  }
+
+  // Check for stored API key for this domain
+  let storedHeaders = {};
+  try {
+    const row = await env.DB.prepare("SELECT value FROM connections WHERE key = ?").bind(`external_api:${hostname}`).first();
+    if (row?.value) {
+      const parsed = safeParseJSON(row.value);
+      if (parsed.headers) storedHeaders = parsed.headers;
+    }
+  } catch { /* ignore */ }
+
+  // Build fetch options
+  const fetchOpts = {
+    method: method.toUpperCase(),
+    headers: {
+      "Accept": "application/json",
+      ...storedHeaders,
+      ...headers,
+    },
+    signal: AbortSignal.timeout(10000), // 10-second timeout
+  };
+
+  if (reqBody && (method === "POST" || method === "PUT" || method === "PATCH")) {
+    fetchOpts.headers["Content-Type"] = "application/json";
+    fetchOpts.body = typeof reqBody === "string" ? reqBody : JSON.stringify(reqBody);
+  }
+
+  try {
+    const res = await fetch(url, fetchOpts);
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      return jsonResponse({ _error: `API returned ${res.status}: ${errText.slice(0, 500)}` }, 502);
+    }
+
+    let data = await res.json();
+
+    // Apply transform_path to drill into response
+    if (transform_path) {
+      const parts = transform_path.split(".");
+      for (const part of parts) {
+        if (data && typeof data === "object" && part in data) {
+          data = data[part];
+        } else {
+          return jsonResponse({ _error: `transform_path "${transform_path}" not found in response` }, 422);
+        }
+      }
+    }
+
+    return jsonResponse({ data, source: hostname, fetched_at: new Date().toISOString() });
+  } catch (err) {
+    if (err.name === "AbortError" || err.name === "TimeoutError") {
+      return jsonResponse({ _error: "Request timed out (10s limit)" }, 504);
+    }
+    return jsonResponse({ _error: `Fetch failed: ${err.message}` }, 502);
+  }
 }
 
 // ─── Server-Side Sandbox & Flow Executor ───

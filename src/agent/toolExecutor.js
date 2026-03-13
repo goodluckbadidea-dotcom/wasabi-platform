@@ -1178,6 +1178,16 @@ export function createToolExecutor({
                 rows._row1IsData = parsed._row1IsData || false;
               }
               datasets[key] = rows;
+            } else if (inputDef.source === "external_api" && inputDef.url) {
+              const proxyBody = {
+                url: inputDef.url,
+                method: inputDef.method || "GET",
+                headers: inputDef.headers || {},
+                transform_path: inputDef.transform_path || null,
+              };
+              const proxyRes = await api.proxyExternalApi(proxyBody);
+              if (proxyRes?._error) throw new Error(`External API "${key}": ${proxyRes._error}`);
+              datasets[key] = proxyRes?.data || proxyRes;
             }
           }
           dryRunResult = executeSandbox(code, datasets, `Dry run: ${name}`);
@@ -1288,6 +1298,17 @@ export function createToolExecutor({
                 rows._row1IsData = parsed._row1IsData || false;
               }
               datasets[key] = rows;
+            } else if (inputDef.source === "external_api" && inputDef.url) {
+              // Fetch data from external API via worker proxy
+              const proxyBody = {
+                url: inputDef.url,
+                method: inputDef.method || "GET",
+                headers: inputDef.headers || {},
+                transform_path: inputDef.transform_path || null,
+              };
+              const proxyRes = await api.proxyExternalApi(proxyBody);
+              if (proxyRes?._error) throw new Error(`External API "${key}": ${proxyRes._error}`);
+              datasets[key] = proxyRes?.data || proxyRes;
             }
           }
 

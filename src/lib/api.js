@@ -387,6 +387,15 @@ export async function updateFlowExecution(id, data) {
   return apiFetch(`/d1/flow-executions/${encodeURIComponent(id)}`, { method: "PATCH", body: data });
 }
 
+// ─── External API Proxy ───
+
+export async function proxyExternalApi({ url, method = "GET", headers = {}, body, transform_path }) {
+  return apiFetch("/proxy/external-api", {
+    method: "POST",
+    body: { url, method, headers, body, transform_path },
+  });
+}
+
 // ─── Notion Sync ───
 
 export async function configureSyncNotionDB(tableId, { notion_db_id, direction, field_mapping }) {

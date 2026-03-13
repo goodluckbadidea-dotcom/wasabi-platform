@@ -79,10 +79,12 @@ export default function FunctionBuilder({ onSubmit, onBack }) {
     const output = steps.find((s) => s.type === "output");
 
     // Validate
-    const hasInputs = inputs.some((s) => s.config.database_id);
+    const hasDbInputs = inputs.some((s) => s.config.database_id);
+    const hasApiInputs = inputs.some((s) => s.config.source_type === "external_api" && s.config.api_url);
+    const hasInputs = hasDbInputs || hasApiInputs;
     const hasTransforms = transforms.some((s) => s.config.description.trim());
     if (!hasInputs || !hasTransforms) {
-      alert("Please select at least one database input and describe at least one transform step.");
+      alert("Please add at least one input (database or API) and describe at least one transform step.");
       return;
     }
 
@@ -99,8 +101,15 @@ export default function FunctionBuilder({ onSubmit, onBack }) {
 
     lines.push("\nINPUTS:");
     inputs.forEach((s, i) => {
+      if (s.config.source_type === "external_api" && s.config.api_url) {
+        let apiLine = `- "api_${i + 1}" from external API: ${s.config.api_method || "GET"} ${s.config.api_url}`;
+        if (s.config.transform_path) apiLine += ` (extract: ${s.config.transform_path})`;
+        if (s.config.api_headers?.trim()) apiLine += ` with headers`;
+        lines.push(apiLine);
+        return;
+      }
       if (!s.config.database_id) return;
-      const cols = s.config.columns.length > 0
+      const cols = s.config.columns?.length > 0
         ? ` columns: ${s.config.columns.join(", ")}`
         : "";
       lines.push(`- "${s.config.database_name || `input_${i + 1}`}" from database "${s.config.database_name}" (ID: ${s.config.database_id})${cols}`);
@@ -328,56 +337,75 @@ function StepCard({ step, onUpdate, onRemove }) {
 
 // ── Input Card Body ──
 function InputCardBody({ config, onUpdate }) {
+  const sourceType = config.source_type || "database";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {/* Source type toggle */}
+      <div style={{ display: "flex", gap: 4 }}>
+        {["database", "external_api"].map((st) => (
+          <button
+            key={st}
+            onClick={() => onUpdate({ source_type: st })}
+            style={{
+              flex: 1, padding: "6px 10px",
+              background: sourceType === st ? "#2196F318" : "transparent",
+              border: `1px solid ${sourceType === st ? "#2196F344" : C.darkBorder}`,
+              borderRadius: RADIUS.sm, color: sourceType === st ? "#fff" : C.darkMuted,
+              fontFamily: FONT, fontSize: 11, fontWeight: sourceType === st ? 600 : 400,
+              cursor: "pointer", outline: "none",
+            }}
+          >
+            {st === "database" ? "Database" : "External API"}
+          </button>
+        ))}
+      </div>
+
+      {sourceType === "database" ? (
+        <DatabaseInputFields config={config} onUpdate={onUpdate} />
+      ) : (
+        <ExternalApiInputFields config={config} onUpdate={onUpdate} />
+      )}
+    </div>
+  );
+}
+
+function DatabaseInputFields({ config, onUpdate }) {
   const { pages } = usePlatform();
   const [schemaLoading, setSchemaLoading] = useState(false);
   const [availableColumns, setAvailableColumns] = useState([]);
 
-  // Get database pages from platform context
   const dbPages = (pages || []).filter(
     (p) => p.type !== "folder" && p.page_type !== "dashboard" && p.page_type !== "workspace"
   );
 
-  // Load schema when database selected
   useEffect(() => {
-    if (!config.database_id) {
-      setAvailableColumns([]);
-      return;
-    }
+    if (!config.database_id) { setAvailableColumns([]); return; }
     let cancelled = false;
     setSchemaLoading(true);
     api.getTableSchema(config.database_id).then((res) => {
       if (cancelled) return;
       const cols = res?.columns || res?.schema || [];
       setAvailableColumns(Array.isArray(cols) ? cols : Object.keys(cols).map((k) => ({ name: k, type: cols[k] })));
-    }).catch(() => {
-      if (!cancelled) setAvailableColumns([]);
-    }).finally(() => {
-      if (!cancelled) setSchemaLoading(false);
-    });
+    }).catch(() => { if (!cancelled) setAvailableColumns([]); })
+    .finally(() => { if (!cancelled) setSchemaLoading(false); });
     return () => { cancelled = true; };
   }, [config.database_id]);
 
   const handleDbChange = (e) => {
     const pageId = e.target.value;
     const page = dbPages.find((p) => p.id === pageId);
-    onUpdate({
-      database_id: pageId,
-      database_name: page?.title || page?.name || pageId,
-      columns: [],
-    });
+    onUpdate({ database_id: pageId, database_name: page?.title || page?.name || pageId, columns: [] });
   };
 
   const handleColumnToggle = (colName) => {
     const current = config.columns || [];
-    const next = current.includes(colName)
-      ? current.filter((c) => c !== colName)
-      : [...current, colName];
+    const next = current.includes(colName) ? current.filter((c) => c !== colName) : [...current, colName];
     onUpdate({ columns: next });
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {/* Database dropdown */}
+    <>
       <select
         value={config.database_id || ""}
         onChange={handleDbChange}
@@ -391,56 +419,36 @@ function InputCardBody({ config, onUpdate }) {
       >
         <option value="" disabled>Select a database...</option>
         {dbPages.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.title || p.name || p.id}
-          </option>
+          <option key={p.id} value={p.id}>{p.title || p.name || p.id}</option>
         ))}
       </select>
 
-      {/* Column checkboxes */}
       {config.database_id && (
-        <div style={{
-          display: "flex", flexWrap: "wrap", gap: 6,
-          maxHeight: 120, overflow: "auto",
-        }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 120, overflow: "auto" }}>
           {schemaLoading ? (
-            <span style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>
-              Loading columns...
-            </span>
+            <span style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>Loading columns...</span>
           ) : availableColumns.length === 0 ? (
-            <span style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>
-              No columns found. Wasabi will auto-detect.
-            </span>
+            <span style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>No columns found. Wasabi will auto-detect.</span>
           ) : (
             availableColumns.map((col) => {
               const name = typeof col === "string" ? col : col.name;
               const type = typeof col === "string" ? "" : col.type;
               const selected = (config.columns || []).includes(name);
               return (
-                <label
-                  key={name}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 5,
-                    padding: "3px 8px", borderRadius: RADIUS.sm,
-                    background: selected ? "#2196F318" : "transparent",
-                    border: `1px solid ${selected ? "#2196F344" : C.darkBorder}`,
-                    cursor: "pointer", fontSize: 11, fontFamily: FONT,
-                    color: selected ? "#fff" : C.darkMuted,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selected}
-                    onChange={() => handleColumnToggle(name)}
-                    style={{ width: 12, height: 12, accentColor: "#2196F3" }}
-                  />
+                <label key={name} style={{
+                  display: "flex", alignItems: "center", gap: 5,
+                  padding: "3px 8px", borderRadius: RADIUS.sm,
+                  background: selected ? "#2196F318" : "transparent",
+                  border: `1px solid ${selected ? "#2196F344" : C.darkBorder}`,
+                  cursor: "pointer", fontSize: 11, fontFamily: FONT,
+                  color: selected ? "#fff" : C.darkMuted,
+                }}>
+                  <input type="checkbox" checked={selected} onChange={() => handleColumnToggle(name)}
+                    style={{ width: 12, height: 12, accentColor: "#2196F3" }} />
                   {name}
                   {type && (
-                    <span style={{
-                      fontSize: 8, color: C.darkMuted, fontFamily: MONO,
-                      background: C.darkSurf2, padding: "1px 4px",
-                      borderRadius: 2, textTransform: "uppercase",
-                    }}>
+                    <span style={{ fontSize: 8, color: C.darkMuted, fontFamily: MONO,
+                      background: C.darkSurf2, padding: "1px 4px", borderRadius: 2, textTransform: "uppercase" }}>
                       {type}
                     </span>
                   )}
@@ -450,7 +458,52 @@ function InputCardBody({ config, onUpdate }) {
           )}
         </div>
       )}
-    </div>
+    </>
+  );
+}
+
+function ExternalApiInputFields({ config, onUpdate }) {
+  const inputStyle = {
+    width: "100%", background: C.darkSurf2,
+    border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
+    padding: "8px 10px", color: "#fff", fontFamily: FONT,
+    fontSize: 12, outline: "none", boxSizing: "border-box",
+  };
+
+  return (
+    <>
+      <input
+        type="text"
+        value={config.api_url || ""}
+        onChange={(e) => onUpdate({ api_url: e.target.value })}
+        placeholder="https://api.example.com/data"
+        style={inputStyle}
+      />
+      <div style={{ display: "flex", gap: 6 }}>
+        <select
+          value={config.api_method || "GET"}
+          onChange={(e) => onUpdate({ api_method: e.target.value })}
+          style={{ ...inputStyle, width: 90, cursor: "pointer" }}
+        >
+          <option value="GET">GET</option>
+          <option value="POST">POST</option>
+        </select>
+        <input
+          type="text"
+          value={config.transform_path || ""}
+          onChange={(e) => onUpdate({ transform_path: e.target.value })}
+          placeholder="Response path (e.g. data.results)"
+          style={{ ...inputStyle, flex: 1 }}
+        />
+      </div>
+      <textarea
+        value={config.api_headers || ""}
+        onChange={(e) => onUpdate({ api_headers: e.target.value })}
+        placeholder='Headers JSON (optional):&#10;{"Authorization": "Bearer ..."}'
+        rows={2}
+        style={{ ...inputStyle, resize: "vertical", minHeight: 40, fontFamily: MONO, fontSize: 11 }}
+      />
+    </>
   );
 }
 

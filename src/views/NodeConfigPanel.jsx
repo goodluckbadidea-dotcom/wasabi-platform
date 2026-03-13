@@ -296,6 +296,20 @@ function FunctionTransformConfig({ config, onChange }) {
           Selected: <span style={{ color: "#fff", fontWeight: 500 }}>{config.functionName}</span>
         </div>
       )}
+      <ConfigField label="Output Key (optional)">
+        <TextInput
+          value={config.outputKey || ""}
+          onChange={(v) => onChange({ ...config, outputKey: v })}
+          placeholder="e.g. enriched — wraps result as { enriched: result }"
+        />
+      </ConfigField>
+      <ConfigField label="Retry on Failure">
+        <NumberInput
+          value={config.retryCount}
+          onChange={(v) => onChange({ ...config, retryCount: v })}
+          placeholder="0 (no retry)"
+        />
+      </ConfigField>
     </>
   );
 }
