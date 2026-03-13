@@ -718,11 +718,25 @@ export default function NodeEditor({ automationEngine }) {
     setIsRunning(true);
     setExecutionStates({});
 
+    // Create flow execution record
+    const activeFlow = flows.find((f) => f.id === activeFlowId);
+    let execId = null;
+    try {
+      const res = await api.createFlowExecution({
+        flow_id: activeFlowId,
+        flow_name: activeFlow?.name || "Untitled",
+        trigger_source: "manual",
+      });
+      execId = res?.id || null;
+    } catch { /* non-blocking */ }
+
+    const nodeStates = {};
+
     try {
       // Dynamic import to avoid circular deps
       const { executeFlow } = await import("../agent/flowExecutor.js");
 
-      await executeFlow(
+      const result = await executeFlow(
         { nodes, connections },
         {
           workerUrl: user.workerUrl,
@@ -734,10 +748,12 @@ export default function NodeEditor({ automationEngine }) {
         {}, // context data (empty for manual trigger)
         // onNodeStart
         (nodeId) => {
+          nodeStates[nodeId] = "running";
           setExecutionStates((prev) => ({ ...prev, [nodeId]: "running" }));
         },
         // onNodeComplete
         (nodeId, result, status) => {
+          nodeStates[nodeId] = status;
           setExecutionStates((prev) => ({ ...prev, [nodeId]: status }));
           // Clear glow after 3 seconds
           setTimeout(() => {
@@ -749,12 +765,30 @@ export default function NodeEditor({ automationEngine }) {
           }, 3000);
         }
       );
+
+      // Update flow execution record with success
+      if (execId) {
+        api.updateFlowExecution(execId, {
+          status: "completed",
+          node_states: nodeStates,
+          completed_at: new Date().toISOString(),
+        }).catch(() => {});
+      }
     } catch (err) {
       console.error("[NodeEditor] Flow execution error:", err);
+      // Update flow execution record with failure
+      if (execId) {
+        api.updateFlowExecution(execId, {
+          status: "failed",
+          node_states: nodeStates,
+          error: err.message,
+          completed_at: new Date().toISOString(),
+        }).catch(() => {});
+      }
     } finally {
       setIsRunning(false);
     }
-  }, [activeFlowId, isRunning, nodes, connections, user, platformIds]);
+  }, [activeFlowId, isRunning, nodes, connections, user, platformIds, flows]);
 
   // ── Delete flow ──
   const handleDeleteFlow = useCallback(async (flowId) => {

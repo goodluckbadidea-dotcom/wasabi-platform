@@ -232,6 +232,18 @@ CREATE TABLE IF NOT EXISTS function_executions (
   error TEXT DEFAULT '',
   executed_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS flow_executions (
+  id TEXT PRIMARY KEY,
+  flow_id TEXT NOT NULL,
+  flow_name TEXT DEFAULT '',
+  trigger_source TEXT DEFAULT 'manual',
+  status TEXT DEFAULT 'running',
+  node_states TEXT DEFAULT '{}',
+  started_at TEXT DEFAULT (datetime('now')),
+  completed_at TEXT,
+  error TEXT DEFAULT ''
+);
 `;
 
 const D1_INDEXES = `
@@ -245,6 +257,7 @@ CREATE INDEX IF NOT EXISTS idx_files_page ON files(page_id);
 CREATE INDEX IF NOT EXISTS idx_snapshots_rule ON rule_snapshots(rule_id);
 CREATE INDEX IF NOT EXISTS idx_custom_fn_status ON custom_functions(status);
 CREATE INDEX IF NOT EXISTS idx_fn_exec_fn ON function_executions(function_id, executed_at);
+CREATE INDEX IF NOT EXISTS idx_flow_exec_flow ON flow_executions(flow_id, started_at);
 `;
 
 // ─── Auth Middleware ───
@@ -663,6 +676,20 @@ export default {
       if (path === "/d1/function-executions" && request.method === "POST") {
         const body = await request.json();
         return await handleCreateFunctionExecution(env, body);
+      }
+
+      // ─── Flow Executions ───
+      if (path === "/d1/flow-executions" && request.method === "GET") {
+        return await handleListFlowExecutions(env, url);
+      }
+      if (path === "/d1/flow-executions" && request.method === "POST") {
+        const body = await request.json();
+        return await handleCreateFlowExecution(env, body);
+      }
+      const fexMatch = path.match(/^\/d1\/flow-executions\/([^/]+)$/);
+      if (fexMatch && request.method === "PATCH") {
+        const body = await request.json();
+        return await handleUpdateFlowExecution(env, decodeURIComponent(fexMatch[1]), body);
       }
 
       // ─── Neurons CRUD ───
@@ -3844,6 +3871,411 @@ async function handleCreateFunctionExecution(env, body) {
   return jsonResponse({ id, success: true }, 201);
 }
 
+// ─── Flow Execution Handlers ───
+
+async function handleListFlowExecutions(env, url) {
+  const flowId = url.searchParams.get("flow_id");
+  const limit = Math.min(parseInt(url.searchParams.get("limit") || "50", 10), 200);
+
+  let query = "SELECT * FROM flow_executions";
+  const params = [];
+  if (flowId) {
+    query += " WHERE flow_id = ?";
+    params.push(flowId);
+  }
+  query += " ORDER BY started_at DESC LIMIT ?";
+  params.push(limit);
+
+  const { results } = await env.DB.prepare(query).bind(...params).all();
+  const parsed = (results || []).map((r) => ({
+    ...r,
+    node_states: safeParseJSON(r.node_states),
+  }));
+  return jsonResponse({ executions: parsed });
+}
+
+async function handleCreateFlowExecution(env, body) {
+  const id = `flx_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  const {
+    flow_id, flow_name = "", trigger_source = "manual",
+    status = "running", node_states = "{}", error = "",
+  } = body;
+
+  if (!flow_id) return jsonResponse({ _error: "flow_id required" }, 400);
+
+  await env.DB.prepare(
+    `INSERT INTO flow_executions (id, flow_id, flow_name, trigger_source, status, node_states, started_at, error)
+     VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?)`
+  ).bind(
+    id, flow_id, flow_name, trigger_source, status,
+    typeof node_states === "string" ? node_states : JSON.stringify(node_states),
+    error
+  ).run();
+
+  return jsonResponse({ id, success: true }, 201);
+}
+
+async function handleUpdateFlowExecution(env, id, body) {
+  const sets = [];
+  const vals = [];
+
+  for (const [key, val] of Object.entries(body)) {
+    if (key === "status") { sets.push("status = ?"); vals.push(val); }
+    else if (key === "node_states") {
+      sets.push("node_states = ?");
+      vals.push(typeof val === "string" ? val : JSON.stringify(val));
+    }
+    else if (key === "error") { sets.push("error = ?"); vals.push(val); }
+    else if (key === "completed_at") { sets.push("completed_at = ?"); vals.push(val); }
+  }
+
+  if (sets.length === 0) return jsonResponse({ _error: "No valid fields to update" }, 400);
+
+  vals.push(id);
+  await env.DB.prepare(`UPDATE flow_executions SET ${sets.join(", ")} WHERE id = ?`).bind(...vals).run();
+  return jsonResponse({ success: true, id });
+}
+
+// ─── Server-Side Sandbox & Flow Executor ───
+
+/** Whitelisted sandbox helpers (mirrored from client-side toolExecutor.js) */
+const _srvSum = (arr) => { if (!Array.isArray(arr)) return 0; return arr.reduce((a, b) => a + (Number(b) || 0), 0); };
+const _srvAvg = (arr) => { if (!Array.isArray(arr) || arr.length === 0) return 0; return _srvSum(arr) / arr.length; };
+const _srvMin = (arr) => { const nums = (arr || []).map(Number).filter((n) => !isNaN(n)); return nums.length ? Math.min(...nums) : 0; };
+const _srvMax = (arr) => { const nums = (arr || []).map(Number).filter((n) => !isNaN(n)); return nums.length ? Math.max(...nums) : 0; };
+const _srvGroupBy = (arr, key) => { const groups = {}; for (const item of (arr || [])) { const k = String(item?.[key] ?? "_none"); (groups[k] = groups[k] || []).push(item); } return groups; };
+const _srvSortBy = (arr, key, dir = "asc") => [...(arr || [])].sort((a, b) => { const va = a?.[key], vb = b?.[key]; const cmp = va < vb ? -1 : va > vb ? 1 : 0; return dir === "desc" ? -cmp : cmp; });
+const _srvUnique = (arr, key) => [...new Set((arr || []).map((item) => (key ? item?.[key] : item)))].filter((v) => v != null);
+const _srvRound = (n, d = 2) => { const factor = Math.pow(10, d); return Math.round((Number(n) || 0) * factor) / factor; };
+const _srvDateAdd = (dateStr, days) => { const d = new Date(dateStr); d.setDate(d.getDate() + days); return d.toISOString().split("T")[0]; };
+const _srvDateDiff = (dateStr1, dateStr2) => { const d1 = new Date(dateStr1); const d2 = new Date(dateStr2); return Math.round((d2 - d1) / (1000 * 60 * 60 * 24)); };
+const _srvWeeksBetween = (dateStr1, dateStr2) => _srvRound(_srvDateDiff(dateStr1, dateStr2) / 7, 1);
+
+/**
+ * Execute JavaScript code in a server-side sandbox (V8 isolate `new Function()`).
+ * Same interface as client-side executeSandbox.
+ */
+function executeSandboxServer(code, datasets) {
+  let fnBody;
+  const trimmed = code.trim();
+  if (trimmed.startsWith("(function") || trimmed.startsWith("(()")) {
+    fnBody = `"use strict";\nreturn (${trimmed});`;
+  } else if (trimmed.startsWith("function execute")) {
+    fnBody = `"use strict";\n${trimmed}\nreturn execute(datasets);`;
+  } else if (trimmed.includes("return ")) {
+    fnBody = `"use strict";\n${trimmed}`;
+  } else {
+    fnBody = `"use strict";\nreturn (${trimmed});`;
+  }
+
+  let fn;
+  try {
+    fn = new Function(
+      "datasets", "sum", "avg", "min", "max",
+      "groupBy", "sortBy", "unique", "round",
+      "dateAdd", "dateDiff", "weeksBetween",
+      fnBody
+    );
+  } catch {
+    fn = new Function(
+      "datasets", "sum", "avg", "min", "max",
+      "groupBy", "sortBy", "unique", "round",
+      "dateAdd", "dateDiff", "weeksBetween",
+      `"use strict";\n${trimmed}`
+    );
+  }
+
+  const result = fn(
+    datasets || {},
+    _srvSum, _srvAvg, _srvMin, _srvMax,
+    _srvGroupBy, _srvSortBy, _srvUnique, _srvRound,
+    _srvDateAdd, _srvDateDiff, _srvWeeksBetween
+  );
+
+  return { success: true, result };
+}
+
+/**
+ * Topologically sort nodes from trigger nodes via BFS (server-side mirror).
+ */
+function buildExecutionPlanServer(nodes, connections) {
+  const triggerNodes = nodes.filter(
+    (n) => n.type === "trigger" || (n.ports?.in?.length === 0)
+  );
+  const adjacency = {};
+  for (const conn of connections) {
+    if (!adjacency[conn.fromNode]) adjacency[conn.fromNode] = [];
+    adjacency[conn.fromNode].push(conn);
+  }
+  const visited = new Set();
+  const plan = [];
+  const queue = [...triggerNodes];
+  while (queue.length > 0) {
+    const node = queue.shift();
+    if (visited.has(node.id)) continue;
+    visited.add(node.id);
+    plan.push(node);
+    for (const edge of (adjacency[node.id] || [])) {
+      const next = nodes.find((n) => n.id === edge.toNode);
+      if (next && !visited.has(next.id)) queue.push(next);
+    }
+  }
+  return plan;
+}
+
+/**
+ * Gather inputs for a node from upstream outputs (server-side mirror).
+ */
+function gatherInputsServer(node, connections, nodeOutputs) {
+  const incoming = connections.filter((c) => c.toNode === node.id);
+  if (incoming.length === 1) {
+    const output = nodeOutputs[incoming[0].fromNode];
+    if (output && typeof output === "object") return output;
+    return {};
+  }
+  let merged = {};
+  for (const conn of incoming) {
+    const output = nodeOutputs[conn.fromNode];
+    if (!output || typeof output !== "object") continue;
+    if (Array.isArray(output)) {
+      merged[conn.fromPort || conn.fromNode] = output;
+    } else {
+      merged = { ...merged, ...output };
+    }
+  }
+  return merged;
+}
+
+/**
+ * Evaluate a condition node (server-side mirror).
+ */
+function evaluateConditionServer(config, inputData) {
+  const { field, operator, value } = config;
+  if (!field) return { branch: "true", data: inputData };
+  const fieldValue = inputData?.[field] ?? "";
+  const testValue = value ?? "";
+  let result = false;
+  switch (operator) {
+    case "equals": result = String(fieldValue) === String(testValue); break;
+    case "not_equals": result = String(fieldValue) !== String(testValue); break;
+    case "contains": result = String(fieldValue).toLowerCase().includes(String(testValue).toLowerCase()); break;
+    case "gt": result = Number(fieldValue) > Number(testValue); break;
+    case "lt": result = Number(fieldValue) < Number(testValue); break;
+    default: result = String(fieldValue) === String(testValue);
+  }
+  return { branch: result ? "true" : "false", data: inputData };
+}
+
+/**
+ * Mark downstream nodes as skipped (server-side mirror).
+ */
+function markDownstreamServer(startNodeId, connections, skippedSet) {
+  const queue = [startNodeId];
+  while (queue.length > 0) {
+    const nodeId = queue.shift();
+    if (skippedSet.has(nodeId)) continue;
+    skippedSet.add(nodeId);
+    for (const conn of connections.filter((c) => c.fromNode === nodeId)) {
+      queue.push(conn.toNode);
+    }
+  }
+}
+
+/**
+ * Execute a full flow graph server-side.
+ * Mirrors client-side flowExecutor.js — handles triggers, conditions, transforms, and actions.
+ *
+ * @param {Array} nodes - Flow node definitions
+ * @param {Array} connections - Flow edge definitions
+ * @param {object} contextData - Trigger context (matched pages, schedule info, etc.)
+ * @param {object} env - Cloudflare Worker env (DB, etc.)
+ * @returns {Promise<{ nodeOutputs, status, error? }>}
+ */
+async function executeFlowServer(nodes, connections, contextData, env) {
+  const plan = buildExecutionPlanServer(nodes, connections);
+  const nodeOutputs = {};
+  const skippedNodes = new Set();
+  const nodeStates = {};
+
+  // Build adjacency for condition branching
+  const adjacency = {};
+  for (const conn of connections) {
+    if (!adjacency[conn.fromNode]) adjacency[conn.fromNode] = [];
+    adjacency[conn.fromNode].push(conn);
+  }
+
+  for (const node of plan) {
+    if (skippedNodes.has(node.id)) {
+      nodeStates[node.id] = "skipped";
+      continue;
+    }
+
+    nodeStates[node.id] = "running";
+
+    try {
+      const inputs = gatherInputsServer(node, connections, nodeOutputs);
+      let result;
+
+      switch (node.type) {
+        case "trigger":
+          result = { ...contextData, ...inputs, _trigger: node.subtype };
+          break;
+
+        case "condition": {
+          const condResult = evaluateConditionServer(node.config || {}, inputs);
+          result = condResult.data;
+          const activeBranch = condResult.branch;
+          const outConns = adjacency[node.id] || [];
+          for (const conn of outConns) {
+            const portLabel = (node.ports?.out || []).find((p) => p.id === conn.fromPort)?.label;
+            if (portLabel && portLabel !== activeBranch) {
+              markDownstreamServer(conn.toNode, connections, skippedNodes);
+            }
+          }
+          break;
+        }
+
+        case "action":
+          result = await executeFlowActionServer(node, inputs, env);
+          break;
+
+        case "transform":
+          result = await executeFlowTransformServer(node, inputs, env);
+          break;
+
+        default:
+          result = inputs;
+      }
+
+      nodeOutputs[node.id] = result;
+      nodeStates[node.id] = "success";
+    } catch (err) {
+      console.error(`[FlowServer] Node "${node.label}" (${node.id}) failed:`, err.message);
+      nodeOutputs[node.id] = { _error: err.message };
+      nodeStates[node.id] = "error";
+    }
+  }
+
+  return { nodeOutputs, nodeStates, status: "completed" };
+}
+
+/**
+ * Execute an action node server-side (reuses executeServerTool pattern).
+ */
+async function executeFlowActionServer(node, inputs, env) {
+  const templateData = { ...inputs };
+
+  switch (node.subtype) {
+    case "post_notification": {
+      const message = expandTemplateServer(node.config?.message || "", templateData);
+      const id = crypto.randomUUID();
+      await env.DB.prepare(
+        "INSERT INTO notifications (id, message, type, status, source, created_at) VALUES (?, ?, ?, 'unread', ?, datetime('now'))"
+      ).bind(id, message, node.config?.type || "notification", `flow:${node.label}`).run();
+      return { _action: "notification_sent", message };
+    }
+
+    case "update_page": {
+      const properties = safeParseJSON(node.config?.properties);
+      const expanded = {};
+      for (const [key, val] of Object.entries(properties)) {
+        expanded[key] = typeof val === "string" ? expandTemplateServer(val, templateData) : val;
+      }
+      // If we have a page ID from upstream data, do the actual update
+      const pageId = inputs?.id || inputs?.pageId || inputs?.page_id;
+      const dbId = inputs?.databaseId || inputs?.database_id || inputs?.table_id;
+      if (pageId) {
+        const existing = await env.DB.prepare("SELECT cells FROM table_rows WHERE id = ?").bind(pageId).first();
+        const merged = { ...safeParseJSON(existing?.cells), ...expanded };
+        await env.DB.prepare("UPDATE table_rows SET cells = ?, updated_at = datetime('now') WHERE id = ?")
+          .bind(JSON.stringify(merged), pageId).run();
+        return { _action: "page_updated", pageId, properties: expanded };
+      }
+      return { _action: "update_page", properties: expanded, ...inputs };
+    }
+
+    case "create_page": {
+      const properties = safeParseJSON(node.config?.properties);
+      const expanded = {};
+      for (const [key, val] of Object.entries(properties)) {
+        expanded[key] = typeof val === "string" ? expandTemplateServer(val, templateData) : val;
+      }
+      const dbId = node.config?.databaseId;
+      if (dbId) {
+        const id = crypto.randomUUID();
+        await env.DB.prepare(
+          "INSERT INTO table_rows (id, table_id, cells, sort_order, metadata, created_at, updated_at) VALUES (?, ?, ?, 0, '{}', datetime('now'), datetime('now'))"
+        ).bind(id, dbId, JSON.stringify(expanded)).run();
+        return { _action: "page_created", pageId: id, ...expanded };
+      }
+      return { _action: "create_page", properties: expanded };
+    }
+
+    default:
+      return { _action: node.subtype, ...inputs };
+  }
+}
+
+/**
+ * Execute a transform node server-side.
+ * For execute_function subtype: fetches function from D1, runs in sandbox.
+ */
+async function executeFlowTransformServer(node, inputs, env) {
+  if (node.subtype === "execute_function") {
+    const { functionId } = node.config || {};
+    if (!functionId) throw new Error("No function selected for this node.");
+
+    // Fetch the function from D1
+    const fn = await env.DB.prepare("SELECT * FROM custom_functions WHERE id = ?").bind(functionId).first();
+    if (!fn) throw new Error(`Function not found: ${functionId}`);
+
+    const code = fn.code || "";
+    const meta = safeParseJSON(fn.meta);
+
+    // Build datasets from upstream inputs
+    const datasets = {};
+    if (inputs && typeof inputs === "object") {
+      if (inputs.results && Array.isArray(inputs.results)) {
+        datasets.data = inputs.results;
+      } else {
+        Object.assign(datasets, inputs);
+      }
+    }
+
+    const execStart = Date.now();
+    const result = executeSandboxServer(code, datasets);
+    const durationMs = Date.now() - execStart;
+
+    // Log execution (non-blocking)
+    try {
+      const execId = `fex_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+      env.DB.prepare(
+        `INSERT INTO function_executions (id, function_id, function_name, trigger_source, status, input_summary, output_summary, duration_ms, error, executed_at)
+         VALUES (?, ?, ?, 'flow', ?, ?, ?, ?, '', datetime('now'))`
+      ).bind(
+        execId, functionId, fn.name || "",
+        result.success ? "success" : "error",
+        JSON.stringify({ datasets: Object.keys(datasets) }),
+        JSON.stringify({ type: typeof result.result }),
+        durationMs
+      ).run().catch(() => {});
+    } catch { /* ignore */ }
+
+    if (!result.success) throw new Error(`Function "${fn.name}" execution failed`);
+
+    // Wrap result with output key if configured
+    if (node.config?.outputKey) {
+      return { ...inputs, [node.config.outputKey]: result.result, _functionResult: true };
+    }
+    return { ...inputs, result: result.result, _functionResult: true };
+  }
+
+  // Template transform
+  const template = node.config?.template || "";
+  const expanded = expandTemplateServer(template, inputs);
+  return { ...inputs, result: expanded, _transformed: true };
+}
+
 // ─── Server-Side Automation Engine ───
 
 /**
@@ -3931,8 +4363,231 @@ async function runAutomationTick(env) {
         console.error(LOG, `Rule "${rule.name}" execution failed:`, err.message);
       }
     }
+
+    // ── 5. Process enabled automation flows ──
+    await processEnabledFlows(env, now);
+
   } catch (err) {
     console.error(LOG, "Tick failed:", err.message);
+  }
+}
+
+/**
+ * Process enabled automation flows.
+ * Queries flows with enabled=1, evaluates trigger nodes (schedule or event-based),
+ * and executes matching flows using the server-side flow executor.
+ */
+async function processEnabledFlows(env, now) {
+  const LOG = "[FlowCron]";
+  const MAX_FLOWS_PER_TICK = 3;
+
+  try {
+    const { results: flows } = await env.DB.prepare(
+      "SELECT * FROM automation_flows WHERE enabled = 1"
+    ).all();
+
+    if (!flows || flows.length === 0) return;
+
+    console.log(LOG, `Found ${flows.length} enabled flow(s)`);
+
+    let executedCount = 0;
+
+    for (const flow of flows) {
+      if (executedCount >= MAX_FLOWS_PER_TICK) break;
+
+      const flowData = safeParseJSON(flow.flow_data);
+      const nodes = flowData.nodes || [];
+      const connections = flowData.connections || [];
+
+      if (nodes.length === 0) continue;
+
+      // Find trigger nodes
+      const triggerNodes = nodes.filter((n) => n.type === "trigger");
+      if (triggerNodes.length === 0) continue;
+
+      // Evaluate each trigger node to see if the flow should fire
+      let shouldFire = false;
+      let contextData = {};
+
+      for (const trigger of triggerNodes) {
+        const trigResult = await evaluateFlowTrigger(trigger, flow, now, env);
+        if (trigResult.shouldFire) {
+          shouldFire = true;
+          contextData = { ...contextData, ...trigResult.contextData };
+          break; // One matching trigger is enough
+        }
+      }
+
+      if (!shouldFire) continue;
+
+      console.log(LOG, `Flow "${flow.name}" (${flow.id}) triggered — executing`);
+
+      // Create flow execution record
+      const execId = `flx_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+      try {
+        await env.DB.prepare(
+          `INSERT INTO flow_executions (id, flow_id, flow_name, trigger_source, status, node_states, started_at)
+           VALUES (?, ?, ?, 'cron', 'running', '{}', datetime('now'))`
+        ).bind(execId, flow.id, flow.name).run();
+      } catch { /* ignore logging errors */ }
+
+      try {
+        const result = await executeFlowServer(nodes, connections, contextData, env);
+
+        // Update flow execution record
+        await env.DB.prepare(
+          `UPDATE flow_executions SET status = ?, node_states = ?, completed_at = datetime('now') WHERE id = ?`
+        ).bind(
+          result.status || "completed",
+          JSON.stringify(result.nodeStates || {}),
+          execId
+        ).run();
+
+        // Update flow's last_run and run_count
+        await env.DB.prepare(
+          "UPDATE automation_flows SET last_run = datetime('now'), run_count = run_count + 1, updated_at = datetime('now') WHERE id = ?"
+        ).bind(flow.id).run();
+
+        executedCount++;
+        console.log(LOG, `Flow "${flow.name}" completed successfully`);
+      } catch (err) {
+        console.error(LOG, `Flow "${flow.name}" failed:`, err.message);
+        try {
+          await env.DB.prepare(
+            `UPDATE flow_executions SET status = 'failed', error = ?, completed_at = datetime('now') WHERE id = ?`
+          ).bind(err.message, execId).run();
+        } catch { /* ignore */ }
+      }
+    }
+
+    if (executedCount > 0) {
+      console.log(LOG, `Executed ${executedCount} flow(s) this tick`);
+    }
+  } catch (err) {
+    console.error(LOG, "Flow processing failed:", err.message);
+  }
+}
+
+/**
+ * Evaluate whether a flow's trigger node should fire.
+ * Supports: schedule, field_change/status_change, page_created, manual (never fires on cron).
+ */
+async function evaluateFlowTrigger(triggerNode, flow, now, env) {
+  const config = triggerNode.config || {};
+
+  switch (triggerNode.subtype) {
+    case "schedule": {
+      const intervalMin = config.interval_minutes;
+      if (!intervalMin || intervalMin <= 0) return { shouldFire: false };
+
+      // Check flow's last_run to see if enough time has passed
+      if (!flow.last_run) return { shouldFire: true, contextData: { _trigger: "schedule" } };
+      const lastMs = new Date(flow.last_run).getTime();
+      if (isNaN(lastMs)) return { shouldFire: true, contextData: { _trigger: "schedule" } };
+
+      const elapsed = now.getTime() - lastMs;
+      if (elapsed >= intervalMin * 60_000) {
+        return { shouldFire: true, contextData: { _trigger: "schedule", elapsed_minutes: Math.round(elapsed / 60_000) } };
+      }
+      return { shouldFire: false };
+    }
+
+    case "field_change":
+    case "status_change":
+    case "database_change": {
+      const databaseId = config.databaseId;
+      if (!databaseId) return { shouldFire: false };
+
+      // Check for changed records since flow's last_run
+      const since = flow.last_run
+        ? new Date(flow.last_run).toISOString()
+        : new Date(now.getTime() - 5 * 60_000).toISOString(); // Default: last 5 min
+
+      try {
+        const { results } = await env.DB.prepare(
+          "SELECT id, cells, updated_at FROM table_rows WHERE table_id = ? AND archived = 0 AND updated_at > ? ORDER BY updated_at DESC LIMIT 50"
+        ).bind(databaseId, since).all();
+
+        if (!results || results.length === 0) return { shouldFire: false };
+
+        const changedRows = results.map((r) => ({
+          id: r.id,
+          ...safeParseJSON(r.cells),
+          _updated: r.updated_at,
+        }));
+
+        // If a specific field/value is configured, filter to matching changes
+        if (config.field && config.to) {
+          const matchingRows = changedRows.filter((r) => {
+            const fieldVal = String(r[config.field] ?? "");
+            return fieldVal === config.to;
+          });
+          if (matchingRows.length === 0) return { shouldFire: false };
+          return {
+            shouldFire: true,
+            contextData: {
+              _trigger: triggerNode.subtype,
+              matched_count: matchingRows.length,
+              results: matchingRows.slice(0, 10),
+              databaseId,
+            },
+          };
+        }
+
+        return {
+          shouldFire: true,
+          contextData: {
+            _trigger: triggerNode.subtype,
+            matched_count: changedRows.length,
+            results: changedRows.slice(0, 10),
+            databaseId,
+          },
+        };
+      } catch (err) {
+        console.error("[FlowCron] Field change detection failed:", err.message);
+        return { shouldFire: false };
+      }
+    }
+
+    case "page_created": {
+      const databaseId = config.databaseId;
+      if (!databaseId) return { shouldFire: false };
+
+      const since = flow.last_run
+        ? new Date(flow.last_run).toISOString()
+        : new Date(now.getTime() - 5 * 60_000).toISOString();
+
+      try {
+        const { results } = await env.DB.prepare(
+          "SELECT id, cells, created_at FROM table_rows WHERE table_id = ? AND archived = 0 AND created_at > ? ORDER BY created_at DESC LIMIT 50"
+        ).bind(databaseId, since).all();
+
+        if (!results || results.length === 0) return { shouldFire: false };
+
+        const newRows = results.map((r) => ({
+          id: r.id,
+          ...safeParseJSON(r.cells),
+          _created: r.created_at,
+        }));
+
+        return {
+          shouldFire: true,
+          contextData: {
+            _trigger: "page_created",
+            matched_count: newRows.length,
+            results: newRows.slice(0, 10),
+            databaseId,
+          },
+        };
+      } catch (err) {
+        console.error("[FlowCron] New record detection failed:", err.message);
+        return { shouldFire: false };
+      }
+    }
+
+    case "manual":
+    default:
+      return { shouldFire: false };
   }
 }
 

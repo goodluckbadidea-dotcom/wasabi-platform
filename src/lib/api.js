@@ -369,6 +369,24 @@ export async function createFunctionExecution(data) {
   return apiFetch("/d1/function-executions", { method: "POST", body: data });
 }
 
+// ─── Flow Executions ───
+
+export async function listFlowExecutions({ flow_id, limit = 50 } = {}) {
+  const params = new URLSearchParams();
+  if (flow_id) params.set("flow_id", flow_id);
+  if (limit) params.set("limit", String(limit));
+  const qs = params.toString();
+  return apiFetch(`/d1/flow-executions${qs ? `?${qs}` : ""}`, { method: "GET" });
+}
+
+export async function createFlowExecution(data) {
+  return apiFetch("/d1/flow-executions", { method: "POST", body: data });
+}
+
+export async function updateFlowExecution(id, data) {
+  return apiFetch(`/d1/flow-executions/${encodeURIComponent(id)}`, { method: "PATCH", body: data });
+}
+
 // ─── Notion Sync ───
 
 export async function configureSyncNotionDB(tableId, { notion_db_id, direction, field_mapping }) {
