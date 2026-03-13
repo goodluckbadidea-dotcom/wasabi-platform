@@ -213,12 +213,28 @@ function EmptyState({ hasSearch, onCreate }) {
 
 // ── Function Card ──
 function FunctionCard({ fn, isHovered, isDeleting, onHover, onRun, onDelete }) {
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
   const inputCount = (() => {
     try {
       const inputs = typeof fn.inputs === "string" ? JSON.parse(fn.inputs) : fn.inputs;
       return Object.keys(inputs || {}).length;
     } catch { return 0; }
   })();
+
+  const toggleHistory = useCallback((e) => {
+    e.stopPropagation();
+    if (!showHistory) {
+      setHistoryLoading(true);
+      api.listFunctionExecutions({ function_id: fn.id, limit: 10 })
+        .then((res) => setHistory(res?.executions || []))
+        .catch(() => setHistory([]))
+        .finally(() => setHistoryLoading(false));
+    }
+    setShowHistory((v) => !v);
+  }, [showHistory, fn.id]);
 
   return (
     <div
@@ -263,6 +279,20 @@ function FunctionCard({ fn, isHovered, isDeleting, onHover, onRun, onDelete }) {
           background: STATUS_COLORS[fn.status] || STATUS_COLORS.draft,
           flexShrink: 0,
         }} />
+
+        {/* History toggle */}
+        <button
+          onClick={toggleHistory}
+          style={{
+            background: showHistory ? C.darkSurf2 : "transparent",
+            border: `1px solid ${showHistory ? C.accent + "33" : C.darkBorder}`,
+            borderRadius: RADIUS.sm, color: showHistory ? C.accent : C.darkMuted,
+            fontFamily: FONT, fontSize: 9, padding: "2px 8px",
+            cursor: "pointer", outline: "none",
+          }}
+        >
+          History
+        </button>
 
         {/* Actions on hover */}
         {isHovered && (
@@ -310,6 +340,51 @@ function FunctionCard({ fn, isHovered, isDeleting, onHover, onRun, onDelete }) {
           </span>
         )}
       </div>
+
+      {/* Execution History */}
+      {showHistory && (
+        <div style={{
+          marginTop: 10, paddingTop: 10,
+          borderTop: `1px solid ${C.darkBorder}`,
+        }}>
+          {historyLoading ? (
+            <span style={{ fontSize: 10, color: C.darkMuted, fontFamily: FONT }}>Loading...</span>
+          ) : history.length === 0 ? (
+            <span style={{ fontSize: 10, color: C.darkMuted, fontFamily: FONT }}>No executions yet.</span>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {history.map((exec) => (
+                <div key={exec.id} style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  fontSize: 10, fontFamily: MONO, color: C.darkMuted,
+                }}>
+                  <span style={{
+                    width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
+                    background: exec.status === "success" ? "#4CAF50" : "#E05252",
+                  }} />
+                  <span style={{ minWidth: 55 }}>{timeAgo(exec.executed_at)}</span>
+                  <span style={{ minWidth: 40 }}>{exec.duration_ms}ms</span>
+                  <span style={{
+                    fontSize: 8, padding: "1px 5px", borderRadius: 2,
+                    background: C.darkSurf2, color: C.darkMuted,
+                    textTransform: "uppercase",
+                  }}>
+                    {exec.trigger_source}
+                  </span>
+                  {exec.error && (
+                    <span style={{
+                      color: "#E05252", flex: 1,
+                      whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                    }}>
+                      {exec.error}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

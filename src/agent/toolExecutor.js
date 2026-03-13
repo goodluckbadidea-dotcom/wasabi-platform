@@ -1141,7 +1141,7 @@ export function createToolExecutor({
       // ─── Custom Functions ───
 
       case "save_custom_function": {
-        const { id: fnId, name, description: fnDesc, type: fnType, inputs, outputs, code, _confirmed } = toolInput;
+        const { id: fnId, name, description: fnDesc, type: fnType, inputs, outputs, code, write_back, _confirmed } = toolInput;
         if (!name || !code) return JSON.stringify({ error: "name and code are required." });
 
         // Step 1: Syntax check
@@ -1200,14 +1200,18 @@ export function createToolExecutor({
         // Step 4: Sanity checks
         const sanityWarnings = runSanityChecks(dryRunResult.result, outputs);
 
+        // Build meta from write_back config
+        const meta = {};
+        if (write_back?.target_database_id) meta.write_back = write_back;
+
         // If user confirmed, persist to D1
         if (_confirmed || toolInput.status === "active") {
           try {
             if (fnId) {
-              await api.updateCustomFunction(fnId, { name, description: fnDesc, type: fnType, inputs, outputs, code, status: "active" });
+              await api.updateCustomFunction(fnId, { name, description: fnDesc, type: fnType, inputs, outputs, code, status: "active", meta });
               return JSON.stringify({ success: true, id: fnId, action: "updated", version: "incremented" });
             } else {
-              const result = await api.createCustomFunction({ name, description: fnDesc, type: fnType, inputs, outputs, code, status: "active" });
+              const result = await api.createCustomFunction({ name, description: fnDesc, type: fnType, inputs, outputs, code, status: "active", meta });
               return JSON.stringify({ success: true, id: result.id, action: "created" });
             }
           } catch (saveErr) {
@@ -1250,9 +1254,11 @@ export function createToolExecutor({
         const { function_id, overrides } = toolInput;
         if (!function_id) return JSON.stringify({ error: "function_id is required." });
 
+        const execStart = Date.now();
+        let fn;
         try {
           // Fetch function definition
-          const fn = await api.getCustomFunction(function_id);
+          fn = await api.getCustomFunction(function_id);
           if (!fn || fn._error) return JSON.stringify({ error: `Function not found: ${function_id}` });
           if (fn.status === "disabled") return JSON.stringify({ error: `Function "${fn.name}" is disabled.` });
 
@@ -1287,6 +1293,7 @@ export function createToolExecutor({
 
           // Execute in sandbox
           const result = executeSandbox(fn.code, datasets, fn.description || fn.name);
+          const durationMs = Date.now() - execStart;
 
           // Update last_run metadata (non-critical)
           try {
@@ -1296,13 +1303,62 @@ export function createToolExecutor({
             });
           } catch { /* ignore */ }
 
+          // Log execution to audit trail (non-blocking)
+          try {
+            const inputKeys = Object.keys(datasets);
+            const outputPreview = result.success
+              ? (Array.isArray(result.result) ? `${result.result.length} rows` : typeof result.result)
+              : "error";
+            api.createFunctionExecution({
+              function_id, function_name: fn.name || "",
+              trigger_source: "chat",
+              status: result.success ? "success" : "error",
+              input_summary: JSON.stringify({ datasets: inputKeys }),
+              output_summary: JSON.stringify({ preview: outputPreview }),
+              duration_ms: durationMs,
+              error: result.success ? "" : (result.error || "execution failed"),
+            }).catch(() => {});
+          } catch { /* ignore audit log failures */ }
+
           if (!result.success) return JSON.stringify({ error: `Function "${fn.name}" failed`, function_id });
 
-          return JSON.stringify({
+          // Build response
+          const response = {
             success: true, function_id, function_name: fn.name,
             function_type: fn.type, version: fn.version, ...result,
-          });
+          };
+
+          // Include write-back suggestion if configured
+          const writeBack = fn.meta?.write_back;
+          if (writeBack?.target_database_id && Array.isArray(result.result)) {
+            const preview = result.result.slice(0, 5).map((row) => {
+              const mapped = {};
+              for (const [outField, dbCol] of Object.entries(writeBack.column_mapping || {})) {
+                mapped[dbCol] = row[outField];
+              }
+              return mapped;
+            });
+            response.__writeBackSuggestion = {
+              target_database_id: writeBack.target_database_id,
+              mode: writeBack.mode || "create",
+              match_key: writeBack.match_key || null,
+              column_mapping: writeBack.column_mapping || {},
+              preview,
+              total_rows: result.result.length,
+            };
+          }
+
+          return JSON.stringify(response);
         } catch (err) {
+          // Log failed execution
+          try {
+            api.createFunctionExecution({
+              function_id, function_name: fn?.name || "",
+              trigger_source: "chat", status: "error",
+              duration_ms: Date.now() - execStart,
+              error: err.message,
+            }).catch(() => {});
+          } catch { /* ignore */ }
           return JSON.stringify({ error: `Failed to run function: ${err.message}`, function_id });
         }
       }

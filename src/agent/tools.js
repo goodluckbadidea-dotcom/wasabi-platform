@@ -498,6 +498,10 @@ Example: function execute({ sales, inventory }) { return Object.keys(groupBy(sal
         type: "string",
         description: "JavaScript function body. Must define 'function execute(datasets) { ... return result; }'.",
       },
+      write_back: {
+        type: "object",
+        description: "Optional write-back config. When set, after execution Wasabi suggests writing results back to a database. Properties: target_database_id (string), mode ('update'|'create'|'upsert'), match_key (string, field to match for updates), column_mapping (object mapping function output fields to database columns).",
+      },
       _confirmed: { type: "boolean", description: "Set to true after user approves the dry-run preview to actually save." },
     },
     required: ["name", "type", "inputs", "outputs", "code"],

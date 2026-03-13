@@ -336,10 +336,10 @@ export async function listCustomFunctions({ status, type } = {}) {
   return apiFetch(`/d1/custom-functions${qs ? `?${qs}` : ""}`, { method: "GET" });
 }
 
-export async function createCustomFunction({ id, name, description, type, inputs, outputs, code, status }) {
+export async function createCustomFunction({ id, name, description, type, inputs, outputs, code, status, meta }) {
   return apiFetch("/d1/custom-functions", {
     method: "POST",
-    body: { id, name, description, type, inputs, outputs, code, status },
+    body: { id, name, description, type, inputs, outputs, code, status, meta },
   });
 }
 
@@ -353,6 +353,20 @@ export async function updateCustomFunction(id, updates) {
 
 export async function deleteCustomFunction(id) {
   return apiFetch(`/d1/custom-functions/${id}`, { method: "DELETE" });
+}
+
+// ─── Function Executions (Audit Trail) ───
+
+export async function listFunctionExecutions({ function_id, limit = 50 } = {}) {
+  const params = new URLSearchParams();
+  if (function_id) params.set("function_id", function_id);
+  if (limit) params.set("limit", String(limit));
+  const qs = params.toString();
+  return apiFetch(`/d1/function-executions${qs ? `?${qs}` : ""}`, { method: "GET" });
+}
+
+export async function createFunctionExecution(data) {
+  return apiFetch("/d1/function-executions", { method: "POST", body: data });
 }
 
 // ─── Notion Sync ───

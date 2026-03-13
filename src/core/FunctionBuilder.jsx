@@ -14,6 +14,7 @@ const CARD_COLORS = {
   input: "#2196F3",
   transform: "#FF9800",
   output: "#4CAF50",
+  writeback: "#9C27B0",
 };
 
 // ── Unique ID generator ──
@@ -33,6 +34,7 @@ export default function FunctionBuilder({ onSubmit, onBack }) {
   const [steps, setSteps] = useState(defaultSteps);
   const [functionName, setFunctionName] = useState("");
   const [functionDesc, setFunctionDesc] = useState("");
+  const [writeBack, setWriteBack] = useState({ enabled: false, database_id: "", database_name: "", mode: "create", match_key: "", column_mapping: "" });
 
   // ── Step management ──
   const updateStep = useCallback((id, config) => {
@@ -118,8 +120,17 @@ export default function FunctionBuilder({ onSubmit, onBack }) {
       }
     }
 
+    // Write-back config
+    if (writeBack.enabled && writeBack.database_id) {
+      lines.push(`\nWRITE-BACK: enabled`);
+      lines.push(`Target database: "${writeBack.database_name}" (ID: ${writeBack.database_id})`);
+      lines.push(`Mode: ${writeBack.mode}`);
+      if (writeBack.match_key.trim()) lines.push(`Match key: ${writeBack.match_key.trim()}`);
+      if (writeBack.column_mapping.trim()) lines.push(`Column mapping: ${writeBack.column_mapping.trim()}`);
+    }
+
     onSubmit(lines.join("\n"));
-  }, [steps, functionName, functionDesc, onSubmit]);
+  }, [steps, functionName, functionDesc, writeBack, onSubmit]);
 
   // ── Render ──
   return (
@@ -235,6 +246,11 @@ export default function FunctionBuilder({ onSubmit, onBack }) {
             </React.Fragment>
           );
         })}
+
+        {/* Write-Back Card */}
+        <div style={{ marginTop: 12 }}>
+          <WriteBackCard config={writeBack} onUpdate={(upd) => setWriteBack((prev) => ({ ...prev, ...upd }))} />
+        </div>
       </div>
     </div>
   );
@@ -495,6 +511,120 @@ function OutputCardBody({ config, onUpdate }) {
             color: "#fff", fontFamily: FONT, fontSize: 12, outline: "none",
           }}
         />
+      )}
+    </div>
+  );
+}
+
+// ── Write-Back Card ──
+function WriteBackCard({ config, onUpdate }) {
+  const { pages } = usePlatform();
+  const color = CARD_COLORS.writeback;
+
+  const dbPages = (pages || []).filter(
+    (p) => p.type !== "folder" && p.page_type !== "dashboard" && p.page_type !== "workspace"
+  );
+
+  return (
+    <div style={{
+      background: C.darkSurf,
+      border: `1px solid ${config.enabled ? color + "44" : C.darkBorder}`,
+      borderLeft: `3px solid ${config.enabled ? color : C.darkBorder}`,
+      borderRadius: RADIUS.lg,
+      padding: "14px 16px",
+      opacity: config.enabled ? 1 : 0.7,
+    }}>
+      {/* Header with toggle */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: config.enabled ? 10 : 0 }}>
+        <span style={{
+          fontSize: 10, fontWeight: 700, color: config.enabled ? color : C.darkMuted,
+          textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: FONT,
+        }}>
+          Write-Back
+        </span>
+        <span style={{ fontSize: 10, color: C.darkMuted, fontFamily: FONT, flex: 1 }}>
+          (optional — write results to a database)
+        </span>
+        <label style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={config.enabled}
+            onChange={(e) => onUpdate({ enabled: e.target.checked })}
+            style={{ width: 14, height: 14, accentColor: color }}
+          />
+        </label>
+      </div>
+
+      {config.enabled && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {/* Target database */}
+          <select
+            value={config.database_id || ""}
+            onChange={(e) => {
+              const page = dbPages.find((p) => p.id === e.target.value);
+              onUpdate({ database_id: e.target.value, database_name: page?.title || page?.name || "" });
+            }}
+            style={{
+              background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
+              borderRadius: RADIUS.sm, padding: "8px 10px",
+              color: config.database_id ? "#fff" : C.darkMuted,
+              fontFamily: FONT, fontSize: 12, outline: "none", cursor: "pointer",
+            }}
+          >
+            <option value="" disabled>Target database...</option>
+            {dbPages.map((p) => (
+              <option key={p.id} value={p.id}>{p.title || p.name || p.id}</option>
+            ))}
+          </select>
+
+          {/* Mode selector */}
+          <div style={{ display: "flex", gap: 6 }}>
+            {["create", "update", "upsert"].map((m) => (
+              <button
+                key={m}
+                onClick={() => onUpdate({ mode: m })}
+                style={{
+                  flex: 1, padding: "5px 0",
+                  background: config.mode === m ? color + "20" : "transparent",
+                  border: `1px solid ${config.mode === m ? color + "44" : C.darkBorder}`,
+                  borderRadius: RADIUS.sm, cursor: "pointer", outline: "none",
+                  color: config.mode === m ? color : C.darkMuted,
+                  fontFamily: FONT, fontSize: 11, fontWeight: 500, textTransform: "capitalize",
+                }}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+
+          {/* Match key (for update/upsert) */}
+          {(config.mode === "update" || config.mode === "upsert") && (
+            <input
+              type="text"
+              value={config.match_key || ""}
+              onChange={(e) => onUpdate({ match_key: e.target.value })}
+              placeholder="Match key field (e.g. SKU, email)"
+              style={{
+                background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
+                borderRadius: RADIUS.sm, padding: "8px 10px",
+                color: "#fff", fontFamily: FONT, fontSize: 12, outline: "none",
+              }}
+            />
+          )}
+
+          {/* Column mapping hint */}
+          <input
+            type="text"
+            value={config.column_mapping || ""}
+            onChange={(e) => onUpdate({ column_mapping: e.target.value })}
+            placeholder="Column mapping (e.g. sku→SKU, total→Total Sold)"
+            style={{
+              background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
+              borderRadius: RADIUS.sm, padding: "8px 10px",
+              color: "#fff", fontFamily: FONT, fontSize: 12, outline: "none",
+            }}
+          />
+        </div>
       )}
     </div>
   );

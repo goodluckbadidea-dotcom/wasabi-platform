@@ -247,6 +247,16 @@ Available helpers: sum(arr), avg(arr), min(arr), max(arr), groupBy(arr, key), so
 
 Sheet data tips: Sheet datasets have column-letter keys (A, B, C...) or header names. To sum ALL numeric values in a sheet, use \`sum(datasets.mySheet._allCellValues)\` — a flat array of every numeric value. Row objects only contain data columns — no metadata keys pollute Object.values().
 
+When creating custom functions with write-back:
+- Use the \`write_back\` parameter in \`save_custom_function\` to configure writing results back to a database.
+- Set target_database_id, mode ("create"|"update"|"upsert"), match_key (for updates), and column_mapping (output field → database column).
+
+When \`run_custom_function\` returns a \`__writeBackSuggestion\`:
+1. Present the function results to the user in a clear table.
+2. Show the write-back preview: which database, how many rows, and the mapping.
+3. Ask the user to confirm before writing.
+4. If confirmed, call \`batch_operations\` with the mapped data using the column_mapping to transform function output into database operations.
+
 When performing bulk operations:
 1. **Plan before executing.** Present a numbered list of what you will create/update and ask for confirmation BEFORE calling \`batch_operations\`.
 2. Use \`batch_operations\` when creating or updating 3+ records at once — it groups them into one call.

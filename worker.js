@@ -218,6 +218,20 @@ CREATE TABLE IF NOT EXISTS custom_functions (
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS function_executions (
+  id TEXT PRIMARY KEY,
+  function_id TEXT NOT NULL,
+  function_name TEXT DEFAULT '',
+  trigger_source TEXT DEFAULT 'chat',
+  status TEXT DEFAULT 'success',
+  input_summary TEXT DEFAULT '{}',
+  output_summary TEXT DEFAULT '{}',
+  mutations_count INTEGER DEFAULT 0,
+  duration_ms INTEGER DEFAULT 0,
+  error TEXT DEFAULT '',
+  executed_at TEXT DEFAULT (datetime('now'))
+);
 `;
 
 const D1_INDEXES = `
@@ -230,6 +244,7 @@ CREATE INDEX IF NOT EXISTS idx_nn_nodeid ON neuron_nodes(node_id);
 CREATE INDEX IF NOT EXISTS idx_files_page ON files(page_id);
 CREATE INDEX IF NOT EXISTS idx_snapshots_rule ON rule_snapshots(rule_id);
 CREATE INDEX IF NOT EXISTS idx_custom_fn_status ON custom_functions(status);
+CREATE INDEX IF NOT EXISTS idx_fn_exec_fn ON function_executions(function_id, executed_at);
 `;
 
 // ─── Auth Middleware ───
@@ -639,6 +654,15 @@ export default {
       }
       if (cfMatch && request.method === "DELETE") {
         return await handleDeleteCustomFunction(env, decodeURIComponent(cfMatch[1]));
+      }
+
+      // ─── Function Executions (Audit Trail) ───
+      if (path === "/d1/function-executions" && request.method === "GET") {
+        return await handleListFunctionExecutions(env, url);
+      }
+      if (path === "/d1/function-executions" && request.method === "POST") {
+        const body = await request.json();
+        return await handleCreateFunctionExecution(env, body);
       }
 
       // ─── Neurons CRUD ───
@@ -3717,20 +3741,21 @@ async function handleListCustomFunctions(env, url) {
     ...r,
     inputs: safeParseJSON(r.inputs),
     outputs: safeParseJSON(r.outputs),
+    meta: safeParseJSON(r.meta),
   }));
   return jsonResponse({ entries });
 }
 
 async function handleCreateCustomFunction(env, body) {
   const id = body.id || `fn_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
-  const { name, description = "", type = "transform", inputs = {}, outputs = {}, code, status = "draft" } = body;
+  const { name, description = "", type = "transform", inputs = {}, outputs = {}, code, status = "draft", meta = {} } = body;
 
   if (!name || !code) return jsonResponse({ _error: "name and code required" }, 400);
 
   await env.DB.prepare(
-    `INSERT INTO custom_functions (id, name, description, type, version, inputs, outputs, code, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, datetime('now'), datetime('now'))`
-  ).bind(id, name, description, type, JSON.stringify(inputs), JSON.stringify(outputs), code, status).run();
+    `INSERT INTO custom_functions (id, name, description, type, version, inputs, outputs, code, status, meta, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+  ).bind(id, name, description, type, JSON.stringify(inputs), JSON.stringify(outputs), code, status, JSON.stringify(meta)).run();
 
   return jsonResponse({ id, success: true }, 201);
 }
@@ -3740,6 +3765,7 @@ async function handleGetCustomFunction(env, id) {
   if (!row) return jsonResponse({ _error: "Custom function not found" }, 404);
   row.inputs = safeParseJSON(row.inputs);
   row.outputs = safeParseJSON(row.outputs);
+  row.meta = safeParseJSON(row.meta);
   return jsonResponse(row);
 }
 
@@ -3752,7 +3778,7 @@ async function handleUpdateCustomFunction(env, id, body) {
     if (allowedFields.includes(key)) {
       sets.push(`${key} = ?`);
       vals.push(val);
-    } else if (key === "inputs" || key === "outputs") {
+    } else if (key === "inputs" || key === "outputs" || key === "meta") {
       sets.push(`${key} = ?`);
       vals.push(JSON.stringify(val));
     }
@@ -3774,6 +3800,48 @@ async function handleUpdateCustomFunction(env, id, body) {
 async function handleDeleteCustomFunction(env, id) {
   await env.DB.prepare("DELETE FROM custom_functions WHERE id = ?").bind(id).run();
   return jsonResponse({ success: true, id });
+}
+
+// ─── Function Executions (Audit Trail) ───
+
+async function handleListFunctionExecutions(env, url) {
+  const functionId = url.searchParams.get("function_id");
+  const limit = Math.min(parseInt(url.searchParams.get("limit") || "50", 10), 200);
+
+  let query = "SELECT * FROM function_executions";
+  const params = [];
+  if (functionId) {
+    query += " WHERE function_id = ?";
+    params.push(functionId);
+  }
+  query += " ORDER BY executed_at DESC LIMIT ?";
+  params.push(limit);
+
+  const { results } = await env.DB.prepare(query).bind(...params).all();
+  return jsonResponse({ executions: results || [] });
+}
+
+async function handleCreateFunctionExecution(env, body) {
+  const id = `fex_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  const {
+    function_id, function_name = "", trigger_source = "chat",
+    status = "success", input_summary = "{}", output_summary = "{}",
+    mutations_count = 0, duration_ms = 0, error = "",
+  } = body;
+
+  if (!function_id) return jsonResponse({ _error: "function_id required" }, 400);
+
+  await env.DB.prepare(
+    `INSERT INTO function_executions (id, function_id, function_name, trigger_source, status, input_summary, output_summary, mutations_count, duration_ms, error, executed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+  ).bind(
+    id, function_id, function_name, trigger_source, status,
+    typeof input_summary === "string" ? input_summary : JSON.stringify(input_summary),
+    typeof output_summary === "string" ? output_summary : JSON.stringify(output_summary),
+    mutations_count, duration_ms, error
+  ).run();
+
+  return jsonResponse({ id, success: true }, 201);
 }
 
 // ─── Server-Side Automation Engine ───
