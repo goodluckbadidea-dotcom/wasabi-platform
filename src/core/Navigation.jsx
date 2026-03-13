@@ -11,7 +11,7 @@ import { savePageConfig, archivePageConfig, createFolderConfig, createWorkspaceC
 import { archivePage } from "../notion/client.js";
 import {
   IconBolt, IconGear, IconStar, IconSearch, IconBrain, IconBell,
-  IconChevronLeft, IconChevronRight, IconMail, IconCalendar,
+  IconChevronLeft, IconChevronRight, IconMail, IconCalendar, IconFunction,
 } from "../design/icons.jsx";
 import { getGoogleStatus, getGmailSummary, getCalendarSummary } from "../lib/api.js";
 import WasabiFlame from "./WasabiFlame.jsx";
@@ -340,6 +340,18 @@ export default function Navigation({
         >
           <IconBolt size={collapsed ? 16 : 14} color={activePage === "automations" ? "#fff" : C.darkMuted} />
           {!collapsed && <span style={bottomLabelStyle(activePage === "automations")}>Automations</span>}
+        </button>
+
+        {/* Functions */}
+        <button
+          onClick={() => setActivePage("functions")}
+          title="Functions"
+          style={bottomBtnStyle(activePage === "functions")}
+          onMouseEnter={(e) => { if (activePage !== "functions") e.currentTarget.style.background = C.darkSurf2; }}
+          onMouseLeave={(e) => { if (activePage !== "functions") e.currentTarget.style.background = "transparent"; }}
+        >
+          <IconFunction size={collapsed ? 16 : 14} color={activePage === "functions" ? "#fff" : C.darkMuted} />
+          {!collapsed && <span style={bottomLabelStyle(activePage === "functions")}>Functions</span>}
         </button>
 
         {/* Gmail (only when Google connected) */}

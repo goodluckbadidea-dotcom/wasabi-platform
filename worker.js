@@ -1163,6 +1163,7 @@ async function handleInit(env) {
       "ALTER TABLE sheet_data ADD COLUMN row_heights TEXT DEFAULT '{}'",
       "ALTER TABLE sheet_data ADD COLUMN frozen TEXT DEFAULT '{}'",
       "ALTER TABLE sheet_data ADD COLUMN cell_styles TEXT DEFAULT '{}'",
+      "ALTER TABLE custom_functions ADD COLUMN meta TEXT DEFAULT '{}'",
     ];
     for (const sql of migrations) {
       try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }

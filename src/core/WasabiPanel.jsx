@@ -59,7 +59,7 @@ const DEFAULT_WIDTH = 320;
 const MIN_WIDTH = 280;
 const MAX_WIDTH = 640;
 
-export default function WasabiPanel({ onClose, isThinking, activePageConfig, activePageData }) {
+export default function WasabiPanel({ onClose, isThinking, activePageConfig, activePageData, pendingChatMessage, onClearPendingMessage }) {
   const { user, platformIds, pages, batchQueue, addToQueue, updateQueueItem, removeQueueItem, addPage } =
     usePlatform();
   const [tab, setTab] = useState("log");
@@ -620,6 +620,19 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
     },
     [handleChatSend]
   );
+
+  // ── Pending chat message handoff (from FunctionBuilder) ──
+  useEffect(() => {
+    if (!pendingChatMessage) return;
+    // Switch to chat tab
+    if (tab !== "chat") setTab("chat");
+    // Auto-send after UI settles
+    const timer = setTimeout(() => {
+      handleChatSend({ text: pendingChatMessage });
+      onClearPendingMessage?.();
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [pendingChatMessage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pendingCount = batchQueue.filter((e) => e.status === "pending").length;
   const unreadCount = notifications.filter((n) => !n.read).length;

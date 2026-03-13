@@ -481,8 +481,8 @@ Example: function execute({ sales, inventory }) { return Object.keys(groupBy(sal
       description: { type: "string", description: "What this function does." },
       type: {
         type: "string",
-        enum: ["transform", "aggregation", "forecast", "alert"],
-        description: "Function category: transform (reshape), aggregation (summarize), forecast (predict), alert (threshold check).",
+        enum: ["transform", "aggregation", "forecast", "alert", "pipeline"],
+        description: "Function category: transform (reshape), aggregation (summarize), forecast (predict), alert (threshold check), pipeline (multi-step chain).",
       },
       inputs: {
         type: "object",

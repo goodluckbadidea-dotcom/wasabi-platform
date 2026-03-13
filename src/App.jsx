@@ -43,6 +43,8 @@ import NeuronLines from "./neurons/NeuronLines.jsx";
 import { useNeurons } from "./neurons/NeuronsContext.jsx";
 import { IconGear } from "./design/icons.jsx";
 
+const FunctionsPanel = React.lazy(() => import("./core/FunctionsPanel.jsx"));
+
 // Inject CSS animations on app load
 injectAnimations();
 
@@ -72,6 +74,7 @@ function AppContent() {
   const [viewStates, setViewStates] = useState({}); // { [pageId]: activeViewIndex }
   const [builderTemplate, setBuilderTemplate] = useState(null);
   const [activePageData, setActivePageData] = useState(null); // { data, schema } from PageShell for WasabiPanel chat
+  const [pendingChatMessage, setPendingChatMessage] = useState(null); // Scaffold from FunctionBuilder → WasabiPanel
 
   // ── Clear page controls when navigating away ──
   const prevActivePage = useRef(activePage);
@@ -144,6 +147,12 @@ function AppContent() {
     setBuilderTemplate(null);
     setActivePage("wasabi");
   }, [setActivePage]);
+
+  // Chat handoff from FunctionsPanel / FunctionBuilder
+  const handleFunctionChat = useCallback((message) => {
+    setPendingChatMessage(message);
+    setWasabiPanelOpen(true);
+  }, []);
 
   // ── Keyboard Shortcuts ──
   useKeyboardShortcuts([
@@ -273,6 +282,15 @@ function AppContent() {
       return <AutomationPage automationEngine={engineRef.current} activeTab={activeViewIndex} />;
     }
 
+    // Functions (custom data transforms)
+    if (activePage === "functions") {
+      return (
+        <React.Suspense fallback={<div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>Loading Functions...</div>}>
+          <FunctionsPanel onOpenChat={handleFunctionChat} />
+        </React.Suspense>
+      );
+    }
+
     // Inbox (Notification Feed)
     if (activePage === "inbox") {
       return <NotificationFeed />;
@@ -392,6 +410,8 @@ function AppContent() {
               isThinking={false}
               activePageConfig={activePageConfig}
               activePageData={activePageData}
+              pendingChatMessage={pendingChatMessage}
+              onClearPendingMessage={() => setPendingChatMessage(null)}
             />
           </div>
         )}

@@ -627,3 +627,14 @@ export function IconMail({ size = 20, color = d, ...rest }) {
     </Icon>
   );
 }
+
+export function IconFunction({ size = 20, color = d, ...rest }) {
+  // Curly braces with horizontal bar — represents code/function
+  return (
+    <Icon size={size} {...rest}>
+      <path d="M8 3C6.34 3 5 4.34 5 6v4H4v4h1v4c0 1.66 1.34 3 3 3" stroke={color} strokeWidth="2" strokeLinecap="round" fill="none" />
+      <path d="M16 3c1.66 0 3 1.34 3 3v4h1v4h-1v4c0 1.66-1.34 3-3 3" stroke={color} strokeWidth="2" strokeLinecap="round" fill="none" />
+      <path d="M9 12h6" stroke={color} strokeWidth="2" strokeLinecap="round" />
+    </Icon>
+  );
+}
