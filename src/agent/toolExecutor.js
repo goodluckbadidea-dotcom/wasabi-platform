@@ -13,6 +13,189 @@ import { fetchSheetData } from "../sheets/sheetClient.js";
 import { fetchBoardItems, fetchBoardColumns } from "../monday/client.js";
 import { mondayColumnsToSchema, mondayItemToPage } from "../monday/schema.js";
 
+// ─── Sandbox Execution Engine ───
+
+/** Whitelisted helpers available inside the sandbox. */
+const _sbSum = (arr) => {
+  if (!Array.isArray(arr)) return 0;
+  return arr.reduce((a, b) => a + (Number(b) || 0), 0);
+};
+const _sbAvg = (arr) => {
+  if (!Array.isArray(arr) || arr.length === 0) return 0;
+  return _sbSum(arr) / arr.length;
+};
+const _sbMin = (arr) => {
+  const nums = (arr || []).map(Number).filter((n) => !isNaN(n));
+  return nums.length ? Math.min(...nums) : 0;
+};
+const _sbMax = (arr) => {
+  const nums = (arr || []).map(Number).filter((n) => !isNaN(n));
+  return nums.length ? Math.max(...nums) : 0;
+};
+const _sbGroupBy = (arr, key) => {
+  const groups = {};
+  for (const item of (arr || [])) {
+    const k = String(item?.[key] ?? "_none");
+    (groups[k] = groups[k] || []).push(item);
+  }
+  return groups;
+};
+const _sbSortBy = (arr, key, dir = "asc") =>
+  [...(arr || [])].sort((a, b) => {
+    const va = a?.[key], vb = b?.[key];
+    const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+    return dir === "desc" ? -cmp : cmp;
+  });
+const _sbUnique = (arr, key) =>
+  [...new Set((arr || []).map((item) => (key ? item?.[key] : item)))].filter((v) => v != null);
+const _sbRound = (n, d = 2) => {
+  const factor = Math.pow(10, d);
+  return Math.round((Number(n) || 0) * factor) / factor;
+};
+const _sbDateAdd = (dateStr, days) => {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split("T")[0];
+};
+const _sbDateDiff = (dateStr1, dateStr2) => {
+  const d1 = new Date(dateStr1);
+  const d2 = new Date(dateStr2);
+  return Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
+};
+const _sbWeeksBetween = (dateStr1, dateStr2) => {
+  return _sbRound(_sbDateDiff(dateStr1, dateStr2) / 7, 1);
+};
+
+/**
+ * Execute JavaScript code in a sandboxed new Function() with whitelisted helpers.
+ * Shared by run_calculation and run_custom_function.
+ *
+ * @param {string} code - JavaScript code to execute
+ * @param {object} datasets - named data objects available as `datasets` parameter
+ * @param {string} [description] - human-readable description for result metadata
+ * @returns {{ success: boolean, result: any, truncated?: boolean, totalRows?: number, description?: string }}
+ */
+function executeSandbox(code, datasets, description = "Calculation completed") {
+  let fnBody;
+  const trimmed = code.trim();
+  if (trimmed.startsWith("(function") || trimmed.startsWith("(()")) {
+    fnBody = `"use strict";\nreturn (${trimmed});`;
+  } else if (trimmed.startsWith("function execute")) {
+    // Custom function format: function execute({ sales, inventory }) { ... }
+    fnBody = `"use strict";\n${trimmed}\nreturn execute(datasets);`;
+  } else if (trimmed.includes("return ")) {
+    fnBody = `"use strict";\n${trimmed}`;
+  } else {
+    fnBody = `"use strict";\nreturn (${trimmed});`;
+  }
+
+  let fn;
+  try {
+    fn = new Function(
+      "datasets", "sum", "avg", "min", "max",
+      "groupBy", "sortBy", "unique", "round",
+      "dateAdd", "dateDiff", "weeksBetween",
+      fnBody
+    );
+  } catch {
+    fn = new Function(
+      "datasets", "sum", "avg", "min", "max",
+      "groupBy", "sortBy", "unique", "round",
+      "dateAdd", "dateDiff", "weeksBetween",
+      `"use strict";\n${trimmed}`
+    );
+  }
+
+  const result = fn(
+    datasets || {},
+    _sbSum, _sbAvg, _sbMin, _sbMax,
+    _sbGroupBy, _sbSortBy, _sbUnique, _sbRound,
+    _sbDateAdd, _sbDateDiff, _sbWeeksBetween
+  );
+
+  const serialized = JSON.stringify(result);
+  const isTruncated = serialized && serialized.length > 50000;
+
+  if (isTruncated && Array.isArray(result)) {
+    const subset = result.slice(0, Math.min(result.length, 200));
+    return {
+      success: true, description, result: subset,
+      totalRows: result.length, truncated: true,
+      note: `Result had ${result.length} rows. Showing first ${subset.length}.`,
+    };
+  }
+
+  return { success: true, description, result, truncated: !!isTruncated };
+}
+
+/**
+ * Validate that function output matches declared schema.
+ * @returns {string[]} Array of error strings (empty = valid).
+ */
+function validateOutputSchema(result, outputs) {
+  const errors = [];
+  if (!outputs) return errors;
+  const { type, schema } = outputs;
+
+  if (type === "number") {
+    if (typeof result !== "number") errors.push(`Expected output type "number", got "${typeof result}"`);
+    return errors;
+  }
+
+  if (type === "table") {
+    if (!Array.isArray(result)) {
+      errors.push(`Expected output type "table" (array), got "${typeof result}"`);
+      return errors;
+    }
+    if (result.length === 0 || !schema) return errors;
+
+    const sample = result.slice(0, 5);
+    for (const [fieldName, fieldType] of Object.entries(schema)) {
+      for (let i = 0; i < sample.length; i++) {
+        const val = sample[i][fieldName];
+        if (val === undefined) { errors.push(`Row ${i}: missing field "${fieldName}"`); break; }
+        if (fieldType === "number" && typeof val !== "number") { errors.push(`Field "${fieldName}" should be number, got "${typeof val}"`); break; }
+        if (fieldType === "string" && typeof val !== "string") { errors.push(`Field "${fieldName}" should be string, got "${typeof val}"`); break; }
+      }
+    }
+    return errors;
+  }
+
+  if (type === "chart_config") {
+    if (typeof result !== "object" || Array.isArray(result)) errors.push(`Expected "chart_config" (object), got "${typeof result}"`);
+  }
+
+  return errors;
+}
+
+/**
+ * Basic sanity checks on output values. Non-blocking warnings.
+ * @returns {string[]} Array of warning strings.
+ */
+function runSanityChecks(result, outputs) {
+  const warnings = [];
+  if (!result || !outputs?.schema) return warnings;
+
+  const rows = Array.isArray(result) ? result.slice(0, 50) : [result];
+
+  for (const [field, fieldType] of Object.entries(outputs.schema)) {
+    if (fieldType !== "number") continue;
+    for (const row of rows) {
+      const val = row[field];
+      if (typeof val !== "number") continue;
+      if (!isFinite(val)) { warnings.push(`Field "${field}" contains non-finite value (Infinity/NaN)`); break; }
+      if ((field.toLowerCase().includes("percent") || field.toLowerCase().includes("rate")) && (val < 0 || val > 100)) {
+        warnings.push(`Field "${field}" has value ${val} — expected 0-100 for percentages`); break;
+      }
+      if ((field.toLowerCase().includes("qty") || field.toLowerCase().includes("quantity") || field.toLowerCase().includes("count")) && val < 0) {
+        warnings.push(`Field "${field}" has negative value ${val}`); break;
+      }
+    }
+  }
+
+  return warnings;
+}
+
 // ─── Source Resolution Helpers ───
 
 /** Fetch and cache page config for an ID. Returns full config or null. */
@@ -901,130 +1084,184 @@ export function createToolExecutor({
       case "run_calculation": {
         const { datasets, code, description } = toolInput;
         if (!code) return JSON.stringify({ error: "No code provided." });
-
         try {
-          // ── Helper functions available in the sandbox ──
-          const sum = (arr) => {
-            if (!Array.isArray(arr)) return 0;
-            return arr.reduce((a, b) => a + (Number(b) || 0), 0);
-          };
-          const avg = (arr) => {
-            if (!Array.isArray(arr) || arr.length === 0) return 0;
-            return sum(arr) / arr.length;
-          };
-          const min = (arr) => {
-            const nums = (arr || []).map(Number).filter((n) => !isNaN(n));
-            return nums.length ? Math.min(...nums) : 0;
-          };
-          const max = (arr) => {
-            const nums = (arr || []).map(Number).filter((n) => !isNaN(n));
-            return nums.length ? Math.max(...nums) : 0;
-          };
-          const groupBy = (arr, key) => {
-            const groups = {};
-            for (const item of (arr || [])) {
-              const k = String(item?.[key] ?? "_none");
-              (groups[k] = groups[k] || []).push(item);
-            }
-            return groups;
-          };
-          const sortBy = (arr, key, dir = "asc") =>
-            [...(arr || [])].sort((a, b) => {
-              const va = a?.[key], vb = b?.[key];
-              const cmp = va < vb ? -1 : va > vb ? 1 : 0;
-              return dir === "desc" ? -cmp : cmp;
-            });
-          const unique = (arr, key) =>
-            [...new Set((arr || []).map((item) => (key ? item?.[key] : item)))].filter((v) => v != null);
-          const round = (n, d = 2) => {
-            const factor = Math.pow(10, d);
-            return Math.round((Number(n) || 0) * factor) / factor;
-          };
-          const dateAdd = (dateStr, days) => {
-            const d = new Date(dateStr);
-            d.setDate(d.getDate() + days);
-            return d.toISOString().split("T")[0];
-          };
-          const dateDiff = (dateStr1, dateStr2) => {
-            const d1 = new Date(dateStr1);
-            const d2 = new Date(dateStr2);
-            return Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
-          };
-          const weeksBetween = (dateStr1, dateStr2) => {
-            return round(dateDiff(dateStr1, dateStr2) / 7, 1);
-          };
-
-          // ── Execute in sandbox ──
-          // Try as expression first (IIFE), fall back to statements with implicit return
-          let fnBody;
-          const trimmed = code.trim();
-          if (trimmed.startsWith("(function") || trimmed.startsWith("(()")) {
-            // IIFE — wrap in return
-            fnBody = `"use strict";\nreturn (${trimmed});`;
-          } else if (trimmed.includes("return ")) {
-            // Contains return statement — wrap in a block
-            fnBody = `"use strict";\n${trimmed}`;
-          } else {
-            // Pure expression or statements — try as expression first
-            fnBody = `"use strict";\nreturn (${trimmed});`;
-          }
-
-          let fn;
-          try {
-            fn = new Function(
-              "datasets",
-              "sum", "avg", "min", "max",
-              "groupBy", "sortBy", "unique", "round",
-              "dateAdd", "dateDiff", "weeksBetween",
-              fnBody
-            );
-          } catch {
-            // Expression parse failed — try as statements (last expression not returned)
-            fn = new Function(
-              "datasets",
-              "sum", "avg", "min", "max",
-              "groupBy", "sortBy", "unique", "round",
-              "dateAdd", "dateDiff", "weeksBetween",
-              `"use strict";\n${trimmed}`
-            );
-          }
-
-          const result = fn(
-            datasets || {},
-            sum, avg, min, max,
-            groupBy, sortBy, unique, round,
-            dateAdd, dateDiff, weeksBetween
-          );
-
-          // Serialize result (handle large outputs gracefully)
-          const serialized = JSON.stringify(result);
-          const isTruncated = serialized.length > 50000;
-
-          if (isTruncated && Array.isArray(result)) {
-            // For arrays, return a subset with a note
-            const subset = result.slice(0, Math.min(result.length, 200));
-            return JSON.stringify({
-              success: true,
-              description: description || "Calculation completed",
-              result: subset,
-              totalRows: result.length,
-              truncated: true,
-              note: `Result had ${result.length} rows. Showing first ${subset.length}. Ask the user if they need more detail on specific items.`,
-            });
-          }
-
-          return JSON.stringify({
-            success: true,
-            description: description || "Calculation completed",
-            result,
-            truncated: isTruncated,
-          });
+          return JSON.stringify(executeSandbox(code, datasets, description || "Calculation completed"));
         } catch (err) {
           return JSON.stringify({
             error: `Calculation failed: ${err.message}`,
             description: description || "",
             hint: "Check your code syntax. Use an IIFE: (function() { ... return result; })()",
           });
+        }
+      }
+
+      // ─── Custom Functions ───
+
+      case "save_custom_function": {
+        const { id: fnId, name, description: fnDesc, type: fnType, inputs, outputs, code, _confirmed } = toolInput;
+        if (!name || !code) return JSON.stringify({ error: "name and code are required." });
+
+        // Step 1: Syntax check
+        try {
+          new Function("datasets", `"use strict";\n${code.trim()}\nreturn typeof execute === 'function' ? execute(datasets) : undefined;`);
+        } catch (syntaxErr) {
+          return JSON.stringify({ error: `Syntax error: ${syntaxErr.message}`, step: "syntax_check" });
+        }
+
+        // Step 2: Dry run with real data
+        let dryRunResult;
+        try {
+          const datasets = {};
+          for (const [key, inputDef] of Object.entries(inputs || {})) {
+            if (inputDef.source === "query_database" && inputDef.database_id) {
+              const queryInput = { database_id: inputDef.database_id };
+              if (inputDef.filter) queryInput.filter = inputDef.filter;
+              if (inputDef.sorts) queryInput.sorts = inputDef.sorts;
+              const raw = await executeTool("query_database", queryInput);
+              const parsed = JSON.parse(raw);
+              if (parsed.error || parsed._error) throw new Error(`Input "${key}": ${parsed.error || parsed._error}`);
+              let rows = parsed.results || [];
+              if (inputDef.columns?.length) {
+                const colSet = new Set(inputDef.columns);
+                rows = rows.map((row) => {
+                  const filtered = { id: row.id };
+                  for (const col of colSet) { if (row[col] !== undefined) filtered[col] = row[col]; }
+                  return filtered;
+                });
+              }
+              datasets[key] = rows;
+            }
+          }
+          dryRunResult = executeSandbox(code, datasets, `Dry run: ${name}`);
+        } catch (dryErr) {
+          return JSON.stringify({ error: `Dry run failed: ${dryErr.message}`, step: "dry_run" });
+        }
+
+        // Step 3: Schema validation
+        if (outputs?.schema && dryRunResult.result) {
+          const schemaErrors = validateOutputSchema(dryRunResult.result, outputs);
+          if (schemaErrors.length > 0) {
+            return JSON.stringify({
+              error: "Output schema mismatch", step: "schema_validation",
+              issues: schemaErrors,
+              actualSample: Array.isArray(dryRunResult.result) ? dryRunResult.result.slice(0, 3) : dryRunResult.result,
+            });
+          }
+        }
+
+        // Step 4: Sanity checks
+        const sanityWarnings = runSanityChecks(dryRunResult.result, outputs);
+
+        // If user confirmed, persist to D1
+        if (_confirmed || toolInput.status === "active") {
+          try {
+            if (fnId) {
+              await api.updateCustomFunction(fnId, { name, description: fnDesc, type: fnType, inputs, outputs, code, status: "active" });
+              return JSON.stringify({ success: true, id: fnId, action: "updated", version: "incremented" });
+            } else {
+              const result = await api.createCustomFunction({ name, description: fnDesc, type: fnType, inputs, outputs, code, status: "active" });
+              return JSON.stringify({ success: true, id: result.id, action: "created" });
+            }
+          } catch (saveErr) {
+            return JSON.stringify({ error: `Failed to save: ${saveErr.message}`, step: "save" });
+          }
+        }
+
+        // Not confirmed — return preview for user approval
+        return JSON.stringify({
+          __validationPreview: true, name, type: fnType,
+          dryRunResult: {
+            success: true,
+            sampleOutput: Array.isArray(dryRunResult.result) ? dryRunResult.result.slice(0, 10) : dryRunResult.result,
+            totalRows: dryRunResult.totalRows || (Array.isArray(dryRunResult.result) ? dryRunResult.result.length : 1),
+          },
+          sanityWarnings,
+          message: "Validation passed. Present these results to the user and ask for approval. Then call save_custom_function again with the same parameters plus _confirmed: true to save.",
+        });
+      }
+
+      case "list_custom_functions": {
+        try {
+          const result = await api.listCustomFunctions({ status: toolInput.status, type: toolInput.type });
+          const entries = result.entries || [];
+          if (entries.length === 0) return JSON.stringify({ count: 0, functions: [], message: "No custom functions found." });
+          const summaries = entries.map((fn) => ({
+            id: fn.id, name: fn.name, description: fn.description,
+            type: fn.type, status: fn.status, version: fn.version,
+            inputSources: Object.keys(fn.inputs || {}),
+            outputType: fn.outputs?.type || "unknown",
+            last_run_at: fn.last_run_at, last_run_status: fn.last_run_status,
+          }));
+          return JSON.stringify({ count: summaries.length, functions: summaries });
+        } catch (err) {
+          return JSON.stringify({ error: `Failed to list functions: ${err.message}` });
+        }
+      }
+
+      case "run_custom_function": {
+        const { function_id, overrides } = toolInput;
+        if (!function_id) return JSON.stringify({ error: "function_id is required." });
+
+        try {
+          // Fetch function definition
+          const fn = await api.getCustomFunction(function_id);
+          if (!fn || fn._error) return JSON.stringify({ error: `Function not found: ${function_id}` });
+          if (fn.status === "disabled") return JSON.stringify({ error: `Function "${fn.name}" is disabled.` });
+
+          // Auto-gather inputs
+          const datasets = {};
+          for (const [key, inputDef] of Object.entries(fn.inputs || {})) {
+            if (overrides?.[key]) { datasets[key] = overrides[key]; continue; }
+            if (inputDef.source === "query_database" && inputDef.database_id) {
+              const queryInput = { database_id: inputDef.database_id };
+              if (inputDef.filter) queryInput.filter = inputDef.filter;
+              if (inputDef.sorts) queryInput.sorts = inputDef.sorts;
+              const raw = await executeTool("query_database", queryInput);
+              const parsed = JSON.parse(raw);
+              if (parsed.error || parsed._error) throw new Error(`Input "${key}": ${parsed.error || parsed._error}`);
+              let rows = parsed.results || [];
+              if (inputDef.columns?.length) {
+                const colSet = new Set(inputDef.columns);
+                rows = rows.map((row) => {
+                  const filtered = { id: row.id };
+                  for (const col of colSet) { if (row[col] !== undefined) filtered[col] = row[col]; }
+                  return filtered;
+                });
+              }
+              datasets[key] = rows;
+            }
+          }
+
+          // Execute in sandbox
+          const result = executeSandbox(fn.code, datasets, fn.description || fn.name);
+
+          // Update last_run metadata (non-critical)
+          try {
+            await api.updateCustomFunction(function_id, {
+              last_run_at: new Date().toISOString(),
+              last_run_status: result.success ? "success" : "error",
+            });
+          } catch { /* ignore */ }
+
+          if (!result.success) return JSON.stringify({ error: `Function "${fn.name}" failed`, function_id });
+
+          return JSON.stringify({
+            success: true, function_id, function_name: fn.name,
+            function_type: fn.type, version: fn.version, ...result,
+          });
+        } catch (err) {
+          return JSON.stringify({ error: `Failed to run function: ${err.message}`, function_id });
+        }
+      }
+
+      case "delete_custom_function": {
+        const { function_id } = toolInput;
+        if (!function_id) return JSON.stringify({ error: "function_id is required." });
+        try {
+          await api.deleteCustomFunction(function_id);
+          return JSON.stringify({ success: true, id: function_id });
+        } catch (err) {
+          return JSON.stringify({ error: `Failed to delete: ${err.message}` });
         }
       }
 

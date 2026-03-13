@@ -460,6 +460,88 @@ const BATCH_OPERATIONS = {
   },
 };
 
+// ─── Custom Functions ───
+
+const SAVE_CUSTOM_FUNCTION = {
+  name: "save_custom_function",
+  description: `Create or update a reusable custom function that persists in the user's workspace. The function is validated before saving:
+1. Syntax check — verifies the code parses correctly
+2. Dry run — fetches real data from declared inputs and executes the function
+3. Schema validation — checks output matches declared output shape
+4. Presents results for user approval before finalizing
+
+The code must define a function called 'execute' that receives a single object parameter with named datasets (matching input keys) and returns a result matching the declared output schema. Available sandbox helpers: sum, avg, min, max, groupBy, sortBy, unique, round, dateAdd, dateDiff, weeksBetween.
+
+Example: function execute({ sales, inventory }) { return Object.keys(groupBy(sales, "SKU")).map(sku => ({ sku, total: sum(sales.filter(r => r.SKU === sku).map(r => r.Units)) })); }`,
+  input_schema: {
+    type: "object",
+    properties: {
+      id: { type: "string", description: "Optional ID for updating an existing function. Omit for new." },
+      name: { type: "string", description: "Human-readable function name." },
+      description: { type: "string", description: "What this function does." },
+      type: {
+        type: "string",
+        enum: ["transform", "aggregation", "forecast", "alert"],
+        description: "Function category: transform (reshape), aggregation (summarize), forecast (predict), alert (threshold check).",
+      },
+      inputs: {
+        type: "object",
+        description: "Declares input data sources. Each key is a dataset name. Value: { source: 'query_database', database_id: 'xxx', columns: ['col1', 'col2'] }.",
+      },
+      outputs: {
+        type: "object",
+        description: "Declares expected output shape. { type: 'table'|'number'|'chart_config', schema: { fieldName: 'string'|'number'|'date' } }.",
+      },
+      code: {
+        type: "string",
+        description: "JavaScript function body. Must define 'function execute(datasets) { ... return result; }'.",
+      },
+      _confirmed: { type: "boolean", description: "Set to true after user approves the dry-run preview to actually save." },
+    },
+    required: ["name", "type", "inputs", "outputs", "code"],
+  },
+};
+
+const LIST_CUSTOM_FUNCTIONS = {
+  name: "list_custom_functions",
+  description: "List all saved custom functions. Use to discover available functions before running them.",
+  input_schema: {
+    type: "object",
+    properties: {
+      status: { type: "string", enum: ["draft", "active", "disabled"], description: "Filter by status." },
+      type: { type: "string", enum: ["transform", "aggregation", "forecast", "alert"], description: "Filter by function type." },
+    },
+  },
+};
+
+const RUN_CUSTOM_FUNCTION = {
+  name: "run_custom_function",
+  description: `Execute a saved custom function with live data. Automatically gathers input data by running query_database for each declared input source, then executes the function code in a sandbox. Use list_custom_functions first to see available functions and their IDs.`,
+  input_schema: {
+    type: "object",
+    properties: {
+      function_id: { type: "string", description: "The ID of the custom function to execute." },
+      overrides: {
+        type: "object",
+        description: "Optional overrides for input data. Pass pre-fetched datasets to skip auto-gather for specific inputs.",
+      },
+    },
+    required: ["function_id"],
+  },
+};
+
+const DELETE_CUSTOM_FUNCTION = {
+  name: "delete_custom_function",
+  description: "Permanently delete a saved custom function by ID.",
+  input_schema: {
+    type: "object",
+    properties: {
+      function_id: { type: "string", description: "The ID of the custom function to delete." },
+    },
+    required: ["function_id"],
+  },
+};
+
 const EXPORT_REPORT = {
   name: "export_report",
   description: "Export data as a downloadable report. CSV downloads directly as a file. PDF opens a print dialog so the user can save as PDF. Query the data first, then format into headers and rows arrays.",
@@ -666,6 +748,10 @@ export const WASABI_TOOLS = [
   QUERY_NEURONS,
   CREATE_NEURON,
   RUN_CALCULATION,
+  SAVE_CUSTOM_FUNCTION,
+  LIST_CUSTOM_FUNCTIONS,
+  RUN_CUSTOM_FUNCTION,
+  DELETE_CUSTOM_FUNCTION,
   BATCH_OPERATIONS,
   EXPORT_REPORT,
   DELEGATE_TASK,

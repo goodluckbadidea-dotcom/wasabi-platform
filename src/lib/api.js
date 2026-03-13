@@ -326,6 +326,35 @@ export async function searchKB(query, category) {
   });
 }
 
+// ─── Custom Functions ───
+
+export async function listCustomFunctions({ status, type } = {}) {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (type) params.set("type", type);
+  const qs = params.toString();
+  return apiFetch(`/d1/custom-functions${qs ? `?${qs}` : ""}`, { method: "GET" });
+}
+
+export async function createCustomFunction({ id, name, description, type, inputs, outputs, code, status }) {
+  return apiFetch("/d1/custom-functions", {
+    method: "POST",
+    body: { id, name, description, type, inputs, outputs, code, status },
+  });
+}
+
+export async function getCustomFunction(id) {
+  return apiFetch(`/d1/custom-functions/${id}`, { method: "GET" });
+}
+
+export async function updateCustomFunction(id, updates) {
+  return apiFetch(`/d1/custom-functions/${id}`, { method: "PATCH", body: updates });
+}
+
+export async function deleteCustomFunction(id) {
+  return apiFetch(`/d1/custom-functions/${id}`, { method: "DELETE" });
+}
+
 // ─── Notion Sync ───
 
 export async function configureSyncNotionDB(tableId, { notion_db_id, direction, field_mapping }) {

@@ -201,6 +201,23 @@ CREATE TABLE IF NOT EXISTS rule_snapshots (
   updated_at TEXT DEFAULT (datetime('now')),
   PRIMARY KEY (rule_id, record_id, field_name)
 );
+
+CREATE TABLE IF NOT EXISTS custom_functions (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT DEFAULT '',
+  type TEXT DEFAULT 'transform',
+  version INTEGER DEFAULT 1,
+  inputs TEXT DEFAULT '{}',
+  outputs TEXT DEFAULT '{}',
+  code TEXT NOT NULL,
+  status TEXT DEFAULT 'draft',
+  created_by TEXT DEFAULT 'wasabi',
+  last_run_at TEXT,
+  last_run_status TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
 `;
 
 const D1_INDEXES = `
@@ -212,6 +229,7 @@ CREATE INDEX IF NOT EXISTS idx_nn_neuron ON neuron_nodes(neuron_id);
 CREATE INDEX IF NOT EXISTS idx_nn_nodeid ON neuron_nodes(node_id);
 CREATE INDEX IF NOT EXISTS idx_files_page ON files(page_id);
 CREATE INDEX IF NOT EXISTS idx_snapshots_rule ON rule_snapshots(rule_id);
+CREATE INDEX IF NOT EXISTS idx_custom_fn_status ON custom_functions(status);
 `;
 
 // ─── Auth Middleware ───
@@ -601,6 +619,26 @@ export default {
       if (path === "/d1/kb/search" && request.method === "POST") {
         const body = await request.json();
         return await handleSearchKB(env, body);
+      }
+
+      // ─── Custom Functions CRUD ───
+      if (path === "/d1/custom-functions" && request.method === "GET") {
+        return await handleListCustomFunctions(env, url);
+      }
+      if (path === "/d1/custom-functions" && request.method === "POST") {
+        const body = await request.json();
+        return await handleCreateCustomFunction(env, body);
+      }
+      const cfMatch = path.match(/^\/d1\/custom-functions\/([^/]+)$/);
+      if (cfMatch && request.method === "GET") {
+        return await handleGetCustomFunction(env, decodeURIComponent(cfMatch[1]));
+      }
+      if (cfMatch && request.method === "PATCH") {
+        const body = await request.json();
+        return await handleUpdateCustomFunction(env, decodeURIComponent(cfMatch[1]), body);
+      }
+      if (cfMatch && request.method === "DELETE") {
+        return await handleDeleteCustomFunction(env, decodeURIComponent(cfMatch[1]));
       }
 
       // ─── Neurons CRUD ───
@@ -3658,6 +3696,83 @@ async function handleSearchKB(env, body) {
     .slice(0, 10);
 
   return jsonResponse({ results: matches });
+}
+
+// ─── Custom Functions CRUD ───
+
+async function handleListCustomFunctions(env, url) {
+  const status = url.searchParams.get("status");
+  const type = url.searchParams.get("type");
+  let query = "SELECT * FROM custom_functions";
+  const conditions = [];
+  const params = [];
+  if (status) { conditions.push("status = ?"); params.push(status); }
+  if (type) { conditions.push("type = ?"); params.push(type); }
+  if (conditions.length) query += " WHERE " + conditions.join(" AND ");
+  query += " ORDER BY updated_at DESC";
+
+  const { results } = await env.DB.prepare(query).bind(...params).all();
+  const entries = (results || []).map((r) => ({
+    ...r,
+    inputs: safeParseJSON(r.inputs),
+    outputs: safeParseJSON(r.outputs),
+  }));
+  return jsonResponse({ entries });
+}
+
+async function handleCreateCustomFunction(env, body) {
+  const id = body.id || `fn_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  const { name, description = "", type = "transform", inputs = {}, outputs = {}, code, status = "draft" } = body;
+
+  if (!name || !code) return jsonResponse({ _error: "name and code required" }, 400);
+
+  await env.DB.prepare(
+    `INSERT INTO custom_functions (id, name, description, type, version, inputs, outputs, code, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+  ).bind(id, name, description, type, JSON.stringify(inputs), JSON.stringify(outputs), code, status).run();
+
+  return jsonResponse({ id, success: true }, 201);
+}
+
+async function handleGetCustomFunction(env, id) {
+  const row = await env.DB.prepare("SELECT * FROM custom_functions WHERE id = ?").bind(id).first();
+  if (!row) return jsonResponse({ _error: "Custom function not found" }, 404);
+  row.inputs = safeParseJSON(row.inputs);
+  row.outputs = safeParseJSON(row.outputs);
+  return jsonResponse(row);
+}
+
+async function handleUpdateCustomFunction(env, id, body) {
+  const sets = [];
+  const vals = [];
+  const allowedFields = ["name", "description", "type", "code", "status", "last_run_at", "last_run_status"];
+
+  for (const [key, val] of Object.entries(body)) {
+    if (allowedFields.includes(key)) {
+      sets.push(`${key} = ?`);
+      vals.push(val);
+    } else if (key === "inputs" || key === "outputs") {
+      sets.push(`${key} = ?`);
+      vals.push(JSON.stringify(val));
+    }
+  }
+
+  if (sets.length === 0) return jsonResponse({ _error: "No valid fields to update" }, 400);
+
+  // Auto-increment version if code, inputs, or outputs changed
+  if (body.code || body.inputs || body.outputs) {
+    sets.push("version = version + 1");
+  }
+  sets.push("updated_at = datetime('now')");
+  vals.push(id);
+
+  await env.DB.prepare(`UPDATE custom_functions SET ${sets.join(", ")} WHERE id = ?`).bind(...vals).run();
+  return jsonResponse({ success: true, id });
+}
+
+async function handleDeleteCustomFunction(env, id) {
+  await env.DB.prepare("DELETE FROM custom_functions WHERE id = ?").bind(id).run();
+  return jsonResponse({ success: true, id });
 }
 
 // ─── Server-Side Automation Engine ───
