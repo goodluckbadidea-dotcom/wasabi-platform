@@ -255,25 +255,27 @@ function WidgetPickerInline({ onClose, onAddWidget }) {
   const [pluginFunctions, setPluginFunctions] = useState([]);
   const [loadingPlugins, setLoadingPlugins] = useState(true);
 
-  // Fetch custom functions that can serve as plugins (type = "plugin" or all active)
+  // Fetch custom functions that can serve as plugins
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
+        // First try fetching only plugin-type functions
         const result = await api.listCustomFunctions({ type: "plugin" });
-        const fns = result.functions || result.rows || [];
+        const fns = result?.entries || result?.functions || result?.data || result?.rows || [];
         if (!cancelled) setPluginFunctions(fns);
-      } catch (err) {
-        // If the plugin type filter returns nothing, try all active functions
-        try {
-          const result = await api.listCustomFunctions({ status: "active" });
-          const fns = (result.functions || result.rows || []).filter(
+
+        // If that returned nothing, try all functions and filter client-side
+        if (fns.length === 0) {
+          const allResult = await api.listCustomFunctions();
+          const allFns = allResult?.entries || allResult?.functions || allResult?.data || allResult?.rows || [];
+          const plugins = allFns.filter(
             (f) => f.type === "plugin" || f.meta?.widget === true
           );
-          if (!cancelled) setPluginFunctions(fns);
-        } catch {
-          // No plugins available — that's fine
+          if (!cancelled) setPluginFunctions(plugins);
         }
+      } catch {
+        // No plugins available — that's fine
       } finally {
         if (!cancelled) setLoadingPlugins(false);
       }

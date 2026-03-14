@@ -98,8 +98,7 @@ export default function PluginWidget({ functionId, width, height, refreshInterva
     try {
       setLoading(true);
       setError(null);
-      const result = await api.getCustomFunction(functionId);
-      const fn = result.function || result;
+      const fn = await api.getCustomFunction(functionId);
       if (!fn?.code) {
         setError("Function has no code");
         setLoading(false);
