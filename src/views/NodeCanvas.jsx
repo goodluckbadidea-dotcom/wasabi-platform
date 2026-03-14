@@ -230,9 +230,15 @@ export default function NodeCanvas({
     >
       <svg
         ref={svgRef}
-        width="100%"
-        height="100%"
-        style={{ cursor: cursorStyle, display: "block" }}
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "100%",
+          cursor: cursorStyle,
+          display: "block",
+        }}
         onMouseDown={handlePanStart}
         onClick={handleSvgClick}
         onMouseMove={handleCanvasMouseMove}
