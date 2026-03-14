@@ -262,16 +262,33 @@ export default function Navigation({
               transition: "padding 0.25s",
             }}
           >
+            {/* Dashboard (default landing) */}
+            <button
+              onClick={() => { setActivePage("zen-dashboard"); setActiveFolder(null); }}
+              title="Dashboard"
+              style={bottomBtnStyle(activePage === "zen-dashboard" || activePage === null)}
+              onMouseEnter={(e) => { if (activePage !== "zen-dashboard" && activePage !== null) e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activePage !== "zen-dashboard" && activePage !== null) e.currentTarget.style.background = "transparent"; }}
+            >
+              <svg width={collapsed ? 16 : 14} height={collapsed ? 16 : 14} viewBox="0 0 16 16" fill="none">
+                <rect x="1" y="1" width="6" height="6" rx="1.5" stroke={(activePage === "zen-dashboard" || activePage === null) ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
+                <rect x="9" y="1" width="6" height="6" rx="1.5" stroke={(activePage === "zen-dashboard" || activePage === null) ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
+                <rect x="1" y="9" width="6" height="6" rx="1.5" stroke={(activePage === "zen-dashboard" || activePage === null) ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
+                <rect x="9" y="9" width="6" height="6" rx="1.5" stroke={(activePage === "zen-dashboard" || activePage === null) ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
+              </svg>
+              {!collapsed && <span style={bottomLabelStyle(activePage === "zen-dashboard" || activePage === null)}>Dashboard</span>}
+            </button>
+
             {/* To-Do / Calendar */}
             <button
               onClick={() => { setActivePage("zen-tasks"); setActiveFolder(null); }}
               title="To-Do & Calendar"
-              style={bottomBtnStyle(activePage === "zen-tasks" || activePage === null)}
-              onMouseEnter={(e) => { if (activePage !== "zen-tasks" && activePage !== null) e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activePage !== "zen-tasks" && activePage !== null) e.currentTarget.style.background = "transparent"; }}
+              style={bottomBtnStyle(activePage === "zen-tasks")}
+              onMouseEnter={(e) => { if (activePage !== "zen-tasks") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activePage !== "zen-tasks") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconCalendar size={collapsed ? 16 : 14} color={(activePage === "zen-tasks" || activePage === null) ? "#fff" : C.darkMuted} />
-              {!collapsed && <span style={bottomLabelStyle(activePage === "zen-tasks" || activePage === null)}>To-Do & Calendar</span>}
+              <IconCalendar size={collapsed ? 16 : 14} color={activePage === "zen-tasks" ? "#fff" : C.darkMuted} />
+              {!collapsed && <span style={bottomLabelStyle(activePage === "zen-tasks")}>To-Do & Calendar</span>}
             </button>
 
             {/* Notes */}

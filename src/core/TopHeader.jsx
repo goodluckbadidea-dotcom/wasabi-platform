@@ -55,8 +55,8 @@ export default function TopHeader() {
 
       {/* Right: Neurons toggle + Theme cycle */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-        {/* Neurons toggle */}
-        <button
+        {/* Neurons toggle (Sushi Roll mode only) */}
+        {appMode !== "zen" && <button
           onClick={toggleOverlay}
           title={overlayActive ? "Exit Neurons mode (Esc)" : "Enter Neurons mode"}
           style={{
@@ -120,9 +120,9 @@ export default function TopHeader() {
               {selection.length}
             </span>
           )}
-        </button>
+        </button>}
 
-        {/* Zen / Samurai mode toggle */}
+        {/* Sashimi / Sushi Roll mode toggle */}
         <button
           onClick={toggleAppMode}
           title={appMode === "samurai" ? "Switch to Sashimi mode" : "Switch to Sushi Roll mode"}

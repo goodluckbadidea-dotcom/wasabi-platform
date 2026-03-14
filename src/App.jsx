@@ -48,6 +48,7 @@ const FunctionsPanel = React.lazy(() => import("./core/FunctionsPanel.jsx"));
 const BuildPage = React.lazy(() => import("./core/BuildPage.jsx"));
 const ZenTasksView = React.lazy(() => import("./zen/ZenTasksView.jsx"));
 const ZenNotes = React.lazy(() => import("./zen/ZenNotes.jsx"));
+const ZenDashboard = React.lazy(() => import("./zen/ZenDashboard.jsx"));
 
 // Inject CSS animations on app load
 injectAnimations();
@@ -221,7 +222,7 @@ function AppContent() {
     {
       shortcut: "mod+j",
       description: "Toggle Neurons overlay",
-      handler: () => toggleNeurons(),
+      handler: () => { if (appMode !== "zen") toggleNeurons(); },
     },
     {
       shortcut: "mod+h",
@@ -298,14 +299,26 @@ function AppContent() {
           </React.Suspense>
         );
       }
-      // Default: Zen Tasks split view (To-Do + Today's Schedule)
+      // Zen Tasks split view (To-Do + Calendar)
+      if (activePage === "zen-tasks") {
+        return (
+          <React.Suspense fallback={
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
+              Loading...
+            </div>
+          }>
+            <ZenTasksView />
+          </React.Suspense>
+        );
+      }
+      // Default: Dashboard (zen-dashboard or null)
       return (
         <React.Suspense fallback={
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
             Loading...
           </div>
         }>
-          <ZenTasksView />
+          <ZenDashboard />
         </React.Suspense>
       );
     }
@@ -455,9 +468,11 @@ function AppContent() {
       {/* ── Top Header Bar ── */}
       <TopHeader />
 
-      {/* ── Neuron Overlay (glass pane for selection mode) ── */}
-      <NeuronOverlay />
-      <NeuronLines />
+      {/* ── Neuron Overlay (glass pane for selection mode — Sushi Roll only) ── */}
+      {appMode !== "zen" && <>
+        <NeuronOverlay />
+        <NeuronLines />
+      </>}
 
       {/* ── Main Row: [Wasabi Panel] [Sidebar] [Content] ── */}
       <div
