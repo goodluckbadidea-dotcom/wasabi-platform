@@ -66,10 +66,11 @@ export function normalizeNotionTask(page, schema, dbName) {
   const _statusOptions = [];  // [{ name: "To Do", color: "..." }, ...]
   const _statusFieldType = null; // "status" | "select" | "checkbox"
 
-  // Track title field name
-  if (schema?.title) _fieldMap.title = schema.title;
+  // Track title field name (store just the property name string)
+  if (schema?.title) _fieldMap.title = schema.title.name || schema.title;
 
   let statusFieldType = null;
+  // Check Notion `status`-type properties first
   for (const field of (schema?.statuses || [])) {
     const val = readNotionProp(props[field.name]);
     if (val) {
@@ -77,11 +78,28 @@ export function normalizeNotionTask(page, schema, dbName) {
       const lower = String(val).toLowerCase();
       done = lower === "done" || lower === "complete" || lower === "completed";
     }
-    // Always capture the first status field mapping + options
     if (!_fieldMap.status) {
       _fieldMap.status = field.name;
       statusFieldType = "status";
       if (field.options) _statusOptions.push(...field.options);
+    }
+  }
+  // Also check `select`-type properties named "status"/"state"/"stage"
+  if (!_fieldMap.status) {
+    for (const field of (schema?.selects || [])) {
+      const fname = field.name.toLowerCase();
+      if (fname.includes("status") || fname.includes("state") || fname.includes("stage") || fname.includes("progress")) {
+        const val = readNotionProp(props[field.name]);
+        if (val) {
+          status = val;
+          const lower = String(val).toLowerCase();
+          done = lower === "done" || lower === "complete" || lower === "completed";
+        }
+        _fieldMap.status = field.name;
+        statusFieldType = "select";
+        if (field.options) _statusOptions.push(...field.options);
+        break;
+      }
     }
   }
   for (const field of (schema?.checkboxes || [])) {
@@ -98,6 +116,8 @@ export function normalizeNotionTask(page, schema, dbName) {
   let priority = null;
   for (const field of (schema?.selects || [])) {
     const name = field.name.toLowerCase();
+    // Skip if this select is already used as the status field
+    if (_fieldMap.status === field.name) continue;
     if (name.includes("priority") || name.includes("urgency")) {
       priority = readNotionProp(props[field.name]);
       if (!_fieldMap.priority) _fieldMap.priority = field.name;
