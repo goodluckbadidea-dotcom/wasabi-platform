@@ -9,7 +9,7 @@ import { queryLimited } from "../notion/pagination.js";
 import { listRows, claudeProxy, getTableSchema } from "../lib/api.js";
 import { normalizeNotionTask, normalizeD1Task, getCached, setCache } from "./zenTaskHelpers.js";
 
-const CACHE_KEY = "wasabi_zen_ai_tasks";
+const CACHE_KEY = "wasabi_zen_ai_tasks_v2"; // v2: smart filter scoring
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 const MAX_DATABASES = 5;
 const MAX_ITEMS_PER_DB = 30;
@@ -230,8 +230,9 @@ export default function useAICuratedTasks() {
   const [error, setError] = useState(null);
   const scanningRef = useRef(false);
 
-  // Load cached results immediately
+  // Load cached results immediately + clean up old cache keys
   useEffect(() => {
+    try { localStorage.removeItem("wasabi_zen_ai_tasks"); } catch {} // v1 cleanup
     const cached = getCached(CACHE_KEY, CACHE_TTL);
     if (cached) {
       setAiTasks(cached);
@@ -241,12 +242,18 @@ export default function useAICuratedTasks() {
   }, []);
 
   // Background scan and AI curation
-  const scan = useCallback(async () => {
+  const scan = useCallback(async (force = false) => {
     if (!user?.workerUrl || !user?.notionKey) {
       setLoading(false);
       return;
     }
     if (scanningRef.current) return;
+
+    // Force refresh: clear stale cache so results aren't served from old data
+    if (force) {
+      try { localStorage.removeItem(CACHE_KEY); } catch {}
+    }
+
     scanningRef.current = true;
 
     try {
@@ -456,11 +463,14 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
     return () => clearTimeout(timer);
   }, [scan]);
 
+  // Force refresh clears cache and rescans
+  const forceRefresh = useCallback(() => scan(true), [scan]);
+
   return {
     aiTasks,
     loading,
     lastUpdated,
-    refresh: scan,
+    refresh: forceRefresh,
     error,
   };
 }
