@@ -23,7 +23,7 @@ const TRIGGER_COLORS_FIXED = {
   schedule:       { bg: "#1C5C8A33", text: "#5BA8E0" },
   status_change:  { bg: "#FF480033", text: "#FF8C42" },
   field_change:   { bg: "#8B6FBE33", text: "#B09ADB" },
-  page_created:   { bg: "#2A6B3833", text: "#7DC143" },
+  page_created:   { bg: C.accent + "33", text: C.accent },
 };
 
 function getTriggerStyle(trigger) {

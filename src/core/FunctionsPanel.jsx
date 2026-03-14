@@ -11,11 +11,12 @@ import { timeAgo } from "../utils/helpers.js";
 import FunctionBuilder from "./FunctionBuilder.jsx";
 
 // ── Status badge colors ──
-const STATUS_COLORS = {
-  active: "#4CAF50",
-  draft: "#FF9800",
-  error: "#E05252",
-};
+// Status colors — active uses theme accent, others are semantic
+function getStatusColor(status) {
+  if (status === "active") return C.accent;
+  if (status === "error") return "#E05252";
+  return "#FF9800"; // draft / default
+}
 
 const TYPE_COLORS = {
   transform: "#2196F3",
@@ -120,7 +121,7 @@ export default function FunctionsPanel({ onOpenChat }) {
           onClick={() => setView("builder")}
           style={{
             display: "flex", alignItems: "center", gap: 6,
-            background: `linear-gradient(135deg, #7DC143, ${C.accent})`,
+            background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
             border: "none", borderRadius: RADIUS.lg,
             color: "#fff", fontFamily: FONT, fontSize: 12, fontWeight: 600,
             padding: "8px 16px", cursor: "pointer", outline: "none",
@@ -281,8 +282,8 @@ function FunctionCard({ fn, isHovered, isDeleting, onHover, onRun, onDelete }) {
           {/* Status badge */}
           <span style={{
             fontSize: 8, fontWeight: 600, fontFamily: FONT,
-            color: STATUS_COLORS[fn.status] || STATUS_COLORS.draft,
-            background: (STATUS_COLORS[fn.status] || STATUS_COLORS.draft) + "18",
+            color: getStatusColor(fn.status),
+            background: getStatusColor(fn.status) + "18",
             padding: "2px 8px", borderRadius: 3, textTransform: "uppercase",
             letterSpacing: "0.04em",
           }}>
@@ -314,7 +315,7 @@ function FunctionCard({ fn, isHovered, isDeleting, onHover, onRun, onDelete }) {
           {fn.last_run_at && <span>Last run {timeAgo(fn.last_run_at)}</span>}
           {fn.last_run_status && (
             <span style={{
-              color: fn.last_run_status === "success" ? "#4CAF50" : "#E05252",
+              color: fn.last_run_status === "success" ? C.accent : "#E05252",
             }}>
               {fn.last_run_status}
             </span>
@@ -333,7 +334,7 @@ function FunctionCard({ fn, isHovered, isDeleting, onHover, onRun, onDelete }) {
           onClick={(e) => { e.stopPropagation(); onRun(); }}
           style={{
             display: "flex", alignItems: "center", gap: 5,
-            background: `linear-gradient(135deg, #7DC143, ${C.accent})`,
+            background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
             border: "none", borderRadius: RADIUS.sm,
             color: "#fff", fontFamily: FONT, fontSize: 11, fontWeight: 600,
             padding: "5px 14px", cursor: "pointer", outline: "none",
@@ -397,7 +398,7 @@ function FunctionCard({ fn, isHovered, isDeleting, onHover, onRun, onDelete }) {
                 }}>
                   <span style={{
                     width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
-                    background: exec.status === "success" ? "#4CAF50" : "#E05252",
+                    background: exec.status === "success" ? C.accent : "#E05252",
                   }} />
                   <span style={{ minWidth: 55 }}>{timeAgo(exec.executed_at)}</span>
                   <span style={{ minWidth: 40 }}>{exec.duration_ms}ms</span>

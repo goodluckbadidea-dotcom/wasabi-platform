@@ -37,6 +37,8 @@ const SUBTYPE_LABELS = {
   template: "Template",
   execute_function: "Function",
   execute_plugin: "Plugin",
+  when: "When",
+  send_email: "Email",
   prompt: "Wasabi AI",
 };
 
@@ -73,6 +75,17 @@ function getConfigSummary(node) {
       return c.functionName || "Select function...";
     case "execute_plugin":
       return c.pluginName || "Select plugin...";
+    case "when":
+      if (c.resolved && c.resolvedConfig?.trigger_type) {
+        const rt = c.resolvedConfig.trigger_type;
+        const tc = c.resolvedConfig.trigger_config || {};
+        if (rt === "schedule") return `Every ${tc.interval_minutes || "?"}m`;
+        if (rt === "status_change") return `${tc.field || "?"} → ${tc.to || "any"}`;
+        return rt.replace(/_/g, " ");
+      }
+      return c.description ? (c.description.length > 28 ? c.description.slice(0, 28) + "..." : c.description) : "Describe when...";
+    case "send_email":
+      return c.to ? `To: ${c.to.slice(0, 20)}${c.to.length > 20 ? "..." : ""}` : (c.description ? c.description.slice(0, 28) + "..." : "Configure email...");
     case "prompt":
       return c.prompt ? c.prompt.slice(0, 28) + (c.prompt.length > 28 ? "..." : "") : "Write prompt...";
     default:
@@ -138,7 +151,7 @@ export default function NodeRenderer({
 
   // Execution glow
   const glowColor = executionState === "running" ? C.accent
-    : executionState === "success" ? "#7DC143"
+    : executionState === "success" ? C.accent
     : executionState === "error" ? "#E05252"
     : null;
 
@@ -246,6 +259,23 @@ export default function NodeRenderer({
       >
         {summary.length > 30 ? summary.slice(0, 30) + "..." : summary}
       </text>
+
+      {/* Resolved / unresolved badge for plain-english nodes */}
+      {(node.subtype === "when" || node.subtype === "send_email") && (
+        <g transform={`translate(${NODE_WIDTH - 20}, ${NODE_HEADER_H / 2 - 6})`}>
+          {node.config?.resolved ? (
+            <>
+              <circle cx={6} cy={6} r={6} fill={C.accent + "30"} />
+              <text x={6} y={7} textAnchor="middle" dominantBaseline="central" fill={C.accent} fontSize={9} fontWeight={700} style={{ pointerEvents: "none" }}>✓</text>
+            </>
+          ) : (
+            <>
+              <circle cx={6} cy={6} r={6} fill="#F5B72430" />
+              <circle cx={6} cy={6} r={2.5} fill="#F5B724" />
+            </>
+          )}
+        </g>
+      )}
 
       {/* Input ports (left edge) */}
       {(node.ports?.in || []).map((port, i) => (

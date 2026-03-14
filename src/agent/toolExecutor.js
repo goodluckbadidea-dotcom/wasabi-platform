@@ -1755,6 +1755,45 @@ export function createToolExecutor({
         return JSON.stringify(preview);
       }
 
+      // ─── Interpret Automation Nodes ───
+
+      case "interpret_automation_nodes": {
+        const interpretations = toolInput.interpretations || [];
+        if (!interpretations.length) return JSON.stringify({ error: "No interpretations provided." });
+
+        // Validate each interpretation
+        const validated = [];
+        for (const interp of interpretations) {
+          if (!interp.node_id) continue;
+
+          const entry = { node_id: interp.node_id };
+
+          // Validate trigger type for "when" nodes
+          if (interp.trigger_type) {
+            const validTriggers = new Set(["schedule", "status_change", "field_change", "page_created", "manual"]);
+            if (!validTriggers.has(interp.trigger_type)) {
+              entry.error = `Invalid trigger_type: ${interp.trigger_type}`;
+            } else {
+              entry.trigger_type = interp.trigger_type;
+              entry.trigger_config = interp.trigger_config || {};
+            }
+          }
+
+          // Pass through action config
+          if (interp.config) {
+            entry.config = interp.config;
+          }
+
+          validated.push(entry);
+        }
+
+        return JSON.stringify({
+          success: true,
+          interpretations: validated,
+          count: validated.length,
+        });
+      }
+
       // ─── Batch Operations ───
 
       case "batch_operations": {

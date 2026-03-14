@@ -3,13 +3,15 @@
 // Edit mode: jiggle animation, add/remove/reposition/resize widgets.
 // Normal mode: read-only, click widget to navigate to full view.
 
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
-import { IconPlus, IconEdit, IconChart, IconBolt, IconForm } from "../design/icons.jsx";
+import { IconPlus, IconEdit, IconChart, IconBolt, IconForm, IconFunction } from "../design/icons.jsx";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import DashboardWidget from "../core/DashboardWidget.jsx";
 import MiniView from "../core/MiniView.jsx";
+import PluginWidget from "../core/PluginWidget.jsx";
+import * as api from "../lib/api.js";
 
 const GRID = 20;
 
@@ -17,6 +19,7 @@ const DEFAULT_SIZES = {
   view:     { w: 400, h: 300 },
   shortcut: { w: 180, h: 80 },
   text:     { w: 240, h: 160 },
+  plugin:   { w: 320, h: 240 },
 };
 
 export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
@@ -114,6 +117,16 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
         </div>
       );
     }
+    if (widget.type === "plugin") {
+      return (
+        <PluginWidget
+          functionId={widget.functionId}
+          width={widget.w}
+          height={widget.h - 28}
+          refreshInterval={widget.refreshInterval}
+        />
+      );
+    }
     return null;
   };
 
@@ -126,9 +139,11 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
       minHeight: 300,
     }}>
       <style>{`
-        @keyframes widgetJiggle {
-          0% { transform: rotate(-0.4deg); }
-          100% { transform: rotate(0.4deg); }
+        @keyframes widgetEditPop {
+          0% { transform: scale(1); }
+          40% { transform: scale(1.015) rotate(0.3deg); }
+          70% { transform: scale(0.995) rotate(-0.15deg); }
+          100% { transform: scale(1) rotate(0deg); }
         }
       `}</style>
 
@@ -168,7 +183,7 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
           <button
             onClick={() => { setEditMode(true); setWidgetPickerOpen(true); }}
             style={{
-              background: `linear-gradient(135deg, #7DC143, ${C.accent})`,
+              background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
               color: "#fff", border: "none", borderRadius: RADIUS.pill,
               padding: "8px 20px", fontSize: 12, fontFamily: FONT,
               fontWeight: 600, cursor: "pointer",
@@ -237,6 +252,34 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
 // ── Inline Widget Picker ──
 function WidgetPickerInline({ onClose, onAddWidget }) {
   const { pages } = usePlatform();
+  const [pluginFunctions, setPluginFunctions] = useState([]);
+  const [loadingPlugins, setLoadingPlugins] = useState(true);
+
+  // Fetch custom functions that can serve as plugins (type = "plugin" or all active)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await api.listCustomFunctions({ type: "plugin" });
+        const fns = result.functions || result.rows || [];
+        if (!cancelled) setPluginFunctions(fns);
+      } catch (err) {
+        // If the plugin type filter returns nothing, try all active functions
+        try {
+          const result = await api.listCustomFunctions({ status: "active" });
+          const fns = (result.functions || result.rows || []).filter(
+            (f) => f.type === "plugin" || f.meta?.widget === true
+          );
+          if (!cancelled) setPluginFunctions(fns);
+        } catch {
+          // No plugins available — that's fine
+        }
+      } finally {
+        if (!cancelled) setLoadingPlugins(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const viewablePages = useMemo(() => {
     return pages.filter(
@@ -308,6 +351,83 @@ function WidgetPickerInline({ onClose, onAddWidget }) {
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: "12px 20px" }}>
+          {/* ── Plugins section ── */}
+          <div style={{
+            fontSize: 10, fontWeight: 600, color: C.darkMuted,
+            letterSpacing: "0.06em", textTransform: "uppercase",
+            marginBottom: 8, fontFamily: FONT,
+          }}>
+            Plugins
+          </div>
+          {loadingPlugins ? (
+            <div style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT, padding: "8px 0" }}>
+              Loading plugins...
+            </div>
+          ) : pluginFunctions.length === 0 ? (
+            <div style={{
+              fontSize: 11, color: C.darkMuted, fontFamily: FONT,
+              padding: "10px 12px", marginBottom: 16,
+              border: `1px dashed ${C.darkBorder}`, borderRadius: RADIUS.md,
+              lineHeight: 1.5,
+            }}>
+              No plugin functions yet. Create a function with type "plugin" in the Build page to use it here.
+            </div>
+          ) : (
+            <div style={{ marginBottom: 16 }}>
+              {pluginFunctions.map((fn) => (
+                <button
+                  key={fn.id}
+                  onClick={() => onAddWidget({
+                    type: "plugin",
+                    functionId: fn.id,
+                    label: fn.name || fn.id,
+                    refreshInterval: fn.meta?.refreshInterval || 0,
+                  })}
+                  style={{
+                    width: "100%", background: "transparent",
+                    border: `1px solid ${C.darkBorder}`,
+                    borderRadius: RADIUS.md, padding: "8px 10px",
+                    marginBottom: 4, cursor: "pointer", textAlign: "left",
+                    fontFamily: FONT, fontSize: 11, color: C.darkMuted,
+                    transition: "all 0.12s", outline: "none",
+                    display: "flex", alignItems: "center", gap: 8,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = C.accent;
+                    e.currentTarget.style.color = C.accent;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = C.darkBorder;
+                    e.currentTarget.style.color = C.darkMuted;
+                  }}
+                >
+                  <div style={{
+                    width: 22, height: 22, borderRadius: RADIUS.sm,
+                    background: C.accent + "18",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    flexShrink: 0,
+                  }}>
+                    <IconFunction size={11} color={C.accent} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 1 }}>
+                      {fn.name || fn.id}
+                    </div>
+                    {fn.description && (
+                      <div style={{
+                        fontSize: 10, opacity: 0.7,
+                        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                      }}>
+                        {fn.description}
+                      </div>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* ── Pin a View section ── */}
           <div style={{
             fontSize: 10, fontWeight: 600, color: C.darkMuted,
             letterSpacing: "0.06em", textTransform: "uppercase",

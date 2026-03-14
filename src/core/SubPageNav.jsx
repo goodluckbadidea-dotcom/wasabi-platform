@@ -38,7 +38,7 @@ function buildNavStyles() { return {
   wrapper: {
     flexShrink: 0,
     borderBottom: `1px solid ${C.edgeLine}`,
-    borderImage: `linear-gradient(90deg, ${C.edgeLine}, #7DC14333, ${C.accent}33, ${C.edgeLine}) 1`,
+    borderImage: `linear-gradient(90deg, ${C.edgeLine}, ${C.accent}33, ${C.accent}33, ${C.edgeLine}) 1`,
     background: C.dark,
   },
   viewRow: {
@@ -162,7 +162,7 @@ export default function SubPageNav({
                 {isActive && (
                   <div style={{
                     width: 4, height: 4, borderRadius: "50%",
-                    background: `linear-gradient(135deg, #7DC143, ${C.accent})`,
+                    background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
                     flexShrink: 0,
                   }} />
                 )}

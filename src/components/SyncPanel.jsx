@@ -34,7 +34,7 @@ function buildSyncStyles() { return {
     padding: "2px 8px",
     borderRadius: RADIUS.pill,
     background: connected ? "#2A6B3833" : C.darkMuted + "33",
-    color: connected ? "#7DC143" : C.darkMuted,
+    color: connected ? C.accent : C.darkMuted,
     textTransform: "uppercase",
     letterSpacing: "0.05em",
   }),

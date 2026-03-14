@@ -16,15 +16,15 @@ import { getConnections, setConnection as apiSetConnection, deleteConnection as 
 
 // ── Tab button style (matches WasabiPanel) ──
 const tabBtn = (active) => ({
-  padding: "7px 16px",
+  padding: "6px 18px",
   border: "none",
   cursor: "pointer",
   fontFamily: FONT,
   fontSize: 12,
-  fontWeight: 500,
-  background: active ? C.accent : "transparent",
+  fontWeight: active ? 600 : 400,
+  background: active ? `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)` : "transparent",
   color: active ? "#fff" : C.darkMuted,
-  borderRadius: RADIUS.pill,
+  borderRadius: RADIUS.lg,
   transition: "background 0.14s, color 0.14s",
   outline: "none",
   whiteSpace: "nowrap",
@@ -495,7 +495,7 @@ export default function SystemManager() {
       <div
         style={{
           flexShrink: 0,
-          padding: "14px 20px 0",
+          padding: "16px 32px 0",
           borderBottom: `1px solid ${C.darkBorder}`,
         }}
       >
@@ -507,16 +507,16 @@ export default function SystemManager() {
             marginBottom: 12,
           }}
         >
-          <IconGear size={18} color={C.darkText} />
+          <IconGear size={22} color={C.accent} />
           <span
             style={{
-              fontSize: 14,
+              fontSize: 18,
               fontWeight: 600,
-              color: C.darkText,
+              color: "#fff",
               fontFamily: FONT,
             }}
           >
-            System Manager
+            System
           </span>
         </div>
         <div
@@ -525,7 +525,7 @@ export default function SystemManager() {
             gap: 3,
             marginBottom: 12,
             background: C.darkSurf,
-            borderRadius: RADIUS.pill,
+            borderRadius: RADIUS.lg,
             padding: 3,
             width: "fit-content",
           }}
@@ -567,7 +567,7 @@ export default function SystemManager() {
       >
         {/* ═══ OVERVIEW TAB ═══ */}
         {tab === "overview" && (
-          <div style={{ padding: "20px 24px" }}>
+          <div style={{ padding: "24px 32px" }}>
             {/* Platform status */}
             <div
               style={{
@@ -705,7 +705,7 @@ export default function SystemManager() {
                     padding: "14px 16px",
                   }}>
                     {[
-                      { label: "Cache Hits", count: tierData.cacheHits, color: "#7DC143", cost: "$0.00" },
+                      { label: "Cache Hits", count: tierData.cacheHits, color: C.accent, cost: "$0.00" },
                       { label: "Haiku", count: tierData.haikuCalls, color: C.accent, cost: formatCost(tierData.haikuCost) },
                       { label: "Sonnet", count: tierData.sonnetCalls, color: "#E05252", cost: formatCost(tierData.sonnetCost) },
                     ].map((row) => (
@@ -731,10 +731,10 @@ export default function SystemManager() {
                         marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.darkBorder}`,
                         display: "flex", justifyContent: "space-between", alignItems: "center",
                       }}>
-                        <span style={{ fontSize: 11, color: "#7DC143", fontFamily: FONT }}>
+                        <span style={{ fontSize: 11, color: C.accent, fontFamily: FONT }}>
                           Estimated Savings (vs all-Sonnet)
                         </span>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: "#7DC143", fontFamily: MONO }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: C.accent, fontFamily: MONO }}>
                           {formatCost(tierData.savedCost)}
                         </span>
                       </div>
@@ -863,7 +863,7 @@ export default function SystemManager() {
 
         {/* ═══ CONNECTIONS TAB ═══ */}
         {tab === "connections" && (
-          <div style={{ padding: "20px 24px" }}>
+          <div style={{ padding: "24px 32px" }}>
             {/* Worker status */}
             <div style={{
               background: C.darkSurf,
@@ -991,7 +991,7 @@ function SettingsTab() {
   }, []);
 
   return (
-    <div style={{ padding: "20px 24px" }}>
+    <div style={{ padding: "24px 32px" }}>
       {/* Section: Appearance */}
       <div
         style={{

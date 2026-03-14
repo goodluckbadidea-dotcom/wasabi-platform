@@ -13,15 +13,15 @@ import NetworkGraph from "../views/NetworkGraph.jsx";
 
 // ── Tab button style ──
 const tabBtn = (active) => ({
-  padding: "7px 16px",
+  padding: "6px 18px",
   border: "none",
   cursor: "pointer",
   fontFamily: FONT,
   fontSize: 12,
-  fontWeight: 500,
-  background: active ? `linear-gradient(135deg, #7DC143, ${C.accent})` : "transparent",
+  fontWeight: active ? 600 : 400,
+  background: active ? `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)` : "transparent",
   color: active ? "#fff" : C.darkMuted,
-  borderRadius: RADIUS.pill,
+  borderRadius: RADIUS.lg,
   transition: "background 0.14s, color 0.14s",
   outline: "none",
   whiteSpace: "nowrap",
@@ -122,7 +122,7 @@ function FilesTab() {
     : files;
 
   return (
-    <div style={{ padding: "20px 24px" }}>
+    <div style={{ padding: "24px 32px" }}>
       {/* Toolbar */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
         {/* Search */}
@@ -131,7 +131,7 @@ function FilesTab() {
           background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
           borderRadius: RADIUS.lg, padding: "8px 12px",
         }}>
-          <IconSearch size={12} color={C.darkMuted} />
+          <IconSearch size={13} color={C.darkMuted} />
           <input
             type="text"
             value={searchQuery}
@@ -139,7 +139,7 @@ function FilesTab() {
             placeholder="Search files..."
             style={{
               flex: 1, background: "transparent", border: "none", outline: "none",
-              fontFamily: FONT, fontSize: 12, color: C.darkText, padding: 0,
+              fontFamily: FONT, fontSize: 13, color: C.darkText, padding: 0,
             }}
           />
         </div>
@@ -353,7 +353,7 @@ function ContextTab() {
   const estimatedTokens = Math.round(totalChars / 4);
 
   return (
-    <div style={{ padding: "20px 24px" }}>
+    <div style={{ padding: "24px 32px" }}>
       {/* Info banner */}
       <div style={{
         background: C.accent + "12", border: `1px solid ${C.accent}33`,
@@ -634,12 +634,12 @@ export default function KnowledgeBase({ automationEngine }) {
     }}>
       {/* Tab bar */}
       <div style={{
-        flexShrink: 0, padding: "14px 20px 0",
+        flexShrink: 0, padding: "16px 32px 0",
         borderBottom: `1px solid ${C.darkBorder}`,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-          <IconBrain size={18} color={C.darkText} />
-          <span style={{ fontSize: 14, fontWeight: 600, color: C.darkText, fontFamily: FONT }}>
+          <IconBrain size={22} color={C.accent} />
+          <span style={{ fontSize: 18, fontWeight: 600, color: "#fff", fontFamily: FONT }}>
             Knowledge Base
           </span>
         </div>

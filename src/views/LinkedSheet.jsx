@@ -343,7 +343,7 @@ export default function LinkedSheet({ config = {}, pageConfig }) {
       case "checkbox": {
         const isTrue = ["true", "yes", "1"].includes(String(v).toLowerCase());
         return (
-          <span style={{ color: isTrue ? "#7DC143" : C.darkMuted, fontSize: 14 }}>
+          <span style={{ color: isTrue ? C.accent : C.darkMuted, fontSize: 14 }}>
             {isTrue ? "✓" : "—"}
           </span>
         );

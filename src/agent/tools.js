@@ -842,6 +842,43 @@ const DELETE_CALENDAR_EVENT = {
   },
 };
 
+// ─── Automation Node Interpretation ───
+
+const INTERPRET_AUTOMATION_NODES = {
+  name: "interpret_automation_nodes",
+  description: "Convert plain English automation node descriptions into structured configurations. Called by the 'Build with Wasabi' feature in the node editor.",
+  input_schema: {
+    type: "object",
+    properties: {
+      interpretations: {
+        type: "array",
+        description: "Array of interpreted node configurations.",
+        items: {
+          type: "object",
+          properties: {
+            node_id: { type: "string", description: "The node ID to update." },
+            trigger_type: {
+              type: "string",
+              enum: ["schedule", "status_change", "field_change", "page_created", "manual"],
+              description: "For 'when' nodes only: the interpreted trigger type.",
+            },
+            trigger_config: {
+              type: "object",
+              description: "For 'when' nodes only: trigger-specific config. schedule: {interval_minutes}. status_change: {database_id, field, from, to}. field_change: {database_id, field}. page_created: {database_id}.",
+            },
+            config: {
+              type: "object",
+              description: "For action nodes: structured config. update_page: {properties}. create_page: {databaseId, properties}. post_notification: {message, type}. send_email: {to, subject, body}.",
+            },
+          },
+          required: ["node_id"],
+        },
+      },
+    },
+    required: ["interpretations"],
+  },
+};
+
 // ─── TOOL SETS ───
 
 export const WASABI_TOOLS = [
@@ -869,6 +906,7 @@ export const WASABI_TOOLS = [
   DELETE_CUSTOM_FUNCTION,
   SAVE_CUSTOM_VIEW,
   SAVE_PLUGIN,
+  INTERPRET_AUTOMATION_NODES,
   BATCH_OPERATIONS,
   EXPORT_REPORT,
   DELEGATE_TASK,

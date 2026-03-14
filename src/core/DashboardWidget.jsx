@@ -19,6 +19,7 @@ const SIZE_CONSTRAINTS = {
   view:     { minW: 200, minH: 200, maxW: 1200, maxH: 800 },
   shortcut: { minW: 120, minH: 80,  maxW: 300,  maxH: 120 },
   text:     { minW: 120, minH: 80,  maxW: 600,  maxH: 400 },
+  plugin:   { minW: 160, minH: 120, maxW: 1200, maxH: 800 },
 };
 
 function getConstraints(type) {
@@ -129,8 +130,9 @@ export default function DashboardWidget({
         flexDirection: "column",
         overflow: "hidden",
         cursor: editMode ? (dragging ? "grabbing" : "default") : (widget.type === "view" ? "pointer" : "default"),
-        animation: editMode ? "widgetJiggle 0.3s ease-in-out infinite alternate" : "none",
-        transition: dragging || resizing ? "none" : "box-shadow 0.15s",
+        animation: editMode ? "widgetEditPop 0.3s cubic-bezier(0.34,1.56,0.64,1) both" : "none",
+        transition: dragging || resizing ? "none" : "box-shadow 0.15s, border-color 0.15s",
+        borderColor: editMode ? C.accent + "55" : C.darkBorder,
         userSelect: editMode ? "none" : "auto",
         zIndex: dragging || resizing ? 100 : 1,
       }}

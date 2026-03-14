@@ -18,11 +18,10 @@ const DT = 0.8;
 const MIN_VEL = 0.01;
 
 // ── Node types & colors ──
-// Use theme accent + wasabi green for the graph
-const WASABI = "#7DC143";
+// Use theme accent for the graph
 function getNodeColor(type) {
   if (type === "automation") return C.accent;
-  if (type === "neuron") return WASABI;
+  if (type === "neuron") return C.accent;
   if (type === "page") return C.accentDim || C.accent;
   return C.darkMuted;
 }

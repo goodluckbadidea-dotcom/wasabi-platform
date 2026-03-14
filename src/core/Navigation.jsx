@@ -12,6 +12,7 @@ import { archivePage } from "../notion/client.js";
 import {
   IconBolt, IconGear, IconStar, IconSearch, IconBrain, IconBell,
   IconChevronLeft, IconChevronRight, IconMail, IconCalendar, IconFunction,
+  IconGrid,
 } from "../design/icons.jsx";
 import { getGoogleStatus, getGmailSummary, getCalendarSummary } from "../lib/api.js";
 import WasabiFlame from "./WasabiFlame.jsx";
@@ -285,7 +286,7 @@ export default function Navigation({
         style={{
           flexShrink: 0,
           borderTop: `1px solid ${C.darkBorder}`,
-          borderImage: `linear-gradient(90deg, ${C.darkBorder}, #7DC14344, ${C.accent}44, ${C.darkBorder}) 1`,
+          borderImage: `linear-gradient(90deg, ${C.darkBorder}, ${C.accent}44, ${C.accent}44, ${C.darkBorder}) 1`,
           padding: collapsed ? "8px 0" : "8px 12px",
           display: "flex",
           flexDirection: "column",
@@ -352,6 +353,18 @@ export default function Navigation({
         >
           <IconFunction size={collapsed ? 16 : 14} color={activePage === "functions" ? "#fff" : C.darkMuted} />
           {!collapsed && <span style={bottomLabelStyle(activePage === "functions")}>Functions</span>}
+        </button>
+
+        {/* Build (Custom Views + Plugins) */}
+        <button
+          onClick={() => setActivePage("build")}
+          title="Build"
+          style={bottomBtnStyle(activePage === "build")}
+          onMouseEnter={(e) => { if (activePage !== "build") e.currentTarget.style.background = C.darkSurf2; }}
+          onMouseLeave={(e) => { if (activePage !== "build") e.currentTarget.style.background = "transparent"; }}
+        >
+          <IconGrid size={collapsed ? 16 : 14} color={activePage === "build" ? "#fff" : C.darkMuted} />
+          {!collapsed && <span style={bottomLabelStyle(activePage === "build")}>Build</span>}
         </button>
 
         {/* Gmail (only when Google connected) */}

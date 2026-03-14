@@ -3,9 +3,9 @@
 // Shows type-specific config fields.
 
 import React, { useCallback, useState, useEffect } from "react";
-import { C, FONT, RADIUS } from "../design/tokens.js";
+import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
 import { NODE_TYPE_COLORS } from "./NodeRenderer.jsx";
-import { IconTrash, IconClose } from "../design/icons.jsx";
+import { IconTrash, IconClose, IconWasabiNode } from "../design/icons.jsx";
 import * as api from "../lib/api.js";
 
 // ── Field Renderer ──
@@ -173,13 +173,133 @@ function ConditionConfig({ config, onChange }) {
   );
 }
 
+// ── Plain English hint bar ──
+
+function PlainEnglishHint() {
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 5,
+      padding: "6px 8px", marginBottom: 10,
+      background: "#F5B72410", borderRadius: RADIUS.sm,
+      border: `1px solid #F5B72420`,
+    }}>
+      <IconWasabiNode size={11} color="#F5B724" />
+      <span style={{ fontSize: 9, color: "#F5B724", fontFamily: FONT, fontWeight: 500 }}>
+        Describe in plain English — Wasabi interprets when you build
+      </span>
+    </div>
+  );
+}
+
+// ── When Config (combined trigger+condition, plain English) ──
+
+function WhenConfig({ config, onChange, defaultDatabaseId, defaultDatabaseName, pages }) {
+  const dbPages = (pages || []).filter(
+    (p) => p.type !== "folder" && p.page_type !== "dashboard" && p.page_type !== "workspace"
+  );
+
+  const effectiveDbId = config.databaseId || defaultDatabaseId || "";
+  const effectiveDbName = config.databaseName || defaultDatabaseName || "";
+
+  return (
+    <>
+      <PlainEnglishHint />
+
+      <ConfigField label="Description">
+        <TextInput
+          value={config.description}
+          onChange={(v) => onChange({ ...config, description: v })}
+          placeholder='e.g. "When Status changes to Done"&#10;"Every Monday at 9am"&#10;"When a new row is added"&#10;"When Quantity drops below 10"'
+          multiline
+        />
+      </ConfigField>
+
+      <ConfigField label="Database (optional override)">
+        <select
+          value={config.databaseId || ""}
+          onChange={(e) => {
+            const page = dbPages.find((p) => p.id === e.target.value);
+            onChange({ ...config, databaseId: e.target.value, databaseName: page?.title || page?.name || "" });
+          }}
+          style={{
+            width: "100%", background: C.dark,
+            border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.md,
+            color: config.databaseId ? C.darkText : C.darkMuted,
+            fontSize: 12, fontFamily: FONT, padding: "8px 10px",
+            outline: "none", cursor: "pointer", boxSizing: "border-box",
+          }}
+        >
+          <option value="">{defaultDatabaseId ? `Flow default: ${defaultDatabaseName || defaultDatabaseId.slice(0, 8)}` : "Select database..."}</option>
+          {dbPages.map((p) => (
+            <option key={p.id} value={p.id}>{p.title || p.name || p.id}</option>
+          ))}
+        </select>
+      </ConfigField>
+
+      {/* Show resolved config if interpreted */}
+      {config.resolved && config.resolvedConfig && (
+        <div style={{
+          marginTop: 4, padding: "8px 10px",
+          background: C.accent + "10", border: `1px solid ${C.accent}30`,
+          borderRadius: RADIUS.sm,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
+            <span style={{ fontSize: 9, fontWeight: 600, color: C.accent, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: FONT }}>
+              Interpreted
+            </span>
+          </div>
+          <div style={{ fontSize: 10, color: C.darkText, fontFamily: MONO, lineHeight: 1.5, wordBreak: "break-all" }}>
+            {config.resolvedConfig.trigger_type}: {JSON.stringify(config.resolvedConfig.trigger_config || {})}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Send Email Config ──
+
+function SendEmailConfig({ config, onChange }) {
+  return (
+    <>
+      <PlainEnglishHint />
+
+      <ConfigField label="Describe the email">
+        <TextInput
+          value={config.description}
+          onChange={(v) => onChange({ ...config, description: v })}
+          placeholder='e.g. "Send a summary of overdue tasks to the team lead"'
+          multiline
+        />
+      </ConfigField>
+
+      <ConfigField label="To">
+        <TextInput
+          value={config.to}
+          onChange={(v) => onChange({ ...config, to: v })}
+          placeholder="team@example.com or {{assignee_email}}"
+        />
+      </ConfigField>
+
+      <ConfigField label="Subject">
+        <TextInput
+          value={config.subject}
+          onChange={(v) => onChange({ ...config, subject: v })}
+          placeholder="e.g. Weekly Report: {{date}}"
+        />
+      </ConfigField>
+    </>
+  );
+}
+
 function ActionUpdateConfig({ config, onChange }) {
   return (
     <>
-      <ConfigField label="Description">
-        <TextInput value={config.description} onChange={(v) => onChange({ ...config, description: v })} placeholder="What to update..." />
+      <ConfigField label="Describe in plain English">
+        <TextInput value={config.description} onChange={(v) => onChange({ ...config, description: v })} placeholder='e.g. "Set Status to Done and Completed Date to today"' multiline />
       </ConfigField>
-      <ConfigField label="Properties (JSON)">
+
+      <ConfigField label="Properties (JSON, optional)">
         <TextInput
           value={config.properties}
           onChange={(v) => onChange({ ...config, properties: v })}
@@ -194,10 +314,14 @@ function ActionUpdateConfig({ config, onChange }) {
 function ActionCreateConfig({ config, onChange }) {
   return (
     <>
+      <ConfigField label="Describe in plain English">
+        <TextInput value={config.description} onChange={(v) => onChange({ ...config, description: v })} placeholder='e.g. "Create a follow-up task with the same assignee"' multiline />
+      </ConfigField>
+
       <ConfigField label="Target Database ID">
         <TextInput value={config.databaseId} onChange={(v) => onChange({ ...config, databaseId: v })} placeholder="Database ID..." />
       </ConfigField>
-      <ConfigField label="Properties (JSON)">
+      <ConfigField label="Properties (JSON, optional)">
         <TextInput
           value={config.properties}
           onChange={(v) => onChange({ ...config, properties: v })}
@@ -212,7 +336,16 @@ function ActionCreateConfig({ config, onChange }) {
 function ActionNotifyConfig({ config, onChange }) {
   return (
     <>
-      <ConfigField label="Message">
+      <ConfigField label="Describe in plain English">
+        <TextInput
+          value={config.description}
+          onChange={(v) => onChange({ ...config, description: v })}
+          placeholder='e.g. "Notify the team when a high-priority task is overdue"'
+          multiline
+        />
+      </ConfigField>
+
+      <ConfigField label="Message (optional)">
         <TextInput
           value={config.message}
           onChange={(v) => onChange({ ...config, message: v })}
@@ -393,7 +526,7 @@ function PluginTransformConfig({ config, onChange }) {
         <div style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: "4px 0", marginBottom: 8 }}>
           {manifest.capabilities.map((cap) => (
             <span key={cap} style={{
-              fontSize: 9, color: "#7C4DFF", background: "#7C4DFF18",
+              fontSize: 9, color: C.accent, background: C.accent + "18",
               padding: "2px 6px", borderRadius: 3, fontWeight: 500, fontFamily: FONT,
             }}>
               {cap}
@@ -415,11 +548,13 @@ function PluginTransformConfig({ config, onChange }) {
 
 // ── Config form dispatcher ──
 
-function ConfigForm({ node, onConfigChange }) {
+function ConfigForm({ node, onConfigChange, defaultDatabaseId, defaultDatabaseName, pages }) {
   const config = node.config || {};
   const onChange = onConfigChange;
 
   switch (node.subtype) {
+    case "when":
+      return <WhenConfig config={config} onChange={onChange} defaultDatabaseId={defaultDatabaseId} defaultDatabaseName={defaultDatabaseName} pages={pages} />;
     case "database_change":
     case "status_change":
     case "field_change":
@@ -441,6 +576,8 @@ function ConfigForm({ node, onConfigChange }) {
       return <ActionCreateConfig config={config} onChange={onChange} />;
     case "post_notification":
       return <ActionNotifyConfig config={config} onChange={onChange} />;
+    case "send_email":
+      return <SendEmailConfig config={config} onChange={onChange} />;
     case "template":
       return <TransformConfig config={config} onChange={onChange} />;
     case "execute_function":
@@ -458,7 +595,7 @@ function ConfigForm({ node, onConfigChange }) {
 
 // ── Main Component ──
 
-export default function NodeConfigPanel({ node, onChange, onDelete, onClose }) {
+export default function NodeConfigPanel({ node, onChange, onDelete, onClose, defaultDatabaseId, defaultDatabaseName, pages }) {
   if (!node) return null;
 
   const typeColor = NODE_TYPE_COLORS[node.type] || C.darkMuted;
@@ -561,7 +698,7 @@ export default function NodeConfigPanel({ node, onChange, onDelete, onClose }) {
         <div style={{ height: 1, background: C.darkBorder, margin: "8px 0 16px" }} />
 
         {/* Type-specific config */}
-        <ConfigForm node={node} onConfigChange={handleConfigChange} />
+        <ConfigForm node={node} onConfigChange={handleConfigChange} defaultDatabaseId={defaultDatabaseId} defaultDatabaseName={defaultDatabaseName} pages={pages} />
       </div>
 
       {/* Delete button */}

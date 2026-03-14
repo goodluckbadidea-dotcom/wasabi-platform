@@ -60,7 +60,7 @@ function buildHomeStyles() { return {
     fontFamily: FONT,
   },
   hero: {
-    padding: "48px 40px 32px",
+    padding: "48px 32px 32px",
     display: "flex",
     alignItems: "center",
     gap: 20,
@@ -82,7 +82,7 @@ function buildHomeStyles() { return {
     lineHeight: 1.5,
   },
   section: {
-    padding: "0 40px 28px",
+    padding: "0 32px 28px",
   },
   sectionHeader: {
     display: "flex",

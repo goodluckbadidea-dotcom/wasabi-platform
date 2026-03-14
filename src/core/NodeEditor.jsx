@@ -12,7 +12,7 @@ import { NODE_WIDTH, NODE_TYPE_COLORS, getNodeHeight } from "../views/NodeRender
 import {
   IconPlay, IconDatabase, IconCalendar, IconBolt, IconCondition,
   IconEdit, IconPlus, IconBell, IconTransform, IconTrash, IconClose,
-  IconFunction, IconBrain,
+  IconFunction, IconBrain, IconMail, IconWasabiNode,
 } from "../design/icons.jsx";
 import { loadCachedFlows, saveFlow, loadFlows, deleteFlow } from "../config/flowStorage.js";
 import * as api from "../lib/api.js";
@@ -22,6 +22,7 @@ import InlineEdit from "./InlineEdit.jsx";
 // ── Node Palette Definition ──
 
 const NODE_PALETTE = [
+  { type: "trigger",   subtype: "when",              label: "When",         Icon: IconWasabiNode, category: "Triggers" },
   { type: "trigger",   subtype: "status_change",    label: "DB Change",    Icon: IconDatabase,  category: "Triggers" },
   { type: "trigger",   subtype: "schedule",          label: "Schedule",     Icon: IconCalendar,  category: "Triggers" },
   { type: "trigger",   subtype: "manual",            label: "Manual",       Icon: IconBolt,      category: "Triggers" },
@@ -29,6 +30,7 @@ const NODE_PALETTE = [
   { type: "action",    subtype: "update_page",        label: "Update",       Icon: IconEdit,      category: "Actions" },
   { type: "action",    subtype: "create_page",        label: "Create",       Icon: IconPlus,      category: "Actions" },
   { type: "action",    subtype: "post_notification",  label: "Notify",       Icon: IconBell,      category: "Actions" },
+  { type: "action",    subtype: "send_email",          label: "Email",        Icon: IconMail,      category: "Actions" },
   { type: "transform", subtype: "template",           label: "Template",     Icon: IconTransform, category: "Transform" },
   { type: "transform", subtype: "execute_function",    label: "Function",     Icon: IconFunction,  category: "Transform" },
   { type: "transform", subtype: "execute_plugin",      label: "Plugin",       Icon: IconBrain,     category: "Transform" },
@@ -45,6 +47,8 @@ function getDefaultConfig(type, subtype) {
       return { databaseId: "", field: "", from: "", to: "" };
     case "schedule":
       return { interval_minutes: 60 };
+    case "when":
+      return { description: "", databaseId: "", databaseName: "", resolved: false, resolvedConfig: null };
     case "manual":
       return {};
     case "field_check":
@@ -55,6 +59,8 @@ function getDefaultConfig(type, subtype) {
       return { databaseId: "", properties: "" };
     case "post_notification":
       return { message: "", type: "notification" };
+    case "send_email":
+      return { description: "", to: "", subject: "" };
     case "template":
       return { template: "" };
     case "execute_function":
@@ -114,11 +120,11 @@ function FlowListPanel({ flows, activeFlowId, onSelect, onNew, onDelete, onRenam
         justifyContent: "space-between",
       }}>
         <span style={{
-          fontSize: 10,
+          fontSize: 12,
           fontWeight: 600,
           textTransform: "uppercase",
-          letterSpacing: "0.15em",
-          color: C.darkMuted,
+          letterSpacing: "0.1em",
+          color: C.darkText,
           fontFamily: FONT,
         }}>
           Flows
@@ -126,10 +132,10 @@ function FlowListPanel({ flows, activeFlowId, onSelect, onNew, onDelete, onRenam
         <button
           onClick={onNew}
           style={{
-            background: C.accent,
+            background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
             border: "none",
-            borderRadius: RADIUS.sm,
-            padding: "3px 8px",
+            borderRadius: RADIUS.lg,
+            padding: "5px 12px",
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
@@ -191,7 +197,7 @@ function FlowListPanel({ flows, activeFlowId, onSelect, onNew, onDelete, onRenam
               >
                 <div style={{
                   width: 6, height: 6, borderRadius: "50%",
-                  background: flow.enabled ? "#7DC143" : C.darkBorder,
+                  background: flow.enabled ? C.accent : C.darkBorder,
                   flexShrink: 0,
                 }} />
                 <InlineEdit
@@ -323,7 +329,7 @@ function FlowListPanel({ flows, activeFlowId, onSelect, onNew, onDelete, onRenam
 
 function ExecutionHistoryPanel({ executions, loading, onClose, onReplay }) {
   const STATUS_COLORS = {
-    completed: "#4CAF50",
+    completed: C.accent,
     running: "#2196F3",
     failed: "#E05252",
   };
@@ -459,7 +465,59 @@ function ExecutionHistoryPanel({ executions, loading, onClose, onReplay }) {
 
 // ── Node Palette ──
 
-function NodePalette({ onAddNode, onRun, onSave, saveStatus, isRunning, onToggleHistory, showHistory }) {
+function FlowDatabaseBar({ databaseId, databaseName, onUpdate, pages }) {
+  const dbPages = (pages || []).filter(
+    (p) => p.type !== "folder" && p.page_type !== "dashboard" && p.page_type !== "workspace"
+  );
+
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 8,
+      padding: "6px 12px",
+      background: C.darkBg,
+      borderBottom: `1px solid ${C.darkBorder}`,
+      flexShrink: 0,
+    }}>
+      <IconDatabase size={12} color={databaseId ? C.accent : C.darkMuted} />
+      <span style={{
+        fontSize: 10, fontWeight: 600, textTransform: "uppercase",
+        letterSpacing: "0.08em", color: C.darkMuted, fontFamily: FONT,
+      }}>
+        Flow Database
+      </span>
+      <select
+        value={databaseId || ""}
+        onChange={(e) => {
+          const page = dbPages.find((p) => p.id === e.target.value);
+          onUpdate(e.target.value, page?.title || page?.name || "");
+        }}
+        style={{
+          flex: 1, maxWidth: 260,
+          background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
+          borderRadius: RADIUS.sm, padding: "5px 8px",
+          color: databaseId ? "#fff" : C.darkMuted,
+          fontFamily: FONT, fontSize: 11, outline: "none",
+          cursor: "pointer",
+        }}
+      >
+        <option value="">No default database</option>
+        {dbPages.map((p) => (
+          <option key={p.id} value={p.id}>{p.title || p.name || p.id}</option>
+        ))}
+      </select>
+      {databaseId && (
+        <span style={{
+          fontSize: 9, fontFamily: MONO, color: C.darkMuted,
+          background: C.darkSurf2, padding: "2px 6px", borderRadius: 3,
+        }}>
+          {databaseName || databaseId.slice(0, 8)}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function NodePalette({ onAddNode, onRun, onSave, saveStatus, isRunning, onToggleHistory, showHistory, onBuildWithWasabi, isBuildingWithWasabi }) {
   return (
     <div
       style={{
@@ -519,7 +577,7 @@ function NodePalette({ onAddNode, onRun, onSave, saveStatus, isRunning, onToggle
       {/* Save status */}
       <span style={{
         fontSize: 10,
-        color: saveStatus === "saved" ? "#7DC143"
+        color: saveStatus === "saved" ? C.accent
           : saveStatus === "saving" ? C.accent
           : saveStatus === "error" ? "#E05252"
           : C.darkBorder,
@@ -548,6 +606,30 @@ function NodePalette({ onAddNode, onRun, onSave, saveStatus, isRunning, onToggle
         onMouseLeave={(e) => { if (!showHistory) e.currentTarget.style.background = "transparent"; }}
       >
         History
+      </button>
+
+      {/* Build with Wasabi button */}
+      <button
+        onClick={onBuildWithWasabi}
+        disabled={isBuildingWithWasabi}
+        style={{
+          display: "flex", alignItems: "center", gap: 5,
+          padding: "5px 12px",
+          background: isBuildingWithWasabi ? C.accent + "18" : `linear-gradient(135deg, ${C.accent}20, ${C.accent}20)`,
+          border: `1px solid ${C.accent}44`,
+          borderRadius: RADIUS.md,
+          cursor: isBuildingWithWasabi ? "default" : "pointer",
+          outline: "none",
+          fontFamily: FONT,
+          fontSize: 11,
+          fontWeight: 600,
+          color: C.accent,
+          whiteSpace: "nowrap",
+          opacity: isBuildingWithWasabi ? 0.7 : 1,
+        }}
+      >
+        <IconWasabiNode size={12} color={C.accent} />
+        {isBuildingWithWasabi ? "Interpreting..." : "Build with Wasabi"}
       </button>
 
       {/* Save button */}
@@ -614,8 +696,8 @@ function EmptyState({ onNew }) {
       fontFamily: FONT,
       color: C.darkMuted,
     }}>
-      <div style={{ opacity: 0.3 }}><IconBolt size={48} color={C.darkMuted} /></div>
-      <div style={{ fontSize: 16, fontWeight: 600, color: C.darkText }}>Node Automation Editor</div>
+      <IconBolt size={40} color={C.darkBorder} />
+      <div style={{ fontSize: 18, fontWeight: 600, color: C.darkText }}>Node Automation Editor</div>
       <div style={{ fontSize: 13, color: C.darkMuted, textAlign: "center", maxWidth: 300, lineHeight: 1.6 }}>
         Create visual automation flows by connecting nodes together.
         Select a flow from the sidebar or create a new one.
@@ -626,8 +708,8 @@ function EmptyState({ onNew }) {
           display: "flex",
           alignItems: "center",
           gap: 6,
-          padding: "10px 20px",
-          background: C.accent,
+          padding: "8px 20px",
+          background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
           border: "none",
           borderRadius: RADIUS.lg,
           cursor: "pointer",
@@ -648,7 +730,7 @@ function EmptyState({ onNew }) {
 // ── Main Component ──
 
 export default function NodeEditor({ automationEngine }) {
-  const { user, platformIds } = usePlatform();
+  const { user, platformIds, pages } = usePlatform();
 
   // ── Flow state ──
   const [flows, setFlows] = useState(() => loadCachedFlows());
@@ -659,9 +741,14 @@ export default function NodeEditor({ automationEngine }) {
   const [draftConnection, setDraftConnection] = useState(null);
   const [executionStates, setExecutionStates] = useState({});
   const [isRunning, setIsRunning] = useState(false);
+  const [isBuildingWithWasabi, setIsBuildingWithWasabi] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [flowExecutions, setFlowExecutions] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+
+  // ── Flow-level database ──
+  const [flowDatabaseId, setFlowDatabaseId] = useState("");
+  const [flowDatabaseName, setFlowDatabaseName] = useState("");
 
   // ── Rules state (simple automation rules from D1) ──
   const [rules, setRules] = useState([]);
@@ -892,6 +979,125 @@ export default function NodeEditor({ automationEngine }) {
     }
   }, [showHistory, activeFlowId]);
 
+  // ── Build with Wasabi (interpret plain English nodes) ──
+  const handleBuildWithWasabi = useCallback(async () => {
+    // Collect nodes that have plain English descriptions needing interpretation
+    const plainEnglishNodes = nodes.filter((n) => {
+      const c = n.config || {};
+      if (n.subtype === "when" && c.description?.trim() && !c.resolved) return true;
+      if (n.subtype === "send_email" && c.description?.trim()) return true;
+      if ((n.subtype === "update_page" || n.subtype === "create_page" || n.subtype === "post_notification") && c.description?.trim()) return true;
+      return false;
+    });
+
+    if (plainEnglishNodes.length === 0) {
+      alert("No plain English nodes to interpret. Add descriptions to your When or Action nodes first.");
+      return;
+    }
+
+    setIsBuildingWithWasabi(true);
+
+    try {
+      const { runAgent } = await import("../agent/runAgent.js");
+      const { WASABI_TOOLS } = await import("../agent/tools.js");
+      const { buildWasabiPrompt } = await import("../agent/wasabiPrompt.js");
+      const { createToolExecutor } = await import("../agent/toolExecutor.js");
+
+      // Build scaffold prompt
+      const lines = [
+        "Interpret these automation node descriptions into structured configs.",
+        "Use the interpret_automation_nodes tool to return the structured configurations.",
+        "",
+      ];
+
+      if (flowDatabaseId) {
+        lines.push(`Flow default database: "${flowDatabaseName}" (ID: ${flowDatabaseId})`);
+        lines.push("");
+      }
+
+      plainEnglishNodes.forEach((node, i) => {
+        const c = node.config || {};
+        const dbHint = c.databaseId || flowDatabaseId;
+        const dbNameHint = c.databaseName || flowDatabaseName;
+
+        lines.push(`Node ${i + 1} (${node.subtype}, id: "${node.id}"):`);
+        lines.push(`  Description: "${c.description}"`);
+        if (dbHint) lines.push(`  Database: "${dbNameHint}" (ID: ${dbHint})`);
+
+        if (node.subtype === "when") {
+          lines.push(`  → Convert to: { trigger_type (schedule|status_change|field_change|page_created|manual), trigger_config }`);
+        } else if (node.subtype === "update_page") {
+          lines.push(`  → Convert to: { properties (JSON object of field:value pairs) }`);
+        } else if (node.subtype === "create_page") {
+          lines.push(`  → Convert to: { databaseId, properties (JSON) }`);
+        } else if (node.subtype === "post_notification") {
+          lines.push(`  → Convert to: { message (with {{variables}} if needed), type }`);
+        } else if (node.subtype === "send_email") {
+          lines.push(`  → Convert to: { to, subject, body }`);
+        }
+        lines.push("");
+      });
+
+      const scaffold = lines.join("\n");
+
+      // Run agent with the interpret tool
+      const toolExecutor = createToolExecutor({
+        workerUrl: user.workerUrl,
+        notionKey: user.notionKey,
+        claudeKey: user.claudeKey,
+      });
+
+      const result = await runAgent({
+        prompt: scaffold,
+        systemPrompt: buildWasabiPrompt({ pages: pages || [] }),
+        tools: WASABI_TOOLS,
+        toolExecutor,
+        claudeKey: user.claudeKey,
+        maxTurns: 3,
+      });
+
+      // Look for interpret_automation_nodes tool call results
+      const toolResults = result?.toolResults || [];
+      for (const tr of toolResults) {
+        if (tr.toolName === "interpret_automation_nodes") {
+          const parsed = typeof tr.result === "string" ? JSON.parse(tr.result) : tr.result;
+          const interpretations = parsed?.interpretations || [];
+
+          // Apply interpretations to nodes
+          setNodes((prev) => prev.map((n) => {
+            const interp = interpretations.find((ip) => ip.node_id === n.id);
+            if (!interp) return n;
+
+            if (n.subtype === "when") {
+              return {
+                ...n,
+                config: {
+                  ...n.config,
+                  resolved: true,
+                  resolvedConfig: {
+                    trigger_type: interp.trigger_type,
+                    trigger_config: interp.trigger_config || {},
+                  },
+                },
+              };
+            }
+
+            // For action nodes, merge the structured config
+            return {
+              ...n,
+              config: { ...n.config, ...interp.config, resolved: true },
+            };
+          }));
+        }
+      }
+    } catch (err) {
+      console.error("[NodeEditor] Build with Wasabi failed:", err);
+      alert("Failed to interpret nodes. Please try again.");
+    } finally {
+      setIsBuildingWithWasabi(false);
+    }
+  }, [nodes, flowDatabaseId, flowDatabaseName, user, pages]);
+
   // ── Run flow (manual execution with visual trace) ──
   const handleRunFlow = useCallback(async () => {
     if (!activeFlowId || isRunning) return;
@@ -1088,6 +1294,14 @@ export default function NodeEditor({ automationEngine }) {
 
       {/* Main canvas area */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        {/* Flow database picker */}
+        <FlowDatabaseBar
+          databaseId={flowDatabaseId}
+          databaseName={flowDatabaseName}
+          onUpdate={(id, name) => { setFlowDatabaseId(id); setFlowDatabaseName(name); }}
+          pages={pages}
+        />
+
         {/* Palette toolbar */}
         <NodePalette
           onAddNode={handleAddNode}
@@ -1097,6 +1311,8 @@ export default function NodeEditor({ automationEngine }) {
           isRunning={isRunning}
           onToggleHistory={handleToggleHistory}
           showHistory={showHistory}
+          onBuildWithWasabi={handleBuildWithWasabi}
+          isBuildingWithWasabi={isBuildingWithWasabi}
         />
 
         {/* Canvas */}
@@ -1144,6 +1360,9 @@ export default function NodeEditor({ automationEngine }) {
           onChange={handleUpdateNode}
           onDelete={handleDeleteNode}
           onClose={() => setSelectedNodeId(null)}
+          defaultDatabaseId={flowDatabaseId}
+          defaultDatabaseName={flowDatabaseName}
+          pages={pages}
         />
       )}
 

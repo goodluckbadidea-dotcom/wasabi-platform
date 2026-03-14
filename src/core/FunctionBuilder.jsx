@@ -171,7 +171,7 @@ export default function FunctionBuilder({ onSubmit, onBack }) {
         <button
           onClick={handleSubmit}
           style={{
-            background: `linear-gradient(135deg, #7DC143, ${C.accent})`,
+            background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
             border: "none", borderRadius: RADIUS.lg,
             color: "#fff", fontFamily: FONT, fontSize: 12, fontWeight: 600,
             padding: "8px 20px", cursor: "pointer", outline: "none",
@@ -538,10 +538,10 @@ function OutputCardBody({ config, onUpdate }) {
             onClick={() => onUpdate({ outputType: t })}
             style={{
               flex: 1, padding: "6px 0",
-              background: config.outputType === t ? "#4CAF5020" : "transparent",
-              border: `1px solid ${config.outputType === t ? "#4CAF5044" : C.darkBorder}`,
+              background: config.outputType === t ? C.accent + "20" : "transparent",
+              border: `1px solid ${config.outputType === t ? C.accent + "44" : C.darkBorder}`,
               borderRadius: RADIUS.sm, cursor: "pointer", outline: "none",
-              color: config.outputType === t ? "#4CAF50" : C.darkMuted,
+              color: config.outputType === t ? C.accent : C.darkMuted,
               fontFamily: FONT, fontSize: 11, fontWeight: 500,
               textTransform: "capitalize",
             }}

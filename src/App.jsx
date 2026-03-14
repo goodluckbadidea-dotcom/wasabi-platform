@@ -44,6 +44,7 @@ import { useNeurons } from "./neurons/NeuronsContext.jsx";
 import { IconGear } from "./design/icons.jsx";
 
 const FunctionsPanel = React.lazy(() => import("./core/FunctionsPanel.jsx"));
+const BuildPage = React.lazy(() => import("./core/BuildPage.jsx"));
 
 // Inject CSS animations on app load
 injectAnimations();
@@ -311,6 +312,15 @@ function AppContent() {
       return <CalendarView />;
     }
 
+    // Build (Custom Views + Plugins)
+    if (activePage === "build") {
+      return (
+        <React.Suspense fallback={<div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>Loading Build...</div>}>
+          <BuildPage onOpenChat={handleFunctionChat} />
+        </React.Suspense>
+      );
+    }
+
     // System manager
     if (activePage === "system") {
       return <SystemManager />;
@@ -427,7 +437,7 @@ function AppContent() {
               width: 1,
               zIndex: 1,
               pointerEvents: "none",
-              background: `linear-gradient(180deg, ${C.edgeLine}00 0%, ${C.edgeLine} 20%, #7DC14344 40%, ${C.accent}55 60%, ${C.edgeLine} 85%, ${C.edgeLine}00 100%)`,
+              background: `linear-gradient(180deg, ${C.edgeLine}00 0%, ${C.edgeLine} 20%, ${C.accent}44 40%, ${C.accent}55 60%, ${C.edgeLine} 85%, ${C.edgeLine}00 100%)`,
               transition: "left 0.32s cubic-bezier(0.25, 1, 0.5, 1)",
             }}
           />

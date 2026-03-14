@@ -76,68 +76,84 @@ export default function NotificationFeed() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", fontFamily: FONT }}>
-      {/* Tab bar */}
+      {/* Page header + Tab bar */}
       <div style={{
-        display: "flex",
-        alignItems: "center",
-        padding: "10px 20px",
+        flexShrink: 0,
+        padding: "16px 32px 0",
         borderBottom: `1px solid ${C.edgeLine}`,
-        gap: 6,
       }}>
-        {TABS.map((tab) => (
+        {/* Title row */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <IconBell size={22} color={C.accent} />
+          <span style={{ fontSize: 18, fontWeight: 600, color: "#fff", fontFamily: FONT }}>
+            Inbox
+          </span>
+          <div style={{ flex: 1 }} />
+          {/* Refresh button */}
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => { setLoading(true); fetchNotifications(); }}
             style={{
-              padding: "6px 14px",
-              borderRadius: RADIUS.pill,
-              border: "none",
-              cursor: "pointer",
-              fontSize: 12,
-              fontWeight: 600,
+              background: "transparent",
+              border: `1px solid ${C.darkBorder}`,
+              borderRadius: RADIUS.md,
+              padding: "4px 10px",
+              fontSize: 10,
               fontFamily: FONT,
-              background: activeTab === tab ? C.accent : C.darkSurf2,
-              color: activeTab === tab ? "#fff" : C.darkMuted,
-              transition: "background 0.15s, color 0.15s",
+              color: C.darkMuted,
+              cursor: "pointer",
+              transition: "border-color 0.15s",
             }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
           >
-            {tab}
-            {tab === "Unread" && unreadCount > 0 && (
-              <span style={{
-                marginLeft: 6,
-                background: activeTab === tab ? "rgba(255,255,255,0.25)" : C.accent,
-                color: "#fff",
-                borderRadius: RADIUS.pill,
-                padding: "1px 6px",
-                fontSize: 10,
-                fontWeight: 700,
-              }}>
-                {unreadCount}
-              </span>
-            )}
+            Refresh
           </button>
-        ))}
-
-        {/* Refresh button */}
-        <button
-          onClick={() => { setLoading(true); fetchNotifications(); }}
-          style={{
-            marginLeft: "auto",
-            background: "transparent",
-            border: `1px solid ${C.darkBorder}`,
-            borderRadius: RADIUS.md,
-            padding: "4px 10px",
-            fontSize: 10,
-            fontFamily: FONT,
-            color: C.darkMuted,
-            cursor: "pointer",
-            transition: "border-color 0.15s",
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; }}
-          onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
-        >
-          Refresh
-        </button>
+        </div>
+        {/* Tab pills */}
+        <div style={{
+          display: "flex",
+          gap: 3,
+          marginBottom: 12,
+          background: C.darkSurf,
+          borderRadius: RADIUS.lg,
+          padding: 3,
+          width: "fit-content",
+        }}>
+          {TABS.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              style={{
+                padding: "6px 18px",
+                borderRadius: RADIUS.lg,
+                border: "none",
+                cursor: "pointer",
+                fontSize: 12,
+                fontWeight: activeTab === tab ? 600 : 400,
+                fontFamily: FONT,
+                background: activeTab === tab ? `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)` : "transparent",
+                color: activeTab === tab ? "#fff" : C.darkMuted,
+                transition: "background 0.15s, color 0.15s",
+                outline: "none",
+              }}
+            >
+              {tab}
+              {tab === "Unread" && unreadCount > 0 && (
+                <span style={{
+                  marginLeft: 6,
+                  background: activeTab === tab ? "rgba(255,255,255,0.25)" : C.accent,
+                  color: "#fff",
+                  borderRadius: RADIUS.pill,
+                  padding: "1px 6px",
+                  fontSize: 10,
+                  fontWeight: 700,
+                }}>
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Notification list */}

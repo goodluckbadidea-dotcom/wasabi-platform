@@ -56,7 +56,7 @@ function buildStyles() {
     },
 
     navItemActive: {
-      background: `linear-gradient(135deg, #7DC14322, ${C.accent}22)`,
+      background: `linear-gradient(135deg, ${C.accent}22, ${C.accent}44)`,
       color: C.accent,
     },
 
@@ -119,7 +119,7 @@ function buildStyles() {
       width: 32,
       height: 32,
       borderRadius: RADIUS.lg,
-      background: `linear-gradient(135deg, #7DC143, ${C.accent})`,
+      background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -172,7 +172,7 @@ function buildStyles() {
 
     inputWrapFocused: {
       borderColor: C.accent,
-      boxShadow: `0 0 0 2px #7DC14322, 0 0 0 3px ${C.accent}22`,
+      boxShadow: `0 0 0 2px ${C.accent}22, 0 0 0 3px ${C.accent}22`,
     },
 
     textarea: {
@@ -204,7 +204,7 @@ function buildStyles() {
 
     // ─── Buttons ───
     btnPrimary: {
-      background: `linear-gradient(135deg, #7DC143, ${C.accent})`,
+      background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
       color: "#fff",
       border: "none",
       borderRadius: RADIUS.pill,
