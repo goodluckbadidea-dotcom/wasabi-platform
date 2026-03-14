@@ -222,18 +222,15 @@ export default function NodeCanvas({
   return (
     <div
       style={{
-        flex: 1,
+        position: "absolute",
+        inset: 0,
         overflow: "hidden",
-        position: "relative",
         background: C.dark,
       }}
     >
       <svg
         ref={svgRef}
         style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
           width: "100%",
           height: "100%",
           cursor: cursorStyle,

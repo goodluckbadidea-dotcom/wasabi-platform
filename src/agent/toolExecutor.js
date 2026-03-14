@@ -1589,7 +1589,7 @@ export function createToolExecutor({
         if (!name || !view_spec) return JSON.stringify({ error: "name and view_spec are required." });
 
         // Validate view spec structure
-        const VALID_WIDGET_TYPES = new Set(["metric", "chart", "table", "text", "progress", "list"]);
+        const VALID_WIDGET_TYPES = new Set(["metric", "chart", "table", "text", "progress", "list", "html"]);
         const VALID_DS_TYPES = new Set(["query", "function_result", "static"]);
         if (!view_spec.widgets || !Array.isArray(view_spec.widgets)) {
           return JSON.stringify({ error: "view_spec must contain a widgets array.", step: "validation" });
