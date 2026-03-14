@@ -29,7 +29,7 @@ const fieldStyle = {
 //  VIEW BUILDER (card-strip pattern)
 // ─────────────────────────────────────
 
-const WIDGET_TYPES = ["metric", "chart", "table", "text", "progress", "list"];
+const WIDGET_TYPES = ["metric", "chart", "table", "text", "progress", "list", "html"];
 const CHART_TYPES = ["bar", "pie", "line"];
 const DATA_SOURCES = ["query", "function_result", "static"];
 

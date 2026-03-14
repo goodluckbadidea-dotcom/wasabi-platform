@@ -556,11 +556,20 @@ const DELETE_CUSTOM_FUNCTION = {
 
 const SAVE_CUSTOM_VIEW = {
   name: "save_custom_view",
-  description: `Create or update a custom dashboard/view spec. The view spec defines a grid layout of widgets (metrics, charts, tables, text blocks, progress bars, ranked lists). Each widget declares its own data source. The spec is stored as a custom function with type "view" and can be added to any page as a customView view block.
+  description: `Create or update a custom dashboard/view spec. The view spec defines a grid layout of widgets. Each widget declares its own data source. The spec is stored as a custom function with type "view" and can be added to any page as a customView view block.
 
-Widget types: metric (large number with label), chart (bar/pie/line SVG), table (compact data table), text (static text block), progress (progress bar with percentage), list (ranked items with values).
+Widget types:
+- metric: large number with label (for counts, totals, KPIs)
+- chart: bar/pie/line SVG chart (for data visualization with categories)
+- table: compact data table (for tabular data)
+- text: static text block (for notes, descriptions)
+- progress: progress bar with percentage (for goal tracking)
+- list: ranked items with values (for top-N lists)
+- html: sandboxed iframe rendering custom HTML/SVG/Canvas (for rich custom visualizations like clocks, gauges, animated graphics, interactive widgets). The linked function's code runs directly in the browser with full DOM access via a sandboxed iframe. Use this when the function creates visual output using DOM manipulation, Canvas, SVG, or any rendering that goes beyond simple data display.
 
-Data source types per widget: "query" (uses page data filtered by databaseId), "function_result" (runs a saved custom function), "static" (inline data values).
+IMPORTANT: When a function/plugin contains code that renders visual elements (draws on canvas, creates SVG, manipulates DOM, builds HTML), you MUST use widget type "html" — NOT "metric" or "chart". The "metric" type can only display a single number. The "html" type renders the function's code in a sandboxed iframe with full browser APIs (document, canvas, SVG, CSS, etc.).
+
+Data source types per widget: "query" (uses page data filtered by databaseId), "function_result" (runs a saved custom function by ID), "static" (inline data values).
 
 The view spec JSON format:
 {
@@ -579,7 +588,9 @@ The view spec JSON format:
     { "id": "w5", "type": "progress", "title": "Q1", "span": 1,
       "dataSource": { "type": "static", "current": 73, "target": 100 } },
     { "id": "w6", "type": "list", "title": "Top 5", "span": 1,
-      "dataSource": { "type": "function_result", "functionId": "fn_xxx" }, "labelField": "name", "valueField": "revenue" }
+      "dataSource": { "type": "function_result", "functionId": "fn_xxx" }, "labelField": "name", "valueField": "revenue" },
+    { "id": "w7", "type": "html", "title": "Live Clock", "span": 2, "height": 300,
+      "dataSource": { "type": "function_result", "functionId": "fn_yyy" } }
   ]
 }
 
@@ -628,7 +639,9 @@ Extended sandbox helpers available beyond the standard set:
 
 The function must define 'function execute(datasets, config) { ... }' where config comes from the manifest's configSchema defaults merged with any runtime overrides.
 
-For "data+view" outputType, return { data: [...], viewSpec: { version: 1, layout: "grid", widgets: [...] } }. The viewSpec uses the same widget format as save_custom_view.`,
+For "data+view" outputType, return { data: [...], viewSpec: { version: 1, layout: "grid", widgets: [...] } }. The viewSpec uses the same widget format as save_custom_view.
+
+IMPORTANT: If a plugin renders visual output (draws on canvas, creates SVG elements, manipulates DOM, builds custom HTML), when creating a custom view for it use widget type "html" with dataSource type "function_result" pointing to the plugin's ID. The "html" widget renders the plugin's code in a sandboxed iframe with full browser APIs. Do NOT use "metric" for visual plugins — "metric" only displays a number.`,
   input_schema: {
     type: "object",
     properties: {
