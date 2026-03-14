@@ -1,15 +1,16 @@
 // ─── Zen Calendar ───
 // Smart calendar for the Zen split view. Replaces TodaySchedule.
-// Supports day and week views with Google Calendar events + task due dates.
+// Supports day, week, and month views with Google Calendar events + task due dates.
 // Fetches events from ALL connected Google calendars with per-calendar colors.
 // Includes a filter dropdown to toggle individual calendars on/off.
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { getGoogleStatus, listCalendarEvents } from "../lib/api.js";
-import { isSameDay, getWeekRange, formatWeekDateHeader } from "./zenTaskHelpers.js";
+import { isSameDay, getWeekRange, getMonthRange, formatWeekDateHeader, formatMonthHeader } from "./zenTaskHelpers.js";
 import DayColumn from "./calendar/DayColumn.jsx";
 import WeekGrid from "./calendar/WeekGrid.jsx";
+import MonthGrid from "./calendar/MonthGrid.jsx";
 import QuickCreateBar from "./calendar/QuickCreateBar.jsx";
 import CalendarFilterDropdown from "./calendar/CalendarFilterDropdown.jsx";
 
@@ -36,7 +37,7 @@ function saveHiddenCalendars(set) {
 
 export default function ZenCalendar({ allTasks }) {
   const [selectedDate, setSelectedDate] = useState(() => new Date());
-  const [viewMode, setViewMode] = useState("day"); // "day" | "week"
+  const [viewMode, setViewMode] = useState("day"); // "day" | "week" | "month"
   const [googleConnected, setGoogleConnected] = useState(false);
   const [events, setEvents] = useState([]);
   const [calendars, setCalendars] = useState([]);
@@ -49,7 +50,13 @@ export default function ZenCalendar({ allTasks }) {
   const today = useMemo(() => new Date(), []);
   const isViewingToday = isSameDay(selectedDate, today);
 
-  // Compute the week range for the selected date (always fetched for instant toggle)
+  // Compute the fetch range based on view mode
+  const fetchRange = useMemo(() => {
+    if (viewMode === "month") return getMonthRange(selectedDate);
+    return getWeekRange(selectedDate); // day + week both use week range
+  }, [selectedDate, viewMode]);
+
+  // Week range (used by WeekGrid — always available)
   const weekRange = useMemo(() => getWeekRange(selectedDate), [selectedDate]);
 
   // ── Fetch Google Calendar data (with retry) ──
@@ -64,15 +71,14 @@ export default function ZenCalendar({ allTasks }) {
         setGoogleConnected(!!status?.connected);
 
         if (status?.connected) {
-          // Always fetch the full week range for instant day↔week toggle
+          const maxResults = viewMode === "month" ? 250 : 50;
           const result = await listCalendarEvents(
-            weekRange.start.toISOString(),
-            weekRange.end.toISOString(),
-            50
+            fetchRange.start.toISOString(),
+            fetchRange.end.toISOString(),
+            maxResults
           );
           if (cancelled) return;
           setEvents(result.events || result.items || []);
-          // Store calendar metadata if returned by the API
           if (result.calendars?.length) {
             setCalendars(result.calendars);
           }
@@ -81,13 +87,11 @@ export default function ZenCalendar({ allTasks }) {
         console.error("[ZenCalendar] Failed to load:", err);
         if (cancelled) return;
 
-        // Retry once after 2s for transient failures (token refresh, network)
         if (attempt === 0) {
           setTimeout(() => { if (!cancelled) load(1); }, 2000);
           return;
         }
 
-        // After retry, show error state
         const isAuth = err?.status === 401 || err?.message?.includes("auth");
         setError(isAuth ? "auth" : "fetch");
       } finally {
@@ -96,7 +100,7 @@ export default function ZenCalendar({ allTasks }) {
     }
     load();
     return () => { cancelled = true; };
-  }, [weekRange]);
+  }, [fetchRange]);
 
   // ── Navigation ──
   const goToday = useCallback(() => setSelectedDate(new Date()), []);
@@ -104,7 +108,11 @@ export default function ZenCalendar({ allTasks }) {
   const goPrev = useCallback(() => {
     setSelectedDate((prev) => {
       const d = new Date(prev);
-      d.setDate(d.getDate() - (viewMode === "week" ? 7 : 1));
+      if (viewMode === "month") {
+        d.setMonth(d.getMonth() - 1);
+      } else {
+        d.setDate(d.getDate() - (viewMode === "week" ? 7 : 1));
+      }
       return d;
     });
   }, [viewMode]);
@@ -112,7 +120,11 @@ export default function ZenCalendar({ allTasks }) {
   const goNext = useCallback(() => {
     setSelectedDate((prev) => {
       const d = new Date(prev);
-      d.setDate(d.getDate() + (viewMode === "week" ? 7 : 1));
+      if (viewMode === "month") {
+        d.setMonth(d.getMonth() + 1);
+      } else {
+        d.setDate(d.getDate() + (viewMode === "week" ? 7 : 1));
+      }
       return d;
     });
   }, [viewMode]);
@@ -143,9 +155,11 @@ export default function ZenCalendar({ allTasks }) {
   }, []);
 
   // ── Date label ──
-  const dateLabel = viewMode === "day"
-    ? formatDayHeader(selectedDate)
-    : formatWeekDateHeader(weekRange.start, weekRange.end);
+  const dateLabel = viewMode === "month"
+    ? formatMonthHeader(selectedDate)
+    : viewMode === "day"
+      ? formatDayHeader(selectedDate)
+      : formatWeekDateHeader(weekRange.start, weekRange.end);
 
   // Count visible calendars for badge
   const visibleCount = calendars.length - hiddenCalendars.size;
@@ -229,28 +243,28 @@ export default function ZenCalendar({ allTasks }) {
           </div>
         )}
 
-        {/* View toggle: Day | Week */}
+        {/* View toggle: Day | Week | Month */}
         <div style={{
           display: "flex", borderRadius: RADIUS.md,
           border: `1px solid ${C.darkBorder}`,
           overflow: "hidden",
         }}>
-          {["day", "week"].map((mode) => (
+          {["day", "week", "month"].map((mode, i) => (
             <button
               key={mode}
               onClick={() => setViewMode(mode)}
               style={{
                 background: viewMode === mode ? C.darkSurf2 : "transparent",
                 border: "none", cursor: "pointer",
-                padding: "3px 10px",
+                padding: "3px 8px",
                 fontSize: 10, fontFamily: FONT,
                 color: viewMode === mode ? C.darkText : C.darkMuted,
                 fontWeight: viewMode === mode ? 600 : 400,
                 outline: "none",
-                borderRight: mode === "day" ? `1px solid ${C.darkBorder}` : "none",
+                borderRight: i < 2 ? `1px solid ${C.darkBorder}` : "none",
               }}
             >
-              {mode === "day" ? "Day" : "Week"}
+              {mode === "day" ? "D" : mode === "week" ? "W" : "M"}
             </button>
           ))}
         </div>
@@ -301,12 +315,20 @@ export default function ZenCalendar({ allTasks }) {
           isToday={isViewingToday}
           hiddenCalendars={hiddenCalendars}
         />
-      ) : (
+      ) : viewMode === "week" ? (
         <WeekGrid
           weekStart={weekRange.start}
           events={events}
           tasks={allTasks}
           selectedDate={selectedDate}
+          onDayClick={handleDayClick}
+          hiddenCalendars={hiddenCalendars}
+        />
+      ) : (
+        <MonthGrid
+          monthDate={selectedDate}
+          events={events}
+          tasks={allTasks}
           onDayClick={handleDayClick}
           hiddenCalendars={hiddenCalendars}
         />

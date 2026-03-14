@@ -224,6 +224,28 @@ export function formatWeekDateHeader(start, end) {
   return `${sMonth} ${start.getDate()} – ${eMonth} ${end.getDate()}, ${end.getFullYear()}`;
 }
 
+/** Get the visible month grid range (includes leading/trailing days to fill the 6×7 grid) */
+export function getMonthRange(date) {
+  const first = new Date(date.getFullYear(), date.getMonth(), 1);
+  const day = first.getDay();
+  const diff = day === 0 ? -6 : 1 - day; // Monday start
+  const start = new Date(first);
+  start.setDate(first.getDate() + diff);
+  start.setHours(0, 0, 0, 0);
+  // Always 6 weeks (42 days) for consistent grid height
+  const end = new Date(start);
+  end.setDate(start.getDate() + 41);
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
+}
+
+/** Format month header: "March 2026" */
+export function formatMonthHeader(date) {
+  const months = ["January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"];
+  return `${months[date.getMonth()]} ${date.getFullYear()}`;
+}
+
 // ── Cache helpers ──
 
 export function getCached(key, ttlMs) {
