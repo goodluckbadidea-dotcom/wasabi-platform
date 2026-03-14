@@ -278,74 +278,133 @@ export default function useAICuratedTasks() {
     try {
       setError(null);
 
-      // Step 1: Find task-like databases
-      const taskDbs = [];
+      // Helper: retry a function once on failure (with 1s delay)
+      async function withRetry(fn, label) {
+        try {
+          return await fn();
+        } catch (err) {
+          console.warn(`[AICurated] ${label} failed, retrying...`, err.message);
+          await new Promise((r) => setTimeout(r, 1000));
+          return await fn(); // throws on second failure
+        }
+      }
+
+      // Step 1: Find task-like databases (parallel schema detection)
+      const candidates = [];
+      let schemaErrors = 0;
 
       for (const page of pages) {
-        if (taskDbs.length >= MAX_DATABASES) break;
         if (page._zenInternal) continue;
-
         const pt = page.page_type || page.pageType;
 
-        // Notion-linked databases
         if (pt === "linked_notion" && page.databaseIds?.length > 0) {
           for (const dbId of page.databaseIds) {
-            if (taskDbs.length >= MAX_DATABASES) break;
-            try {
-              const schema = await detectSchema(user.workerUrl, user.notionKey, dbId);
-              if (isTaskLikeSchema(schema)) {
-                taskDbs.push({ type: "notion", dbId, schema, pageName: page.name });
-              }
-            } catch {}
+            candidates.push({ type: "notion", dbId, pageName: page.name });
           }
         }
-
-        // D1 tables
         if (pt === "database" && page.id) {
-          try {
-            const schemaRes = await getTableSchema(page.id);
-            const columns = schemaRes.columns || [];
-            if (isTaskLikeD1Table(columns, page.name)) {
-              taskDbs.push({ type: "d1", tableId: page.id, columns, pageName: page.name });
+          candidates.push({ type: "d1", tableId: page.id, pageName: page.name });
+        }
+      }
+
+      // Detect schemas in parallel (batched to respect rate limits)
+      const taskDbs = [];
+      const schemaPromises = candidates.slice(0, MAX_DATABASES * 2).map(async (c) => {
+        try {
+          if (c.type === "notion") {
+            const schema = await withRetry(
+              () => detectSchema(user.workerUrl, user.notionKey, c.dbId),
+              `Schema detection for "${c.pageName}"`
+            );
+            if (isTaskLikeSchema(schema)) {
+              return { ...c, schema };
             }
-          } catch {}
+          } else if (c.type === "d1") {
+            const schemaRes = await withRetry(
+              () => getTableSchema(c.tableId),
+              `D1 schema for "${c.pageName}"`
+            );
+            const columns = schemaRes.columns || [];
+            if (isTaskLikeD1Table(columns, c.pageName)) {
+              return { ...c, columns };
+            }
+          }
+        } catch (err) {
+          console.warn(`[AICurated] Schema detection failed for "${c.pageName}":`, err.message);
+          schemaErrors++;
+        }
+        return null;
+      });
+
+      const schemaResults = await Promise.allSettled(schemaPromises);
+      for (const r of schemaResults) {
+        if (r.status === "fulfilled" && r.value && taskDbs.length < MAX_DATABASES) {
+          taskDbs.push(r.value);
         }
       }
 
       if (taskDbs.length === 0) {
+        // Only treat as a real "no tasks" if we didn't have errors
+        if (schemaErrors > 0) {
+          setError(`Failed to scan ${schemaErrors} database(s)`);
+        }
         setLoading(false);
         scanningRef.current = false;
         return;
       }
 
-      // Step 2: Fetch items from each database
+      // Step 2: Fetch items from each database (parallel with retry)
       const allTasks = [];
+      let fetchErrors = 0;
 
-      for (const db of taskDbs) {
+      const fetchPromises = taskDbs.map(async (db) => {
         try {
           if (db.type === "notion") {
-            const results = await queryLimited(
-              user.workerUrl, user.notionKey, db.dbId,
-              null, // No filter — we'll let AI filter
-              [{ timestamp: "last_edited_time", direction: "descending" }],
-              MAX_ITEMS_PER_DB
+            const results = await withRetry(
+              () => queryLimited(
+                user.workerUrl, user.notionKey, db.dbId,
+                null,
+                [{ timestamp: "last_edited_time", direction: "descending" }],
+                MAX_ITEMS_PER_DB
+              ),
+              `Query "${db.pageName}"`
             );
+            const tasks = [];
             for (const page of (results || [])) {
               const task = normalizeNotionTask(page, db.schema, db.pageName);
-              if (!task.done) allTasks.push(task);
+              if (!task.done) tasks.push(task);
             }
+            return tasks;
           } else if (db.type === "d1") {
-            const result = await listRows(db.tableId, { limit: MAX_ITEMS_PER_DB });
+            const result = await withRetry(
+              () => listRows(db.tableId, { limit: MAX_ITEMS_PER_DB }),
+              `D1 rows for "${db.pageName}"`
+            );
+            const tasks = [];
             for (const row of (result.rows || [])) {
               const task = normalizeD1Task(row, db.columns);
               task.sourceName = db.pageName;
               task.source = `d1:${db.tableId}`;
-              if (!task.done) allTasks.push(task);
+              if (!task.done) tasks.push(task);
             }
+            return tasks;
           }
         } catch (err) {
-          console.warn(`[AICurated] Failed to fetch from ${db.pageName}:`, err.message);
+          console.warn(`[AICurated] Failed to fetch from "${db.pageName}":`, err.message);
+          fetchErrors++;
         }
+        return [];
+      });
+
+      const fetchResults = await Promise.allSettled(fetchPromises);
+      for (const r of fetchResults) {
+        if (r.status === "fulfilled" && r.value) {
+          allTasks.push(...r.value);
+        }
+      }
+
+      if (fetchErrors > 0) {
+        setError(`Failed to fetch from ${fetchErrors} database(s)`);
       }
 
       if (allTasks.length === 0) {
@@ -473,14 +532,16 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
   // Auto-scan on mount (after brief delay for cached results to render)
   useEffect(() => {
     const cached = getCached(CACHE_KEY, CACHE_TTL);
-    if (cached) {
-      // Cache is fresh — don't re-scan
+    if (cached && cached.length > 0) {
+      // Cache is fresh and has results — don't re-scan
       return;
     }
     // Delay scan slightly so cached local tasks render first
-    const timer = setTimeout(() => scan(), 500);
+    // Use longer delay if pages haven't loaded yet to avoid scanning empty page list
+    const delay = pages.length === 0 ? 1500 : 500;
+    const timer = setTimeout(() => scan(), delay);
     return () => clearTimeout(timer);
-  }, [scan]);
+  }, [scan, pages.length]);
 
   // Force refresh clears cache and rescans
   const forceRefresh = useCallback(() => scan(true), [scan]);

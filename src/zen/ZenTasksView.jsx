@@ -146,15 +146,32 @@ export default function ZenTasksView() {
         </ErrorBoundary>
 
         {/* AI status footer */}
-        {lastUpdated && !aiLoading && (
+        {(lastUpdated || aiError) && !aiLoading && (
           <div style={{
             flexShrink: 0, padding: "4px 14px 6px",
             borderTop: `1px solid ${C.darkBorder}`,
             fontSize: 9, fontFamily: FONT, color: C.darkMuted,
             opacity: 0.6,
+            display: "flex", alignItems: "center", justifyContent: "space-between",
           }}>
-            AI updated {formatRelativeTime(lastUpdated)}
-            {aiError && <span style={{ color: "#E05252", marginLeft: 6 }}>· Error</span>}
+            <span>
+              {lastUpdated ? `AI updated ${formatRelativeTime(lastUpdated)}` : ""}
+              {aiError && <span style={{ color: "#E05252", marginLeft: lastUpdated ? 6 : 0 }}>
+                {lastUpdated ? "· " : ""}{aiError}
+              </span>}
+            </span>
+            {aiError && (
+              <button
+                onClick={handleRefresh}
+                style={{
+                  background: "none", border: "none", cursor: "pointer",
+                  color: C.accent, fontSize: 9, fontFamily: FONT,
+                  padding: 0, outline: "none", opacity: 0.8,
+                }}
+              >
+                Retry
+              </button>
+            )}
           </div>
         )}
       </div>
