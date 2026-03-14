@@ -7,9 +7,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { getGoogleStatus, listCalendarEvents } from "../lib/api.js";
-import { isSameDay, getWeekRange, getMonthRange, formatWeekDateHeader, formatMonthHeader } from "./zenTaskHelpers.js";
+import { isSameDay, getWeekRange, getMonthRange, getListViewRange, formatWeekDateHeader, formatMonthHeader } from "./zenTaskHelpers.js";
 import DayColumn from "./calendar/DayColumn.jsx";
-import WeekGrid from "./calendar/WeekGrid.jsx";
+import WeekListView from "./calendar/WeekListView.jsx";
 import MonthGrid from "./calendar/MonthGrid.jsx";
 import QuickCreateBar from "./calendar/QuickCreateBar.jsx";
 import CalendarFilterDropdown from "./calendar/CalendarFilterDropdown.jsx";
@@ -53,11 +53,12 @@ export default function ZenCalendar({ allTasks }) {
   // Compute the fetch range based on view mode
   const fetchRange = useMemo(() => {
     if (viewMode === "month") return getMonthRange(selectedDate);
-    return getWeekRange(selectedDate); // day + week both use week range
+    if (viewMode === "week") return getListViewRange(selectedDate);
+    return getWeekRange(selectedDate); // day uses week range
   }, [selectedDate, viewMode]);
 
-  // Week range (used by WeekGrid — always available)
-  const weekRange = useMemo(() => getWeekRange(selectedDate), [selectedDate]);
+  // Week range (used for date header label)
+  const weekRange = useMemo(() => viewMode === "week" ? getListViewRange(selectedDate) : getWeekRange(selectedDate), [selectedDate, viewMode]);
 
   // ── Fetch Google Calendar data (with retry) ──
   useEffect(() => {
@@ -71,7 +72,7 @@ export default function ZenCalendar({ allTasks }) {
         setGoogleConnected(!!status?.connected);
 
         if (status?.connected) {
-          const maxResults = viewMode === "month" ? 250 : 50;
+          const maxResults = viewMode === "month" ? 250 : viewMode === "week" ? 150 : 50;
           const result = await listCalendarEvents(
             fetchRange.start.toISOString(),
             fetchRange.end.toISOString(),
@@ -316,11 +317,10 @@ export default function ZenCalendar({ allTasks }) {
           hiddenCalendars={hiddenCalendars}
         />
       ) : viewMode === "week" ? (
-        <WeekGrid
-          weekStart={weekRange.start}
+        <WeekListView
+          selectedDate={selectedDate}
           events={events}
           tasks={allTasks}
-          selectedDate={selectedDate}
           onDayClick={handleDayClick}
           hiddenCalendars={hiddenCalendars}
         />

@@ -239,6 +239,17 @@ export function getMonthRange(date) {
   return { start, end };
 }
 
+/** Get 21-day range for the week list view (7 past + today + 13 future) */
+export function getListViewRange(date) {
+  const start = new Date(date);
+  start.setDate(start.getDate() - 7);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(date);
+  end.setDate(end.getDate() + 13);
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
+}
+
 /** Format month header: "March 2026" */
 export function formatMonthHeader(date) {
   const months = ["January", "February", "March", "April", "May", "June",
