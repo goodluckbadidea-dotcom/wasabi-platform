@@ -330,6 +330,11 @@ export default {
         return await handleHealth(env);
       }
 
+      // Google OAuth callback (browser redirect — no auth header)
+      if (path === "/google/callback" && request.method === "GET") {
+        return await handleGoogleCallback(request, env);
+      }
+
       // ─── Auth Gate ───
       if (!authenticate(request, env)) {
         return jsonResponse({ _error: "Unauthorized" }, 401);
@@ -356,9 +361,6 @@ export default {
       // ─── Google OAuth + API Proxy ───
       if (path === "/google/auth-url" && request.method === "GET") {
         return handleGoogleAuthUrl(request, env);
-      }
-      if (path === "/google/callback" && request.method === "GET") {
-        return await handleGoogleCallback(request, env);
       }
       if (path === "/google/status" && request.method === "GET") {
         return await handleGoogleStatus(env);
@@ -392,6 +394,9 @@ export default {
         return await handleGmailModify(env, msgId, body);
       }
       // Calendar proxy
+      if (path === "/google/calendar/list" && request.method === "GET") {
+        return await handleCalendarList(env);
+      }
       if (path === "/google/calendar/summary" && request.method === "GET") {
         return await handleCalendarSummary(env);
       }
@@ -1854,11 +1859,61 @@ async function handleCalendarSummary(env) {
   }
 }
 
+async function handleCalendarList(env) {
+  const tokens = await getGoogleAccessToken(env);
+  if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
+
+  try {
+    const res = await fetch(`${GCAL_API}/users/me/calendarList`, {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      return jsonResponse({ _error: `Calendar list error: ${errText}` }, res.status);
+    }
+    const data = await res.json();
+    const calendars = (data.items || []).map((c) => ({
+      id: c.id,
+      summary: c.summary || c.id,
+      backgroundColor: c.backgroundColor || "#4285f4",
+      foregroundColor: c.foregroundColor || "#ffffff",
+      primary: !!c.primary,
+      selected: c.selected !== false,
+      accessRole: c.accessRole || "reader",
+    }));
+    return jsonResponse({ calendars });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
 async function handleCalendarListEvents(env, params) {
   const tokens = await getGoogleAccessToken(env);
   if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
 
   try {
+    // Step 1: Fetch all calendars
+    const calListRes = await fetch(`${GCAL_API}/users/me/calendarList`, {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    let calendars = [];
+    if (calListRes.ok) {
+      const calData = await calListRes.json();
+      calendars = (calData.items || [])
+        .filter((c) => c.selected !== false)
+        .map((c) => ({
+          id: c.id,
+          summary: c.summary || c.id,
+          backgroundColor: c.backgroundColor || "#4285f4",
+          primary: !!c.primary,
+        }));
+    }
+    // Fallback: if calendar list fails, just use primary
+    if (calendars.length === 0) {
+      calendars = [{ id: "primary", summary: "Primary", backgroundColor: "#4285f4", primary: true }];
+    }
+
+    // Step 2: Fetch events from all calendars in parallel
     const qs = new URLSearchParams();
     if (params.timeMin) qs.set("timeMin", params.timeMin);
     if (params.timeMax) qs.set("timeMax", params.timeMax);
@@ -1866,26 +1921,43 @@ async function handleCalendarListEvents(env, params) {
     qs.set("singleEvents", "true");
     qs.set("orderBy", "startTime");
 
-    const res = await fetch(`${GCAL_API}/calendars/primary/events?${qs}`, {
-      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    const eventPromises = calendars.map(async (cal) => {
+      try {
+        const res = await fetch(`${GCAL_API}/calendars/${encodeURIComponent(cal.id)}/events?${qs}`, {
+          headers: { Authorization: `Bearer ${tokens.access_token}` },
+        });
+        if (!res.ok) return [];
+        const data = await res.json();
+        return (data.items || []).map((e) => ({
+          id: e.id,
+          summary: e.summary || "",
+          description: e.description || "",
+          start: e.start || {},
+          end: e.end || {},
+          location: e.location || "",
+          status: e.status,
+          attendees: (e.attendees || []).map((a) => ({ email: a.email, responseStatus: a.responseStatus })),
+          htmlLink: e.htmlLink || "",
+          calendarId: cal.id,
+          calendarColor: cal.backgroundColor,
+          calendarName: cal.summary,
+        }));
+      } catch {
+        return [];
+      }
     });
-    if (!res.ok) {
-      const errText = await res.text();
-      return jsonResponse({ _error: `Calendar API error: ${errText}` }, res.status);
-    }
-    const data = await res.json();
-    const events = (data.items || []).map((e) => ({
-      id: e.id,
-      summary: e.summary || "",
-      description: e.description || "",
-      start: e.start?.dateTime || e.start?.date || "",
-      end: e.end?.dateTime || e.end?.date || "",
-      location: e.location || "",
-      status: e.status,
-      attendees: (e.attendees || []).map((a) => ({ email: a.email, responseStatus: a.responseStatus })),
-      htmlLink: e.htmlLink || "",
-    }));
-    return jsonResponse({ events, nextPageToken: data.nextPageToken || null });
+
+    const results = await Promise.all(eventPromises);
+    const allEvents = results.flat();
+
+    // Step 3: Sort by start time
+    allEvents.sort((a, b) => {
+      const aTime = a.start?.dateTime || a.start?.date || "";
+      const bTime = b.start?.dateTime || b.start?.date || "";
+      return aTime.localeCompare(bTime);
+    });
+
+    return jsonResponse({ events: allEvents, calendars });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
   }

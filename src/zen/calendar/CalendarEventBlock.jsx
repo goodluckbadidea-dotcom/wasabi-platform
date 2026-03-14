@@ -1,12 +1,13 @@
 // ─── Calendar Event Block ───
 // Renders a Google Calendar event on the day column hour grid.
-// Solid accent left-border, semi-transparent accent background.
+// Uses per-calendar color for visual distinction between calendars.
 
 import React from "react";
 import { C, FONT, RADIUS } from "../../design/tokens.js";
 import { formatTime } from "../zenTaskHelpers.js";
 
 export default function CalendarEventBlock({ event, hourHeight, hourStart }) {
+  const color = event.calendarColor || C.accent;
   const start = event.start?.dateTime ? new Date(event.start.dateTime) : null;
   const end = event.end?.dateTime ? new Date(event.end.dateTime) : null;
   if (!start) return null;
@@ -26,9 +27,9 @@ export default function CalendarEventBlock({ event, hourHeight, hourStart }) {
         right: 4,
         top,
         height,
-        background: C.accent + "22",
-        border: `1px solid ${C.accent}44`,
-        borderLeft: `3px solid ${C.accent}`,
+        background: color + "22",
+        border: `1px solid ${color}44`,
+        borderLeft: `3px solid ${color}`,
         borderRadius: RADIUS.md,
         padding: "3px 6px",
         fontSize: 10,

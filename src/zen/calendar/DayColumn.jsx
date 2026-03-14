@@ -1,6 +1,7 @@
 // ─── Day Column ───
 // Renders a single day's hour grid (7 AM – 10 PM) with events and tasks.
 // Used by the day view in ZenCalendar. Includes current time indicator.
+// Supports per-calendar colors and calendar filtering.
 
 import React, { useEffect, useRef, useMemo } from "react";
 import { C, FONT } from "../../design/tokens.js";
@@ -12,21 +13,24 @@ const HOUR_START = 7;
 const HOUR_END = 22;
 const HOUR_HEIGHT = 48;
 
-export default function DayColumn({ date, events, tasks, isToday: isTodayProp }) {
+export default function DayColumn({ date, events, tasks, isToday: isTodayProp, hiddenCalendars }) {
   const nowLineRef = useRef(null);
   const scrollRef = useRef(null);
+
+  const hidden = hiddenCalendars || new Set();
 
   // Determine if this column is "today"
   const showNow = isTodayProp !== undefined ? isTodayProp : isSameDay(date, new Date());
 
-  // Filter events for this day
+  // Filter events for this day (excluding hidden calendars)
   const dayEvents = useMemo(() => {
     if (!events?.length) return [];
     return events.filter((ev) => {
+      if (hidden.has(ev.calendarId)) return false;
       const evDate = ev.start?.dateTime || ev.start?.date;
       return evDate && isSameDay(evDate, date);
     });
-  }, [events, date]);
+  }, [events, date, hidden]);
 
   // Filter tasks with due dates on this day
   const dayTasks = useMemo(() => {
@@ -44,16 +48,17 @@ export default function DayColumn({ date, events, tasks, isToday: isTodayProp })
     [dayTasks]
   );
 
-  // All-day events
+  // All-day events (excluding hidden calendars)
   const allDayEvents = useMemo(() => {
     if (!events?.length) return [];
     return events.filter((ev) => {
+      if (hidden.has(ev.calendarId)) return false;
       if (ev.start?.date && !ev.start?.dateTime) {
         return isSameDay(ev.start.date, date);
       }
       return false;
     });
-  }, [events, date]);
+  }, [events, date, hidden]);
 
   // Auto-scroll to current time on mount
   useEffect(() => {
@@ -76,21 +81,24 @@ export default function DayColumn({ date, events, tasks, isToday: isTodayProp })
         }}>
           {allDayEvents.length > 0 && (
             <div style={{ marginBottom: dateOnlyTasks.length > 0 ? 4 : 0 }}>
-              {allDayEvents.map((ev) => (
-                <div key={ev.id} style={{
-                  display: "flex", alignItems: "center", gap: 6,
-                  padding: "3px 6px", marginBottom: 2,
-                  background: C.accent + "22",
-                  borderLeft: `3px solid ${C.accent}`,
-                  borderRadius: 4,
-                  fontSize: 10, fontFamily: FONT, color: C.darkText,
-                }}>
-                  <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {ev.summary || "Untitled"}
-                  </span>
-                  <span style={{ fontSize: 9, color: C.darkMuted, flexShrink: 0 }}>All day</span>
-                </div>
-              ))}
+              {allDayEvents.map((ev) => {
+                const color = ev.calendarColor || C.accent;
+                return (
+                  <div key={ev.id} style={{
+                    display: "flex", alignItems: "center", gap: 6,
+                    padding: "3px 6px", marginBottom: 2,
+                    background: color + "22",
+                    borderLeft: `3px solid ${color}`,
+                    borderRadius: 4,
+                    fontSize: 10, fontFamily: FONT, color: C.darkText,
+                  }}>
+                    <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {ev.summary || "Untitled"}
+                    </span>
+                    <span style={{ fontSize: 9, color: C.darkMuted, flexShrink: 0 }}>All day</span>
+                  </div>
+                );
+              })}
             </div>
           )}
           {dateOnlyTasks.length > 0 && (
@@ -174,7 +182,7 @@ export default function DayColumn({ date, events, tasks, isToday: isTodayProp })
         )}
 
         {/* Google Calendar event blocks */}
-        {dayEvents.map((event, idx) => (
+        {dayEvents.filter((ev) => ev.start?.dateTime).map((event, idx) => (
           <CalendarEventBlock
             key={event.id || idx}
             event={event}

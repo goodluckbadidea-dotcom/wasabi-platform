@@ -625,6 +625,10 @@ export async function modifyEmail(messageId, action) {
 
 // ─── Google Calendar ───
 
+export async function listCalendars() {
+  return apiFetch("/google/calendar/list", { method: "GET" });
+}
+
 export async function getCalendarSummary() {
   return apiFetch("/google/calendar/summary", { method: "GET" });
 }

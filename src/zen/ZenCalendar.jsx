@@ -1,6 +1,8 @@
 // ─── Zen Calendar ───
 // Smart calendar for the Zen split view. Replaces TodaySchedule.
 // Supports day and week views with Google Calendar events + task due dates.
+// Fetches events from ALL connected Google calendars with per-calendar colors.
+// Includes a filter dropdown to toggle individual calendars on/off.
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
@@ -9,12 +11,27 @@ import { isSameDay, getWeekRange, formatWeekDateHeader } from "./zenTaskHelpers.
 import DayColumn from "./calendar/DayColumn.jsx";
 import WeekGrid from "./calendar/WeekGrid.jsx";
 import QuickCreateBar from "./calendar/QuickCreateBar.jsx";
+import CalendarFilterDropdown from "./calendar/CalendarFilterDropdown.jsx";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const HIDDEN_KEY = "wasabi-zen-hidden-calendars";
 
 function formatDayHeader(date) {
   return `${DAY_NAMES[date.getDay()]}, ${MONTH_NAMES[date.getMonth()]} ${date.getDate()}`;
+}
+
+function loadHiddenCalendars() {
+  try {
+    const raw = localStorage.getItem(HIDDEN_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function saveHiddenCalendars(set) {
+  localStorage.setItem(HIDDEN_KEY, JSON.stringify([...set]));
 }
 
 export default function ZenCalendar({ allTasks }) {
@@ -22,8 +39,11 @@ export default function ZenCalendar({ allTasks }) {
   const [viewMode, setViewMode] = useState("day"); // "day" | "week"
   const [googleConnected, setGoogleConnected] = useState(false);
   const [events, setEvents] = useState([]);
+  const [calendars, setCalendars] = useState([]);
+  const [hiddenCalendars, setHiddenCalendars] = useState(() => loadHiddenCalendars());
   const [loading, setLoading] = useState(true);
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
   const [error, setError] = useState(null); // "auth" | "fetch" | null
 
   const today = useMemo(() => new Date(), []);
@@ -52,6 +72,10 @@ export default function ZenCalendar({ allTasks }) {
           );
           if (cancelled) return;
           setEvents(result.events || result.items || []);
+          // Store calendar metadata if returned by the API
+          if (result.calendars?.length) {
+            setCalendars(result.calendars);
+          }
         }
       } catch (err) {
         console.error("[ZenCalendar] Failed to load:", err);
@@ -104,10 +128,28 @@ export default function ZenCalendar({ allTasks }) {
     setQuickCreateOpen(false);
   }, []);
 
+  // ── Calendar filter toggle ──
+  const handleToggleCalendar = useCallback((calendarId) => {
+    setHiddenCalendars((prev) => {
+      const next = new Set(prev);
+      if (next.has(calendarId)) {
+        next.delete(calendarId);
+      } else {
+        next.add(calendarId);
+      }
+      saveHiddenCalendars(next);
+      return next;
+    });
+  }, []);
+
   // ── Date label ──
   const dateLabel = viewMode === "day"
     ? formatDayHeader(selectedDate)
     : formatWeekDateHeader(weekRange.start, weekRange.end);
+
+  // Count visible calendars for badge
+  const visibleCount = calendars.length - hiddenCalendars.size;
+  const hasFilters = hiddenCalendars.size > 0;
 
   return (
     <div style={{
@@ -119,6 +161,7 @@ export default function ZenCalendar({ allTasks }) {
         flexShrink: 0, height: 44, padding: "0 14px",
         borderBottom: `1px solid ${C.darkBorder}`,
         display: "flex", alignItems: "center", gap: 6,
+        position: "relative",
       }}>
         {/* Nav arrows + Today */}
         <button onClick={goPrev} style={navBtnStyle} title="Previous">
@@ -149,6 +192,42 @@ export default function ZenCalendar({ allTasks }) {
         }}>
           {dateLabel}
         </div>
+
+        {/* Calendar filter button (only if we have calendars) */}
+        {calendars.length > 1 && (
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={() => setFilterOpen((v) => !v)}
+              title="Filter calendars"
+              style={{
+                ...navBtnStyle,
+                opacity: filterOpen ? 1 : 0.5,
+                background: filterOpen ? C.accent + "22" : "transparent",
+                position: "relative",
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M1.5 3H10.5M3 6H9M4.5 9H7.5" stroke={filterOpen ? C.accent : C.darkMuted} strokeWidth="1.2" strokeLinecap="round" />
+              </svg>
+              {/* Active filter indicator */}
+              {hasFilters && (
+                <div style={{
+                  position: "absolute", top: 0, right: 0,
+                  width: 6, height: 6, borderRadius: "50%",
+                  background: C.accent,
+                }} />
+              )}
+            </button>
+            {filterOpen && (
+              <CalendarFilterDropdown
+                calendars={calendars}
+                hiddenCalendars={hiddenCalendars}
+                onToggle={handleToggleCalendar}
+                onClose={() => setFilterOpen(false)}
+              />
+            )}
+          </div>
+        )}
 
         {/* View toggle: Day | Week */}
         <div style={{
@@ -220,6 +299,7 @@ export default function ZenCalendar({ allTasks }) {
           events={events}
           tasks={allTasks}
           isToday={isViewingToday}
+          hiddenCalendars={hiddenCalendars}
         />
       ) : (
         <WeekGrid
@@ -228,6 +308,7 @@ export default function ZenCalendar({ allTasks }) {
           tasks={allTasks}
           selectedDate={selectedDate}
           onDayClick={handleDayClick}
+          hiddenCalendars={hiddenCalendars}
         />
       )}
 

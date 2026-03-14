@@ -1,6 +1,7 @@
 // ─── Week Grid ───
 // 7-column Mon–Sun grid showing compact event pills and task dots.
 // Click a day cell to drill into day view.
+// Supports per-calendar colors and calendar filtering.
 
 import React, { useMemo } from "react";
 import { C, FONT, RADIUS } from "../../design/tokens.js";
@@ -9,22 +10,25 @@ import { getWeekColumns, isSameDay } from "../zenTaskHelpers.js";
 const DAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MAX_VISIBLE_ITEMS = 3;
 
-export default function WeekGrid({ weekStart, events, tasks, selectedDate, onDayClick }) {
+export default function WeekGrid({ weekStart, events, tasks, selectedDate, onDayClick, hiddenCalendars }) {
   const columns = useMemo(() => getWeekColumns(weekStart), [weekStart]);
   const today = useMemo(() => new Date(), []);
 
-  // Group events by day
+  const hidden = hiddenCalendars || new Set();
+
+  // Group events by day (excluding hidden calendars)
   const eventsByDay = useMemo(() => {
     const map = new Map();
     columns.forEach((col) => map.set(col.toDateString(), []));
     (events || []).forEach((ev) => {
+      if (hidden.has(ev.calendarId)) return;
       const evDate = ev.start?.dateTime || ev.start?.date;
       if (!evDate) return;
       const key = new Date(evDate).toDateString();
       if (map.has(key)) map.get(key).push(ev);
     });
     return map;
-  }, [events, columns]);
+  }, [events, columns, hidden]);
 
   // Group tasks by day
   const tasksByDay = useMemo(() => {
@@ -108,19 +112,22 @@ export default function WeekGrid({ weekStart, events, tasks, selectedDate, onDay
               onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = isToday ? C.accent + "06" : "transparent"; }}
             >
-              {/* Event pills */}
-              {dayEvents.slice(0, MAX_VISIBLE_ITEMS).map((ev, i) => (
-                <div key={ev.id || i} style={{
-                  padding: "2px 4px", marginBottom: 2,
-                  background: C.accent + "22",
-                  borderLeft: `2px solid ${C.accent}`,
-                  borderRadius: 3,
-                  fontSize: 9, fontFamily: FONT, color: C.darkText,
-                  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                }}>
-                  {ev.summary || "Untitled"}
-                </div>
-              ))}
+              {/* Event pills — per-calendar colors */}
+              {dayEvents.slice(0, MAX_VISIBLE_ITEMS).map((ev, i) => {
+                const color = ev.calendarColor || C.accent;
+                return (
+                  <div key={ev.id || i} style={{
+                    padding: "2px 4px", marginBottom: 2,
+                    background: color + "22",
+                    borderLeft: `2px solid ${color}`,
+                    borderRadius: 3,
+                    fontSize: 9, fontFamily: FONT, color: C.darkText,
+                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                  }}>
+                    {ev.summary || "Untitled"}
+                  </div>
+                );
+              })}
 
               {/* Task dots */}
               {dayTasks.slice(0, Math.max(0, MAX_VISIBLE_ITEMS - dayEvents.length)).map((t) => (
