@@ -26,7 +26,7 @@ function formatDateHeader(date) {
   return `${DAY_NAMES[date.getDay()]}, ${MONTH_NAMES[date.getMonth()]} ${date.getDate()}`;
 }
 
-export default function WeekListView({ selectedDate, events, tasks, onDayClick, hiddenCalendars }) {
+export default function WeekListView({ selectedDate, events, tasks, onDayClick, hiddenCalendars, onEventClick, onTaskClick }) {
   const scrollRef = useRef(null);
   const todayRef = useRef(null);
   const hidden = hiddenCalendars || new Set();
@@ -123,7 +123,7 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
             >
               {relativeLabel && (
                 <span style={{
-                  fontSize: 11, fontWeight: 700, fontFamily: FONT,
+                  fontSize: 13, fontWeight: 700, fontFamily: FONT,
                   color: isToday ? C.accent : C.darkText,
                 }}>
                   {relativeLabel}
@@ -131,13 +131,13 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
               )}
               {relativeLabel && (
                 <span style={{
-                  fontSize: 9, fontFamily: FONT, color: C.darkMuted,
+                  fontSize: 10, fontFamily: FONT, color: C.darkMuted,
                 }}>
                   —
                 </span>
               )}
               <span style={{
-                fontSize: relativeLabel ? 10 : 11,
+                fontSize: relativeLabel ? 11 : 13,
                 fontWeight: relativeLabel ? 400 : 600,
                 fontFamily: FONT,
                 color: relativeLabel ? C.darkMuted : C.darkText,
@@ -155,6 +155,7 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
                 return (
                   <div
                     key={ev.id || idx}
+                    onClick={(e) => { e.stopPropagation(); onEventClick?.(ev); }}
                     style={{
                       display: "flex", alignItems: "center", gap: 8,
                       padding: "4px 8px", marginBottom: 3,
@@ -163,13 +164,13 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
                       borderRadius: RADIUS.sm,
                       transition: TRANSITION.color,
                       animation: ANIM.scrollReveal(idx),
-                      cursor: "default",
+                      cursor: onEventClick ? "pointer" : "default",
                     }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = color + "28"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = color + "18"; }}
                   >
                     <span style={{
-                      fontSize: 10, fontFamily: FONT, fontWeight: 600,
+                      fontSize: 12, fontFamily: FONT, fontWeight: 600,
                       color: C.darkText,
                       whiteSpace: "nowrap", overflow: "hidden",
                       textOverflow: "ellipsis", flex: 1,
@@ -177,7 +178,7 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
                       {ev.summary || "Untitled"}
                     </span>
                     <span style={{
-                      fontSize: 9, fontFamily: FONT, color: C.darkMuted,
+                      fontSize: 11, fontFamily: FONT, color: C.darkMuted,
                       flexShrink: 0,
                     }}>
                       {isAllDay ? "All day" : ev.start?.dateTime ? formatTime(ev.start.dateTime) : ""}
@@ -191,6 +192,7 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
                 return (
                   <div
                     key={t.id}
+                    onClick={(e) => { e.stopPropagation(); onTaskClick?.(t); }}
                     style={{
                       display: "flex", alignItems: "center", gap: 8,
                       padding: "4px 8px", marginBottom: 3,
@@ -199,7 +201,7 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
                       borderRadius: RADIUS.sm,
                       transition: TRANSITION.color,
                       animation: ANIM.scrollReveal(idx),
-                      cursor: "default",
+                      cursor: onTaskClick ? "pointer" : "default",
                     }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = C.accent + "18"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = C.accent + "0A"; }}
@@ -209,7 +211,7 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
                       background: C.accent, flexShrink: 0, opacity: 0.7,
                     }} />
                     <span style={{
-                      fontSize: 10, fontFamily: FONT,
+                      fontSize: 12, fontFamily: FONT, fontWeight: 500,
                       color: C.darkText,
                       whiteSpace: "nowrap", overflow: "hidden",
                       textOverflow: "ellipsis", flex: 1,
@@ -218,7 +220,7 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
                     </span>
                     {t.due && t.due.includes("T") && (
                       <span style={{
-                        fontSize: 9, fontFamily: FONT, color: C.darkMuted,
+                        fontSize: 11, fontFamily: FONT, color: C.darkMuted,
                         flexShrink: 0,
                       }}>
                         {formatTime(t.due)}
@@ -231,7 +233,7 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
               {/* Empty state */}
               {!hasItems && (
                 <div style={{
-                  fontSize: 9, fontFamily: FONT, color: C.darkMuted,
+                  fontSize: 10, fontFamily: FONT, color: C.darkMuted,
                   opacity: 0.5, padding: "2px 8px",
                 }}>
                   No events

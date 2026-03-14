@@ -3,18 +3,21 @@
 // Left 40%: AI-curated to-do list + quick-add.
 // Right 60%: Today's schedule / calendar.
 
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useRef } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import useZenTasks from "./useZenTasks.js";
 import useAICuratedTasks from "./useAICuratedTasks.js";
 import TaskList from "./TaskList.jsx";
 import ZenCalendar from "./ZenCalendar.jsx";
+import SashimiDrawer from "./SashimiDrawer.jsx";
+import { useSashimiDrawer } from "./SashimiDrawerContext.jsx";
 import { ErrorBoundary } from "../core/ErrorBoundary.jsx";
 
 export default function ZenTasksView() {
   const {
     tasks: zenTasks,
     loading: zenLoading,
+    tableId,
     addTask,
     toggleTask: toggleZenTask,
     deleteTask,
@@ -29,6 +32,9 @@ export default function ZenTasksView() {
     error: aiError,
   } = useAICuratedTasks();
 
+  const { openDrawer } = useSashimiDrawer();
+  const calendarRefreshRef = useRef(null);
+
   // ── Toggle for AI-curated tasks ──
   // For Notion tasks, we could update the source DB, but for now
   // we remove them from the local AI task list (cache refresh will re-evaluate)
@@ -42,6 +48,29 @@ export default function ZenTasksView() {
   const handleAddTask = useCallback((title) => {
     addTask(title);
   }, [addTask]);
+
+  // ── Task click → open drawer ──
+  const handleTaskClick = useCallback((task) => {
+    openDrawer("task", { ...task, tableId });
+  }, [openDrawer, tableId]);
+
+  // ── Drawer callbacks ──
+  const handleTaskUpdated = useCallback(() => {
+    refreshZen();
+    refreshAI();
+  }, [refreshZen, refreshAI]);
+
+  const handleTaskDeleted = useCallback(() => {
+    refreshZen();
+  }, [refreshZen]);
+
+  const handleEventUpdated = useCallback(() => {
+    calendarRefreshRef.current?.();
+  }, []);
+
+  const handleEventDeleted = useCallback(() => {
+    calendarRefreshRef.current?.();
+  }, []);
 
   // ── Combined refresh ──
   const handleRefresh = useCallback(() => {
@@ -67,17 +96,17 @@ export default function ZenTasksView() {
       }}>
         {/* Panel header */}
         <div style={{
-          flexShrink: 0, height: 44, padding: "0 14px",
+          flexShrink: 0, height: 48, padding: "0 20px",
           borderBottom: `1px solid ${C.darkBorder}`,
           display: "flex", alignItems: "center", justifyContent: "space-between",
         }}>
           <div style={{
-            fontSize: 13, fontWeight: 600, fontFamily: FONT, color: C.darkText,
-            display: "flex", alignItems: "center", gap: 8,
+            fontSize: 18, fontWeight: 600, fontFamily: FONT, color: "#fff",
+            display: "flex", alignItems: "center", gap: 10,
           }}>
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-              <circle cx="8" cy="8" r="6" stroke={C.darkText} strokeWidth="1.3" fill="none" />
-              <path d="M5 8L7 10L11 6" stroke={C.darkText} strokeWidth="1.3" strokeLinecap="round" />
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
+              <circle cx="8" cy="8" r="6" stroke={C.accent} strokeWidth="1.3" fill="none" />
+              <path d="M5 8L7 10L11 6" stroke={C.accent} strokeWidth="1.3" strokeLinecap="round" />
             </svg>
             Tasks
           </div>
@@ -95,7 +124,7 @@ export default function ZenTasksView() {
             onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
             onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
           >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
               <path d="M14 2v5h-5" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
               <path d="M12.5 10A5.5 5.5 0 1 1 13 6" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" />
             </svg>
@@ -112,6 +141,7 @@ export default function ZenTasksView() {
             onToggleAI={handleToggleAI}
             onAddTask={handleAddTask}
             onDeleteTask={deleteTask}
+            onTaskClick={handleTaskClick}
           />
         </ErrorBoundary>
 
@@ -137,9 +167,17 @@ export default function ZenTasksView() {
         overflow: "hidden",
       }}>
         <ErrorBoundary fallbackLabel="Calendar">
-          <ZenCalendar allTasks={allTasks} />
+          <ZenCalendar allTasks={allTasks} refreshRef={calendarRefreshRef} />
         </ErrorBoundary>
       </div>
+
+      {/* Sashimi drawer for task/event editing */}
+      <SashimiDrawer
+        onTaskUpdated={handleTaskUpdated}
+        onTaskDeleted={handleTaskDeleted}
+        onEventUpdated={handleEventUpdated}
+        onEventDeleted={handleEventDeleted}
+      />
     </div>
   );
 }

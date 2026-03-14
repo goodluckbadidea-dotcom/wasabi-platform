@@ -434,7 +434,7 @@ const S = {
   weekEvent: {
     padding: "4px 6px",
     borderRadius: RADIUS.sm,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: 600,
     color: C.darkText,
     background: `${C.accent}22`,
@@ -446,8 +446,8 @@ const S = {
     transition: "background 0.12s",
   },
   weekEventTime: {
-    fontSize: 9,
-    fontWeight: 400,
+    fontSize: 10,
+    fontWeight: 500,
     color: C.darkMuted,
     marginBottom: 1,
   },
@@ -1006,7 +1006,7 @@ export default function CalendarView() {
                     {ev.summary || "Untitled"}
                   </div>
                   {heightPx > 30 && (
-                    <div style={{ fontSize: 10, color: C.darkMuted, marginTop: 2 }}>
+                    <div style={{ fontSize: 11, color: C.darkMuted, marginTop: 2 }}>
                       {formatTime(ev.start?.dateTime)} - {formatTime(ev.end?.dateTime)}
                     </div>
                   )}

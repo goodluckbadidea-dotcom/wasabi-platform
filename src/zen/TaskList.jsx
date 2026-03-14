@@ -58,11 +58,12 @@ function SourceBadge({ sourceName }) {
   );
 }
 
-function TaskRow({ task, onToggle, onDelete }) {
+function TaskRow({ task, onToggle, onDelete, onTaskClick }) {
   const [hovered, setHovered] = useState(false);
 
   return (
     <div
+      onClick={() => onTaskClick?.(task)}
       style={{
         display: "flex",
         alignItems: "center",
@@ -130,7 +131,7 @@ function TaskRow({ task, onToggle, onDelete }) {
   );
 }
 
-export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, onToggleAI, onAddTask, onDeleteTask }) {
+export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, onToggleAI, onAddTask, onDeleteTask, onTaskClick }) {
   const [inputValue, setInputValue] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
   const inputRef = useRef(null);
@@ -197,6 +198,7 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, on
                 task={task}
                 onToggle={onToggleZen}
                 onDelete={onDeleteTask}
+                onTaskClick={onTaskClick}
               />
             ))}
           </div>
@@ -241,6 +243,7 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, on
                   task={task}
                   onToggle={onToggleAI}
                   onDelete={() => {}}
+                  onTaskClick={onTaskClick}
                 />
               ))
             )}
@@ -288,6 +291,7 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, on
                 task={task}
                 onToggle={task.source === "manual" ? onToggleZen : onToggleAI}
                 onDelete={task.source === "manual" ? onDeleteTask : () => {}}
+                onTaskClick={onTaskClick}
               />
             ))}
           </div>

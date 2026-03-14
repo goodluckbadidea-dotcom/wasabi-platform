@@ -231,7 +231,7 @@ export default function Navigation({
           {!collapsed && (
             <div style={{
               flexShrink: 0, borderBottom: `1px solid ${C.darkBorder}`,
-              height: 44, padding: "0 14px", display: "flex", alignItems: "center", gap: 8,
+              padding: "14px 14px 12px", display: "flex", alignItems: "center", gap: 8,
             }}>
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
                 <circle cx="8" cy="8" r="6" stroke={C.accent} strokeWidth="1.5" fill="none" />
@@ -256,39 +256,40 @@ export default function Navigation({
               borderTop: `1px solid ${C.darkBorder}`,
               borderImage: `linear-gradient(90deg, ${C.darkBorder}, ${C.accent}44, ${C.accent}44, ${C.darkBorder}) 1`,
               padding: collapsed ? "6px 0" : "8px 12px",
+              paddingBottom: collapsed ? "calc(6px + env(safe-area-inset-bottom, 0px))" : "calc(8px + env(safe-area-inset-bottom, 0px))",
               display: "flex",
               flexDirection: "column",
               gap: 1,
               transition: "padding 0.25s",
             }}
           >
-            {/* Dashboard (default landing) */}
+            {/* Dashboard */}
             <button
               onClick={() => { setActivePage("zen-dashboard"); setActiveFolder(null); }}
               title="Dashboard"
-              style={bottomBtnStyle(activePage === "zen-dashboard" || activePage === null)}
-              onMouseEnter={(e) => { if (activePage !== "zen-dashboard" && activePage !== null) e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activePage !== "zen-dashboard" && activePage !== null) e.currentTarget.style.background = "transparent"; }}
+              style={bottomBtnStyle(activePage === "zen-dashboard")}
+              onMouseEnter={(e) => { if (activePage !== "zen-dashboard") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activePage !== "zen-dashboard") e.currentTarget.style.background = "transparent"; }}
             >
               <svg width={collapsed ? 16 : 14} height={collapsed ? 16 : 14} viewBox="0 0 16 16" fill="none">
-                <rect x="1" y="1" width="6" height="6" rx="1.5" stroke={(activePage === "zen-dashboard" || activePage === null) ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
-                <rect x="9" y="1" width="6" height="6" rx="1.5" stroke={(activePage === "zen-dashboard" || activePage === null) ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
-                <rect x="1" y="9" width="6" height="6" rx="1.5" stroke={(activePage === "zen-dashboard" || activePage === null) ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
-                <rect x="9" y="9" width="6" height="6" rx="1.5" stroke={(activePage === "zen-dashboard" || activePage === null) ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
+                <rect x="1" y="1" width="6" height="6" rx="1.5" stroke={activePage === "zen-dashboard" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
+                <rect x="9" y="1" width="6" height="6" rx="1.5" stroke={activePage === "zen-dashboard" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
+                <rect x="1" y="9" width="6" height="6" rx="1.5" stroke={activePage === "zen-dashboard" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
+                <rect x="9" y="9" width="6" height="6" rx="1.5" stroke={activePage === "zen-dashboard" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
               </svg>
-              {!collapsed && <span style={bottomLabelStyle(activePage === "zen-dashboard" || activePage === null)}>Dashboard</span>}
+              {!collapsed && <span style={bottomLabelStyle(activePage === "zen-dashboard")}>Dashboard</span>}
             </button>
 
-            {/* To-Do / Calendar */}
+            {/* To-Do / Calendar (default landing) */}
             <button
               onClick={() => { setActivePage("zen-tasks"); setActiveFolder(null); }}
               title="To-Do & Calendar"
-              style={bottomBtnStyle(activePage === "zen-tasks")}
-              onMouseEnter={(e) => { if (activePage !== "zen-tasks") e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activePage !== "zen-tasks") e.currentTarget.style.background = "transparent"; }}
+              style={bottomBtnStyle(activePage === "zen-tasks" || activePage === null)}
+              onMouseEnter={(e) => { if (activePage !== "zen-tasks" && activePage !== null) e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activePage !== "zen-tasks" && activePage !== null) e.currentTarget.style.background = "transparent"; }}
             >
-              <IconCalendar size={collapsed ? 16 : 14} color={activePage === "zen-tasks" ? "#fff" : C.darkMuted} />
-              {!collapsed && <span style={bottomLabelStyle(activePage === "zen-tasks")}>To-Do & Calendar</span>}
+              <IconCalendar size={collapsed ? 16 : 14} color={(activePage === "zen-tasks" || activePage === null) ? "#fff" : C.darkMuted} />
+              {!collapsed && <span style={bottomLabelStyle(activePage === "zen-tasks" || activePage === null)}>To-Do & Calendar</span>}
             </button>
 
             {/* Notes */}
@@ -307,6 +308,34 @@ export default function Navigation({
               </svg>
               {!collapsed && <span style={bottomLabelStyle(activePage === "zen-notes")}>Notes</span>}
             </button>
+
+            {/* Gmail (only when Google connected) */}
+            {googleConnected && (
+              <button
+                onClick={() => setActivePage("zen-gmail")}
+                title="Gmail"
+                style={bottomBtnStyle(activePage === "zen-gmail")}
+                onMouseEnter={(e) => { if (activePage !== "zen-gmail") e.currentTarget.style.background = C.darkSurf2; }}
+                onMouseLeave={(e) => { if (activePage !== "zen-gmail") e.currentTarget.style.background = "transparent"; }}
+              >
+                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                  <IconMail size={collapsed ? 16 : 14} color={activePage === "zen-gmail" ? "#fff" : C.darkMuted} />
+                  {unreadCount > 0 && (
+                    <span style={{
+                      position: "absolute", top: -5, right: -8,
+                      background: C.accent, color: "#fff",
+                      fontSize: 8, fontWeight: 700, fontFamily: FONT,
+                      borderRadius: 999, minWidth: 14, height: 14,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      padding: "0 3px", lineHeight: 1,
+                    }}>
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
+                </div>
+                {!collapsed && <span style={bottomLabelStyle(activePage === "zen-gmail")}>Gmail</span>}
+              </button>
+            )}
 
             {/* Settings */}
             <button
@@ -422,6 +451,7 @@ export default function Navigation({
               borderTop: `1px solid ${C.darkBorder}`,
               borderImage: `linear-gradient(90deg, ${C.darkBorder}, ${C.accent}44, ${C.accent}44, ${C.darkBorder}) 1`,
               padding: collapsed ? "6px 0" : "8px 12px",
+              paddingBottom: collapsed ? "calc(6px + env(safe-area-inset-bottom, 0px))" : "calc(8px + env(safe-area-inset-bottom, 0px))",
               display: "flex",
               flexDirection: "column",
               gap: 1,

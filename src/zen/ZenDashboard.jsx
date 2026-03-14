@@ -7,6 +7,7 @@ import React, { useState, useCallback, useEffect } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import WidgetGrid from "../components/WidgetGrid.jsx";
+import SashimiDrawer from "./SashimiDrawer.jsx";
 
 const STORAGE_KEY = "wasabi-zen-dashboard-widgets";
 
@@ -39,31 +40,34 @@ export default function ZenDashboard() {
     }}>
       {/* Header */}
       <div style={{
-        flexShrink: 0, height: 44, padding: "0 14px",
+        flexShrink: 0, padding: "14px 20px 12px",
         borderBottom: `1px solid ${C.darkBorder}`,
         display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
         <div style={{
-          fontSize: 13, fontWeight: 600, fontFamily: FONT, color: C.darkText,
-          display: "flex", alignItems: "center", gap: 8,
+          fontSize: 18, fontWeight: 600, fontFamily: FONT, color: "#fff",
+          display: "flex", alignItems: "center", gap: 10,
         }}>
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-            <rect x="1" y="1" width="6" height="6" rx="1.5" stroke={C.darkText} strokeWidth="1.3" fill="none" />
-            <rect x="9" y="1" width="6" height="6" rx="1.5" stroke={C.darkText} strokeWidth="1.3" fill="none" />
-            <rect x="1" y="9" width="6" height="6" rx="1.5" stroke={C.darkText} strokeWidth="1.3" fill="none" />
-            <rect x="9" y="9" width="6" height="6" rx="1.5" stroke={C.darkText} strokeWidth="1.3" fill="none" />
+          <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
+            <rect x="1" y="1" width="6" height="6" rx="1.5" stroke={C.accent} strokeWidth="1.3" fill="none" />
+            <rect x="9" y="1" width="6" height="6" rx="1.5" stroke={C.accent} strokeWidth="1.3" fill="none" />
+            <rect x="1" y="9" width="6" height="6" rx="1.5" stroke={C.accent} strokeWidth="1.3" fill="none" />
+            <rect x="9" y="9" width="6" height="6" rx="1.5" stroke={C.accent} strokeWidth="1.3" fill="none" />
           </svg>
           Dashboard
         </div>
       </div>
 
       {/* Widget canvas */}
-      <div style={{ flex: 1, overflow: "hidden", animation: ANIM.contentSwap() }}>
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", animation: ANIM.contentSwap() }}>
         <WidgetGrid
           widgets={widgets}
           onUpdateWidgets={handleUpdateWidgets}
         />
       </div>
+
+      {/* Sashimi drawer for widget interactions */}
+      <SashimiDrawer />
     </div>
   );
 }

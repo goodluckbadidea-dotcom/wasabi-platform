@@ -6,7 +6,7 @@ import React from "react";
 import { C, FONT, RADIUS } from "../../design/tokens.js";
 import { formatTime } from "../zenTaskHelpers.js";
 
-export default function CalendarEventBlock({ event, hourHeight, hourStart }) {
+export default function CalendarEventBlock({ event, hourHeight, hourStart, onClick }) {
   const color = event.calendarColor || C.accent;
   const start = event.start?.dateTime ? new Date(event.start.dateTime) : null;
   const end = event.end?.dateTime ? new Date(event.end.dateTime) : null;
@@ -21,6 +21,7 @@ export default function CalendarEventBlock({ event, hourHeight, hourStart }) {
 
   return (
     <div
+      onClick={(e) => { e.stopPropagation(); onClick?.(event); }}
       style={{
         position: "absolute",
         left: 48,
@@ -32,11 +33,12 @@ export default function CalendarEventBlock({ event, hourHeight, hourStart }) {
         borderLeft: `3px solid ${color}`,
         borderRadius: RADIUS.md,
         padding: "3px 6px",
-        fontSize: 10,
+        fontSize: 12,
         fontFamily: FONT,
         color: C.darkText,
         overflow: "hidden",
         zIndex: 2,
+        cursor: onClick ? "pointer" : "default",
       }}
     >
       <div style={{
@@ -45,7 +47,7 @@ export default function CalendarEventBlock({ event, hourHeight, hourStart }) {
       }}>
         {event.summary || "Untitled"}
       </div>
-      <div style={{ fontSize: 9, color: C.darkMuted, marginTop: 1 }}>
+      <div style={{ fontSize: 10, color: C.darkMuted, marginTop: 1 }}>
         {formatTime(event.start.dateTime)}
         {end ? ` – ${formatTime(event.end.dateTime)}` : ""}
       </div>

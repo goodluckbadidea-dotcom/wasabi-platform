@@ -10,7 +10,7 @@ import { isSameDay, getMonthRange } from "../zenTaskHelpers.js";
 const DAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MAX_VISIBLE_ITEMS = 2;
 
-export default function MonthGrid({ monthDate, events, tasks, onDayClick, hiddenCalendars }) {
+export default function MonthGrid({ monthDate, events, tasks, onDayClick, hiddenCalendars, onEventClick, onTaskClick }) {
   const hidden = hiddenCalendars || new Set();
   const today = useMemo(() => new Date(), []);
   const currentMonth = monthDate.getMonth();
@@ -68,7 +68,8 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
             style={{
               padding: "6px 4px",
               textAlign: "center",
-              fontSize: 9,
+              fontSize: 10,
+              fontWeight: 600,
               fontFamily: FONT,
               color: C.darkMuted,
               textTransform: "uppercase",
@@ -132,19 +133,21 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
               {dayEvents.slice(0, MAX_VISIBLE_ITEMS).map((ev, i) => {
                 const color = ev.calendarColor || C.accent;
                 return (
-                  <div key={ev.id || i} style={{
+                  <div key={ev.id || i} onClick={(e) => { e.stopPropagation(); onEventClick?.(ev); }} style={{
                     padding: "1px 3px",
                     marginBottom: 1,
                     background: color + "22",
                     borderLeft: `2px solid ${color}`,
                     borderRadius: 2,
-                    fontSize: 8,
+                    fontSize: 10,
+                    fontWeight: 600,
                     fontFamily: FONT,
                     color: C.darkText,
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     lineHeight: "12px",
+                    cursor: onEventClick ? "pointer" : "default",
                   }}>
                     {ev.summary || "Untitled"}
                   </div>
@@ -153,16 +156,18 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
 
               {/* Task dots */}
               {dayTasks.slice(0, Math.max(0, MAX_VISIBLE_ITEMS - dayEvents.length)).map((t) => (
-                <div key={t.id} style={{
+                <div key={t.id} onClick={(e) => { e.stopPropagation(); onTaskClick?.(t); }} style={{
                   padding: "1px 3px",
                   marginBottom: 1,
                   display: "flex",
                   alignItems: "center",
                   gap: 3,
-                  fontSize: 8,
+                  fontSize: 10,
+                  fontWeight: 500,
                   fontFamily: FONT,
                   color: C.darkMuted,
                   lineHeight: "12px",
+                  cursor: onTaskClick ? "pointer" : "default",
                 }}>
                   <div style={{
                     width: 4, height: 4, borderRadius: "50%",
@@ -180,7 +185,7 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
               {/* Overflow */}
               {overflow && (
                 <div style={{
-                  fontSize: 8, fontFamily: FONT, color: C.darkMuted,
+                  fontSize: 9, fontFamily: FONT, color: C.darkMuted,
                   padding: "0 3px", opacity: 0.6, lineHeight: "12px",
                 }}>
                   +{totalItems - MAX_VISIBLE_ITEMS}

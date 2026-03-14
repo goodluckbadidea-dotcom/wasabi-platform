@@ -4,10 +4,11 @@
 // Fetches events from ALL connected Google calendars with per-calendar colors.
 // Includes a filter dropdown to toggle individual calendars on/off.
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { getGoogleStatus, listCalendarEvents } from "../lib/api.js";
 import { isSameDay, getWeekRange, getMonthRange, getListViewRange, formatWeekDateHeader, formatMonthHeader } from "./zenTaskHelpers.js";
+import { useSashimiDrawer } from "./SashimiDrawerContext.jsx";
 import DayColumn from "./calendar/DayColumn.jsx";
 import WeekListView from "./calendar/WeekListView.jsx";
 import MonthGrid from "./calendar/MonthGrid.jsx";
@@ -35,7 +36,8 @@ function saveHiddenCalendars(set) {
   localStorage.setItem(HIDDEN_KEY, JSON.stringify([...set]));
 }
 
-export default function ZenCalendar({ allTasks }) {
+export default function ZenCalendar({ allTasks, refreshRef }) {
+  const { openDrawer } = useSashimiDrawer();
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [viewMode, setViewMode] = useState("day"); // "day" | "week" | "month"
   const [googleConnected, setGoogleConnected] = useState(false);
@@ -46,6 +48,7 @@ export default function ZenCalendar({ allTasks }) {
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [error, setError] = useState(null); // "auth" | "fetch" | null
+  const [refreshCounter, setRefreshCounter] = useState(0);
 
   const today = useMemo(() => new Date(), []);
   const isViewingToday = isSameDay(selectedDate, today);
@@ -101,7 +104,7 @@ export default function ZenCalendar({ allTasks }) {
     }
     load();
     return () => { cancelled = true; };
-  }, [fetchRange]);
+  }, [fetchRange, refreshCounter]);
 
   // ── Navigation ──
   const goToday = useCallback(() => setSelectedDate(new Date()), []);
@@ -155,6 +158,23 @@ export default function ZenCalendar({ allTasks }) {
     });
   }, []);
 
+  // ── Event click → open drawer ──
+  const handleEventClick = useCallback((event) => {
+    openDrawer("event", event);
+  }, [openDrawer]);
+
+  // ── Task click (from calendar) → open drawer ──
+  const handleTaskClick = useCallback((task) => {
+    openDrawer("task", task);
+  }, [openDrawer]);
+
+  // ── Expose refresh for parent (drawer callbacks) ──
+  useEffect(() => {
+    if (refreshRef) {
+      refreshRef.current = () => setRefreshCounter((c) => c + 1);
+    }
+  }, [refreshRef]);
+
   // ── Date label ──
   const dateLabel = viewMode === "month"
     ? formatMonthHeader(selectedDate)
@@ -173,9 +193,9 @@ export default function ZenCalendar({ allTasks }) {
     }}>
       {/* ── Header ── */}
       <div style={{
-        flexShrink: 0, height: 44, padding: "0 14px",
+        flexShrink: 0, height: 48, padding: "0 20px",
         borderBottom: `1px solid ${C.darkBorder}`,
-        display: "flex", alignItems: "center", gap: 6,
+        display: "flex", alignItems: "center", gap: 8,
         position: "relative",
       }}>
         {/* Nav arrows + Today */}
@@ -188,8 +208,8 @@ export default function ZenCalendar({ allTasks }) {
           onClick={goToday}
           style={{
             ...navBtnStyle,
-            fontSize: 10, fontFamily: FONT, color: C.darkMuted,
-            padding: "2px 6px", opacity: isViewingToday ? 0.4 : 0.7,
+            fontSize: 11, fontFamily: FONT, color: C.darkMuted,
+            padding: "2px 8px", opacity: isViewingToday ? 0.4 : 0.7,
           }}
         >
           Today
@@ -202,8 +222,8 @@ export default function ZenCalendar({ allTasks }) {
 
         {/* Date label */}
         <div style={{
-          flex: 1, fontSize: 12, fontWeight: 600,
-          fontFamily: FONT, color: C.darkText, marginLeft: 4,
+          flex: 1, fontSize: 16, fontWeight: 600,
+          fontFamily: FONT, color: "#fff", marginLeft: 4,
         }}>
           {dateLabel}
         </div>
@@ -315,6 +335,8 @@ export default function ZenCalendar({ allTasks }) {
           tasks={allTasks}
           isToday={isViewingToday}
           hiddenCalendars={hiddenCalendars}
+          onEventClick={handleEventClick}
+          onTaskClick={handleTaskClick}
         />
       ) : viewMode === "week" ? (
         <WeekListView
@@ -323,6 +345,8 @@ export default function ZenCalendar({ allTasks }) {
           tasks={allTasks}
           onDayClick={handleDayClick}
           hiddenCalendars={hiddenCalendars}
+          onEventClick={handleEventClick}
+          onTaskClick={handleTaskClick}
         />
       ) : (
         <MonthGrid
@@ -331,6 +355,8 @@ export default function ZenCalendar({ allTasks }) {
           tasks={allTasks}
           onDayClick={handleDayClick}
           hiddenCalendars={hiddenCalendars}
+          onEventClick={handleEventClick}
+          onTaskClick={handleTaskClick}
         />
       )}
 

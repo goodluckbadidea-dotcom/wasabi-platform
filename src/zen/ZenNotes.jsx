@@ -164,19 +164,19 @@ export default function ZenNotes() {
     }}>
       {/* ── Header ── */}
       <div style={{
-        flexShrink: 0, height: 44, padding: "0 14px",
+        flexShrink: 0, padding: "14px 20px 12px",
         borderBottom: `1px solid ${C.darkBorder}`,
         display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
         <div style={{
-          fontSize: 13, fontWeight: 600, fontFamily: FONT, color: C.darkText,
-          display: "flex", alignItems: "center", gap: 8,
+          fontSize: 18, fontWeight: 600, fontFamily: FONT, color: "#fff",
+          display: "flex", alignItems: "center", gap: 10,
         }}>
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-            <rect x="3" y="2" width="10" height="12" rx="1.5" stroke={C.darkText} strokeWidth="1.3" fill="none" />
-            <line x1="5.5" y1="5.5" x2="10.5" y2="5.5" stroke={C.darkText} strokeWidth="1" />
-            <line x1="5.5" y1="8" x2="10.5" y2="8" stroke={C.darkText} strokeWidth="1" />
-            <line x1="5.5" y1="10.5" x2="8.5" y2="10.5" stroke={C.darkText} strokeWidth="1" />
+          <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
+            <rect x="3" y="2" width="10" height="12" rx="1.5" stroke={C.accent} strokeWidth="1.3" fill="none" />
+            <line x1="5.5" y1="5.5" x2="10.5" y2="5.5" stroke={C.accent} strokeWidth="1" />
+            <line x1="5.5" y1="8" x2="10.5" y2="8" stroke={C.accent} strokeWidth="1" />
+            <line x1="5.5" y1="10.5" x2="8.5" y2="10.5" stroke={C.accent} strokeWidth="1" />
           </svg>
           Notes
         </div>

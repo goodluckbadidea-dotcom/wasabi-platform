@@ -5,7 +5,7 @@
 import React from "react";
 import { C, FONT, RADIUS } from "../../design/tokens.js";
 
-export default function CalendarTaskBlock({ task, hourHeight, hourStart }) {
+export default function CalendarTaskBlock({ task, hourHeight, hourStart, onClick }) {
   if (!task.due) return null;
   const d = new Date(task.due);
   // Only render on the grid if the due date has a time component
@@ -19,6 +19,7 @@ export default function CalendarTaskBlock({ task, hourHeight, hourStart }) {
 
   return (
     <div
+      onClick={(e) => { e.stopPropagation(); onClick?.(task); }}
       style={{
         position: "absolute",
         left: 48,
@@ -29,7 +30,7 @@ export default function CalendarTaskBlock({ task, hourHeight, hourStart }) {
         border: `1px dashed ${C.accent}44`,
         borderRadius: RADIUS.md,
         padding: "3px 6px",
-        fontSize: 10,
+        fontSize: 12,
         fontFamily: FONT,
         color: C.darkText,
         overflow: "hidden",
@@ -37,6 +38,7 @@ export default function CalendarTaskBlock({ task, hourHeight, hourStart }) {
         display: "flex",
         alignItems: "center",
         gap: 6,
+        cursor: onClick ? "pointer" : "default",
       }}
     >
       <div style={{
@@ -44,6 +46,7 @@ export default function CalendarTaskBlock({ task, hourHeight, hourStart }) {
         background: C.accent, flexShrink: 0,
       }} />
       <span style={{
+        fontWeight: 500,
         whiteSpace: "nowrap", overflow: "hidden",
         textOverflow: "ellipsis", flex: 1,
       }}>

@@ -8,6 +8,7 @@ import React, { useState, useCallback, useEffect, useRef } from "react";
 import { PlatformProvider, usePlatform } from "./context/PlatformContext.jsx";
 import { LinksProvider } from "./context/LinksContext.jsx";
 import { NeuronsProvider } from "./neurons/NeuronsContext.jsx";
+import { SashimiDrawerProvider } from "./zen/SashimiDrawerContext.jsx";
 import { ThemeProvider, useTheme } from "./context/ThemeContext.jsx";
 import { injectAnimations, ANIM, TRANSITION } from "./design/animations.js";
 import { S } from "./design/styles.js";
@@ -49,6 +50,7 @@ const BuildPage = React.lazy(() => import("./core/BuildPage.jsx"));
 const ZenTasksView = React.lazy(() => import("./zen/ZenTasksView.jsx"));
 const ZenNotes = React.lazy(() => import("./zen/ZenNotes.jsx"));
 const ZenDashboard = React.lazy(() => import("./zen/ZenDashboard.jsx"));
+const ZenGmail = React.lazy(() => import("./zen/ZenGmail.jsx"));
 
 // Inject CSS animations on app load
 injectAnimations();
@@ -299,26 +301,38 @@ function AppContent() {
           </React.Suspense>
         );
       }
-      // Zen Tasks split view (To-Do + Calendar)
-      if (activePage === "zen-tasks") {
+      // Zen Dashboard
+      if (activePage === "zen-dashboard") {
         return (
           <React.Suspense fallback={
             <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
               Loading...
             </div>
           }>
-            <ZenTasksView />
+            <ZenDashboard />
           </React.Suspense>
         );
       }
-      // Default: Dashboard (zen-dashboard or null)
+      // Zen Gmail
+      if (activePage === "zen-gmail") {
+        return (
+          <React.Suspense fallback={
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
+              Loading...
+            </div>
+          }>
+            <ZenGmail />
+          </React.Suspense>
+        );
+      }
+      // Default: Tasks split view (To-Do + Calendar)
       return (
         <React.Suspense fallback={
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
             Loading...
           </div>
         }>
-          <ZenDashboard />
+          <ZenTasksView />
         </React.Suspense>
       );
     }
@@ -445,8 +459,8 @@ function AppContent() {
       style={{
         display: "flex",
         flexDirection: "column",
-        height: "100vh",
-        width: "100vw",
+        height: "100%",
+        width: "100%",
         fontFamily: "'Outfit','DM Sans',sans-serif",
         color: C.darkText,
         background: C.dark,
@@ -489,6 +503,7 @@ function AppContent() {
             animation: ANIM.snapInLeft(0.02),
             display: "flex",
             flexShrink: 0,
+            borderRight: `1px solid ${C.edgeLine}`,
           }}>
             {appMode === "zen" ? (
               <React.Suspense fallback={null}>
@@ -545,21 +560,19 @@ function AppContent() {
         )}
 
         {/* Gradient bridge line between sidebar and content */}
-        {!wasabiPanelOpen && (
-          <div
-            style={{
-              position: "absolute",
-              left: sidebarW,
-              top: 0,
-              bottom: 0,
-              width: 1,
-              zIndex: 1,
-              pointerEvents: "none",
-              background: `linear-gradient(180deg, ${C.edgeLine}00 0%, ${C.edgeLine} 20%, ${C.accent}44 40%, ${C.accent}55 60%, ${C.edgeLine} 85%, ${C.edgeLine}00 100%)`,
-              transition: "left 0.32s cubic-bezier(0.25, 1, 0.5, 1)",
-            }}
-          />
-        )}
+        <div
+          style={{
+            position: "absolute",
+            left: panelW + sidebarW,
+            top: 0,
+            bottom: 0,
+            width: 1,
+            zIndex: 1,
+            pointerEvents: "none",
+            background: `linear-gradient(180deg, ${C.edgeLine}00 0%, ${C.edgeLine} 20%, ${C.accent}44 40%, ${C.accent}55 60%, ${C.edgeLine} 85%, ${C.edgeLine}00 100%)`,
+            transition: "left 0.32s cubic-bezier(0.25, 1, 0.5, 1)",
+          }}
+        />
 
         {/* Left Sidebar */}
         <Navigation
@@ -601,9 +614,11 @@ export default function App() {
       <PlatformProvider>
         <LinksProvider>
           <NeuronsProvider>
-            <ErrorBoundary fallbackLabel="Wasabi Platform">
-              <AppContent />
-            </ErrorBoundary>
+            <SashimiDrawerProvider>
+              <ErrorBoundary fallbackLabel="Wasabi Platform">
+                <AppContent />
+              </ErrorBoundary>
+            </SashimiDrawerProvider>
           </NeuronsProvider>
         </LinksProvider>
       </PlatformProvider>

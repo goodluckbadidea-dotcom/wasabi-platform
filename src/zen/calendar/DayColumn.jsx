@@ -13,7 +13,7 @@ const HOUR_START = 7;
 const HOUR_END = 22;
 const HOUR_HEIGHT = 48;
 
-export default function DayColumn({ date, events, tasks, isToday: isTodayProp, hiddenCalendars }) {
+export default function DayColumn({ date, events, tasks, isToday: isTodayProp, hiddenCalendars, onEventClick, onTaskClick }) {
   const nowLineRef = useRef(null);
   const scrollRef = useRef(null);
 
@@ -84,18 +84,19 @@ export default function DayColumn({ date, events, tasks, isToday: isTodayProp, h
               {allDayEvents.map((ev) => {
                 const color = ev.calendarColor || C.accent;
                 return (
-                  <div key={ev.id} style={{
+                  <div key={ev.id} onClick={() => onEventClick?.(ev)} style={{
                     display: "flex", alignItems: "center", gap: 6,
                     padding: "3px 6px", marginBottom: 2,
                     background: color + "22",
                     borderLeft: `3px solid ${color}`,
                     borderRadius: 4,
-                    fontSize: 10, fontFamily: FONT, color: C.darkText,
+                    fontSize: 12, fontFamily: FONT, color: C.darkText,
+                    cursor: onEventClick ? "pointer" : "default",
                   }}>
                     <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {ev.summary || "Untitled"}
                     </span>
-                    <span style={{ fontSize: 9, color: C.darkMuted, flexShrink: 0 }}>All day</span>
+                    <span style={{ fontSize: 10, color: C.darkMuted, flexShrink: 0 }}>All day</span>
                   </div>
                 );
               })}
@@ -104,16 +105,17 @@ export default function DayColumn({ date, events, tasks, isToday: isTodayProp, h
           {dateOnlyTasks.length > 0 && (
             <div>
               <div style={{
-                fontSize: 9, fontFamily: FONT, fontWeight: 600,
+                fontSize: 10, fontFamily: FONT, fontWeight: 600,
                 color: C.darkMuted, letterSpacing: "0.06em",
                 textTransform: "uppercase", marginBottom: 4,
               }}>
                 Due
               </div>
               {dateOnlyTasks.map((task) => (
-                <div key={task.id} style={{
+                <div key={task.id} onClick={() => onTaskClick?.(task)} style={{
                   display: "flex", alignItems: "center", gap: 6,
-                  padding: "3px 0", fontSize: 10, fontFamily: FONT, color: C.darkText,
+                  padding: "3px 0", fontSize: 12, fontFamily: FONT, color: C.darkText, fontWeight: 500,
+                  cursor: onTaskClick ? "pointer" : "default",
                 }}>
                   <div style={{
                     width: 6, height: 6, borderRadius: "50%",
@@ -149,8 +151,8 @@ export default function DayColumn({ date, events, tasks, isToday: isTodayProp, h
               }}
             >
               <span style={{
-                fontSize: 9, fontFamily: FONT, color: C.darkMuted,
-                width: 44, flexShrink: 0, opacity: 0.7,
+                fontSize: 11, fontFamily: FONT, color: C.darkMuted,
+                width: 44, flexShrink: 0, opacity: 0.7, fontWeight: 500,
               }}>
                 {formatHour(hour)}
               </span>
@@ -188,6 +190,7 @@ export default function DayColumn({ date, events, tasks, isToday: isTodayProp, h
             event={event}
             hourHeight={HOUR_HEIGHT}
             hourStart={HOUR_START}
+            onClick={onEventClick}
           />
         ))}
 
@@ -198,6 +201,7 @@ export default function DayColumn({ date, events, tasks, isToday: isTodayProp, h
             task={task}
             hourHeight={HOUR_HEIGHT}
             hourStart={HOUR_START}
+            onClick={onTaskClick}
           />
         ))}
       </div>
