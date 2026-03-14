@@ -72,7 +72,7 @@ function AppContent() {
   const { toggleOverlay: toggleNeurons } = useNeurons();
 
   // ── UI State ──
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(appMode === "zen");
   const [wasabiPanelOpen, setWasabiPanelOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [viewStates, setViewStates] = useState({}); // { [pageId]: activeViewIndex }
@@ -86,6 +86,7 @@ function AppContent() {
   useEffect(() => {
     if (prevAppMode.current !== appMode) {
       setModeTransitioning(true);
+      if (appMode === "zen") setSidebarCollapsed(true);
       const timer = setTimeout(() => setModeTransitioning(false), 200);
       prevAppMode.current = appMode;
       return () => clearTimeout(timer);

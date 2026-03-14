@@ -231,7 +231,7 @@ export default function Navigation({
           {!collapsed && (
             <div style={{
               flexShrink: 0, borderBottom: `1px solid ${C.darkBorder}`,
-              padding: "12px 14px", display: "flex", alignItems: "center", gap: 8,
+              height: 44, padding: "0 14px", display: "flex", alignItems: "center", gap: 8,
             }}>
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
                 <circle cx="8" cy="8" r="6" stroke={C.accent} strokeWidth="1.5" fill="none" />
