@@ -59,9 +59,17 @@ export function normalizeNotionTask(page, schema, dbName) {
     }
   }
 
-  // Find status/done
+  // Find status/done + track field mapping for writes
   let done = false;
   let status = null;
+  const _fieldMap = {};   // { status: "Status", priority: "Priority", due: "Due Date", title: "Name" }
+  const _statusOptions = [];  // [{ name: "To Do", color: "..." }, ...]
+  const _statusFieldType = null; // "status" | "select" | "checkbox"
+
+  // Track title field name
+  if (schema?.title) _fieldMap.title = schema.title;
+
+  let statusFieldType = null;
   for (const field of (schema?.statuses || [])) {
     const val = readNotionProp(props[field.name]);
     if (val) {
@@ -69,24 +77,34 @@ export function normalizeNotionTask(page, schema, dbName) {
       const lower = String(val).toLowerCase();
       done = lower === "done" || lower === "complete" || lower === "completed";
     }
+    // Always capture the first status field mapping + options
+    if (!_fieldMap.status) {
+      _fieldMap.status = field.name;
+      statusFieldType = "status";
+      if (field.options) _statusOptions.push(...field.options);
+    }
   }
   for (const field of (schema?.checkboxes || [])) {
     const val = props[field.name];
     if (val?.type === "checkbox") {
       done = !!val.checkbox;
+      if (!_fieldMap.done) {
+        _fieldMap.done = field.name;
+      }
     }
   }
 
-  // Find priority
+  // Find priority + track field mapping
   let priority = null;
   for (const field of (schema?.selects || [])) {
     const name = field.name.toLowerCase();
     if (name.includes("priority") || name.includes("urgency")) {
       priority = readNotionProp(props[field.name]);
+      if (!_fieldMap.priority) _fieldMap.priority = field.name;
     }
   }
 
-  // Find due date
+  // Find due date + track field mapping
   let due = null;
   for (const field of (schema?.dates || [])) {
     const name = field.name.toLowerCase();
@@ -95,6 +113,7 @@ export function normalizeNotionTask(page, schema, dbName) {
       if (val) {
         due = typeof val === "object" ? val.start : val;
       }
+      if (!_fieldMap.due) _fieldMap.due = field.name;
     }
   }
 
@@ -109,6 +128,9 @@ export function normalizeNotionTask(page, schema, dbName) {
     source: `notion:${page._databaseId || "unknown"}`,
     sourceName: dbName || "Database",
     _raw: page,
+    _fieldMap,
+    _statusOptions,
+    _statusFieldType: statusFieldType,
   };
 }
 
