@@ -80,6 +80,18 @@ function AppContent() {
   const [activePageData, setActivePageData] = useState(null); // { data, schema } from PageShell for WasabiPanel chat
   const [pendingChatMessage, setPendingChatMessage] = useState(null); // Scaffold from FunctionBuilder → WasabiPanel
 
+  // ── Narrow viewport detection (tablet / iPad) ──
+  const [isNarrow, setIsNarrow] = useState(() => typeof window !== "undefined" && window.innerWidth < 1024);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const handler = (e) => {
+      setIsNarrow(e.matches);
+      if (e.matches) setSidebarCollapsed(true);
+    };
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
   // ── Mode transition fade ──
   const [modeTransitioning, setModeTransitioning] = useState(false);
   const prevAppMode = useRef(appMode);
@@ -456,8 +468,8 @@ function AppContent() {
           position: "relative",
         }}
       >
-        {/* Wasabi Panel (collapsible, left of sidebar) */}
-        {wasabiPanelOpen && (
+        {/* Wasabi Panel (inline on desktop, overlay on narrow viewports) */}
+        {wasabiPanelOpen && !isNarrow && (
           <div style={{
             animation: ANIM.snapInLeft(0.02),
             display: "flex",
@@ -478,6 +490,43 @@ function AppContent() {
               />
             )}
           </div>
+        )}
+        {wasabiPanelOpen && isNarrow && (
+          <>
+            {/* Backdrop */}
+            <div
+              onClick={() => setWasabiPanelOpen(false)}
+              style={{
+                position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+                background: "rgba(0,0,0,0.5)",
+                zIndex: 900,
+                animation: ANIM.backdropFade,
+              }}
+            />
+            {/* Overlay panel */}
+            <div style={{
+              position: "fixed", top: 0, left: 0, bottom: 0,
+              width: "min(320px, 85vw)",
+              zIndex: 901,
+              display: "flex",
+              animation: ANIM.drawerSlideLeft,
+            }}>
+              {appMode === "zen" ? (
+                <React.Suspense fallback={null}>
+                  <ZenChatPanel onClose={() => setWasabiPanelOpen(false)} />
+                </React.Suspense>
+              ) : (
+                <WasabiPanel
+                  onClose={() => setWasabiPanelOpen(false)}
+                  isThinking={false}
+                  activePageConfig={activePageConfig}
+                  activePageData={activePageData}
+                  pendingChatMessage={pendingChatMessage}
+                  onClearPendingMessage={() => setPendingChatMessage(null)}
+                />
+              )}
+            </div>
+          </>
         )}
 
         {/* Gradient bridge line between sidebar and content */}

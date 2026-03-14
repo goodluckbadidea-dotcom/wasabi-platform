@@ -255,11 +255,10 @@ export default function Navigation({
               flexShrink: 0,
               borderTop: `1px solid ${C.darkBorder}`,
               borderImage: `linear-gradient(90deg, ${C.darkBorder}, ${C.accent}44, ${C.accent}44, ${C.darkBorder}) 1`,
-              padding: collapsed ? "8px 0" : "8px 12px",
+              padding: collapsed ? "6px 0" : "8px 12px",
               display: "flex",
               flexDirection: "column",
-              gap: 2,
-              overflow: "hidden",
+              gap: 1,
               transition: "padding 0.25s",
             }}
           >
@@ -312,17 +311,17 @@ export default function Navigation({
                   background: "none", border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center",
                   gap: collapsed ? 0 : 10,
-                  padding: collapsed ? "6px 0" : "6px 8px",
+                  padding: collapsed ? "4px 0" : "6px 8px",
                   borderRadius: RADIUS.lg, transition: "background 0.15s",
                   outline: "none", width: "100%",
                   justifyContent: collapsed ? "center" : "flex-start",
-                  marginTop: 2,
+                  marginTop: 1,
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                 title="Open Wasabi"
               >
-                <WasabiFlame size={collapsed ? 26 : 30} isThinking={isThinking} />
+                <WasabiFlame size={collapsed ? 22 : 30} isThinking={isThinking} />
                 {!collapsed && (
                   <span style={{
                     fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: 500,
@@ -405,11 +404,12 @@ export default function Navigation({
               flexShrink: 0,
               borderTop: `1px solid ${C.darkBorder}`,
               borderImage: `linear-gradient(90deg, ${C.darkBorder}, ${C.accent}44, ${C.accent}44, ${C.darkBorder}) 1`,
-              padding: collapsed ? "8px 0" : "8px 12px",
+              padding: collapsed ? "6px 0" : "8px 12px",
               display: "flex",
               flexDirection: "column",
-              gap: 2,
-              overflow: "hidden",
+              gap: 1,
+              overflowY: "auto",
+              overflowX: "hidden",
               transition: "padding 0.25s",
             }}
           >
@@ -551,17 +551,17 @@ export default function Navigation({
                   background: "none", border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center",
                   gap: collapsed ? 0 : 10,
-                  padding: collapsed ? "6px 0" : "6px 8px",
+                  padding: collapsed ? "4px 0" : "6px 8px",
                   borderRadius: RADIUS.lg, transition: "background 0.15s",
                   outline: "none", width: "100%",
                   justifyContent: collapsed ? "center" : "flex-start",
-                  marginTop: 2,
+                  marginTop: 1,
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                 title="Open Wasabi"
               >
-                <WasabiFlame size={collapsed ? 26 : 30} isThinking={isThinking} />
+                <WasabiFlame size={collapsed ? 22 : 30} isThinking={isThinking} />
                 {!collapsed && (
                   <span style={{
                     fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: 500,
