@@ -8,7 +8,7 @@ import { C, FONT, RADIUS } from "../design/tokens.js";
 import useZenTasks from "./useZenTasks.js";
 import useAICuratedTasks from "./useAICuratedTasks.js";
 import TaskList from "./TaskList.jsx";
-import TodaySchedule from "./TodaySchedule.jsx";
+import ZenCalendar from "./ZenCalendar.jsx";
 import { ErrorBoundary } from "../core/ErrorBoundary.jsx";
 
 export default function ZenTasksView() {
@@ -136,8 +136,8 @@ export default function ZenTasksView() {
         flexDirection: "column",
         overflow: "hidden",
       }}>
-        <ErrorBoundary fallbackLabel="Today's Schedule">
-          <TodaySchedule todayTasks={allTasks} />
+        <ErrorBoundary fallbackLabel="Calendar">
+          <ZenCalendar allTasks={allTasks} />
         </ErrorBoundary>
       </div>
     </div>

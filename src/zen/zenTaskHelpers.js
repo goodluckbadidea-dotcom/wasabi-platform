@@ -163,6 +163,67 @@ export function formatDueDate(dateStr) {
   return `${months[d.getMonth()]} ${d.getDate()}`;
 }
 
+// ── Calendar date helpers ──
+
+/** Compare two dates ignoring time */
+export function isSameDay(a, b) {
+  if (!a || !b) return false;
+  const da = new Date(a);
+  const db = new Date(b);
+  return da.getFullYear() === db.getFullYear() &&
+    da.getMonth() === db.getMonth() &&
+    da.getDate() === db.getDate();
+}
+
+/** Get Mon–Sun week range for a given date */
+export function getWeekRange(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day; // Monday start
+  const start = new Date(d);
+  start.setDate(d.getDate() + diff);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
+}
+
+/** Return array of 7 Date objects (Mon–Sun) for the week containing date */
+export function getWeekColumns(date) {
+  const { start } = getWeekRange(date);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    return d;
+  });
+}
+
+/** Format a date string to time: "2:30 PM" */
+export function formatTime(dateStr) {
+  const d = new Date(dateStr);
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+/** Format an hour number: 7 → "7 AM", 12 → "12 PM" */
+export function formatHour(h) {
+  if (h === 0) return "12 AM";
+  if (h < 12) return `${h} AM`;
+  if (h === 12) return "12 PM";
+  return `${h - 12} PM`;
+}
+
+/** Format week date range header: "Mar 10 – 16, 2026" */
+export function formatWeekDateHeader(start, end) {
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const sMonth = months[start.getMonth()];
+  const eMonth = months[end.getMonth()];
+  if (start.getMonth() === end.getMonth()) {
+    return `${sMonth} ${start.getDate()} – ${end.getDate()}, ${end.getFullYear()}`;
+  }
+  return `${sMonth} ${start.getDate()} – ${eMonth} ${end.getDate()}, ${end.getFullYear()}`;
+}
+
 // ── Cache helpers ──
 
 export function getCached(key, ttlMs) {
