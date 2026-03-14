@@ -6,7 +6,7 @@ import { expandTemplate } from "./automations.js";
 import { updatePage, createPage } from "../notion/client.js";
 import * as api from "../lib/api.js";
 import { safeJSON } from "../utils/helpers.js";
-import { executeSandbox } from "./toolExecutor.js";
+import { executeSandbox, executePluginSandbox } from "./toolExecutor.js";
 
 /**
  * Topologically sort nodes starting from trigger nodes,
@@ -329,6 +329,9 @@ async function executeTransform(node, inputs) {
   if (node.subtype === "execute_function") {
     return await executeFunctionNode(node, inputs);
   }
+  if (node.subtype === "execute_plugin") {
+    return await executePluginNode(node, inputs);
+  }
   const template = node.config?.template || "";
   const result = expandTemplate(template, inputs);
   return { ...inputs, result, _transformed: true };
@@ -386,6 +389,67 @@ async function executeFunctionNode(node, inputs) {
     return { ...inputs, [node.config.outputKey]: result.result, _functionResult: true };
   }
   return { ...inputs, result: result.result, _functionResult: true };
+}
+
+/**
+ * Execute a plugin node in a flow.
+ * Fetches the plugin from D1, runs with extended sandbox, passes config.
+ */
+async function executePluginNode(node, inputs) {
+  const { pluginId } = node.config || {};
+  if (!pluginId) throw new Error("No plugin selected for this node.");
+
+  const fn = await api.getCustomFunction(pluginId);
+  if (!fn || fn._error) throw new Error(`Plugin not found: ${pluginId}`);
+
+  const meta = typeof fn.meta === "string" ? JSON.parse(fn.meta) : fn.meta;
+  const manifest = meta?.manifest || {};
+
+  // Build datasets from upstream inputs
+  const datasets = {};
+  if (inputs && typeof inputs === "object") {
+    if (inputs.results && Array.isArray(inputs.results)) {
+      datasets.data = inputs.results;
+    } else {
+      Object.assign(datasets, inputs);
+    }
+  }
+
+  // Build config from manifest defaults + node overrides
+  const pluginConfig = {};
+  if (manifest.ui?.configSchema) {
+    for (const [k, v] of Object.entries(manifest.ui.configSchema)) pluginConfig[k] = v.default ?? null;
+  }
+  if (node.config?.config) Object.assign(pluginConfig, node.config.config);
+
+  const execStart = Date.now();
+  const result = executePluginSandbox(fn.code, datasets, manifest, pluginConfig, fn.description || fn.name);
+  const durationMs = Date.now() - execStart;
+
+  // Log execution (non-blocking)
+  try {
+    api.createFunctionExecution({
+      function_id: pluginId,
+      function_name: fn.name || "",
+      trigger_source: "flow",
+      status: result.success ? "success" : "error",
+      input_summary: JSON.stringify({ datasets: Object.keys(datasets) }),
+      output_summary: JSON.stringify({ type: typeof result.result }),
+      duration_ms: durationMs,
+      error: result.success ? "" : "execution failed",
+    }).catch(() => {});
+  } catch { /* ignore */ }
+
+  if (!result.success) throw new Error(`Plugin "${fn.name}" execution failed`);
+
+  // Handle data+view output
+  const output = result.result;
+  const finalResult = output?.viewSpec ? output.data : output;
+
+  if (node.config?.outputKey) {
+    return { ...inputs, [node.config.outputKey]: finalResult, _functionResult: true };
+  }
+  return { ...inputs, result: finalResult, _functionResult: true };
 }
 
 /**

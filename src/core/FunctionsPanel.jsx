@@ -21,6 +21,10 @@ const TYPE_COLORS = {
   transform: "#2196F3",
   aggregation: "#9C27B0",
   pipeline: "#FF9800",
+  view: "#E91E63",
+  plugin: "#7C4DFF",
+  forecast: "#00BCD4",
+  alert: "#FF5722",
 };
 
 export default function FunctionsPanel({ onOpenChat }) {

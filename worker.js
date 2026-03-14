@@ -4099,6 +4099,145 @@ function executeSandboxServer(code, datasets) {
   return { success: true, result };
 }
 
+// ─── Extended Server Helpers (Plugins) ───
+
+// Formatters
+const _srvCurrency = (n, currency = "USD") => {
+  try { return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(n || 0); }
+  catch { return `$${(Number(n) || 0).toFixed(2)}`; }
+};
+const _srvPercent = (n, decimals = 1) => (Number(n) || 0).toFixed(decimals) + "%";
+const _srvCompact = (n) => {
+  const v = Number(n) || 0;
+  if (Math.abs(v) >= 1e6) return (v / 1e6).toFixed(1) + "M";
+  if (Math.abs(v) >= 1e3) return (v / 1e3).toFixed(1) + "K";
+  return String(v);
+};
+
+// Collection
+const _srvFlatten = (arr) => (arr || []).flat(Infinity);
+const _srvPick = (obj, keys) => {
+  const result = {};
+  for (const k of (keys || [])) { if (obj?.[k] !== undefined) result[k] = obj[k]; }
+  return result;
+};
+const _srvOmit = (obj, keys) => {
+  const keySet = new Set(keys || []);
+  const result = {};
+  for (const [k, v] of Object.entries(obj || {})) { if (!keySet.has(k)) result[k] = v; }
+  return result;
+};
+const _srvChunk = (arr, size) => {
+  const chunks = [];
+  for (let i = 0; i < (arr || []).length; i += (size || 1)) chunks.push(arr.slice(i, i + size));
+  return chunks;
+};
+const _srvZip = (a, b) => (a || []).map((v, i) => [v, (b || [])[i]]);
+
+// Text processing
+const _srvTrim = (s) => String(s ?? "").trim();
+const _srvUpper = (s) => String(s ?? "").toUpperCase();
+const _srvLower = (s) => String(s ?? "").toLowerCase();
+const _srvReplace = (s, find, replace) => String(s ?? "").replaceAll(find, replace);
+const _srvSplit = (s, delim) => String(s ?? "").split(delim);
+const _srvJoin = (arr, delim) => (arr || []).join(delim ?? ", ");
+const _srvSlug = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+const _srvTruncateStr = (s, len) => { const str = String(s ?? ""); return str.length > len ? str.slice(0, len) + "..." : str; };
+const _srvTemplate = (tmpl, data) => String(tmpl ?? "").replace(/\{\{(\w+)\}\}/g, (_, key) => data?.[key] ?? "");
+
+// Date processing
+const _srvNow = () => new Date().toISOString().split("T")[0];
+const _srvParseDate = (s) => { try { return new Date(s).toISOString().split("T")[0]; } catch { return ""; } };
+const _srvMonthsBetween = (d1, d2) => {
+  const a = new Date(d1), b = new Date(d2);
+  return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+};
+const _srvStartOfWeek = (dateStr) => {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() - d.getDay());
+  return d.toISOString().split("T")[0];
+};
+const _srvFormatDate = (dateStr, fmt) => {
+  const d = new Date(dateStr);
+  if (isNaN(d)) return "";
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const y = d.getFullYear(), m = d.getMonth(), day = d.getDate();
+  if (fmt === "MM/DD/YYYY") return `${String(m+1).padStart(2,"0")}/${String(day).padStart(2,"0")}/${y}`;
+  if (fmt === "MMM D, YYYY") return `${months[m]} ${day}, ${y}`;
+  return d.toISOString().split("T")[0];
+};
+
+// ─── Plugin Code Validation (server-side) ───
+
+function validatePluginCodeServer(code) {
+  const FORBIDDEN = [
+    [/\beval\s*\(/, "eval()"], [/\bnew\s+Function\s*\(/, "new Function()"],
+    [/\bimport\s*\(/, "import()"], [/\brequire\s*\(/, "require()"],
+    [/\bwindow\b/, "window"], [/\bdocument\b/, "document"],
+    [/\bglobalThis\b/, "globalThis"], [/\bprocess\b/, "process"],
+    [/\b__proto__\b/, "__proto__"], [/\bconstructor\s*\[/, "constructor[]"],
+  ];
+  const errors = [];
+  for (const [pattern, name] of FORBIDDEN) {
+    if (pattern.test(code)) errors.push(`${name} is forbidden`);
+  }
+  return errors;
+}
+
+// ─── Plugin Sandbox (server-side) ───
+
+function executeSandboxPluginServer(code, datasets, manifest, config = {}) {
+  const caps = new Set(manifest?.capabilities || []);
+
+  const helperNames = [
+    "sum", "avg", "min", "max", "groupBy", "sortBy", "unique", "round",
+    "dateAdd", "dateDiff", "weeksBetween",
+    "currency", "percent", "compact", "flatten", "pick", "omit", "chunk", "zip",
+  ];
+  const helperValues = [
+    _srvSum, _srvAvg, _srvMin, _srvMax, _srvGroupBy, _srvSortBy, _srvUnique, _srvRound,
+    _srvDateAdd, _srvDateDiff, _srvWeeksBetween,
+    _srvCurrency, _srvPercent, _srvCompact, _srvFlatten, _srvPick, _srvOmit, _srvChunk, _srvZip,
+  ];
+
+  if (caps.has("text_processing")) {
+    helperNames.push("trim", "upper", "lower", "replace", "split", "join", "slug", "truncate", "template");
+    helperValues.push(_srvTrim, _srvUpper, _srvLower, _srvReplace, _srvSplit, _srvJoin, _srvSlug, _srvTruncateStr, _srvTemplate);
+  }
+
+  if (caps.has("date_processing")) {
+    helperNames.push("now", "parseDate", "monthsBetween", "startOfWeek", "formatDate");
+    helperValues.push(_srvNow, _srvParseDate, _srvMonthsBetween, _srvStartOfWeek, _srvFormatDate);
+  }
+
+  try {
+    const trimmed = code.trim();
+    let fnBody;
+    if (trimmed.startsWith("(function") || trimmed.startsWith("(()")) {
+      fnBody = `"use strict";\nreturn (${trimmed})(datasets, config);`;
+    } else if (trimmed.startsWith("function execute")) {
+      fnBody = `"use strict";\n${trimmed}\nreturn execute(datasets, config);`;
+    } else if (trimmed.includes("return ")) {
+      fnBody = `"use strict";\n${trimmed}`;
+    } else {
+      fnBody = `"use strict";\nreturn (${trimmed});`;
+    }
+
+    const fn = new Function("datasets", "config", ...helperNames, fnBody);
+    let result = fn(datasets, config, ...helperValues);
+
+    const maxRows = manifest?.permissions?.maxOutputRows || 1000;
+    if (Array.isArray(result) && result.length > maxRows) result = result.slice(0, maxRows);
+    if (result && typeof result === "object" && Array.isArray(result.data) && result.data.length > maxRows) {
+      result.data = result.data.slice(0, maxRows);
+    }
+
+    return { success: true, result };
+  } catch (err) {
+    return { success: false, error: err.message, result: null };
+  }
+}
+
 /**
  * Topologically sort nodes from trigger nodes via BFS (server-side mirror).
  */
@@ -4372,6 +4511,53 @@ async function executeFlowTransformServer(node, inputs, env) {
       return { ...inputs, [node.config.outputKey]: result.result, _functionResult: true };
     }
     return { ...inputs, result: result.result, _functionResult: true };
+  }
+
+  // Plugin transform
+  if (node.subtype === "execute_plugin") {
+    const { pluginId } = node.config || {};
+    if (!pluginId) throw new Error("No plugin selected for this node.");
+
+    const fn = await env.DB.prepare("SELECT * FROM custom_functions WHERE id = ?").bind(pluginId).first();
+    if (!fn) throw new Error(`Plugin not found: ${pluginId}`);
+
+    const code = fn.code || "";
+    const meta = safeParseJSON(fn.meta);
+    const manifest = meta?.manifest || {};
+
+    const datasets = {};
+    if (inputs && typeof inputs === "object") {
+      if (inputs.results && Array.isArray(inputs.results)) datasets.data = inputs.results;
+      else Object.assign(datasets, inputs);
+    }
+
+    // Build config from manifest defaults + node overrides
+    const pluginConfig = {};
+    if (manifest.ui?.configSchema) {
+      for (const [k, v] of Object.entries(manifest.ui.configSchema)) pluginConfig[k] = v.default ?? null;
+    }
+    if (node.config?.config) Object.assign(pluginConfig, node.config.config);
+
+    const execStart = Date.now();
+    const result = executeSandboxPluginServer(code, datasets, manifest, pluginConfig);
+    const durationMs = Date.now() - execStart;
+
+    // Log execution
+    try {
+      const execId = `fex_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+      env.DB.prepare(
+        `INSERT INTO function_executions (id, function_id, function_name, trigger_source, status, input_summary, output_summary, duration_ms, error, executed_at)
+         VALUES (?, ?, ?, 'flow', ?, ?, ?, ?, '', datetime('now'))`
+      ).bind(execId, pluginId, fn.name || "", result.success ? "success" : "error",
+        JSON.stringify({ datasets: Object.keys(datasets) }), JSON.stringify({ type: typeof result.result }), durationMs
+      ).run().catch(() => {});
+    } catch { /* ignore */ }
+
+    if (!result.success) throw new Error(`Plugin "${fn.name}" execution failed`);
+
+    const output = result.result?.viewSpec ? result.result.data : result.result;
+    if (node.config?.outputKey) return { ...inputs, [node.config.outputKey]: output, _functionResult: true };
+    return { ...inputs, result: output, _functionResult: true };
   }
 
   // Template transform

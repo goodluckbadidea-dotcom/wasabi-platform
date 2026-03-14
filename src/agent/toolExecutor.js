@@ -66,6 +66,175 @@ const _sbWeeksBetween = (dateStr1, dateStr2) => {
   return _sbRound(_sbDateDiff(dateStr1, dateStr2) / 7, 1);
 };
 
+// ─── Extended Sandbox Helpers (Plugins) ───
+
+// Formatters (always available for plugins)
+const _sbCurrency = (n, currency = "USD") => {
+  try { return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(n || 0); }
+  catch { return `$${(Number(n) || 0).toFixed(2)}`; }
+};
+const _sbPercent = (n, decimals = 1) => (Number(n) || 0).toFixed(decimals) + "%";
+const _sbCompact = (n) => {
+  const v = Number(n) || 0;
+  if (Math.abs(v) >= 1e6) return (v / 1e6).toFixed(1) + "M";
+  if (Math.abs(v) >= 1e3) return (v / 1e3).toFixed(1) + "K";
+  return String(v);
+};
+
+// Collection helpers (always available for plugins)
+const _sbFlatten = (arr) => (arr || []).flat(Infinity);
+const _sbPick = (obj, keys) => {
+  const result = {};
+  for (const k of (keys || [])) { if (obj?.[k] !== undefined) result[k] = obj[k]; }
+  return result;
+};
+const _sbOmit = (obj, keys) => {
+  const keySet = new Set(keys || []);
+  const result = {};
+  for (const [k, v] of Object.entries(obj || {})) { if (!keySet.has(k)) result[k] = v; }
+  return result;
+};
+const _sbChunk = (arr, size) => {
+  const chunks = [];
+  for (let i = 0; i < (arr || []).length; i += (size || 1)) chunks.push(arr.slice(i, i + size));
+  return chunks;
+};
+const _sbZip = (a, b) => (a || []).map((v, i) => [v, (b || [])[i]]);
+
+// Text processing helpers (gated by text_processing capability)
+const _sbTrim = (s) => String(s ?? "").trim();
+const _sbUpper = (s) => String(s ?? "").toUpperCase();
+const _sbLower = (s) => String(s ?? "").toLowerCase();
+const _sbReplace = (s, find, replace) => String(s ?? "").replaceAll(find, replace);
+const _sbSplit = (s, delim) => String(s ?? "").split(delim);
+const _sbJoin = (arr, delim) => (arr || []).join(delim ?? ", ");
+const _sbSlug = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+const _sbTruncate = (s, len) => {
+  const str = String(s ?? "");
+  return str.length > len ? str.slice(0, len) + "..." : str;
+};
+const _sbTemplate = (tmpl, data) => {
+  return String(tmpl ?? "").replace(/\{\{(\w+)\}\}/g, (_, key) => data?.[key] ?? "");
+};
+
+// Date processing helpers (gated by date_processing capability)
+const _sbNow = () => new Date().toISOString().split("T")[0];
+const _sbParseDate = (s) => { try { return new Date(s).toISOString().split("T")[0]; } catch { return ""; } };
+const _sbMonthsBetween = (d1, d2) => {
+  const a = new Date(d1), b = new Date(d2);
+  return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+};
+const _sbStartOfWeek = (dateStr) => {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() - d.getDay());
+  return d.toISOString().split("T")[0];
+};
+const _sbFormatDate = (dateStr, fmt) => {
+  const d = new Date(dateStr);
+  if (isNaN(d)) return "";
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const y = d.getFullYear(), m = d.getMonth(), day = d.getDate();
+  if (fmt === "MM/DD/YYYY") return `${String(m+1).padStart(2,"0")}/${String(day).padStart(2,"0")}/${y}`;
+  if (fmt === "MMM D, YYYY") return `${months[m]} ${day}, ${y}`;
+  return d.toISOString().split("T")[0]; // Default: YYYY-MM-DD
+};
+
+// ─── Plugin Sandbox Executor ───
+
+/**
+ * Code safety validation for plugins. Rejects dangerous patterns.
+ * @param {string} code
+ * @returns {string[]} Array of error messages (empty = safe)
+ */
+export function validatePluginCode(code) {
+  const FORBIDDEN = [
+    [/\beval\s*\(/, "eval() is forbidden"],
+    [/\bnew\s+Function\s*\(/, "new Function() is forbidden"],
+    [/\bimport\s*\(/, "dynamic import() is forbidden"],
+    [/\brequire\s*\(/, "require() is forbidden"],
+    [/\bwindow\b/, "window access is forbidden"],
+    [/\bdocument\b/, "document access is forbidden"],
+    [/\bglobalThis\b/, "globalThis access is forbidden"],
+    [/\bprocess\b/, "process access is forbidden"],
+    [/\b__proto__\b/, "__proto__ access is forbidden"],
+    [/\bconstructor\s*\[/, "constructor bracket access is forbidden"],
+  ];
+  const errors = [];
+  for (const [pattern, msg] of FORBIDDEN) {
+    if (pattern.test(code)) errors.push(msg);
+  }
+  return errors;
+}
+
+/**
+ * Execute plugin code with capability-gated extended helpers.
+ * @param {string} code - JavaScript code
+ * @param {object} datasets - Named data objects
+ * @param {object} manifest - Plugin manifest with capabilities
+ * @param {object} config - Runtime config (merged from configSchema defaults + overrides)
+ * @param {string} [description] - Description for metadata
+ * @returns {{ success: boolean, result: any, error?: string }}
+ */
+export function executePluginSandbox(code, datasets, manifest, config = {}, description = "Plugin executed") {
+  const caps = new Set(manifest?.capabilities || []);
+
+  // Build helper injection lists
+  const helperNames = [
+    // Standard helpers
+    "sum", "avg", "min", "max", "groupBy", "sortBy", "unique", "round",
+    "dateAdd", "dateDiff", "weeksBetween",
+    // Extended formatters + collection (always available for plugins)
+    "currency", "percent", "compact", "flatten", "pick", "omit", "chunk", "zip",
+  ];
+  const helperValues = [
+    _sbSum, _sbAvg, _sbMin, _sbMax, _sbGroupBy, _sbSortBy, _sbUnique, _sbRound,
+    _sbDateAdd, _sbDateDiff, _sbWeeksBetween,
+    _sbCurrency, _sbPercent, _sbCompact, _sbFlatten, _sbPick, _sbOmit, _sbChunk, _sbZip,
+  ];
+
+  // Conditionally add text helpers
+  if (caps.has("text_processing")) {
+    helperNames.push("trim", "upper", "lower", "replace", "split", "join", "slug", "truncate", "template");
+    helperValues.push(_sbTrim, _sbUpper, _sbLower, _sbReplace, _sbSplit, _sbJoin, _sbSlug, _sbTruncate, _sbTemplate);
+  }
+
+  // Conditionally add date helpers
+  if (caps.has("date_processing")) {
+    helperNames.push("now", "parseDate", "monthsBetween", "startOfWeek", "formatDate");
+    helperValues.push(_sbNow, _sbParseDate, _sbMonthsBetween, _sbStartOfWeek, _sbFormatDate);
+  }
+
+  try {
+    const trimmed = code.trim();
+    let fnBody;
+    if (trimmed.startsWith("(function") || trimmed.startsWith("(()")) {
+      fnBody = `return (${trimmed})(datasets, config);`;
+    } else if (trimmed.startsWith("function execute")) {
+      fnBody = `${trimmed}\nreturn execute(datasets, config);`;
+    } else if (trimmed.includes("return ")) {
+      fnBody = trimmed;
+    } else {
+      fnBody = `return ${trimmed};`;
+    }
+
+    const fn = new Function("datasets", "config", ...helperNames, `"use strict";\n${fnBody}`);
+    let result = fn(datasets, config, ...helperValues);
+
+    // Enforce output row limit
+    const maxRows = manifest?.permissions?.maxOutputRows || 1000;
+    if (Array.isArray(result) && result.length > maxRows) {
+      result = result.slice(0, maxRows);
+    }
+    if (result && typeof result === "object" && Array.isArray(result.data) && result.data.length > maxRows) {
+      result.data = result.data.slice(0, maxRows);
+    }
+
+    return { success: true, result, description };
+  } catch (err) {
+    return { success: false, error: err.message, result: null };
+  }
+}
+
 /**
  * Execute JavaScript code in a sandboxed new Function() with whitelisted helpers.
  * Shared by run_calculation and run_custom_function.
@@ -1312,8 +1481,20 @@ export function createToolExecutor({
             }
           }
 
-          // Execute in sandbox
-          const result = executeSandbox(fn.code, datasets, fn.description || fn.name);
+          // Execute in sandbox (use plugin sandbox for plugin type)
+          let result;
+          if (fn.type === "plugin" && fn.meta?.manifest) {
+            const pluginConfig = {};
+            const configSchema = fn.meta.manifest.ui?.configSchema;
+            if (configSchema) {
+              for (const [k, v] of Object.entries(configSchema)) pluginConfig[k] = v.default ?? null;
+            }
+            // Merge runtime overrides from tool input
+            if (toolInput.config) Object.assign(pluginConfig, toolInput.config);
+            result = executePluginSandbox(fn.code, datasets, fn.meta.manifest, pluginConfig, fn.description || fn.name);
+          } else {
+            result = executeSandbox(fn.code, datasets, fn.description || fn.name);
+          }
           const durationMs = Date.now() - execStart;
 
           // Update last_run metadata (non-critical)
@@ -1348,6 +1529,12 @@ export function createToolExecutor({
             success: true, function_id, function_name: fn.name,
             function_type: fn.type, version: fn.version, ...result,
           };
+
+          // Handle plugin data+view output
+          if (fn.type === "plugin" && result.result && typeof result.result === "object" && result.result.viewSpec) {
+            response.__viewSpec = result.result.viewSpec;
+            response.result = result.result.data ?? result.result;
+          }
 
           // Include write-back suggestion if configured
           const writeBack = fn.meta?.write_back;
@@ -1393,6 +1580,179 @@ export function createToolExecutor({
         } catch (err) {
           return JSON.stringify({ error: `Failed to delete: ${err.message}` });
         }
+      }
+
+      // ─── Custom Views ───
+
+      case "save_custom_view": {
+        const { id: viewId, name, description: viewDesc, view_spec, code, inputs, _confirmed } = toolInput;
+        if (!name || !view_spec) return JSON.stringify({ error: "name and view_spec are required." });
+
+        // Validate view spec structure
+        const VALID_WIDGET_TYPES = new Set(["metric", "chart", "table", "text", "progress", "list"]);
+        const VALID_DS_TYPES = new Set(["query", "function_result", "static"]);
+        if (!view_spec.widgets || !Array.isArray(view_spec.widgets)) {
+          return JSON.stringify({ error: "view_spec must contain a widgets array.", step: "validation" });
+        }
+        for (const w of view_spec.widgets) {
+          if (!w.id) return JSON.stringify({ error: `Widget missing "id" field.`, step: "validation" });
+          if (!VALID_WIDGET_TYPES.has(w.type)) {
+            return JSON.stringify({ error: `Invalid widget type "${w.type}". Valid: ${[...VALID_WIDGET_TYPES].join(", ")}`, step: "validation" });
+          }
+          if (w.dataSource && !VALID_DS_TYPES.has(w.dataSource.type)) {
+            return JSON.stringify({ error: `Widget "${w.id}" has invalid dataSource type "${w.dataSource.type}".`, step: "validation" });
+          }
+        }
+
+        // Validate optional code
+        if (code) {
+          try {
+            new Function("datasets", `"use strict";\n${code.trim()}\nreturn typeof execute === 'function' ? execute(datasets) : undefined;`);
+          } catch (syntaxErr) {
+            return JSON.stringify({ error: `Code syntax error: ${syntaxErr.message}`, step: "syntax_check" });
+          }
+        }
+
+        if (_confirmed) {
+          try {
+            const outputs = { type: "view_spec", spec: view_spec };
+            if (viewId) {
+              await api.updateCustomFunction(viewId, { name, description: viewDesc, type: "view", inputs: inputs || {}, outputs, code: code || "", status: "active" });
+              return JSON.stringify({ success: true, id: viewId, action: "updated", type: "view", message: `View "${name}" updated. Add to a page with: create_page_config view type "customView" with config.functionId = "${viewId}"` });
+            } else {
+              const result = await api.createCustomFunction({ name, description: viewDesc, type: "view", inputs: inputs || {}, outputs, code: code || "", status: "active" });
+              return JSON.stringify({ success: true, id: result.id, action: "created", type: "view", message: `View "${name}" created. Add to a page with: create_page_config view type "customView" with config.functionId = "${result.id}"` });
+            }
+          } catch (saveErr) {
+            return JSON.stringify({ error: `Failed to save view: ${saveErr.message}`, step: "save" });
+          }
+        }
+
+        // Preview
+        return JSON.stringify({
+          __validationPreview: true, name, type: "view",
+          widgetCount: view_spec.widgets.length,
+          widgetTypes: view_spec.widgets.map(w => `${w.type}${w.title ? ` ("${w.title}")` : ""}`),
+          layout: view_spec.layout || "grid",
+          message: "View spec validated. Present the widget summary to the user and ask for approval. Then call save_custom_view again with _confirmed: true to save.",
+        });
+      }
+
+      // ─── Micro-Plugins ───
+
+      case "save_plugin": {
+        const { id: pluginId, name, description: pluginDesc, manifest, inputs, outputs, code, _confirmed } = toolInput;
+        if (!name || !code || !manifest) return JSON.stringify({ error: "name, manifest, and code are required." });
+
+        // Validate manifest
+        const VALID_CAPABILITIES = new Set(["read_data", "compute", "generate_view", "write_back", "external_api", "text_processing", "date_processing"]);
+        const caps = manifest.capabilities || [];
+        for (const cap of caps) {
+          if (!VALID_CAPABILITIES.has(cap)) {
+            return JSON.stringify({ error: `Invalid capability "${cap}". Valid: ${[...VALID_CAPABILITIES].join(", ")}`, step: "manifest_validation" });
+          }
+        }
+
+        // Code safety scan
+        const codeErrors = validatePluginCode(code);
+        if (codeErrors.length > 0) {
+          return JSON.stringify({ error: "Code safety violation", step: "code_safety", issues: codeErrors });
+        }
+
+        // Syntax check
+        try {
+          new Function("datasets", "config", `"use strict";\n${code.trim()}\nreturn typeof execute === 'function' ? execute(datasets, config) : undefined;`);
+        } catch (syntaxErr) {
+          return JSON.stringify({ error: `Syntax error: ${syntaxErr.message}`, step: "syntax_check" });
+        }
+
+        // Dry run with real data
+        let dryRunResult;
+        try {
+          const datasets = {};
+          for (const [key, inputDef] of Object.entries(inputs || {})) {
+            if (inputDef.source === "query_database" && inputDef.database_id) {
+              const queryInput = { database_id: inputDef.database_id };
+              if (inputDef.filter) queryInput.filter = inputDef.filter;
+              if (inputDef.sorts) queryInput.sorts = inputDef.sorts;
+              const raw = await executeTool("query_database", queryInput);
+              const parsed = JSON.parse(raw);
+              if (parsed.error || parsed._error) throw new Error(`Input "${key}": ${parsed.error || parsed._error}`);
+              let rows = parsed.results || [];
+              if (inputDef.columns?.length) {
+                const colSet = new Set(inputDef.columns);
+                rows = rows.map((row) => {
+                  const filtered = { id: row.id };
+                  for (const col of colSet) { if (row[col] !== undefined) filtered[col] = row[col]; }
+                  return filtered;
+                });
+              }
+              if (parsed.storage === "sheet" && parsed._allCellValues?.length) {
+                rows._allCellValues = parsed._allCellValues;
+                rows._row1IsData = parsed._row1IsData || false;
+              }
+              datasets[key] = rows;
+            } else if (inputDef.source === "external_api" && inputDef.url) {
+              const proxyBody = { url: inputDef.url, method: inputDef.method || "GET", headers: inputDef.headers || {}, transform_path: inputDef.transform_path || null };
+              const proxyRes = await api.proxyExternalApi(proxyBody);
+              if (proxyRes?._error) throw new Error(`External API "${key}": ${proxyRes._error}`);
+              datasets[key] = proxyRes?.data || proxyRes;
+            }
+          }
+
+          // Build default config from manifest
+          const defaultConfig = {};
+          if (manifest.ui?.configSchema) {
+            for (const [k, v] of Object.entries(manifest.ui.configSchema)) {
+              defaultConfig[k] = v.default ?? null;
+            }
+          }
+
+          dryRunResult = executePluginSandbox(code, datasets, manifest, defaultConfig, `Dry run: ${name}`);
+        } catch (dryErr) {
+          return JSON.stringify({ error: `Dry run failed: ${dryErr.message}`, step: "dry_run" });
+        }
+
+        if (!dryRunResult.success) {
+          return JSON.stringify({ error: `Plugin execution failed: ${dryRunResult.error}`, step: "dry_run" });
+        }
+
+        // Check output
+        const outputType = manifest.ui?.outputType || "data";
+        const result = dryRunResult.result;
+        const hasViewSpec = result && typeof result === "object" && result.viewSpec;
+
+        if (_confirmed) {
+          try {
+            const meta = { manifest };
+            if (pluginId) {
+              await api.updateCustomFunction(pluginId, { name, description: pluginDesc, type: "plugin", inputs: inputs || {}, outputs: outputs || {}, code, status: "active", meta });
+              return JSON.stringify({ success: true, id: pluginId, action: "updated", type: "plugin" });
+            } else {
+              const res = await api.createCustomFunction({ name, description: pluginDesc, type: "plugin", inputs: inputs || {}, outputs: outputs || {}, code, status: "active", meta });
+              return JSON.stringify({ success: true, id: res.id, action: "created", type: "plugin" });
+            }
+          } catch (saveErr) {
+            return JSON.stringify({ error: `Failed to save plugin: ${saveErr.message}`, step: "save" });
+          }
+        }
+
+        // Preview
+        const preview = {
+          __validationPreview: true, name, type: "plugin",
+          capabilities: caps,
+          outputType,
+          hasViewSpec,
+          dryRunResult: {
+            success: true,
+            sampleOutput: hasViewSpec
+              ? { data: Array.isArray(result.data) ? result.data.slice(0, 5) : result.data, viewWidgets: result.viewSpec?.widgets?.length || 0 }
+              : (Array.isArray(result) ? result.slice(0, 5) : result),
+            totalRows: Array.isArray(hasViewSpec ? result.data : result) ? (hasViewSpec ? result.data : result).length : 1,
+          },
+          message: "Plugin validation passed. Present results to the user and ask for approval. Then call save_plugin again with _confirmed: true.",
+        };
+        return JSON.stringify(preview);
       }
 
       // ─── Batch Operations ───

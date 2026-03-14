@@ -161,6 +161,12 @@ const KEYFRAMES = `
   60%  { opacity: 1; transform: translateY(-1px) scale(1.002); }
   100% { opacity: 1; transform: translateY(0) scale(1); }
 }
+
+@keyframes scrollReveal {
+  0%   { opacity: 0; transform: translateY(5px) scale(0.995); }
+  70%  { opacity: 1; transform: translateY(-0.5px) scale(1.002); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
 `;
 
 let injected = false;
@@ -216,6 +222,9 @@ export const ANIM = {
 
   // Staggered list item entrance (bouncy)
   listItem:    (idx = 0) => `settleIn 0.28s ${SETTLE_EASE} ${idx * 0.03}s both`,
+
+  // Table row scroll reveal (subtle, fast, playful)
+  scrollReveal: (idx = 0) => `scrollReveal 0.22s ${SETTLE_EASE} ${idx * 0.015}s both`,
 };
 
 // Common transition presets for inline styles

@@ -483,8 +483,8 @@ Example: function execute({ sales, inventory }) { return Object.keys(groupBy(sal
       description: { type: "string", description: "What this function does." },
       type: {
         type: "string",
-        enum: ["transform", "aggregation", "forecast", "alert", "pipeline"],
-        description: "Function category: transform (reshape), aggregation (summarize), forecast (predict), alert (threshold check), pipeline (multi-step chain).",
+        enum: ["transform", "aggregation", "forecast", "alert", "pipeline", "view", "plugin"],
+        description: "Function category: transform (reshape), aggregation (summarize), forecast (predict), alert (threshold check), pipeline (multi-step chain), view (dashboard spec), plugin (micro-plugin with manifest).",
       },
       inputs: {
         type: "object",
@@ -515,7 +515,7 @@ const LIST_CUSTOM_FUNCTIONS = {
     type: "object",
     properties: {
       status: { type: "string", enum: ["draft", "active", "disabled"], description: "Filter by status." },
-      type: { type: "string", enum: ["transform", "aggregation", "forecast", "alert"], description: "Filter by function type." },
+      type: { type: "string", enum: ["transform", "aggregation", "forecast", "alert", "pipeline", "view", "plugin"], description: "Filter by function type." },
     },
   },
 };
@@ -531,6 +531,10 @@ const RUN_CUSTOM_FUNCTION = {
         type: "object",
         description: "Optional overrides for input data. Pass pre-fetched datasets to skip auto-gather for specific inputs.",
       },
+      config: {
+        type: "object",
+        description: "Optional runtime config overrides for plugins. Merged with manifest configSchema defaults. Only used for plugin-type functions.",
+      },
     },
     required: ["function_id"],
   },
@@ -545,6 +549,111 @@ const DELETE_CUSTOM_FUNCTION = {
       function_id: { type: "string", description: "The ID of the custom function to delete." },
     },
     required: ["function_id"],
+  },
+};
+
+// ─── Custom Views ───
+
+const SAVE_CUSTOM_VIEW = {
+  name: "save_custom_view",
+  description: `Create or update a custom dashboard/view spec. The view spec defines a grid layout of widgets (metrics, charts, tables, text blocks, progress bars, ranked lists). Each widget declares its own data source. The spec is stored as a custom function with type "view" and can be added to any page as a customView view block.
+
+Widget types: metric (large number with label), chart (bar/pie/line SVG), table (compact data table), text (static text block), progress (progress bar with percentage), list (ranked items with values).
+
+Data source types per widget: "query" (uses page data filtered by databaseId), "function_result" (runs a saved custom function), "static" (inline data values).
+
+The view spec JSON format:
+{
+  "version": 1,
+  "title": "Dashboard Title",
+  "layout": "grid",           // "grid" | "stack" | "columns"
+  "columns": 2,               // for columns layout
+  "widgets": [
+    { "id": "w1", "type": "metric", "title": "Total Revenue", "span": 1,
+      "dataSource": { "type": "query", "databaseId": "db_xxx", "field": "Revenue", "aggregation": "sum" } },
+    { "id": "w2", "type": "chart", "title": "By Category", "span": 2, "chartType": "bar",
+      "dataSource": { "type": "query", "databaseId": "db_xxx", "categoryField": "Category", "valueField": "Amount", "aggregation": "sum" } },
+    { "id": "w3", "type": "table", "title": "Recent", "span": 2,
+      "dataSource": { "type": "query", "databaseId": "db_xxx", "limit": 10 }, "columns": ["Name", "Status"] },
+    { "id": "w4", "type": "text", "span": 1, "content": "Notes here." },
+    { "id": "w5", "type": "progress", "title": "Q1", "span": 1,
+      "dataSource": { "type": "static", "current": 73, "target": 100 } },
+    { "id": "w6", "type": "list", "title": "Top 5", "span": 1,
+      "dataSource": { "type": "function_result", "functionId": "fn_xxx" }, "labelField": "name", "valueField": "revenue" }
+  ]
+}
+
+After saving, tell the user they can add it to a page by creating a page config view with type "customView" and config.functionId set to the returned ID.`,
+  input_schema: {
+    type: "object",
+    properties: {
+      id: { type: "string", description: "Optional ID for updating an existing view. Omit for new." },
+      name: { type: "string", description: "View name." },
+      description: { type: "string", description: "What this dashboard shows." },
+      view_spec: {
+        type: "object",
+        description: "The view spec JSON defining layout and widgets (see format above).",
+      },
+      code: {
+        type: "string",
+        description: "Optional JavaScript data transformation code that runs before rendering. Must define 'function execute(datasets) { ... }'.",
+      },
+      inputs: {
+        type: "object",
+        description: "Optional data source declarations (same format as save_custom_function inputs). Used when code needs to pre-fetch data.",
+      },
+      _confirmed: { type: "boolean", description: "Set to true after user approves the preview to actually save." },
+    },
+    required: ["name", "view_spec"],
+  },
+};
+
+// ─── Micro-Plugins ───
+
+const SAVE_PLUGIN = {
+  name: "save_plugin",
+  description: `Create a micro-plugin: a sandboxed function with extended capabilities, a manifest declaring permissions, and optional UI rendering output. Plugins can output data, view specs, or both. They go through stricter validation than regular functions.
+
+The manifest declares:
+- capabilities: list from ["read_data", "compute", "generate_view", "write_back", "external_api", "text_processing", "date_processing"]
+- permissions: { maxExecutionMs: 5000, maxOutputRows: 1000 }
+- ui.configSchema: form fields for user configuration at runtime. Each key defines a config field:
+  { "threshold": { "type": "number", "default": 10, "label": "Alert Threshold" }, "period": { "type": "string", "enum": ["7d","30d","90d"], "default": "30d", "label": "Period" } }
+- ui.outputType: "data" | "view" | "data+view"
+
+Extended sandbox helpers available beyond the standard set:
+- Always: currency(n, code), percent(n, decimals), compact(n), flatten(arr), pick(obj, keys), omit(obj, keys), chunk(arr, size), zip(a, b)
+- With text_processing: trim(s), upper(s), lower(s), replace(s, find, rep), split(s, delim), join(arr, delim), slug(s), truncate(s, len), template(tmpl, data)
+- With date_processing: now(), parseDate(s), monthsBetween(d1, d2), startOfWeek(d), formatDate(d, fmt)
+
+The function must define 'function execute(datasets, config) { ... }' where config comes from the manifest's configSchema defaults merged with any runtime overrides.
+
+For "data+view" outputType, return { data: [...], viewSpec: { version: 1, layout: "grid", widgets: [...] } }. The viewSpec uses the same widget format as save_custom_view.`,
+  input_schema: {
+    type: "object",
+    properties: {
+      id: { type: "string", description: "Optional ID for updating an existing plugin. Omit for new." },
+      name: { type: "string", description: "Plugin name." },
+      description: { type: "string", description: "What this plugin does." },
+      manifest: {
+        type: "object",
+        description: "Plugin manifest declaring capabilities, permissions, and UI config schema.",
+      },
+      inputs: {
+        type: "object",
+        description: "Declares input data sources (same format as save_custom_function inputs).",
+      },
+      outputs: {
+        type: "object",
+        description: "Expected output shape: { type: 'table'|'number'|'data+view', schema: { ... } }.",
+      },
+      code: {
+        type: "string",
+        description: "JavaScript function body. Must define 'function execute(datasets, config) { ... return result; }'.",
+      },
+      _confirmed: { type: "boolean", description: "Set to true after user approves the dry-run preview to actually save." },
+    },
+    required: ["name", "manifest", "code"],
   },
 };
 
@@ -758,6 +867,8 @@ export const WASABI_TOOLS = [
   LIST_CUSTOM_FUNCTIONS,
   RUN_CUSTOM_FUNCTION,
   DELETE_CUSTOM_FUNCTION,
+  SAVE_CUSTOM_VIEW,
+  SAVE_PLUGIN,
   BATCH_OPERATIONS,
   EXPORT_REPORT,
   DELEGATE_TASK,

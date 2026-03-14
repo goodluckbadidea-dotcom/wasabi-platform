@@ -2182,6 +2182,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                           style={{
                             ...styles.row,
                             height: ROW_HEIGHT,
+                            animation: ANIM.scrollReveal(localIdx),
                             ...(isHovered ? styles.rowHover : {}),
                             ...(isSelected ? { background: C.accent + "10" } : {}),
                           }}

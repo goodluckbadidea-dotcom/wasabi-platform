@@ -314,6 +314,105 @@ function FunctionTransformConfig({ config, onChange }) {
   );
 }
 
+// ── Plugin Transform Config ──
+
+function PluginTransformConfig({ config, onChange }) {
+  const [plugins, setPlugins] = useState([]);
+  const [manifest, setManifest] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    api.listCustomFunctions({ status: "active", type: "plugin" })
+      .then((res) => setPlugins(res?.entries || []))
+      .catch(() => setPlugins([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Load manifest when plugin selected
+  useEffect(() => {
+    if (!config.pluginId) { setManifest(null); return; }
+    api.getCustomFunction(config.pluginId)
+      .then((fn) => {
+        const meta = typeof fn.meta === "string" ? JSON.parse(fn.meta) : fn.meta;
+        setManifest(meta?.manifest || null);
+      })
+      .catch(() => setManifest(null));
+  }, [config.pluginId]);
+
+  return (
+    <>
+      <ConfigField label="Plugin">
+        {loading ? (
+          <div style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT, padding: "6px 0" }}>Loading plugins...</div>
+        ) : plugins.length === 0 ? (
+          <div style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT, padding: "6px 0" }}>
+            No active plugins. Create one via chat with save_plugin.
+          </div>
+        ) : (
+          <SelectInput
+            value={config.pluginId || ""}
+            onChange={(v) => {
+              const p = plugins.find((f) => f.id === v);
+              onChange({ ...config, pluginId: v, pluginName: p?.name || "", config: {} });
+            }}
+            options={[
+              { value: "", label: "Select a plugin..." },
+              ...plugins.map((p) => ({ value: p.id, label: p.name })),
+            ]}
+          />
+        )}
+      </ConfigField>
+
+      {/* Dynamic config from manifest */}
+      {manifest?.ui?.configSchema && Object.entries(manifest.ui.configSchema).map(([key, schema]) => (
+        <ConfigField key={key} label={schema.label || key}>
+          {schema.type === "number" ? (
+            <NumberInput
+              value={config.config?.[key] ?? schema.default ?? ""}
+              onChange={(v) => onChange({ ...config, config: { ...config.config, [key]: Number(v) } })}
+              placeholder={String(schema.default ?? "")}
+            />
+          ) : schema.enum ? (
+            <SelectInput
+              value={config.config?.[key] ?? schema.default ?? ""}
+              onChange={(v) => onChange({ ...config, config: { ...config.config, [key]: v } })}
+              options={schema.enum.map((e) => ({ value: e, label: e }))}
+            />
+          ) : (
+            <TextInput
+              value={config.config?.[key] ?? schema.default ?? ""}
+              onChange={(v) => onChange({ ...config, config: { ...config.config, [key]: v } })}
+              placeholder={String(schema.default ?? "")}
+            />
+          )}
+        </ConfigField>
+      ))}
+
+      {manifest?.capabilities?.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: "4px 0", marginBottom: 8 }}>
+          {manifest.capabilities.map((cap) => (
+            <span key={cap} style={{
+              fontSize: 9, color: "#7C4DFF", background: "#7C4DFF18",
+              padding: "2px 6px", borderRadius: 3, fontWeight: 500, fontFamily: FONT,
+            }}>
+              {cap}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <ConfigField label="Output Key (optional)">
+        <TextInput
+          value={config.outputKey || ""}
+          onChange={(v) => onChange({ ...config, outputKey: v })}
+          placeholder="e.g. enriched — wraps result as { enriched: result }"
+        />
+      </ConfigField>
+    </>
+  );
+}
+
 // ── Config form dispatcher ──
 
 function ConfigForm({ node, onConfigChange }) {
@@ -346,6 +445,8 @@ function ConfigForm({ node, onConfigChange }) {
       return <TransformConfig config={config} onChange={onChange} />;
     case "execute_function":
       return <FunctionTransformConfig config={config} onChange={onChange} />;
+    case "execute_plugin":
+      return <PluginTransformConfig config={config} onChange={onChange} />;
     default:
       return (
         <div style={{ fontSize: 12, color: C.darkMuted, padding: "8px 0", fontFamily: FONT }}>
