@@ -125,7 +125,7 @@ export default function TopHeader() {
         {/* Zen / Samurai mode toggle */}
         <button
           onClick={toggleAppMode}
-          title={appMode === "samurai" ? "Switch to Zen mode" : "Switch to Samurai mode"}
+          title={appMode === "samurai" ? "Switch to Sashimi mode" : "Switch to Sushi Roll mode"}
           style={{
             background: "transparent",
             border: `1px solid ${C.darkBorder}`,
@@ -161,7 +161,7 @@ export default function TopHeader() {
               <path d="M8 1L10 6H14L11 9L12.5 14L8 11L3.5 14L5 9L2 6H6L8 1Z" fill={C.darkMuted} />
             </svg>
           )}
-          {appMode === "zen" ? "Zen" : "Samurai"}
+          {appMode === "zen" ? "Sashimi" : "Sushi Roll"}
         </button>
 
         {/* Theme cycle */}

@@ -18,7 +18,7 @@ const DEFAULT_WIDTH = 320;
 const MIN_WIDTH = 280;
 const MAX_WIDTH = 520;
 
-const ZEN_SYSTEM_PROMPT = `You are Wasabi — a calm, focused AI assistant in Zen mode.
+const ZEN_SYSTEM_PROMPT = `You are Wasabi — a calm, focused AI assistant in Sashimi mode.
 
 ## Your Role
 You help the user stay productive by answering questions, summarizing information, and providing quick insights. You are conversational, concise, and mindful.
@@ -33,7 +33,7 @@ You help the user stay productive by answering questions, summarizing informatio
 
 ## Context
 Today's date: ${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-Mode: Zen (simplified, mindfulness-focused)`;
+Mode: Sashimi (simplified, mindfulness-focused)`;
 
 export default function ZenChatPanel({ onClose }) {
   const { user } = usePlatform();
@@ -175,7 +175,7 @@ export default function ZenChatPanel({ onClose }) {
           borderRadius: RADIUS.pill, letterSpacing: "0.05em",
           textTransform: "uppercase",
         }}>
-          Zen
+          Sashimi
         </span>
 
         <div style={{ marginLeft: "auto", display: "flex", gap: 2 }}>
@@ -225,7 +225,7 @@ export default function ZenChatPanel({ onClose }) {
           }}>
             <WasabiFlame size={32} />
             <div style={{ fontSize: 13, fontWeight: 600, marginTop: 12, color: C.darkText }}>
-              Zen Chat
+              Sashimi Chat
             </div>
             <div style={{ fontSize: 11, marginTop: 4, opacity: 0.6, lineHeight: 1.5 }}>
               Ask questions, get summaries,<br />or just think out loud.

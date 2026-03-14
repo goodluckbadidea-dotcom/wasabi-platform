@@ -241,7 +241,7 @@ export default function Navigation({
                 fontFamily: FONT, fontSize: 12, fontWeight: 600,
                 color: C.darkText, letterSpacing: "0.04em", textTransform: "uppercase",
               }}>
-                Zen
+                Sashimi
               </span>
             </div>
           )}

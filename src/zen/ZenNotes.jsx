@@ -202,7 +202,7 @@ export default function ZenNotes() {
               setSaveToFolder("");
               setSaveToStatus(null);
             }}
-            title="Save note to Samurai workspace"
+            title="Save note to Sushi Roll workspace"
             style={{
               background: saveToOpen ? C.accent + "22" : "transparent",
               border: `1px solid ${saveToOpen ? C.accent + "44" : C.darkBorder}`,
