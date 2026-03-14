@@ -16,13 +16,14 @@ export default function TopHeader() {
     <header
       style={{
         flexShrink: 0,
-        height: 54,
+        minHeight: 54,
+        paddingTop: "env(safe-area-inset-top, 0px)",
         background: C.dark,
         borderBottom: `1px solid ${C.edgeLine}`,
         borderImage: `linear-gradient(90deg, ${C.edgeLine}, ${C.accent}22, ${C.accent}33, ${C.accent}22, ${C.edgeLine}) 1`,
         display: "flex",
         alignItems: "center",
-        padding: "0 24px",
+        padding: "env(safe-area-inset-top, 0px) 24px 0",
         position: "relative",
         zIndex: 200,
       }}

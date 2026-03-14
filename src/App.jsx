@@ -316,13 +316,15 @@ function AppContent() {
       // Zen Gmail
       if (activePage === "zen-gmail") {
         return (
-          <React.Suspense fallback={
-            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
-              Loading...
-            </div>
-          }>
-            <ZenGmail />
-          </React.Suspense>
+          <ErrorBoundary fallbackLabel="Gmail">
+            <React.Suspense fallback={
+              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
+                Loading...
+              </div>
+            }>
+              <ZenGmail />
+            </React.Suspense>
+          </ErrorBoundary>
         );
       }
       // Default: Tasks split view (To-Do + Calendar)
@@ -527,7 +529,7 @@ function AppContent() {
             <div
               onClick={() => setWasabiPanelOpen(false)}
               style={{
-                position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+                position: "fixed", inset: 0,
                 background: "rgba(0,0,0,0.5)",
                 zIndex: 900,
                 animation: ANIM.backdropFade,
@@ -539,6 +541,8 @@ function AppContent() {
               width: "min(320px, 85vw)",
               zIndex: 901,
               display: "flex",
+              paddingTop: "env(safe-area-inset-top, 0px)",
+              paddingBottom: "env(safe-area-inset-bottom, 0px)",
               animation: ANIM.drawerSlideLeft,
             }}>
               {appMode === "zen" ? (

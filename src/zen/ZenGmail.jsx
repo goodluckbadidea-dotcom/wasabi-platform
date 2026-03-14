@@ -206,10 +206,11 @@ export default function ZenGmail() {
     setError(null);
     try {
       const result = await searchEmails("in:inbox", 30);
-      setMessages(result.messages || []);
+      setMessages(Array.isArray(result?.messages) ? result.messages : []);
     } catch (err) {
       console.error("[ZenGmail] Fetch failed:", err);
       setError("Failed to load inbox.");
+      setMessages([]);
     } finally {
       setLoading(false);
     }

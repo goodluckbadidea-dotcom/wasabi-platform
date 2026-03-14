@@ -54,11 +54,13 @@ export default function Navigation({
 
   useEffect(() => {
     let cancelled = false;
+    let retryCount = 0;
     async function checkGoogle() {
       try {
         const status = await getGoogleStatus();
         if (cancelled) return;
         setGoogleConnected(!!status?.connected);
+        retryCount = 0; // reset on success
         if (status?.connected) {
           // Fetch summaries in parallel
           const [gmailRes, calRes] = await Promise.allSettled([
@@ -82,11 +84,17 @@ export default function Navigation({
             }
           }
         }
-      } catch (_) { /* best effort */ }
+      } catch (_) {
+        // Retry up to 3 times with increasing delay on initial load failure
+        if (!cancelled && retryCount < 3) {
+          retryCount++;
+          setTimeout(checkGoogle, retryCount * 3000);
+        }
+      }
     }
     checkGoogle();
-    // Re-poll every 5 min
-    googlePollRef.current = setInterval(checkGoogle, 5 * 60 * 1000);
+    // Re-poll every 2 min (more responsive than 5min for connection state changes)
+    googlePollRef.current = setInterval(checkGoogle, 2 * 60 * 1000);
     return () => { cancelled = true; clearInterval(googlePollRef.current); };
   }, []);
 
