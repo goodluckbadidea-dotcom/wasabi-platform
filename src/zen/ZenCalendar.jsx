@@ -264,7 +264,7 @@ export default function ZenCalendar({ allTasks }) {
                 borderRight: i < 2 ? `1px solid ${C.darkBorder}` : "none",
               }}
             >
-              {mode === "day" ? "D" : mode === "week" ? "W" : "M"}
+              {mode === "day" ? "Day" : mode === "week" ? "Week" : "Month"}
             </button>
           ))}
         </div>
