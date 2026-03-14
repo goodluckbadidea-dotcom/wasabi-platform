@@ -8,7 +8,6 @@ import { C, FONT, RADIUS } from "../../design/tokens.js";
 import { getWeekColumns, isSameDay } from "../zenTaskHelpers.js";
 
 const DAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const MAX_VISIBLE_ITEMS = 3;
 
 export default function WeekGrid({ weekStart, events, tasks, selectedDate, onDayClick, hiddenCalendars }) {
   const columns = useMemo(() => getWeekColumns(weekStart), [weekStart]);
@@ -93,8 +92,6 @@ export default function WeekGrid({ weekStart, events, tasks, selectedDate, onDay
           const dayEvents = eventsByDay.get(key) || [];
           const dayTasks = tasksByDay.get(key) || [];
           const isToday = isSameDay(col, today);
-          const totalItems = dayEvents.length + dayTasks.length;
-          const overflow = totalItems > MAX_VISIBLE_ITEMS;
 
           return (
             <div
@@ -113,7 +110,7 @@ export default function WeekGrid({ weekStart, events, tasks, selectedDate, onDay
               onMouseLeave={(e) => { e.currentTarget.style.background = isToday ? C.accent + "06" : "transparent"; }}
             >
               {/* Event pills — per-calendar colors */}
-              {dayEvents.slice(0, MAX_VISIBLE_ITEMS).map((ev, i) => {
+              {dayEvents.map((ev, i) => {
                 const color = ev.calendarColor || C.accent;
                 return (
                   <div key={ev.id || i} style={{
@@ -130,7 +127,7 @@ export default function WeekGrid({ weekStart, events, tasks, selectedDate, onDay
               })}
 
               {/* Task dots */}
-              {dayTasks.slice(0, Math.max(0, MAX_VISIBLE_ITEMS - dayEvents.length)).map((t) => (
+              {dayTasks.map((t) => (
                 <div key={t.id} style={{
                   padding: "2px 4px", marginBottom: 2,
                   display: "flex", alignItems: "center", gap: 4,
@@ -149,15 +146,6 @@ export default function WeekGrid({ weekStart, events, tasks, selectedDate, onDay
                 </div>
               ))}
 
-              {/* Overflow indicator */}
-              {overflow && (
-                <div style={{
-                  fontSize: 9, fontFamily: FONT, color: C.darkMuted,
-                  padding: "1px 4px", opacity: 0.6,
-                }}>
-                  +{totalItems - MAX_VISIBLE_ITEMS} more
-                </div>
-              )}
             </div>
           );
         })}
