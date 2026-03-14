@@ -11,6 +11,7 @@ import { IconClose } from "../design/icons.jsx";
 import WasabiFlame from "../core/WasabiFlame.jsx";
 import ChatUI from "../core/ChatUI.jsx";
 import { HAIKU } from "../agent/aiRouter.js";
+import { fetchGoogleContext } from "../google/googleContext.js";
 import * as api from "../lib/api.js";
 
 const DEFAULT_WIDTH = 320;
@@ -42,6 +43,7 @@ export default function ZenChatPanel({ onClose }) {
   const [loading, setLoading] = useState(false);
   const [statusText, setStatusText] = useState("");
   const historyRef = useRef([]); // Claude message format for conversation history
+  const googleContextRef = useRef(""); // Cached Google context string
 
   // ── Resize ──
   const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH);
@@ -93,12 +95,21 @@ export default function ZenChatPanel({ onClose }) {
     ];
 
     try {
-      const conn = api.getConnection();
-      const wUrl = user?.workerUrl || conn?.workerUrl;
+      // Fetch Google context (cached 5 min) — best effort, don't block on failure
+      try {
+        const gStatus = await api.getGoogleStatus();
+        if (gStatus?.connected) {
+          googleContextRef.current = await fetchGoogleContext();
+        }
+      } catch { /* best effort */ }
+
+      const systemPrompt = googleContextRef.current
+        ? ZEN_SYSTEM_PROMPT + "\n\n" + googleContextRef.current
+        : ZEN_SYSTEM_PROMPT;
 
       const result = await api.claudeProxy({
         model: HAIKU,
-        system: ZEN_SYSTEM_PROMPT,
+        system: systemPrompt,
         messages: newHistory,
         max_tokens: 1024,
       }, user?.claudeKey || "");

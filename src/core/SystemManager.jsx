@@ -257,11 +257,11 @@ function ConnectionRow({ def, connected, onSave, onDelete }) {
 }
 
 // ── Google OAuth connection row ──
-function GoogleConnectionRow({ connected, email, onConnect, onDisconnect, loading }) {
+function GoogleConnectionRow({ connected, email, onConnect, onDisconnect, loading, error }) {
   return (
     <div style={{
       background: C.darkSurf,
-      border: `1px solid ${connected ? C.accent + "33" : C.darkBorder}`,
+      border: `1px solid ${connected ? C.accent + "33" : error ? "#E0525233" : C.darkBorder}`,
       borderRadius: RADIUS.lg,
       padding: "14px 16px",
       marginBottom: 10,
@@ -316,6 +316,16 @@ function GoogleConnectionRow({ connected, email, onConnect, onDisconnect, loadin
           ? "Gmail inbox, calendar events, and Google account access for Wasabi."
           : "Connect your Google account to access Gmail, Calendar, and more through Wasabi."}
       </p>
+      {error && (
+        <div style={{
+          fontSize: 11, color: "#E05252", marginTop: 8, marginLeft: 18,
+          lineHeight: 1.4, padding: "6px 10px",
+          background: "#E0525210", borderRadius: RADIUS.sm,
+          border: "1px solid #E0525222",
+        }}>
+          {error}
+        </div>
+      )}
     </div>
   );
 }
@@ -363,16 +373,30 @@ export default function SystemManager() {
   }, [tab]);
 
   // Google OAuth: open popup and listen for result
+  const [googleError, setGoogleError] = useState("");
   const handleGoogleConnect = useCallback(async () => {
     setGoogleLoading(true);
+    setGoogleError("");
     try {
-      const { url } = await getGoogleAuthUrl();
-      const popup = window.open(url, "google-auth", "width=500,height=700,left=200,top=100");
+      const result = await getGoogleAuthUrl();
+      if (!result?.url) {
+        throw new Error(result?._error || "No auth URL returned — check Google OAuth configuration");
+      }
+      const popup = window.open(result.url, "google-auth", "width=500,height=700,left=200,top=100");
+
+      if (!popup) {
+        setGoogleError("Popup blocked — allow popups for this site and try again");
+        setGoogleLoading(false);
+        return;
+      }
 
       // Listen for postMessage from callback page
       const onMessage = (e) => {
         if (e.data?.type?.startsWith("google-oauth-")) {
           window.removeEventListener("message", onMessage);
+          if (e.data.type === "google-oauth-error") {
+            setGoogleError(e.data.detail || "OAuth failed");
+          }
           // Refresh status
           getGoogleStatus().then(setGoogleStatus).catch(() => {});
           setGoogleLoading(false);
@@ -391,6 +415,12 @@ export default function SystemManager() {
       }, 1000);
     } catch (err) {
       console.error("Google OAuth failed:", err);
+      const msg = err.message || "Connection failed";
+      if (msg.includes("CLIENT_ID") || msg.includes("not configured")) {
+        setGoogleError("Google OAuth not configured on the worker. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET secrets.");
+      } else {
+        setGoogleError(msg);
+      }
       setGoogleLoading(false);
     }
   }, []);
@@ -937,6 +967,7 @@ export default function SystemManager() {
                   onConnect={handleGoogleConnect}
                   onDisconnect={handleGoogleDisconnect}
                   loading={googleLoading}
+                  error={googleError}
                 />
               </>
             )}

@@ -24,6 +24,7 @@ export default function ZenCalendar({ allTasks }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+  const [error, setError] = useState(null); // "auth" | "fetch" | null
 
   const today = useMemo(() => new Date(), []);
   const isViewingToday = isSameDay(selectedDate, today);
@@ -31,11 +32,12 @@ export default function ZenCalendar({ allTasks }) {
   // Compute the week range for the selected date (always fetched for instant toggle)
   const weekRange = useMemo(() => getWeekRange(selectedDate), [selectedDate]);
 
-  // ── Fetch Google Calendar data ──
+  // ── Fetch Google Calendar data (with retry) ──
   useEffect(() => {
     let cancelled = false;
-    async function load() {
+    async function load(attempt = 0) {
       setLoading(true);
+      setError(null);
       try {
         const status = await getGoogleStatus();
         if (cancelled) return;
@@ -53,6 +55,17 @@ export default function ZenCalendar({ allTasks }) {
         }
       } catch (err) {
         console.error("[ZenCalendar] Failed to load:", err);
+        if (cancelled) return;
+
+        // Retry once after 2s for transient failures (token refresh, network)
+        if (attempt === 0) {
+          setTimeout(() => { if (!cancelled) load(1); }, 2000);
+          return;
+        }
+
+        // After retry, show error state
+        const isAuth = err?.status === 401 || err?.message?.includes("auth");
+        setError(isAuth ? "auth" : "fetch");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -218,8 +231,28 @@ export default function ZenCalendar({ allTasks }) {
         />
       )}
 
-      {/* ── Google not connected banner ── */}
-      {!loading && !googleConnected && (
+      {/* ── Status banners ── */}
+      {!loading && error === "auth" && (
+        <div style={{
+          flexShrink: 0, padding: "6px 12px",
+          borderTop: `1px solid ${C.darkBorder}`,
+          fontSize: 9, fontFamily: FONT, color: "#E05252",
+          textAlign: "center",
+        }}>
+          Google session expired — reconnect in Settings
+        </div>
+      )}
+      {!loading && error === "fetch" && (
+        <div style={{
+          flexShrink: 0, padding: "6px 12px",
+          borderTop: `1px solid ${C.darkBorder}`,
+          fontSize: 9, fontFamily: FONT, color: "#E0A030",
+          textAlign: "center",
+        }}>
+          Failed to load calendar events — will retry on next navigation
+        </div>
+      )}
+      {!loading && !googleConnected && !error && (
         <div style={{
           flexShrink: 0, padding: "6px 12px",
           borderTop: `1px solid ${C.darkBorder}`,
