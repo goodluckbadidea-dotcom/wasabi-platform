@@ -145,15 +145,6 @@ for (const t of _RAW_THEMES) {
   };
 }
 
-// Inverse theme map — used by Zen/Samurai mode toggle to flip dark↔light
-export const INVERSE_THEME = {
-  obsidian: "kori",
-  hinoki: "shoji",
-  sumi: "kori",
-  shoji: "obsidian",
-  kori: "sumi",
-};
-
 // Ordered list for settings UI
 export const THEME_LIST = _RAW_THEMES.map((t) => ({
   key: t.id,

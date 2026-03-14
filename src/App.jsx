@@ -45,6 +45,7 @@ import { IconGear } from "./design/icons.jsx";
 
 const FunctionsPanel = React.lazy(() => import("./core/FunctionsPanel.jsx"));
 const BuildPage = React.lazy(() => import("./core/BuildPage.jsx"));
+const ZenTasksView = React.lazy(() => import("./zen/ZenTasksView.jsx"));
 
 // Inject CSS animations on app load
 injectAnimations();
@@ -289,20 +290,15 @@ function AppContent() {
           </div>
         );
       }
-      // Default: To-Do & Calendar placeholder
+      // Default: Zen Tasks split view (To-Do + Today's Schedule)
       return (
-        <div style={{
-          flex: 1, display: "flex", flexDirection: "column",
-          alignItems: "center", justifyContent: "center",
-          gap: 12, color: C.darkMuted, fontFamily: "'Outfit',sans-serif",
-        }}>
-          <svg width="32" height="32" viewBox="0 0 16 16" fill="none" style={{ opacity: 0.4 }}>
-            <circle cx="8" cy="8" r="6" stroke={C.darkMuted} strokeWidth="1.3" fill="none" />
-            <circle cx="8" cy="8" r="2" fill={C.darkMuted} />
-          </svg>
-          <span style={{ fontSize: 14, fontWeight: 500 }}>To-Do & Calendar</span>
-          <span style={{ fontSize: 11, opacity: 0.6 }}>Coming soon</span>
-        </div>
+        <React.Suspense fallback={
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
+            Loading...
+          </div>
+        }>
+          <ZenTasksView />
+        </React.Suspense>
       );
     }
 

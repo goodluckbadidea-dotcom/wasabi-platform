@@ -64,7 +64,7 @@ export function PagesProvider({ children }) {
   // ── Page tree ──
   const pageTree = useMemo(() => {
     const folderList = pages.filter((p) => p.type === "folder");
-    const pageList = pages.filter((p) => (p.type === "page" || !p.type));
+    const pageList = pages.filter((p) => (p.type === "page" || !p.type) && !p._zenInternal);
     const folderIdSet = new Set(folderList.map((f) => f.id));
 
     function buildViewNodes(page) {
