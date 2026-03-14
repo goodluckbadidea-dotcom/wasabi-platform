@@ -1,7 +1,7 @@
 // ─── Zen Tasks View ───
 // Main orchestrator for the Zen To-Do split view.
-// Left 60%: AI-curated to-do list + quick-add.
-// Right 40%: Today's schedule / calendar.
+// Left 40%: AI-curated to-do list + quick-add.
+// Right 60%: Today's schedule / calendar.
 
 import React, { useCallback, useMemo } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
@@ -57,9 +57,9 @@ export default function ZenTasksView() {
       flex: 1, display: "flex", overflow: "hidden",
       background: C.dark,
     }}>
-      {/* Left panel: To-Do List (60%) */}
+      {/* Left panel: To-Do List (40%) */}
       <div style={{
-        flex: "0 0 60%",
+        flex: "0 0 40%",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
@@ -129,9 +129,9 @@ export default function ZenTasksView() {
         )}
       </div>
 
-      {/* Right panel: Today's Schedule (40%) */}
+      {/* Right panel: Today's Schedule (60%) */}
       <div style={{
-        flex: "0 0 40%",
+        flex: "0 0 60%",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
