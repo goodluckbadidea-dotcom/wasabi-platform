@@ -29,6 +29,7 @@ function getConstraints(type) {
 export default function DashboardWidget({
   widget,         // { id, type, pageId, viewIndex, x, y, w, h, content, label }
   editMode,
+  zoom = 1,       // canvas zoom level — drag/resize deltas divided by this
   onReposition,   // (id, newX, newY) => void
   onResize,       // (id, newW, newH) => void
   onDelete,       // (id) => void
@@ -56,10 +57,10 @@ export default function DashboardWidget({
     const handleMove = (e) => {
       const ds = dragStart.current;
       if (!ds) return;
-      const dx = e.clientX - ds.startX;
-      const dy = e.clientY - ds.startY;
-      const newX = snap(Math.max(0, ds.origX + dx));
-      const newY = snap(Math.max(0, ds.origY + dy));
+      const dx = (e.clientX - ds.startX) / zoom;
+      const dy = (e.clientY - ds.startY) / zoom;
+      const newX = snap(ds.origX + dx);
+      const newY = snap(ds.origY + dy);
       onReposition?.(widget.id, newX, newY);
     };
     const handleUp = () => {
@@ -72,7 +73,7 @@ export default function DashboardWidget({
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
     };
-  }, [dragging, widget.id, onReposition]);
+  }, [dragging, widget.id, onReposition, zoom]);
 
   // ── Resize (bottom-right corner) ──
   const handleResizeStart = useCallback((e) => {
@@ -88,8 +89,8 @@ export default function DashboardWidget({
     const handleMove = (e) => {
       const rs = resizeStart.current;
       if (!rs) return;
-      const dx = e.clientX - rs.startX;
-      const dy = e.clientY - rs.startY;
+      const dx = (e.clientX - rs.startX) / zoom;
+      const dy = (e.clientY - rs.startY) / zoom;
       const newW = snap(Math.max(constraints.minW, Math.min(constraints.maxW, rs.origW + dx)));
       const newH = snap(Math.max(constraints.minH, Math.min(constraints.maxH, rs.origH + dy)));
       onResize?.(widget.id, newW, newH);
@@ -104,7 +105,7 @@ export default function DashboardWidget({
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
     };
-  }, [resizing, widget.id, constraints, onResize]);
+  }, [resizing, widget.id, constraints, onResize, zoom]);
 
   // ── Click handler (navigate in normal mode) ──
   const handleClick = useCallback(() => {

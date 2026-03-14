@@ -1,7 +1,7 @@
 // ─── Node Canvas ───
 // Infinite SVG canvas with dot-grid background, pan, and zoom.
 // Renders nodes and connections as SVG elements.
-// Pan: middle-click or space+left-click drag.
+// Pan: left-click drag on background, middle-click, or space+left-click drag.
 // Zoom: mouse wheel.
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
@@ -92,32 +92,61 @@ export default function NodeCanvas({
   }, [handleWheel]);
 
   // ── Pan handlers ──
+  const DRAG_THRESHOLD = 3; // px — distinguishes click from drag
+
   const handlePanStart = useCallback((e) => {
-    // Middle-click or Space+Left-click to pan
-    if (e.button === 1 || (e.button === 0 && spaceHeld)) {
+    // Middle-click always pans
+    if (e.button === 1) {
       e.preventDefault();
       setIsPanning(true);
       panStartRef.current = {
-        x: e.clientX,
-        y: e.clientY,
-        panX: pan.x,
-        panY: pan.y,
+        x: e.clientX, y: e.clientY,
+        panX: pan.x, panY: pan.y,
+        isBackgroundDrag: false,
       };
+      return;
     }
-  }, [pan, spaceHeld]);
+    // Left-click: space+click always pans, or left-click on background starts potential pan
+    if (e.button === 0) {
+      const isBackground = e.target === svgRef.current
+        || (e.target.tagName === "rect" && e.target.getAttribute("fill")?.startsWith("url("));
+
+      // Don't pan on background click while drawing a connection
+      if (isBackground && draftConnection) return;
+
+      if (spaceHeld || isBackground) {
+        e.preventDefault();
+        setIsPanning(true);
+        panStartRef.current = {
+          x: e.clientX, y: e.clientY,
+          panX: pan.x, panY: pan.y,
+          isBackgroundDrag: isBackground && !spaceHeld,
+        };
+      }
+    }
+  }, [pan, spaceHeld, draftConnection]);
 
   useEffect(() => {
     if (!isPanning) return;
+    let hasDragged = false;
 
     const handleMouseMove = (e) => {
       const dx = e.clientX - panStartRef.current.x;
       const dy = e.clientY - panStartRef.current.y;
+      if (!hasDragged && Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
+      hasDragged = true;
       onPanChange({
         x: panStartRef.current.panX + dx,
         y: panStartRef.current.panY + dy,
       });
     };
-    const handleMouseUp = () => setIsPanning(false);
+    const handleMouseUp = () => {
+      // If click on background without dragging, treat as canvas click (deselect)
+      if (panStartRef.current.isBackgroundDrag && !hasDragged) {
+        onCanvasClick?.();
+      }
+      setIsPanning(false);
+    };
 
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
@@ -125,7 +154,7 @@ export default function NodeCanvas({
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [isPanning, onPanChange]);
+  }, [isPanning, onPanChange, onCanvasClick]);
 
   // ── Node drag ──
   const dragRef = useRef(null);
@@ -162,14 +191,6 @@ export default function NodeCanvas({
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
   }, [nodes, zoom, onNodeSelect, onNodeMove, spaceHeld]);
-
-  // ── Canvas click (deselect) ──
-  const handleSvgClick = useCallback((e) => {
-    // Only deselect if clicking on the background (not a node)
-    if (e.target === svgRef.current || e.target.tagName === "rect" && e.target.getAttribute("fill")?.startsWith("url(")) {
-      onCanvasClick?.();
-    }
-  }, [onCanvasClick]);
 
   // ── Convert screen coords to canvas coords ──
   const screenToCanvas = useCallback((clientX, clientY) => {
@@ -217,7 +238,7 @@ export default function NodeCanvas({
   const cursorStyle = isPanning ? "grabbing"
     : spaceHeld ? "grab"
     : draftConnection ? "crosshair"
-    : "default";
+    : "grab";
 
   return (
     <div
@@ -237,7 +258,6 @@ export default function NodeCanvas({
           display: "block",
         }}
         onMouseDown={handlePanStart}
-        onClick={handleSvgClick}
         onMouseMove={handleCanvasMouseMove}
         onMouseUp={handleCanvasMouseUp}
       >
