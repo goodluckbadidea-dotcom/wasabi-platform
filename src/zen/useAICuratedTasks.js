@@ -9,7 +9,7 @@ import { queryLimited } from "../notion/pagination.js";
 import { listRows, claudeProxy, getTableSchema } from "../lib/api.js";
 import { normalizeNotionTask, normalizeD1Task, getCached, setCache } from "./zenTaskHelpers.js";
 
-const CACHE_KEY = "wasabi_zen_ai_tasks_v2"; // v2: smart filter scoring
+const CACHE_KEY = "wasabi_zen_ai_tasks_v3"; // v3: recalibrated scoring
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 const MAX_DATABASES = 5;
 const MAX_ITEMS_PER_DB = 30;
@@ -19,19 +19,22 @@ const MAX_ITEMS_PER_DB = 30;
 // multiple signals. This prevents contacts, inventory, CRM records, etc.
 // from being treated as tasks.
 
-const TASK_STATUS_WORDS = new Set([
-  "to do", "todo", "in progress", "in-progress", "done", "complete", "completed",
-  "not started", "blocked", "backlog", "pending", "open", "closed", "cancelled",
-  "on hold", "review", "in review", "testing", "ready", "planned", "doing",
-  "won't do", "wont do", "archived",
-]);
+// Partial-match: if any of these appear WITHIN a status option name, it's task-like
+const TASK_STATUS_FRAGMENTS = [
+  "to do", "todo", "progress", "done", "complete", "not started",
+  "blocked", "backlog", "pending", "open", "closed", "cancel",
+  "on hold", "review", "testing", "ready", "planned", "doing",
+  "won't do", "wont do", "started", "finish", "waiting", "deferred",
+  "urgent", "overdue",
+];
 
-const NON_TASK_STATUS_WORDS = new Set([
+// Partial-match: if any of these appear WITHIN a status option name, it's NOT task-like
+const NON_TASK_STATUS_FRAGMENTS = [
   "active", "inactive", "lead", "customer", "prospect", "qualified",
-  "churned", "subscriber", "unsubscribed", "verified", "unverified",
-  "published", "draft", "expired", "available", "unavailable",
+  "churned", "subscri", "verified", "unverified",
+  "published", "expired", "available", "unavailable",
   "in stock", "out of stock", "discontinued",
-]);
+];
 
 const TASK_NAME_PATTERNS = [
   "task", "todo", "to-do", "to do", "action", "issue", "ticket", "bug",
@@ -53,9 +56,15 @@ const TASK_COLUMN_PATTERNS = [
   "estimate", "effort", "story point", "blocker",
 ];
 
+/** Check if a string partially matches any fragment in a list */
+function matchesAny(str, fragments) {
+  return fragments.some((f) => str.includes(f));
+}
+
 /**
- * Score how "task-like" a Notion schema is (0–100).
- * Databases scoring ≥ 40 are considered task-like.
+ * Score how "task-like" a Notion schema is.
+ * Databases scoring ≥ 20 are considered task-like.
+ * Uses partial matching on status option names for broader coverage.
  */
 function scoreTaskLikeness(schema) {
   if (!schema || !schema.title) return 0;
@@ -65,19 +74,25 @@ function scoreTaskLikeness(schema) {
   // ── Database title signals ──
   const dbTitle = (schema.databaseTitle || "").toLowerCase();
   if (TASK_NAME_PATTERNS.some((p) => dbTitle.includes(p))) {
-    score += 30;
+    score += 25;
     reasons.push("db name matches task pattern");
   }
   if (NON_TASK_NAME_PATTERNS.some((p) => dbTitle.includes(p))) {
-    score -= 30;
+    score -= 35;
     reasons.push("db name matches non-task pattern");
   }
 
-  // ── Status/select option analysis ──
+  // ── Notion `status` type property is a strong signal ──
+  // Notion designed this property type specifically for workflow/progress tracking.
+  if (schema.statuses?.length > 0) {
+    score += 20;
+    reasons.push("has Notion status property");
+  }
+
+  // ── Status/select option analysis (partial matching) ──
   const allOptions = [];
   for (const s of (schema.statuses || [])) allOptions.push(...(s.options || []));
   for (const s of (schema.selects || [])) {
-    // Only count selects whose name hints at status/progress
     const sName = s.name.toLowerCase();
     if (["status", "state", "stage", "progress", "phase"].some((p) => sName.includes(p))) {
       allOptions.push(...(s.options || []));
@@ -86,14 +101,15 @@ function scoreTaskLikeness(schema) {
 
   if (allOptions.length > 0) {
     const optNames = allOptions.map((o) => o.name.toLowerCase());
-    const taskMatches = optNames.filter((n) => TASK_STATUS_WORDS.has(n)).length;
-    const nonTaskMatches = optNames.filter((n) => NON_TASK_STATUS_WORDS.has(n)).length;
+    const taskMatches = optNames.filter((n) => matchesAny(n, TASK_STATUS_FRAGMENTS)).length;
+    const nonTaskMatches = optNames.filter((n) => matchesAny(n, NON_TASK_STATUS_FRAGMENTS)).length;
 
     if (taskMatches > 0) {
-      score += Math.min(taskMatches * 12, 30);
+      score += Math.min(taskMatches * 8, 25);
       reasons.push(`${taskMatches} task-like status options`);
     }
-    if (nonTaskMatches > 0) {
+    if (nonTaskMatches > 0 && taskMatches === 0) {
+      // Only penalize if there are NO task-like options (mixed DBs get benefit of doubt)
       score -= nonTaskMatches * 15;
       reasons.push(`${nonTaskMatches} non-task status options`);
     }
@@ -103,7 +119,7 @@ function scoreTaskLikeness(schema) {
   for (const cb of (schema.checkboxes || [])) {
     const cbName = cb.name.toLowerCase();
     if (["done", "complete", "completed", "finished"].some((p) => cbName.includes(p))) {
-      score += 25;
+      score += 20;
       reasons.push("has done/complete checkbox");
     }
   }
@@ -112,15 +128,14 @@ function scoreTaskLikeness(schema) {
   const allNames = (schema.allFields || []).map((f) => f.name.toLowerCase());
   const taskColHits = TASK_COLUMN_PATTERNS.filter((p) => allNames.some((n) => n.includes(p)));
   if (taskColHits.length > 0) {
-    score += taskColHits.length * 10;
+    score += taskColHits.length * 8;
     reasons.push(`task columns: ${taskColHits.join(", ")}`);
   }
 
   // ── Anti-signals: contact/CRM fields ──
-  if (schema.emails?.length > 0) { score -= 25; reasons.push("has email fields"); }
-  if (schema.phones?.length > 0) { score -= 25; reasons.push("has phone fields"); }
+  if (schema.emails?.length > 0) { score -= 30; reasons.push("has email fields"); }
+  if (schema.phones?.length > 0) { score -= 30; reasons.push("has phone fields"); }
 
-  // Contact-like column names
   const contactCols = ["email", "phone", "address", "company", "website", "linkedin", "twitter"];
   const contactHits = contactCols.filter((p) => allNames.some((n) => n.includes(p)));
   if (contactHits.length >= 2) {
@@ -128,25 +143,20 @@ function scoreTaskLikeness(schema) {
     reasons.push(`contact-like columns: ${contactHits.join(", ")}`);
   }
 
-  // ── Date fields as moderate positive (tasks often have dates) ──
+  // ── Date fields with task-like names ──
   if (schema.dates?.length > 0) {
     const dateNames = schema.dates.map((d) => d.name.toLowerCase());
     if (dateNames.some((n) => ["due", "deadline", "start", "end"].some((p) => n.includes(p)))) {
-      score += 15;
+      score += 10;
       reasons.push("has due/deadline date field");
     }
-  }
-
-  // ── Status type property is a mild positive ──
-  if (schema.statuses?.length > 0) {
-    score += 5;
   }
 
   console.log(`[AICurated] Schema score for "${schema.databaseTitle}": ${score} (${reasons.join("; ")})`);
   return score;
 }
 
-const TASK_SCHEMA_THRESHOLD = 40;
+const TASK_SCHEMA_THRESHOLD = 20;
 
 /**
  * Check if a classified schema has task-like fields.
@@ -207,7 +217,7 @@ function isTaskLikeD1Table(columns, pageName) {
   }
 
   console.log(`[AICurated] D1 score for "${pageName}": ${score} (${reasons.join("; ")})`);
-  return score >= TASK_SCHEMA_THRESHOLD;
+  return score >= 20;
 }
 
 /**
@@ -232,7 +242,9 @@ export default function useAICuratedTasks() {
 
   // Load cached results immediately + clean up old cache keys
   useEffect(() => {
-    try { localStorage.removeItem("wasabi_zen_ai_tasks"); } catch {} // v1 cleanup
+    // Clean up old cache keys
+    try { localStorage.removeItem("wasabi_zen_ai_tasks"); } catch {}
+    try { localStorage.removeItem("wasabi_zen_ai_tasks_v2"); } catch {}
     const cached = getCached(CACHE_KEY, CACHE_TTL);
     if (cached) {
       setAiTasks(cached);
