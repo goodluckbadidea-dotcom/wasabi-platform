@@ -8,6 +8,7 @@ import { C, FONT, RADIUS, SHADOW, VIEW_PALETTE, getStatusColor } from "../design
 import { ANIM, injectAnimations } from "../design/animations.js";
 import { readField, getFieldType, getFieldOptions, computeAggregation, resolveField } from "./_viewHelpers.js";
 import * as api from "../lib/api.js";
+import { IFRAME_SANDBOX_HELPERS, IFRAME_AUTO_EXECUTE } from "../lib/iframeHelpers.js";
 
 // ─── Formatters ───
 
@@ -439,8 +440,11 @@ window.wasabi = {
   colors: ${JSON.stringify(themeColors)},
   root: document.getElementById('root'),
 };
+${IFRAME_SANDBOX_HELPERS}
 try {
   ${code}
+
+  ${IFRAME_AUTO_EXECUTE}
 } catch(err) {
   document.getElementById('root').innerHTML =
     '<div style="color:#E05252;padding:12px;font-size:12px;">' +

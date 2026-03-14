@@ -233,15 +233,17 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
         }
       `}</style>
 
-      {/* ── Canvas transform layer ── */}
+      {/* ── Canvas transform layer (absolute so 10k size doesn't inflate parent) ── */}
       <div
         ref={transformRef}
         style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
           transformOrigin: "0 0",
           transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
           width: CANVAS_SIZE,
           height: CANVAS_SIZE,
-          position: "relative",
           backgroundImage: `radial-gradient(circle, ${C.darkBorder} 1px, transparent 1px)`,
           backgroundSize: `${GRID}px ${GRID}px`,
         }}

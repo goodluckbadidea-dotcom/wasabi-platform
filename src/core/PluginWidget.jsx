@@ -7,10 +7,12 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { IconBolt, IconRefresh, IconWarning } from "../design/icons.jsx";
 import * as api from "../lib/api.js";
+import { IFRAME_SANDBOX_HELPERS, IFRAME_AUTO_EXECUTE } from "../lib/iframeHelpers.js";
 
 /**
  * Build the srcdoc HTML that the iframe will render.
  * The plugin code receives a `wasabi` global with theme colors and a `refresh()` helper.
+ * Sandbox helpers (formatDate, round, sum, etc.) are available so plugin functions work.
  */
 function buildSrcdoc(code, themeColors) {
   return `<!DOCTYPE html>
@@ -53,8 +55,13 @@ window.addEventListener('message', function(e) {
   }
 });
 
+// Sandbox helpers (same as toolExecutor.js)
+${IFRAME_SANDBOX_HELPERS}
+
 try {
   ${code}
+
+  ${IFRAME_AUTO_EXECUTE}
 } catch(err) {
   document.getElementById('root').innerHTML =
     '<div style="color:#E05252;padding:8px;font-size:12px;">' +
