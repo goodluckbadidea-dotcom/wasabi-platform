@@ -53,8 +53,44 @@ export default function TopHeader() {
         <Breadcrumb />
       </div>
 
-      {/* Right: Neurons toggle + Theme cycle */}
+      {/* Right: Refresh + Neurons toggle + Theme cycle */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+        {/* Hard refresh */}
+        <button
+          onClick={() => {
+            // Clear all data caches
+            try {
+              for (const key of Object.keys(localStorage)) {
+                if (key.startsWith("wasabi_zen_") || key.startsWith("wasabi_cal_")) {
+                  localStorage.removeItem(key);
+                }
+              }
+            } catch {}
+            window.location.reload();
+          }}
+          title="Hard refresh — clear caches & reload"
+          style={{
+            background: "transparent",
+            border: "none",
+            borderRadius: RADIUS.pill,
+            padding: 6,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            transition: "opacity 0.15s",
+            opacity: 0.4,
+            outline: "none",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.4"; }}
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path d="M14 2v5h-5" stroke={C.darkMuted} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M12.5 10A5.5 5.5 0 1 1 13 6" stroke={C.darkMuted} strokeWidth="1.4" strokeLinecap="round" />
+          </svg>
+        </button>
+
         {/* Neurons toggle (Sushi Roll mode only) */}
         {appMode !== "zen" && <button
           onClick={toggleOverlay}
