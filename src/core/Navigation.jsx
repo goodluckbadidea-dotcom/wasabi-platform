@@ -14,6 +14,7 @@ import {
   IconChevronLeft, IconChevronRight, IconMail, IconCalendar, IconFunction,
   IconGrid,
 } from "../design/icons.jsx";
+import { useTheme } from "../context/ThemeContext.jsx";
 import { getGoogleStatus, getGmailSummary, getCalendarSummary } from "../lib/api.js";
 import WasabiFlame from "./WasabiFlame.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
@@ -38,6 +39,8 @@ export default function Navigation({
     updatePageConfig, removePage, addPage,
     activeFolder, setActiveFolder,
   } = usePlatform();
+
+  const { appMode } = useTheme();
 
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
@@ -221,240 +224,357 @@ export default function Navigation({
         boxShadow: "2px 0 8px rgba(0,0,0,0.2)",
       }}
     >
-      {/* -- Search Bar (replaces FolderDropdown) -- */}
-      {!collapsed ? (
-        <div style={{
-          flexShrink: 0, borderBottom: `1px solid ${C.darkBorder}`,
-          padding: "8px 10px", display: "flex", alignItems: "center", gap: 8,
-        }}>
-          <IconSearch size={12} color={C.darkMuted} />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search this workspace..."
-            style={{
-              flex: 1, background: "transparent", border: "none",
-              outline: "none", fontFamily: FONT, fontSize: 12,
-              color: C.darkText, padding: 0,
-            }}
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery("")}
-              style={{
-                background: "none", border: "none", cursor: "pointer",
-                padding: 0, display: "flex", outline: "none",
-              }}
-            >
-              <span style={{ fontSize: 10, color: C.darkMuted, lineHeight: 1 }}>&times;</span>
-            </button>
+      {/* ── Zen mode: simplified sidebar ── */}
+      {appMode === "zen" ? (
+        <>
+          {/* Zen header label */}
+          {!collapsed && (
+            <div style={{
+              flexShrink: 0, borderBottom: `1px solid ${C.darkBorder}`,
+              padding: "12px 14px", display: "flex", alignItems: "center", gap: 8,
+            }}>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <circle cx="8" cy="8" r="6" stroke={C.accent} strokeWidth="1.5" fill="none" />
+                <circle cx="8" cy="8" r="2" fill={C.accent} />
+              </svg>
+              <span style={{
+                fontFamily: FONT, fontSize: 12, fontWeight: 600,
+                color: C.darkText, letterSpacing: "0.04em", textTransform: "uppercase",
+              }}>
+                Zen
+              </span>
+            </div>
           )}
-        </div>
-      ) : (
-        <button
-          onClick={onExpandSidebar}
-          style={{
-            flexShrink: 0, borderBottom: `1px solid ${C.darkBorder}`,
-            padding: "12px 0", background: "transparent", border: "none",
-            cursor: "pointer", display: "flex", justifyContent: "center",
-            outline: "none",
-          }}
-        >
-          <IconSearch size={14} color={C.darkMuted} />
-        </button>
-      )}
 
-      {/* -- Sidebar Tree -- */}
-      <SidebarTree
-        activePage={activePage}
-        activeViewIndex={activeViewIndex}
-        onNavigate={navigateToPage}
-        onSetActiveView={(pageId, viewIdx) => onSetViewForPage?.(pageId, viewIdx)}
-        onRename={handleRename}
-        onDelete={(node) => setConfirmDelete({ node })}
-        onContextMenu={handleContextMenu}
-        collapsed={collapsed}
-        searchQuery={searchQuery}
-      />
+          {/* Spacer to push buttons to bottom */}
+          <div style={{ flex: 1 }} />
 
-      {/* -- Create Menu (replaces "+ New Page") -- */}
-      <CreateMenu onCreateItem={handleCreateItem} collapsed={collapsed} />
-
-      {/* -- Bottom action buttons -- */}
-      <div
-        style={{
-          flexShrink: 0,
-          borderTop: `1px solid ${C.darkBorder}`,
-          borderImage: `linear-gradient(90deg, ${C.darkBorder}, ${C.accent}44, ${C.accent}44, ${C.darkBorder}) 1`,
-          padding: collapsed ? "8px 0" : "8px 12px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 2,
-          overflow: "hidden",
-          transition: "padding 0.25s",
-        }}
-      >
-        {/* Home */}
-        <button
-          onClick={() => { setActivePage(null); setActiveFolder(null); }}
-          title="Home"
-          style={bottomBtnStyle(activePage === null && !activeFolder)}
-          onMouseEnter={(e) => { if (activePage !== null || activeFolder) e.currentTarget.style.background = C.darkSurf2; }}
-          onMouseLeave={(e) => { if (activePage !== null || activeFolder) e.currentTarget.style.background = "transparent"; }}
-        >
-          <IconStar size={collapsed ? 16 : 14} color={(activePage === null && !activeFolder) ? "#fff" : C.darkMuted} />
-          {!collapsed && <span style={bottomLabelStyle(activePage === null && !activeFolder)}>Home</span>}
-        </button>
-
-        {/* Inbox */}
-        <button
-          onClick={() => setActivePage("inbox")}
-          title="Inbox"
-          style={bottomBtnStyle(activePage === "inbox")}
-          onMouseEnter={(e) => { if (activePage !== "inbox") e.currentTarget.style.background = C.darkSurf2; }}
-          onMouseLeave={(e) => { if (activePage !== "inbox") e.currentTarget.style.background = "transparent"; }}
-        >
-          <IconBell size={collapsed ? 16 : 14} color={activePage === "inbox" ? "#fff" : C.darkMuted} />
-          {!collapsed && <span style={bottomLabelStyle(activePage === "inbox")}>Inbox</span>}
-        </button>
-
-        {/* Knowledge Base */}
-        <button
-          onClick={() => setActivePage("knowledge-base")}
-          title="Knowledge Base"
-          style={bottomBtnStyle(activePage === "knowledge-base")}
-          onMouseEnter={(e) => { if (activePage !== "knowledge-base") e.currentTarget.style.background = C.darkSurf2; }}
-          onMouseLeave={(e) => { if (activePage !== "knowledge-base") e.currentTarget.style.background = "transparent"; }}
-        >
-          <IconBrain size={collapsed ? 16 : 14} color={activePage === "knowledge-base" ? "#fff" : C.darkMuted} />
-          {!collapsed && <span style={bottomLabelStyle(activePage === "knowledge-base")}>Knowledge Base</span>}
-        </button>
-
-        {/* Automations */}
-        <button
-          onClick={() => setActivePage("automations")}
-          title="Automations"
-          style={bottomBtnStyle(activePage === "automations")}
-          onMouseEnter={(e) => { if (activePage !== "automations") e.currentTarget.style.background = C.darkSurf2; }}
-          onMouseLeave={(e) => { if (activePage !== "automations") e.currentTarget.style.background = "transparent"; }}
-        >
-          <IconBolt size={collapsed ? 16 : 14} color={activePage === "automations" ? "#fff" : C.darkMuted} />
-          {!collapsed && <span style={bottomLabelStyle(activePage === "automations")}>Automations</span>}
-        </button>
-
-        {/* Functions */}
-        <button
-          onClick={() => setActivePage("functions")}
-          title="Functions"
-          style={bottomBtnStyle(activePage === "functions")}
-          onMouseEnter={(e) => { if (activePage !== "functions") e.currentTarget.style.background = C.darkSurf2; }}
-          onMouseLeave={(e) => { if (activePage !== "functions") e.currentTarget.style.background = "transparent"; }}
-        >
-          <IconFunction size={collapsed ? 16 : 14} color={activePage === "functions" ? "#fff" : C.darkMuted} />
-          {!collapsed && <span style={bottomLabelStyle(activePage === "functions")}>Functions</span>}
-        </button>
-
-        {/* Build (Custom Views + Plugins) */}
-        <button
-          onClick={() => setActivePage("build")}
-          title="Build"
-          style={bottomBtnStyle(activePage === "build")}
-          onMouseEnter={(e) => { if (activePage !== "build") e.currentTarget.style.background = C.darkSurf2; }}
-          onMouseLeave={(e) => { if (activePage !== "build") e.currentTarget.style.background = "transparent"; }}
-        >
-          <IconGrid size={collapsed ? 16 : 14} color={activePage === "build" ? "#fff" : C.darkMuted} />
-          {!collapsed && <span style={bottomLabelStyle(activePage === "build")}>Build</span>}
-        </button>
-
-        {/* Gmail (only when Google connected) */}
-        {googleConnected && (
-          <button
-            onClick={() => setActivePage("gmail")}
-            title="Gmail"
-            style={bottomBtnStyle(activePage === "gmail")}
-            onMouseEnter={(e) => { if (activePage !== "gmail") e.currentTarget.style.background = C.darkSurf2; }}
-            onMouseLeave={(e) => { if (activePage !== "gmail") e.currentTarget.style.background = "transparent"; }}
+          {/* Zen bottom nav */}
+          <div
+            style={{
+              flexShrink: 0,
+              borderTop: `1px solid ${C.darkBorder}`,
+              borderImage: `linear-gradient(90deg, ${C.darkBorder}, ${C.accent}44, ${C.accent}44, ${C.darkBorder}) 1`,
+              padding: collapsed ? "8px 0" : "8px 12px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+              overflow: "hidden",
+              transition: "padding 0.25s",
+            }}
           >
-            <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-              <IconMail size={collapsed ? 16 : 14} color={activePage === "gmail" ? "#fff" : C.darkMuted} />
-              {unreadCount > 0 && (
-                <span style={{
-                  position: "absolute", top: -5, right: -8,
-                  background: C.accent, color: "#fff",
-                  fontSize: 8, fontWeight: 700, fontFamily: FONT,
-                  borderRadius: 999, minWidth: 14, height: 14,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  padding: "0 3px", lineHeight: 1,
-                }}>
-                  {unreadCount > 99 ? "99+" : unreadCount}
-                </span>
+            {/* To-Do / Calendar */}
+            <button
+              onClick={() => { setActivePage("zen-tasks"); setActiveFolder(null); }}
+              title="To-Do & Calendar"
+              style={bottomBtnStyle(activePage === "zen-tasks" || activePage === null)}
+              onMouseEnter={(e) => { if (activePage !== "zen-tasks" && activePage !== null) e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activePage !== "zen-tasks" && activePage !== null) e.currentTarget.style.background = "transparent"; }}
+            >
+              <IconCalendar size={collapsed ? 16 : 14} color={(activePage === "zen-tasks" || activePage === null) ? "#fff" : C.darkMuted} />
+              {!collapsed && <span style={bottomLabelStyle(activePage === "zen-tasks" || activePage === null)}>To-Do & Calendar</span>}
+            </button>
+
+            {/* Notes */}
+            <button
+              onClick={() => setActivePage("zen-notes")}
+              title="Notes"
+              style={bottomBtnStyle(activePage === "zen-notes")}
+              onMouseEnter={(e) => { if (activePage !== "zen-notes") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activePage !== "zen-notes") e.currentTarget.style.background = "transparent"; }}
+            >
+              <svg width={collapsed ? 16 : 14} height={collapsed ? 16 : 14} viewBox="0 0 16 16" fill="none">
+                <rect x="3" y="2" width="10" height="12" rx="1.5" stroke={activePage === "zen-notes" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
+                <line x1="5.5" y1="5.5" x2="10.5" y2="5.5" stroke={activePage === "zen-notes" ? "#fff" : C.darkMuted} strokeWidth="1" />
+                <line x1="5.5" y1="8" x2="10.5" y2="8" stroke={activePage === "zen-notes" ? "#fff" : C.darkMuted} strokeWidth="1" />
+                <line x1="5.5" y1="10.5" x2="8.5" y2="10.5" stroke={activePage === "zen-notes" ? "#fff" : C.darkMuted} strokeWidth="1" />
+              </svg>
+              {!collapsed && <span style={bottomLabelStyle(activePage === "zen-notes")}>Notes</span>}
+            </button>
+
+            {/* Settings */}
+            <button
+              onClick={() => setActivePage("system")}
+              title="Settings"
+              style={bottomBtnStyle(activePage === "system")}
+              onMouseEnter={(e) => { if (activePage !== "system") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activePage !== "system") e.currentTarget.style.background = "transparent"; }}
+            >
+              <IconGear size={collapsed ? 16 : 14} color={activePage === "system" ? "#fff" : C.darkMuted} />
+              {!collapsed && <span style={bottomLabelStyle(activePage === "system")}>Settings</span>}
+            </button>
+
+            {/* Wasabi flame */}
+            {!wasabiPanelOpen && (
+              <button
+                onClick={onToggleWasabiPanel}
+                style={{
+                  background: "none", border: "none", cursor: "pointer",
+                  display: "flex", alignItems: "center",
+                  gap: collapsed ? 0 : 10,
+                  padding: collapsed ? "6px 0" : "6px 8px",
+                  borderRadius: RADIUS.lg, transition: "background 0.15s",
+                  outline: "none", width: "100%",
+                  justifyContent: collapsed ? "center" : "flex-start",
+                  marginTop: 2,
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                title="Open Wasabi"
+              >
+                <WasabiFlame size={collapsed ? 26 : 30} isThinking={isThinking} />
+                {!collapsed && (
+                  <span style={{
+                    fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: 500,
+                    color: C.darkMuted, letterSpacing: "0.02em",
+                  }}>
+                    Wasabi
+                  </span>
+                )}
+              </button>
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          {/* ── Samurai mode: full sidebar ── */}
+
+          {/* -- Search Bar (replaces FolderDropdown) -- */}
+          {!collapsed ? (
+            <div style={{
+              flexShrink: 0, borderBottom: `1px solid ${C.darkBorder}`,
+              padding: "8px 10px", display: "flex", alignItems: "center", gap: 8,
+            }}>
+              <IconSearch size={12} color={C.darkMuted} />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search this workspace..."
+                style={{
+                  flex: 1, background: "transparent", border: "none",
+                  outline: "none", fontFamily: FONT, fontSize: 12,
+                  color: C.darkText, padding: 0,
+                }}
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  style={{
+                    background: "none", border: "none", cursor: "pointer",
+                    padding: 0, display: "flex", outline: "none",
+                  }}
+                >
+                  <span style={{ fontSize: 10, color: C.darkMuted, lineHeight: 1 }}>&times;</span>
+                </button>
               )}
             </div>
-            {!collapsed && <span style={bottomLabelStyle(activePage === "gmail")}>Gmail</span>}
-          </button>
-        )}
+          ) : (
+            <button
+              onClick={onExpandSidebar}
+              style={{
+                flexShrink: 0, borderBottom: `1px solid ${C.darkBorder}`,
+                padding: "12px 0", background: "transparent", border: "none",
+                cursor: "pointer", display: "flex", justifyContent: "center",
+                outline: "none",
+              }}
+            >
+              <IconSearch size={14} color={C.darkMuted} />
+            </button>
+          )}
 
-        {/* Calendar (only when Google connected) */}
-        {googleConnected && (
-          <button
-            onClick={() => setActivePage("calendar")}
-            title="Calendar"
-            style={bottomBtnStyle(activePage === "calendar")}
-            onMouseEnter={(e) => { if (activePage !== "calendar") e.currentTarget.style.background = C.darkSurf2; }}
-            onMouseLeave={(e) => { if (activePage !== "calendar") e.currentTarget.style.background = "transparent"; }}
-          >
-            <IconCalendar size={collapsed ? 16 : 14} color={activePage === "calendar" ? "#fff" : C.darkMuted} />
-            {!collapsed && (
-              <span style={bottomLabelStyle(activePage === "calendar")}>
-                {nextEventLabel || "Calendar"}
-              </span>
-            )}
-          </button>
-        )}
+          {/* -- Sidebar Tree -- */}
+          <SidebarTree
+            activePage={activePage}
+            activeViewIndex={activeViewIndex}
+            onNavigate={navigateToPage}
+            onSetActiveView={(pageId, viewIdx) => onSetViewForPage?.(pageId, viewIdx)}
+            onRename={handleRename}
+            onDelete={(node) => setConfirmDelete({ node })}
+            onContextMenu={handleContextMenu}
+            collapsed={collapsed}
+            searchQuery={searchQuery}
+          />
 
-        {/* System */}
-        <button
-          onClick={() => setActivePage("system")}
-          title="System"
-          style={bottomBtnStyle(activePage === "system")}
-          onMouseEnter={(e) => { if (activePage !== "system") e.currentTarget.style.background = C.darkSurf2; }}
-          onMouseLeave={(e) => { if (activePage !== "system") e.currentTarget.style.background = "transparent"; }}
-        >
-          <IconGear size={collapsed ? 16 : 14} color={activePage === "system" ? "#fff" : C.darkMuted} />
-          {!collapsed && <span style={bottomLabelStyle(activePage === "system")}>System</span>}
-        </button>
+          {/* -- Create Menu (replaces "+ New Page") -- */}
+          <CreateMenu onCreateItem={handleCreateItem} collapsed={collapsed} />
 
-        {/* Wasabi flame */}
-        {!wasabiPanelOpen && (
-          <button
-            onClick={onToggleWasabiPanel}
+          {/* -- Bottom action buttons -- */}
+          <div
             style={{
-              background: "none", border: "none", cursor: "pointer",
-              display: "flex", alignItems: "center",
-              gap: collapsed ? 0 : 10,
-              padding: collapsed ? "6px 0" : "6px 8px",
-              borderRadius: RADIUS.lg, transition: "background 0.15s",
-              outline: "none", width: "100%",
-              justifyContent: collapsed ? "center" : "flex-start",
-              marginTop: 2,
+              flexShrink: 0,
+              borderTop: `1px solid ${C.darkBorder}`,
+              borderImage: `linear-gradient(90deg, ${C.darkBorder}, ${C.accent}44, ${C.accent}44, ${C.darkBorder}) 1`,
+              padding: collapsed ? "8px 0" : "8px 12px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+              overflow: "hidden",
+              transition: "padding 0.25s",
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-            title="Open Wasabi"
           >
-            <WasabiFlame size={collapsed ? 26 : 30} isThinking={isThinking} />
-            {!collapsed && (
-              <span style={{
-                fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: 500,
-                color: C.darkMuted, letterSpacing: "0.02em",
-              }}>
-                Wasabi
-              </span>
+            {/* Home */}
+            <button
+              onClick={() => { setActivePage(null); setActiveFolder(null); }}
+              title="Home"
+              style={bottomBtnStyle(activePage === null && !activeFolder)}
+              onMouseEnter={(e) => { if (activePage !== null || activeFolder) e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activePage !== null || activeFolder) e.currentTarget.style.background = "transparent"; }}
+            >
+              <IconStar size={collapsed ? 16 : 14} color={(activePage === null && !activeFolder) ? "#fff" : C.darkMuted} />
+              {!collapsed && <span style={bottomLabelStyle(activePage === null && !activeFolder)}>Home</span>}
+            </button>
+
+            {/* Inbox */}
+            <button
+              onClick={() => setActivePage("inbox")}
+              title="Inbox"
+              style={bottomBtnStyle(activePage === "inbox")}
+              onMouseEnter={(e) => { if (activePage !== "inbox") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activePage !== "inbox") e.currentTarget.style.background = "transparent"; }}
+            >
+              <IconBell size={collapsed ? 16 : 14} color={activePage === "inbox" ? "#fff" : C.darkMuted} />
+              {!collapsed && <span style={bottomLabelStyle(activePage === "inbox")}>Inbox</span>}
+            </button>
+
+            {/* Knowledge Base */}
+            <button
+              onClick={() => setActivePage("knowledge-base")}
+              title="Knowledge Base"
+              style={bottomBtnStyle(activePage === "knowledge-base")}
+              onMouseEnter={(e) => { if (activePage !== "knowledge-base") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activePage !== "knowledge-base") e.currentTarget.style.background = "transparent"; }}
+            >
+              <IconBrain size={collapsed ? 16 : 14} color={activePage === "knowledge-base" ? "#fff" : C.darkMuted} />
+              {!collapsed && <span style={bottomLabelStyle(activePage === "knowledge-base")}>Knowledge Base</span>}
+            </button>
+
+            {/* Automations */}
+            <button
+              onClick={() => setActivePage("automations")}
+              title="Automations"
+              style={bottomBtnStyle(activePage === "automations")}
+              onMouseEnter={(e) => { if (activePage !== "automations") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activePage !== "automations") e.currentTarget.style.background = "transparent"; }}
+            >
+              <IconBolt size={collapsed ? 16 : 14} color={activePage === "automations" ? "#fff" : C.darkMuted} />
+              {!collapsed && <span style={bottomLabelStyle(activePage === "automations")}>Automations</span>}
+            </button>
+
+            {/* Functions */}
+            <button
+              onClick={() => setActivePage("functions")}
+              title="Functions"
+              style={bottomBtnStyle(activePage === "functions")}
+              onMouseEnter={(e) => { if (activePage !== "functions") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activePage !== "functions") e.currentTarget.style.background = "transparent"; }}
+            >
+              <IconFunction size={collapsed ? 16 : 14} color={activePage === "functions" ? "#fff" : C.darkMuted} />
+              {!collapsed && <span style={bottomLabelStyle(activePage === "functions")}>Functions</span>}
+            </button>
+
+            {/* Build (Custom Views + Plugins) */}
+            <button
+              onClick={() => setActivePage("build")}
+              title="Build"
+              style={bottomBtnStyle(activePage === "build")}
+              onMouseEnter={(e) => { if (activePage !== "build") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activePage !== "build") e.currentTarget.style.background = "transparent"; }}
+            >
+              <IconGrid size={collapsed ? 16 : 14} color={activePage === "build" ? "#fff" : C.darkMuted} />
+              {!collapsed && <span style={bottomLabelStyle(activePage === "build")}>Build</span>}
+            </button>
+
+            {/* Gmail (only when Google connected) */}
+            {googleConnected && (
+              <button
+                onClick={() => setActivePage("gmail")}
+                title="Gmail"
+                style={bottomBtnStyle(activePage === "gmail")}
+                onMouseEnter={(e) => { if (activePage !== "gmail") e.currentTarget.style.background = C.darkSurf2; }}
+                onMouseLeave={(e) => { if (activePage !== "gmail") e.currentTarget.style.background = "transparent"; }}
+              >
+                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                  <IconMail size={collapsed ? 16 : 14} color={activePage === "gmail" ? "#fff" : C.darkMuted} />
+                  {unreadCount > 0 && (
+                    <span style={{
+                      position: "absolute", top: -5, right: -8,
+                      background: C.accent, color: "#fff",
+                      fontSize: 8, fontWeight: 700, fontFamily: FONT,
+                      borderRadius: 999, minWidth: 14, height: 14,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      padding: "0 3px", lineHeight: 1,
+                    }}>
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
+                </div>
+                {!collapsed && <span style={bottomLabelStyle(activePage === "gmail")}>Gmail</span>}
+              </button>
             )}
-          </button>
-        )}
-      </div>
+
+            {/* Calendar (only when Google connected) */}
+            {googleConnected && (
+              <button
+                onClick={() => setActivePage("calendar")}
+                title="Calendar"
+                style={bottomBtnStyle(activePage === "calendar")}
+                onMouseEnter={(e) => { if (activePage !== "calendar") e.currentTarget.style.background = C.darkSurf2; }}
+                onMouseLeave={(e) => { if (activePage !== "calendar") e.currentTarget.style.background = "transparent"; }}
+              >
+                <IconCalendar size={collapsed ? 16 : 14} color={activePage === "calendar" ? "#fff" : C.darkMuted} />
+                {!collapsed && (
+                  <span style={bottomLabelStyle(activePage === "calendar")}>
+                    {nextEventLabel || "Calendar"}
+                  </span>
+                )}
+              </button>
+            )}
+
+            {/* System */}
+            <button
+              onClick={() => setActivePage("system")}
+              title="System"
+              style={bottomBtnStyle(activePage === "system")}
+              onMouseEnter={(e) => { if (activePage !== "system") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activePage !== "system") e.currentTarget.style.background = "transparent"; }}
+            >
+              <IconGear size={collapsed ? 16 : 14} color={activePage === "system" ? "#fff" : C.darkMuted} />
+              {!collapsed && <span style={bottomLabelStyle(activePage === "system")}>System</span>}
+            </button>
+
+            {/* Wasabi flame */}
+            {!wasabiPanelOpen && (
+              <button
+                onClick={onToggleWasabiPanel}
+                style={{
+                  background: "none", border: "none", cursor: "pointer",
+                  display: "flex", alignItems: "center",
+                  gap: collapsed ? 0 : 10,
+                  padding: collapsed ? "6px 0" : "6px 8px",
+                  borderRadius: RADIUS.lg, transition: "background 0.15s",
+                  outline: "none", width: "100%",
+                  justifyContent: collapsed ? "center" : "flex-start",
+                  marginTop: 2,
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                title="Open Wasabi"
+              >
+                <WasabiFlame size={collapsed ? 26 : 30} isThinking={isThinking} />
+                {!collapsed && (
+                  <span style={{
+                    fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: 500,
+                    color: C.darkMuted, letterSpacing: "0.02em",
+                  }}>
+                    Wasabi
+                  </span>
+                )}
+              </button>
+            )}
+          </div>
+        </>
+      )}
 
       {/* -- Collapse / Expand Chevron -- */}
       <button

@@ -65,7 +65,7 @@ function AppContent() {
     updatePageConfig,
   } = usePlatform();
 
-  const { theme } = useTheme();
+  const { theme, appMode } = useTheme();
   const { toggleOverlay: toggleNeurons } = useNeurons();
 
   // ── UI State ──
@@ -76,6 +76,18 @@ function AppContent() {
   const [builderTemplate, setBuilderTemplate] = useState(null);
   const [activePageData, setActivePageData] = useState(null); // { data, schema } from PageShell for WasabiPanel chat
   const [pendingChatMessage, setPendingChatMessage] = useState(null); // Scaffold from FunctionBuilder → WasabiPanel
+
+  // ── Mode transition fade ──
+  const [modeTransitioning, setModeTransitioning] = useState(false);
+  const prevAppMode = useRef(appMode);
+  useEffect(() => {
+    if (prevAppMode.current !== appMode) {
+      setModeTransitioning(true);
+      const timer = setTimeout(() => setModeTransitioning(false), 200);
+      prevAppMode.current = appMode;
+      return () => clearTimeout(timer);
+    }
+  }, [appMode]);
 
   // ── Clear page controls when navigating away ──
   const prevActivePage = useRef(activePage);
@@ -252,6 +264,50 @@ function AppContent() {
 
   // Determine main content
   const renderContent = () => {
+    // ── Zen mode routing ──
+    if (appMode === "zen") {
+      // System settings is shared between modes
+      if (activePage === "system") {
+        return <SystemManager />;
+      }
+      // Notes placeholder
+      if (activePage === "zen-notes") {
+        return (
+          <div style={{
+            flex: 1, display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center",
+            gap: 12, color: C.darkMuted, fontFamily: "'Outfit',sans-serif",
+          }}>
+            <svg width="32" height="32" viewBox="0 0 16 16" fill="none" style={{ opacity: 0.4 }}>
+              <rect x="3" y="2" width="10" height="12" rx="1.5" stroke={C.darkMuted} strokeWidth="1.3" fill="none" />
+              <line x1="5.5" y1="5.5" x2="10.5" y2="5.5" stroke={C.darkMuted} strokeWidth="1" />
+              <line x1="5.5" y1="8" x2="10.5" y2="8" stroke={C.darkMuted} strokeWidth="1" />
+              <line x1="5.5" y1="10.5" x2="8.5" y2="10.5" stroke={C.darkMuted} strokeWidth="1" />
+            </svg>
+            <span style={{ fontSize: 14, fontWeight: 500 }}>Notes</span>
+            <span style={{ fontSize: 11, opacity: 0.6 }}>Coming soon</span>
+          </div>
+        );
+      }
+      // Default: To-Do & Calendar placeholder
+      return (
+        <div style={{
+          flex: 1, display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          gap: 12, color: C.darkMuted, fontFamily: "'Outfit',sans-serif",
+        }}>
+          <svg width="32" height="32" viewBox="0 0 16 16" fill="none" style={{ opacity: 0.4 }}>
+            <circle cx="8" cy="8" r="6" stroke={C.darkMuted} strokeWidth="1.3" fill="none" />
+            <circle cx="8" cy="8" r="2" fill={C.darkMuted} />
+          </svg>
+          <span style={{ fontSize: 14, fontWeight: 500 }}>To-Do & Calendar</span>
+          <span style={{ fontSize: 11, opacity: 0.6 }}>Coming soon</span>
+        </div>
+      );
+    }
+
+    // ── Samurai mode routing (existing) ──
+
     // Wasabi page builder
     if (activePage === "wasabi") {
       return (
@@ -466,6 +522,8 @@ function AppContent() {
             overflow: "hidden",
             minWidth: 0,
             animation: ANIM.contentSwap(),
+            opacity: modeTransitioning ? 0 : 1,
+            transition: "opacity 0.2s ease",
           }}
         >
           {renderContent()}
