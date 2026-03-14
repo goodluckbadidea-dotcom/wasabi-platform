@@ -47,6 +47,7 @@ import { IconGear } from "./design/icons.jsx";
 const FunctionsPanel = React.lazy(() => import("./core/FunctionsPanel.jsx"));
 const BuildPage = React.lazy(() => import("./core/BuildPage.jsx"));
 const ZenTasksView = React.lazy(() => import("./zen/ZenTasksView.jsx"));
+const ZenNotes = React.lazy(() => import("./zen/ZenNotes.jsx"));
 
 // Inject CSS animations on app load
 injectAnimations();
@@ -272,23 +273,16 @@ function AppContent() {
       if (activePage === "system") {
         return <SystemManager />;
       }
-      // Notes placeholder
+      // Zen Notes scratchpad
       if (activePage === "zen-notes") {
         return (
-          <div style={{
-            flex: 1, display: "flex", flexDirection: "column",
-            alignItems: "center", justifyContent: "center",
-            gap: 12, color: C.darkMuted, fontFamily: "'Outfit',sans-serif",
-          }}>
-            <svg width="32" height="32" viewBox="0 0 16 16" fill="none" style={{ opacity: 0.4 }}>
-              <rect x="3" y="2" width="10" height="12" rx="1.5" stroke={C.darkMuted} strokeWidth="1.3" fill="none" />
-              <line x1="5.5" y1="5.5" x2="10.5" y2="5.5" stroke={C.darkMuted} strokeWidth="1" />
-              <line x1="5.5" y1="8" x2="10.5" y2="8" stroke={C.darkMuted} strokeWidth="1" />
-              <line x1="5.5" y1="10.5" x2="8.5" y2="10.5" stroke={C.darkMuted} strokeWidth="1" />
-            </svg>
-            <span style={{ fontSize: 14, fontWeight: 500 }}>Notes</span>
-            <span style={{ fontSize: 11, opacity: 0.6 }}>Coming soon</span>
-          </div>
+          <React.Suspense fallback={
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 12 }}>
+              Loading...
+            </div>
+          }>
+            <ZenNotes />
+          </React.Suspense>
         );
       }
       // Default: Zen Tasks split view (To-Do + Today's Schedule)
