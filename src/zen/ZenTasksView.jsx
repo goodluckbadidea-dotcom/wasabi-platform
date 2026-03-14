@@ -67,7 +67,7 @@ export default function ZenTasksView() {
       }}>
         {/* Panel header */}
         <div style={{
-          flexShrink: 0, padding: "12px 14px",
+          flexShrink: 0, height: 44, padding: "0 14px",
           borderBottom: `1px solid ${C.darkBorder}`,
           display: "flex", alignItems: "center", justifyContent: "space-between",
         }}>

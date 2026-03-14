@@ -103,7 +103,7 @@ export default function ZenCalendar({ allTasks }) {
     }}>
       {/* ── Header ── */}
       <div style={{
-        flexShrink: 0, padding: "8px 12px",
+        flexShrink: 0, height: 44, padding: "0 14px",
         borderBottom: `1px solid ${C.darkBorder}`,
         display: "flex", alignItems: "center", gap: 6,
       }}>
