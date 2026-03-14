@@ -9,7 +9,7 @@ import { queryLimited } from "../notion/pagination.js";
 import { listRows, claudeProxy, getTableSchema } from "../lib/api.js";
 import { normalizeNotionTask, normalizeD1Task, getCached, setCache } from "./zenTaskHelpers.js";
 
-const CACHE_KEY = "wasabi_zen_ai_tasks_v3"; // v3: recalibrated scoring
+const CACHE_KEY = "wasabi_zen_ai_tasks_v4"; // v4: word-boundary name matching
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 const MAX_DATABASES = 5;
 const MAX_ITEMS_PER_DB = 30;
@@ -39,16 +39,18 @@ const NON_TASK_STATUS_FRAGMENTS = [
 const TASK_NAME_PATTERNS = [
   "task", "todo", "to-do", "to do", "action", "issue", "ticket", "bug",
   "story", "epic", "sprint", "milestone", "project", "assignment", "homework",
-  "checklist", "backlog", "kanban",
+  "checklist", "backlog", "kanban", "timeline", "shipping", "production",
+  "pipeline", "workflow", "tracker", "tracking", "schedule", "roadmap",
 ];
 
-const NON_TASK_NAME_PATTERNS = [
-  "contact", "client", "customer", "people", "person", "member", "employee",
-  "vendor", "supplier", "partner", "lead", "account",
-  "product", "inventory", "catalog", "item", "stock", "sku",
-  "invoice", "payment", "transaction", "order", "receipt",
-  "recipe", "ingredient", "menu",
-  "bookmark", "reading list", "watchlist",
+// Use whole-word patterns to avoid false positives (e.g. "product" matching "production")
+const NON_TASK_NAME_WORDS = [
+  "contacts", "clients", "customers", "people", "persons", "members", "employees",
+  "vendors", "suppliers", "partners", "leads", "accounts",
+  "products", "inventory", "catalog", "catalogue", "items", "stock", "skus", "sku",
+  "invoices", "payments", "transactions", "orders", "receipts",
+  "recipes", "ingredients", "menu",
+  "bookmarks", "reading list", "watchlist", "directory",
 ];
 
 const TASK_COLUMN_PATTERNS = [
@@ -73,13 +75,16 @@ function scoreTaskLikeness(schema) {
 
   // ── Database title signals ──
   const dbTitle = (schema.databaseTitle || "").toLowerCase();
+  // Substring match for task patterns (broad — "production" should match "production")
   if (TASK_NAME_PATTERNS.some((p) => dbTitle.includes(p))) {
     score += 25;
     reasons.push("db name matches task pattern");
   }
-  if (NON_TASK_NAME_PATTERNS.some((p) => dbTitle.includes(p))) {
+  // Word-boundary match for non-task patterns (strict — "product" must NOT match "production")
+  const dbWords = dbTitle.split(/[\s\-_,.:;/|]+/);
+  if (NON_TASK_NAME_WORDS.some((w) => dbWords.includes(w))) {
     score -= 35;
-    reasons.push("db name matches non-task pattern");
+    reasons.push("db name matches non-task word");
   }
 
   // ── Notion `status` type property is a strong signal ──
@@ -180,9 +185,10 @@ function isTaskLikeD1Table(columns, pageName) {
     score += 30;
     reasons.push("table name matches task pattern");
   }
-  if (NON_TASK_NAME_PATTERNS.some((p) => nameLower.includes(p))) {
+  const nameWords = nameLower.split(/[\s\-_,.:;/|]+/);
+  if (NON_TASK_NAME_WORDS.some((w) => nameWords.includes(w))) {
     score -= 30;
-    reasons.push("table name matches non-task pattern");
+    reasons.push("table name matches non-task word");
   }
 
   // Has a done/complete checkbox
@@ -245,6 +251,7 @@ export default function useAICuratedTasks() {
     // Clean up old cache keys
     try { localStorage.removeItem("wasabi_zen_ai_tasks"); } catch {}
     try { localStorage.removeItem("wasabi_zen_ai_tasks_v2"); } catch {}
+    try { localStorage.removeItem("wasabi_zen_ai_tasks_v3"); } catch {}
     const cached = getCached(CACHE_KEY, CACHE_TTL);
     if (cached) {
       setAiTasks(cached);
