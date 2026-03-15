@@ -191,6 +191,43 @@ export function getTierBreakdown() {
 }
 
 /**
+ * Get aggregate usage across ALL stored sessions.
+ */
+export function getAggregateUsage() {
+  const tracker = loadTracker();
+  const sessions = Object.values(tracker);
+  if (sessions.length === 0) {
+    return {
+      inputTokens: 0, outputTokens: 0, estimatedCost: 0, callCount: 0,
+      cacheHits: 0, haikuCalls: 0, sonnetCalls: 0,
+      haikuCost: 0, sonnetCost: 0, savedCost: 0,
+      sessionCount: 0,
+    };
+  }
+  const agg = {
+    inputTokens: 0, outputTokens: 0, estimatedCost: 0, callCount: 0,
+    cacheHits: 0, haikuCalls: 0, sonnetCalls: 0,
+    haikuCost: 0, sonnetCost: 0, savedCost: 0,
+    sessionCount: sessions.length,
+  };
+  for (const s of sessions) {
+    const t = s.totals;
+    agg.inputTokens += t.inputTokens || 0;
+    agg.outputTokens += t.outputTokens || 0;
+    agg.estimatedCost += t.estimatedCost || 0;
+    agg.callCount += t.callCount || 0;
+    agg.cacheHits += t.cacheHits || 0;
+    agg.haikuCalls += t.haikuCalls || 0;
+    agg.sonnetCalls += t.sonnetCalls || 0;
+    agg.haikuCost += t.haikuCost || 0;
+    agg.sonnetCost += t.sonnetCost || 0;
+    agg.savedCost += t.savedCost || 0;
+  }
+  agg.cacheHitRate = ((agg.cacheHits / (agg.callCount || 1)) * 100).toFixed(1);
+  return agg;
+}
+
+/**
  * Clear all stored usage data.
  */
 export function clearUsageData() {

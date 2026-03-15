@@ -71,7 +71,7 @@ function AppContent() {
     updatePageConfig,
   } = usePlatform();
 
-  const { theme, appMode } = useTheme();
+  const { theme, appMode, themeName } = useTheme();
   const { toggleOverlay: toggleNeurons } = useNeurons();
 
   // ── UI State ──
@@ -593,7 +593,7 @@ function AppContent() {
 
         {/* Main Content */}
         <div
-          key={activePage || "__home__"}
+          key={`${activePage || "__home__"}-${themeName}`}
           style={{
             flex: 1,
             display: "flex",
