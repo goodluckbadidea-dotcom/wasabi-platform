@@ -645,6 +645,7 @@ export default function Navigation({
           width: 20, height: 32,
           background: C.darkSurf,
           border: `1px solid ${C.darkBorder}`,
+          borderLeft: "none",
           borderRadius: "0 4px 4px 0",
           cursor: "pointer",
           outline: "none",
