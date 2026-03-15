@@ -101,7 +101,7 @@ export default function Navigation({
   // Active view index (from App.jsx viewStates)
   const activeViewIndex = viewStates?.[activePage] ?? 0;
 
-  const SIDEBAR_W = collapsed ? 48 : 220;
+  const SIDEBAR_W = collapsed ? 54 : 220;
 
   // -- Create item handler --
   const handleCreateItem = useCallback(async (type) => {
@@ -202,14 +202,16 @@ export default function Navigation({
     display: "flex",
     alignItems: "center",
     gap: collapsed ? 0 : 10,
-    padding: collapsed ? "10px 0" : "8px 12px",
-    minHeight: 34,
+    padding: collapsed ? "8px 6px" : "8px 12px",
+    minHeight: 36,
     borderRadius: RADIUS.lg,
-    transition: "background 0.15s",
+    transition: "background 0.15s, transform 0.12s",
     outline: "none",
     width: "100%",
     justifyContent: collapsed ? "center" : "flex-start",
   });
+
+  const iconSize = (isActive) => collapsed ? (isActive ? 22 : 18) : (isActive ? 18 : 16);
 
   const bottomLabelStyle = (isActive) => ({
     fontFamily: "'Outfit',sans-serif",
@@ -264,7 +266,7 @@ export default function Navigation({
               flexShrink: 0,
               borderTop: `1px solid ${C.darkBorder}`,
               borderImage: `linear-gradient(90deg, ${C.darkBorder}, ${C.accent}44, ${C.accent}44, ${C.darkBorder}) 1`,
-              padding: collapsed ? "6px 0" : "8px 12px",
+              padding: collapsed ? "6px 4px" : "8px 12px",
               paddingBottom: collapsed ? "calc(6px + env(safe-area-inset-bottom, 0px))" : "calc(8px + env(safe-area-inset-bottom, 0px))",
               display: "flex",
               flexDirection: "column",
@@ -280,7 +282,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "zen-dashboard") e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "zen-dashboard") e.currentTarget.style.background = "transparent"; }}
             >
-              <svg width={collapsed ? 18 : 16} height={collapsed ? 18 : 16} viewBox="0 0 16 16" fill="none">
+              <svg width={iconSize(activePage === "zen-dashboard")} height={iconSize(activePage === "zen-dashboard")} viewBox="0 0 16 16" fill="none">
                 <rect x="1" y="1" width="6" height="6" rx="1.5" stroke={activePage === "zen-dashboard" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
                 <rect x="9" y="1" width="6" height="6" rx="1.5" stroke={activePage === "zen-dashboard" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
                 <rect x="1" y="9" width="6" height="6" rx="1.5" stroke={activePage === "zen-dashboard" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
@@ -297,7 +299,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "zen-tasks" && activePage !== null) e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "zen-tasks" && activePage !== null) e.currentTarget.style.background = "transparent"; }}
             >
-              <IconCalendar size={collapsed ? 18 : 16} color={(activePage === "zen-tasks" || activePage === null) ? "#fff" : C.darkMuted} />
+              <IconCalendar size={iconSize(activePage === "zen-tasks" || activePage === null)} color={(activePage === "zen-tasks" || activePage === null) ? "#fff" : C.darkMuted} />
               {!collapsed && <span style={bottomLabelStyle(activePage === "zen-tasks" || activePage === null)}>To-Do & Calendar</span>}
             </button>
 
@@ -309,7 +311,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "zen-notes") e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "zen-notes") e.currentTarget.style.background = "transparent"; }}
             >
-              <svg width={collapsed ? 18 : 16} height={collapsed ? 18 : 16} viewBox="0 0 16 16" fill="none">
+              <svg width={iconSize(activePage === "zen-notes")} height={iconSize(activePage === "zen-notes")} viewBox="0 0 16 16" fill="none">
                 <rect x="3" y="2" width="10" height="12" rx="1.5" stroke={activePage === "zen-notes" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
                 <line x1="5.5" y1="5.5" x2="10.5" y2="5.5" stroke={activePage === "zen-notes" ? "#fff" : C.darkMuted} strokeWidth="1" />
                 <line x1="5.5" y1="8" x2="10.5" y2="8" stroke={activePage === "zen-notes" ? "#fff" : C.darkMuted} strokeWidth="1" />
@@ -328,7 +330,7 @@ export default function Navigation({
                 onMouseLeave={(e) => { if (activePage !== "zen-gmail") e.currentTarget.style.background = "transparent"; }}
               >
                 <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                  <IconMail size={collapsed ? 18 : 16} color={activePage === "zen-gmail" ? "#fff" : C.darkMuted} />
+                  <IconMail size={iconSize(activePage === "zen-gmail")} color={activePage === "zen-gmail" ? "#fff" : C.darkMuted} />
                   {unreadCount > 0 && (
                     <span style={{
                       position: "absolute", top: -5, right: -8,
@@ -354,7 +356,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "system") e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "system") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconGear size={collapsed ? 18 : 16} color={activePage === "system" ? "#fff" : C.darkMuted} />
+              <IconGear size={iconSize(activePage === "system")} color={activePage === "system" ? "#fff" : C.darkMuted} />
               {!collapsed && <span style={bottomLabelStyle(activePage === "system")}>Settings</span>}
             </button>
 
@@ -366,7 +368,7 @@ export default function Navigation({
                   background: "none", border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center",
                   gap: collapsed ? 0 : 10,
-                  padding: collapsed ? "8px 0" : "8px 12px",
+                  padding: collapsed ? "8px 6px" : "8px 12px",
                   borderRadius: RADIUS.lg, transition: "background 0.15s",
                   outline: "none", width: "100%",
                   justifyContent: collapsed ? "center" : "flex-start",
@@ -376,7 +378,7 @@ export default function Navigation({
                 onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                 title="Open Wasabi"
               >
-                <WasabiFlame size={collapsed ? 22 : 30} isThinking={isThinking} />
+                <WasabiFlame size={collapsed ? 28 : 34} isThinking={isThinking} />
                 {!collapsed && (
                   <span style={{
                     fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: 500,
@@ -460,7 +462,7 @@ export default function Navigation({
               flexShrink: 0,
               borderTop: `1px solid ${C.darkBorder}`,
               borderImage: `linear-gradient(90deg, ${C.darkBorder}, ${C.accent}44, ${C.accent}44, ${C.darkBorder}) 1`,
-              padding: collapsed ? "6px 0" : "8px 12px",
+              padding: collapsed ? "6px 4px" : "8px 12px",
               paddingBottom: collapsed ? "calc(6px + env(safe-area-inset-bottom, 0px))" : "calc(8px + env(safe-area-inset-bottom, 0px))",
               display: "flex",
               flexDirection: "column",
@@ -478,7 +480,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== null || activeFolder) e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== null || activeFolder) e.currentTarget.style.background = "transparent"; }}
             >
-              <IconStar size={collapsed ? 18 : 16} color={(activePage === null && !activeFolder) ? "#fff" : C.darkMuted} />
+              <IconStar size={iconSize(activePage === null && !activeFolder)} color={(activePage === null && !activeFolder) ? "#fff" : C.darkMuted} />
               {!collapsed && <span style={bottomLabelStyle(activePage === null && !activeFolder)}>Home</span>}
             </button>
 
@@ -490,7 +492,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "inbox") e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "inbox") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconBell size={collapsed ? 18 : 16} color={activePage === "inbox" ? "#fff" : C.darkMuted} />
+              <IconBell size={iconSize(activePage === "inbox")} color={activePage === "inbox" ? "#fff" : C.darkMuted} />
               {!collapsed && <span style={bottomLabelStyle(activePage === "inbox")}>Inbox</span>}
             </button>
 
@@ -502,7 +504,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "knowledge-base") e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "knowledge-base") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconBrain size={collapsed ? 18 : 16} color={activePage === "knowledge-base" ? "#fff" : C.darkMuted} />
+              <IconBrain size={iconSize(activePage === "knowledge-base")} color={activePage === "knowledge-base" ? "#fff" : C.darkMuted} />
               {!collapsed && <span style={bottomLabelStyle(activePage === "knowledge-base")}>Knowledge Base</span>}
             </button>
 
@@ -514,7 +516,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "automations") e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "automations") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconBolt size={collapsed ? 18 : 16} color={activePage === "automations" ? "#fff" : C.darkMuted} />
+              <IconBolt size={iconSize(activePage === "automations")} color={activePage === "automations" ? "#fff" : C.darkMuted} />
               {!collapsed && <span style={bottomLabelStyle(activePage === "automations")}>Automations</span>}
             </button>
 
@@ -526,7 +528,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "functions") e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "functions") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconFunction size={collapsed ? 18 : 16} color={activePage === "functions" ? "#fff" : C.darkMuted} />
+              <IconFunction size={iconSize(activePage === "functions")} color={activePage === "functions" ? "#fff" : C.darkMuted} />
               {!collapsed && <span style={bottomLabelStyle(activePage === "functions")}>Functions</span>}
             </button>
 
@@ -538,7 +540,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "build") e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "build") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconGrid size={collapsed ? 18 : 16} color={activePage === "build" ? "#fff" : C.darkMuted} />
+              <IconGrid size={iconSize(activePage === "build")} color={activePage === "build" ? "#fff" : C.darkMuted} />
               {!collapsed && <span style={bottomLabelStyle(activePage === "build")}>Build</span>}
             </button>
 
@@ -552,7 +554,7 @@ export default function Navigation({
                 onMouseLeave={(e) => { if (activePage !== "gmail") e.currentTarget.style.background = "transparent"; }}
               >
                 <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                  <IconMail size={collapsed ? 18 : 16} color={activePage === "gmail" ? "#fff" : C.darkMuted} />
+                  <IconMail size={iconSize(activePage === "gmail")} color={activePage === "gmail" ? "#fff" : C.darkMuted} />
                   {unreadCount > 0 && (
                     <span style={{
                       position: "absolute", top: -5, right: -8,
@@ -579,7 +581,7 @@ export default function Navigation({
                 onMouseEnter={(e) => { if (activePage !== "calendar") e.currentTarget.style.background = C.darkSurf2; }}
                 onMouseLeave={(e) => { if (activePage !== "calendar") e.currentTarget.style.background = "transparent"; }}
               >
-                <IconCalendar size={collapsed ? 18 : 16} color={activePage === "calendar" ? "#fff" : C.darkMuted} />
+                <IconCalendar size={iconSize(activePage === "calendar")} color={activePage === "calendar" ? "#fff" : C.darkMuted} />
                 {!collapsed && (
                   <span style={bottomLabelStyle(activePage === "calendar")}>
                     {nextEventLabel || "Calendar"}
@@ -596,7 +598,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "system") e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "system") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconGear size={collapsed ? 18 : 16} color={activePage === "system" ? "#fff" : C.darkMuted} />
+              <IconGear size={iconSize(activePage === "system")} color={activePage === "system" ? "#fff" : C.darkMuted} />
               {!collapsed && <span style={bottomLabelStyle(activePage === "system")}>System</span>}
             </button>
 
@@ -608,7 +610,7 @@ export default function Navigation({
                   background: "none", border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center",
                   gap: collapsed ? 0 : 10,
-                  padding: collapsed ? "8px 0" : "8px 12px",
+                  padding: collapsed ? "8px 6px" : "8px 12px",
                   borderRadius: RADIUS.lg, transition: "background 0.15s",
                   outline: "none", width: "100%",
                   justifyContent: collapsed ? "center" : "flex-start",
@@ -618,7 +620,7 @@ export default function Navigation({
                 onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                 title="Open Wasabi"
               >
-                <WasabiFlame size={collapsed ? 22 : 30} isThinking={isThinking} />
+                <WasabiFlame size={collapsed ? 28 : 34} isThinking={isThinking} />
                 {!collapsed && (
                   <span style={{
                     fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: 500,
