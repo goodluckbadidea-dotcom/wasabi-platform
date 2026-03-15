@@ -71,15 +71,15 @@ function renderRichText(richTextArr) {
  */
 function colorToCSS(color) {
   const map = {
-    gray: "#9B9B9B",
-    brown: "#A0826D",
-    orange: "#E8A33D",
-    yellow: "#DFCC5A",
-    green: "#7DC143",
-    blue: "#5B9CF6",
-    purple: "#9B6CD6",
-    pink: "#E05EB2",
-    red: "#E05252",
+    gray: "#848490",
+    brown: "#9E8C5C",
+    orange: "#E0845C",
+    yellow: "#DACA68",
+    green: "#A0CC42",
+    blue: "#70AAF0",
+    purple: "#9C84C0",
+    pink: "#E54B78",
+    red: "#DA4060",
     default: C.darkText,
   };
   return map[color] || C.darkText;

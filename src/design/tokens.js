@@ -234,18 +234,17 @@ function _paleTint(hex) {
 // Indices match Notion color names via NOTION_TO_PALETTE_IDX.
 // Indices 3, 6, 9 align with Sashimi PRIORITY_COLORS (Medium, Low, High).
 const INFO_PALETTE = [
-  { key: "default", hex: "#8B8B8B", text: "#fff" },      // 0: neutral gray
-  { key: "gray",    hex: "#6B7280", text: "#fff" },      // 1: cool gray
-  { key: "brown",   hex: "#A0845E", text: "#fff" },      // 2: warm brown
-  { key: "orange",  hex: "#FF6B35", text: "#fff" },      // 3: condition orange
-  { key: "yellow",  hex: "#F5B724", text: "#1a1a1a" },   // 4: wasabi gold
-  { key: "green",   hex: "#7DC143", text: "#fff" },      // 5: action green
-  { key: "blue",    hex: "#2196F3", text: "#fff" },      // 6: transform blue
-  { key: "purple",  hex: "#8B6FBE", text: "#fff" },      // 7: node purple
-  { key: "pink",    hex: "#E91E63", text: "#fff" },      // 8: view pink
-  { key: "red",     hex: "#FF5722", text: "#fff" },      // 9: alert red
-  { key: "amber",   hex: "#E8A838", text: "#1a1a1a" },   // 10: warm amber
-  { key: "coral",   hex: "#E05252", text: "#fff" },      // 11: coral red
+  { key: "default", hex: "#848490", text: "#fff" },      // 0: neutral gray
+  { key: "gray",    hex: "#848490", text: "#fff" },      // 1: neutral gray
+  { key: "brown",   hex: "#9E8C5C", text: "#fff" },      // 2: olive
+  { key: "orange",  hex: "#E0845C", text: "#fff" },      // 3: coral
+  { key: "yellow",  hex: "#DACA68", text: "#1a1a1a" },   // 4: warm gold
+  { key: "green",   hex: "#A0CC42", text: "#1a1a1a" },   // 5: lime
+  { key: "blue",    hex: "#70AAF0", text: "#fff" },      // 6: cornflower
+  { key: "purple",  hex: "#9C84C0", text: "#fff" },      // 7: lavender
+  { key: "pink",    hex: "#E54B78", text: "#fff" },      // 8: rose
+  { key: "red",     hex: "#DA4060", text: "#fff" },      // 9: crimson
+  { key: "orchid",  hex: "#BE7ABE", text: "#fff" },      // 10: orchid
 ];
 
 // ── Global View Palette ──
@@ -254,9 +253,8 @@ const INFO_PALETTE = [
 export const VIEW_PALETTE = INFO_PALETTE.map((p) => ({ ...p }));
 
 // ── Timeline Palette (Gantt) ──
-// Mutable array derived from the vivid VIEW_PALETTE entries (indices 5-9, 3, 4).
-// Skips indices 0-2 which are dark background colors with poor contrast on dark UIs.
-const _TIMELINE_INDICES = [5, 6, 7, 8, 9, 3, 4];
+// Mutable array derived from vivid VIEW_PALETTE entries.
+const _TIMELINE_INDICES = [3, 5, 6, 7, 8, 9, 10, 4, 2];
 export const TIMELINE_PALETTE = [];
 function _rebuildTimelinePalette() {
   TIMELINE_PALETTE.length = 0;
@@ -270,9 +268,9 @@ _rebuildTimelinePalette();
 
 // Milestone phase colors
 export const PHASE_COLORS = {
-  design:     { color: "#F0C94E", bg: "#FDF8E3" },
-  production: { color: "#7DC143", bg: "#E6F4E9" },
-  shipping:   { color: "#2A6B38", bg: "#E6F4E9" },
+  design:     { color: "#DACA68", bg: "#F5F0D8" },
+  production: { color: "#A0CC42", bg: "#E6F2D0" },
+  shipping:   { color: "#70AAF0", bg: "#DDE8FA" },
 };
 
 // Map Notion color names → palette index for auto-mapping
@@ -335,8 +333,8 @@ export function getWasabiColor(notionColor) {
 }
 
 // Generic select option colors (mutable, derived from VIEW_PALETTE vivid entries first)
-// Reordered so vivid accent colors (5-9) come before dark bg/light colors (3,4,0,1,2)
-const _SELECT_INDICES = [5, 6, 7, 8, 9, 3, 4, 0, 1, 2];
+// Reordered so vivid accent colors come before neutral tones
+const _SELECT_INDICES = [3, 5, 6, 7, 8, 9, 10, 4, 2, 0];
 export const SELECT_PALETTE = _SELECT_INDICES.map((i) => VIEW_PALETTE[i].hex);
 function _rebuildSelectPalette() {
   for (let si = 0; si < _SELECT_INDICES.length; si++) {
@@ -352,21 +350,21 @@ export function getSelectColor(index) {
 
 // Status colors (generic — maps status name → color)
 export const STATUS_COLORS = {
-  "Design":              "#FF4800",
-  "Waiting on Deposit":  "#FF8C42",
-  "Waiting on Vendor":   "#FFB347",
-  "Awaiting PO":         "#FFC97A",
-  "In Production":       "#7DC143",
-  "Quality Check":       "#9DD467",
-  "Shipping":            "#2A6B38",
-  "Delivered":           "#7DC143",
-  "Cancelled":           "#9A8E82",
+  "Design":              "#E0845C",
+  "Waiting on Deposit":  "#DACA68",
+  "Waiting on Vendor":   "#9E8C5C",
+  "Awaiting PO":         "#9C84C0",
+  "In Production":       "#A0CC42",
+  "Quality Check":       "#70AAF0",
+  "Shipping":            "#848490",
+  "Delivered":           "#A0CC42",
+  "Cancelled":           "#9E8C5C",
 };
 
 // Fallback colors for items without a status
 export const FALLBACK_COLORS = [
-  "#8B7355", "#A0926E", "#B5A882", "#C9BD96",
-  "#6B5E4A", "#7A6D58", "#89806B",
+  "#9E8C5C", "#848490", "#9C84C0", "#BE7ABE",
+  "#70AAF0", "#E0845C", "#DACA68",
 ];
 
 // Get a status-like pill color, falling back to palette

@@ -330,8 +330,8 @@ function FlowListPanel({ flows, activeFlowId, onSelect, onNew, onDelete, onRenam
 function ExecutionHistoryPanel({ executions, loading, onClose, onReplay }) {
   const STATUS_COLORS = {
     completed: C.accent,
-    running: "#2196F3",
-    failed: "#E05252",
+    running: "#70AAF0",
+    failed: "#DA4060",
   };
 
   return (

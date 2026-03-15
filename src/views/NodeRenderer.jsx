@@ -16,11 +16,11 @@ const PORT_START_Y = NODE_HEADER_H + 20;
 const BODY_PADDING = 10;
 
 export const NODE_TYPE_COLORS = {
-  trigger:   "#1C5C8A",
-  condition: "#FF6B35",
-  action:    "#7DC143",
-  transform: "#8B6FBE",
-  wasabi:    "#F5B724",
+  trigger:   "#70AAF0",
+  condition: "#E0845C",
+  action:    "#A0CC42",
+  transform: "#9C84C0",
+  wasabi:    "#DACA68",
 };
 
 const SUBTYPE_LABELS = {

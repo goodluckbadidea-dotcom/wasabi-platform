@@ -16,10 +16,10 @@ import { usePlatform } from "../context/PlatformContext.jsx";
 
 // ── Priority colors (aligned to INFO_PALETTE) ──
 const PRIORITY_COLORS = {
-  High: { bg: "#E05252", text: "#fff" },      // palette[11] coral red
-  Medium: { bg: "#E8A838", text: "#1a1a1a" }, // palette[10] warm amber
-  Normal: { bg: "#F5B724", text: "#1a1a1a" }, // palette[4] wasabi gold
-  Low: { bg: "#2196F3", text: "#fff" },       // palette[6] blue
+  High: { bg: "#DA4060", text: "#fff" },      // palette[9] crimson
+  Medium: { bg: "#E0845C", text: "#fff" },    // palette[3] coral
+  Normal: { bg: "#DACA68", text: "#1a1a1a" }, // palette[4] gold
+  Low: { bg: "#70AAF0", text: "#fff" },       // palette[6] cornflower
 };
 
 const PRIORITIES = ["High", "Medium", "Normal", "Low"];
