@@ -186,6 +186,8 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
           const extracted = extractQuestions(clarifyMsg);
           setDisplayMessages((prev) => [...prev, { role: "assistant", content: clarifyMsg.replace(/\[Q:.*?\]/g, "").trim() }]);
           setChoices(extracted);
+          // Add clarification to history so the agent knows it asked these questions
+          historyRef.current = [...newHistory, { role: "assistant", content: clarifyMsg }];
           // Store classification so the user's answer inherits the complexity
           pendingClassificationRef.current = { ...classification, needs_clarification: false };
           setIsLoading(false);
