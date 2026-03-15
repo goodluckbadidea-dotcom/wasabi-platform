@@ -101,7 +101,7 @@ const UPDATE_DATABASE = {
       title: { type: "string", description: "Optional new title for the database." },
       add_properties: {
         type: "array",
-        description: "Properties to add. Each: {name, type, options?}.",
+        description: "Properties to add. Each: {name, type, options?, format?, database_id?, synced_property_name?}.",
         items: {
           type: "object",
           properties: {
@@ -109,6 +109,8 @@ const UPDATE_DATABASE = {
             type: { type: "string" },
             options: { type: "array", items: { type: "string" } },
             format: { type: "string" },
+            database_id: { type: "string", description: "For relation type: the target database ID to link to." },
+            synced_property_name: { type: "string", description: "For two-way relations: name of the backlink column created on the target database. Omit for one-way." },
           },
           required: ["name", "type"],
         },
@@ -161,7 +163,7 @@ const CREATE_DATABASE = {
       title: { type: "string", description: "Database title." },
       schema: {
         type: "array",
-        description: "Array of field definitions. Each has: name (string), type (title|rich_text|number|select|status|multi_select|date|checkbox|url|email|phone_number|relation), and optional 'options' (for select/multi_select/status) or 'format' (for number).",
+        description: "Array of field definitions. Each has: name, type (title|rich_text|number|select|status|multi_select|date|checkbox|url|email|phone_number|relation). Optional: 'options' (select/multi_select/status), 'format' (number), 'relatedDbId' + 'synced' + 'syncedPropertyName' (for two-way relations).",
         items: {
           type: "object",
           properties: {
@@ -169,6 +171,9 @@ const CREATE_DATABASE = {
             type: { type: "string" },
             options: { type: "array", items: { type: "string" } },
             format: { type: "string" },
+            relatedDbId: { type: "string", description: "For relation type: the target database ID." },
+            synced: { type: "boolean", description: "For relation type: true = two-way relation." },
+            syncedPropertyName: { type: "string", description: "For two-way relations: backlink column name on target database." },
           },
           required: ["name", "type"],
         },

@@ -18,7 +18,7 @@ import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.j
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
 import { updateTableSchema, getTableSchema } from "../lib/api.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { updateDatabase } from "../notion/client.js";
+import { updateDatabase, searchDatabases } from "../notion/client.js";
 import SelectPicker from "../components/SelectPicker.jsx";
 import MultiSelectPicker from "../components/MultiSelectPicker.jsx";
 
@@ -27,6 +27,7 @@ const D1_TO_NOTION_TYPE = {
   text: "rich_text", number: "number", select: "select",
   multi_select: "multi_select", date: "date", checkbox: "checkbox",
   url: "url", email: "email", phone: "phone_number", status: "status",
+  relation: "relation",
 };
 
 // ─── Column Types ───
@@ -41,6 +42,7 @@ const COLUMN_TYPES = [
   { value: "email", label: "Email", icon: "\u2709" },
   { value: "phone", label: "Phone", icon: "\uD83D\uDCDE" },
   { value: "status", label: "Status", icon: "\u25C9" },
+  { value: "relation", label: "Relation", icon: "\uD83D\uDD17" },
 ];
 
 // ─── Type Icon Lookup ───
@@ -873,6 +875,13 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const [addColOpen, setAddColOpen] = useState(false);
   const [addColName, setAddColName] = useState("");
   const [addColType, setAddColType] = useState("text");
+  // Relation column state
+  const [addColRelationDb, setAddColRelationDb] = useState(null);
+  const [addColSynced, setAddColSynced] = useState(true);
+  const [addColSyncedName, setAddColSyncedName] = useState("");
+  const [dbSearchResults, setDbSearchResults] = useState([]);
+  const [dbSearchQuery, setDbSearchQuery] = useState("");
+  const [dbSearching, setDbSearching] = useState(false);
   const [colDrag, setColDrag] = useState(null); // { col, startX, overCol }
   // ── Source type detection (D1 / Notion / external) ──
   const sourceType = useMemo(() => {
@@ -1060,18 +1069,64 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     setColCtxMenu(null);
   }, [isD1Table, pageConfig?.id, onRefresh]);
 
+  // Search Notion databases for relation column picker
+  const searchRelationDbs = useCallback(async (q) => {
+    if (!workerUrl || !notionKey) return;
+    setDbSearching(true);
+    try {
+      const results = await searchDatabases(workerUrl, notionKey, q || "");
+      setDbSearchResults(
+        results
+          .filter((r) => r.id !== notionDbId) // exclude self
+          .slice(0, 15)
+          .map((r) => ({
+            id: r.id,
+            title: r.title?.map((t) => t.plain_text).join("") || "Untitled",
+          }))
+      );
+    } catch (err) {
+      console.error("DB search failed:", err);
+    } finally {
+      setDbSearching(false);
+    }
+  }, [workerUrl, notionKey, notionDbId]);
+
   // Add new column (D1 + Notion)
   const handleAddCol = useCallback(async () => {
     if (!addColName.trim() || !canEditSchema || !pageConfig?.id) return;
+    // Guard: relation needs a target database selected
+    if (addColType === "relation" && !addColRelationDb) return;
+    if (addColType === "relation" && addColSynced && !addColSyncedName.trim()) return;
     try {
       if (isNotionTable && notionDbId && workerUrl && notionKey) {
-        const notionType = D1_TO_NOTION_TYPE[addColType] || "rich_text";
-        const propDef = { [notionType]: {} };
-        // Add default options for select/multi_select/status
-        if (["select", "multi_select"].includes(addColType)) {
-          propDef[notionType] = { options: [] };
+        if (addColType === "relation" && addColRelationDb) {
+          // Build relation payload directly
+          const relPayload = {};
+          if (addColSynced && addColSyncedName.trim()) {
+            relPayload.relation = {
+              database_id: addColRelationDb.id,
+              type: "dual_property",
+              dual_property: { synced_property_name: addColSyncedName.trim() },
+            };
+          } else {
+            relPayload.relation = {
+              database_id: addColRelationDb.id,
+              type: "single_property",
+              single_property: {},
+            };
+          }
+          await updateDatabase(workerUrl, notionKey, notionDbId, {
+            properties: { [addColName.trim()]: relPayload },
+          });
+        } else {
+          const notionType = D1_TO_NOTION_TYPE[addColType] || "rich_text";
+          const propDef = { [notionType]: {} };
+          // Add default options for select/multi_select/status
+          if (["select", "multi_select"].includes(addColType)) {
+            propDef[notionType] = { options: [] };
+          }
+          await updateDatabase(workerUrl, notionKey, notionDbId, { properties: { [addColName.trim()]: propDef } });
         }
-        await updateDatabase(workerUrl, notionKey, notionDbId, { properties: { [addColName.trim()]: propDef } });
       } else {
         const schemaRes = await getTableSchema(pageConfig.id);
         const cols = [...(schemaRes?.columns || []), { id: `col_${Date.now()}`, name: addColName.trim(), type: addColType }];
@@ -1080,9 +1135,14 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
       setAddColOpen(false);
       setAddColName("");
       setAddColType("text");
+      setAddColRelationDb(null);
+      setAddColSynced(true);
+      setAddColSyncedName("");
+      setDbSearchResults([]);
+      setDbSearchQuery("");
       if (onRefresh) onRefresh();
     } catch (err) { console.error("Add column failed:", err); }
-  }, [addColName, addColType, canEditSchema, isNotionTable, isD1Table, notionDbId, workerUrl, notionKey, pageConfig?.id, onRefresh]);
+  }, [addColName, addColType, addColRelationDb, addColSynced, addColSyncedName, canEditSchema, isNotionTable, isD1Table, notionDbId, workerUrl, notionKey, pageConfig?.id, onRefresh]);
 
   // Column reorder via drag
   const handleColDragStart = useCallback((col, e) => {
@@ -2112,16 +2172,94 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                             );
                           })}
                         </div>
-                        <button
-                          onClick={handleAddCol}
-                          disabled={!addColName.trim()}
-                          style={{
-                            background: C.accent, color: "#fff", border: "none", borderRadius: RADIUS.sm,
-                            padding: "7px 14px", fontSize: 12, fontFamily: FONT, fontWeight: 600,
-                            cursor: addColName.trim() ? "pointer" : "default",
-                            opacity: addColName.trim() ? 1 : 0.4, transition: "opacity 0.15s", marginTop: 2,
-                          }}
-                        >Add Column</button>
+                        {/* Relation picker — shown when type is "relation" on a Notion table */}
+                        {addColType === "relation" && isNotionTable && (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 2 }}>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                              Target Database
+                            </div>
+                            <input
+                              placeholder="Search databases..."
+                              value={dbSearchQuery}
+                              onChange={(e) => {
+                                setDbSearchQuery(e.target.value);
+                                searchRelationDbs(e.target.value);
+                              }}
+                              onFocus={() => { if (!dbSearchResults.length) searchRelationDbs(""); }}
+                              style={{
+                                border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
+                                background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 12,
+                                padding: "6px 10px", outline: "none", width: "100%", boxSizing: "border-box",
+                              }}
+                            />
+                            <div style={{ maxHeight: 120, overflowY: "auto" }}>
+                              {dbSearchResults.map((db) => (
+                                <div
+                                  key={db.id}
+                                  onClick={() => setAddColRelationDb(db)}
+                                  style={{
+                                    padding: "5px 8px", fontSize: 12, cursor: "pointer",
+                                    borderRadius: RADIUS.sm, fontFamily: FONT,
+                                    color: addColRelationDb?.id === db.id ? C.accent : C.darkText,
+                                    background: addColRelationDb?.id === db.id ? `${C.accent}15` : "transparent",
+                                    transition: "background 0.1s",
+                                  }}
+                                  onMouseEnter={(e) => { if (addColRelationDb?.id !== db.id) e.currentTarget.style.background = C.darkSurf2; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = addColRelationDb?.id === db.id ? `${C.accent}15` : "transparent"; }}
+                                >
+                                  {db.title}
+                                </div>
+                              ))}
+                              {dbSearching && <div style={{ padding: 6, fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>Searching...</div>}
+                              {!dbSearching && dbSearchResults.length === 0 && dbSearchQuery && (
+                                <div style={{ padding: 6, fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>No databases found</div>
+                              )}
+                            </div>
+                            {addColRelationDb && (
+                              <>
+                                <div style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>
+                                  Selected: <span style={{ color: C.accent }}>{addColRelationDb.title}</span>
+                                </div>
+                                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontFamily: FONT, color: C.darkText, cursor: "pointer" }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={addColSynced}
+                                    onChange={(e) => setAddColSynced(e.target.checked)}
+                                    style={{ accentColor: C.accent }}
+                                  />
+                                  Two-way relation
+                                </label>
+                                {addColSynced && (
+                                  <input
+                                    placeholder="Backlink column name..."
+                                    value={addColSyncedName}
+                                    onChange={(e) => setAddColSyncedName(e.target.value)}
+                                    style={{
+                                      border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
+                                      background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 12,
+                                      padding: "6px 10px", outline: "none", width: "100%", boxSizing: "border-box",
+                                    }}
+                                  />
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                        {(() => {
+                          const canAdd = addColName.trim() && !(addColType === "relation" && (!addColRelationDb || (addColSynced && !addColSyncedName.trim())));
+                          return (
+                            <button
+                              onClick={handleAddCol}
+                              disabled={!canAdd}
+                              style={{
+                                background: C.accent, color: "#fff", border: "none", borderRadius: RADIUS.sm,
+                                padding: "7px 14px", fontSize: 12, fontFamily: FONT, fontWeight: 600,
+                                cursor: canAdd ? "pointer" : "default",
+                                opacity: canAdd ? 1 : 0.4, transition: "opacity 0.15s", marginTop: 2,
+                              }}
+                            >Add Column</button>
+                          );
+                        })()}
                       </div>
                     ) : (
                       <div

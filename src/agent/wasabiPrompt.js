@@ -179,6 +179,14 @@ When modifying an existing database:
 2. Use \`update_database\` with add_properties, rename_properties, or remove_properties
 3. Confirm changes with the user before removing properties (data loss!)
 
+When creating two-way (bidirectional) relations between databases:
+1. Use \`update_database\` with add_properties, set type to "relation"
+2. Provide database_id (target DB) and synced_property_name (backlink column name on target DB)
+3. Example: add_properties: [{ name: "Projects", type: "relation", database_id: "<target_db_id>", synced_property_name: "Related Tasks" }]
+4. This creates a relation column on BOTH databases simultaneously — no need to update both databases separately
+5. If synced_property_name is omitted, a one-way relation is created (only on the source database)
+6. For \`create_database\`, use relatedDbId, synced: true, and syncedPropertyName in the schema field definition
+
 When answering questions about data:
 1. **Always query before answering.** Use \`search_knowledge_base\` first, then \`query_database\` or \`cross_database_query\` to fetch actual data. NEVER present numbers, statuses, or facts without having queried for them first.
 2. The workspace summary lists ALL queryable data sources with their page IDs — use the page ID as the database_id

@@ -827,6 +827,18 @@ export function createToolExecutor({
               case "url": propDef.url = {}; break;
               case "email": propDef.email = {}; break;
               case "phone_number": propDef.phone_number = {}; break;
+              case "relation": {
+                const relDef = { database_id: field.database_id };
+                if (field.synced_property_name) {
+                  relDef.type = "dual_property";
+                  relDef.dual_property = { synced_property_name: field.synced_property_name };
+                } else {
+                  relDef.type = "single_property";
+                  relDef.single_property = {};
+                }
+                propDef.relation = relDef;
+                break;
+              }
               default: propDef.rich_text = {};
             }
             propUpdates[field.name] = propDef;

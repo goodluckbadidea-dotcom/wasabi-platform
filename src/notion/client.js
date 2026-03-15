@@ -236,13 +236,23 @@ export async function createDatabase(workerUrl, notionKey, parentPageId, title, 
         properties[field.name] = { phone_number: {} };
         break;
       case "relation":
-        properties[field.name] = {
-          relation: {
-            database_id: field.relatedDbId,
-            type: "single_property",
-            single_property: {},
-          },
-        };
+        if (field.synced && field.syncedPropertyName) {
+          properties[field.name] = {
+            relation: {
+              database_id: field.relatedDbId,
+              type: "dual_property",
+              dual_property: { synced_property_name: field.syncedPropertyName },
+            },
+          };
+        } else {
+          properties[field.name] = {
+            relation: {
+              database_id: field.relatedDbId,
+              type: "single_property",
+              single_property: {},
+            },
+          };
+        }
         break;
       default:
         properties[field.name] = { rich_text: {} };

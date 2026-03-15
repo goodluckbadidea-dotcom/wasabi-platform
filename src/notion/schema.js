@@ -312,6 +312,10 @@ export function schemaToText(schema) {
     if (field.format && field.format !== "number") {
       desc += ` — format: ${field.format}`;
     }
+    if (field.type === "relation") {
+      desc += ` → linked to ${field.relatedDbId || "unknown"}`;
+      if (field.synced) desc += " (two-way)";
+    }
     lines.push(desc);
   }
 
