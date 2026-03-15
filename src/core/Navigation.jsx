@@ -232,7 +232,6 @@ export default function Navigation({
         flexDirection: "column",
         transition: TRANSITION.sidebar,
         position: "relative",
-        boxShadow: "2px 0 8px rgba(0,0,0,0.2)",
       }}
     >
       {/* ── Zen mode: simplified sidebar ── */}
@@ -467,7 +466,7 @@ export default function Navigation({
               display: "flex",
               flexDirection: "column",
               gap: 1,
-              overflowY: "auto",
+              overflowY: collapsed ? "hidden" : "auto",
               overflowX: "hidden",
               transition: "padding 0.25s",
             }}
@@ -643,7 +642,7 @@ export default function Navigation({
           position: "absolute", top: "50%", right: -12,
           transform: "translateY(-50%)",
           width: 20, height: 32,
-          background: C.darkSurf,
+          background: C.dark,
           border: `1px solid ${C.darkBorder}`,
           borderLeft: "none",
           borderRadius: "0 4px 4px 0",
@@ -661,7 +660,7 @@ export default function Navigation({
           e.currentTarget.style.borderColor = C.accent;
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.background = C.darkSurf;
+          e.currentTarget.style.background = C.dark;
           e.currentTarget.style.borderColor = C.darkBorder;
         }}
       >
