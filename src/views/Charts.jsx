@@ -53,7 +53,7 @@ export default function Charts({ data = [], schema, config = {} }) {
         value = pages.length;
       }
 
-      const color = getStatusColor(category, optNames);
+      const color = getStatusColor(category, optNames, config.colorMapping);
       return { category, value, color, count: pages.length };
     });
 

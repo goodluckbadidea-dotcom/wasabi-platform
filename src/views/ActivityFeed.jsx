@@ -154,7 +154,7 @@ export default function ActivityFeed({ data = [], schema, config = {} }) {
                         if (val === null || val === undefined) return null;
                         if (type === "select" || type === "status") {
                           const optNames = getOptionNames(schema, fieldName);
-                          const color = getStatusColor(val, optNames);
+                          const color = getStatusColor(val, optNames, config.colorMapping);
                           return <span key={fieldName} style={cellStyles.pill(color)}>{val}</span>;
                         }
                         return (

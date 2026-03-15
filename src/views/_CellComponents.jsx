@@ -192,7 +192,7 @@ export function CellEditor({ value, type, options, onCommit, onCancel }) {
 
 // ─── Cell Display Component ───
 
-export function CellDisplay({ value, type, fieldName, schema, onClick, linkInfo, linkedValue, onLinkClick }) {
+export function CellDisplay({ value, type, fieldName, schema, onClick, linkInfo, linkedValue, onLinkClick, colorMapping }) {
   // If this cell has an active link, display the linked value instead
   const displayValue = linkInfo ? (linkedValue ?? value) : value;
   const displayType = type;
@@ -201,7 +201,7 @@ export function CellDisplay({ value, type, fieldName, schema, onClick, linkInfo,
   if (linkInfo) {
     return (
       <span style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 4, maxWidth: "100%" }}>
-        <CellDisplayInner value={displayValue} type={displayType} fieldName={fieldName} schema={schema} onClick={onClick} />
+        <CellDisplayInner value={displayValue} type={displayType} fieldName={fieldName} schema={schema} onClick={onClick} colorMapping={colorMapping} />
         <span
           title={`Linked from: ${linkInfo.sourceName || "Unknown"}`}
           onClick={(e) => { e.stopPropagation(); onLinkClick?.(); }}
@@ -218,10 +218,10 @@ export function CellDisplay({ value, type, fieldName, schema, onClick, linkInfo,
     );
   }
 
-  return <CellDisplayInner value={value} type={type} fieldName={fieldName} schema={schema} onClick={onClick} />;
+  return <CellDisplayInner value={value} type={type} fieldName={fieldName} schema={schema} onClick={onClick} colorMapping={colorMapping} />;
 }
 
-function CellDisplayInner({ value, type, fieldName, schema, onClick }) {
+function CellDisplayInner({ value, type, fieldName, schema, onClick, colorMapping }) {
   if (value === null || value === undefined || value === "") {
     return (
       <span
@@ -236,7 +236,7 @@ function CellDisplayInner({ value, type, fieldName, schema, onClick }) {
   // Select / Status pill
   if (type === "select" || type === "status") {
     const optionNames = getOptionNames(schema, fieldName);
-    const color = getStatusColor(value, optionNames);
+    const color = getStatusColor(value, optionNames, colorMapping);
     return (
       <span style={cellStyles.pill(color)} onClick={onClick}>
         {value}
@@ -250,7 +250,7 @@ function CellDisplayInner({ value, type, fieldName, schema, onClick }) {
     return (
       <span style={cellStyles.multiPillWrap}>
         {value.map((v, i) => {
-          const color = getStatusColor(v, optionNames);
+          const color = getStatusColor(v, optionNames, colorMapping);
           return <span key={i} style={cellStyles.pill(color)}>{v}</span>;
         })}
       </span>

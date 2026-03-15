@@ -282,7 +282,7 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
         const colorVal = readProp(page.properties?.[colorField.name]);
         if (colorVal) {
           const opts = colorField.options?.map((o) => o.name) || [];
-          const { fill } = getSolidPillColor(colorVal, opts, colorField.options || []);
+          const { fill } = getSolidPillColor(colorVal, opts, colorField.options || [], config.colorMapping);
           eventColor = fill;
         }
       }

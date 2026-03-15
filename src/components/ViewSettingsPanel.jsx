@@ -189,9 +189,10 @@ export default function ViewSettingsPanel({
   // Sortable fields (all fields)
   const sortableFields = allFields;
 
-  // Current color field's options
+  // Current color field's options (auto-detect first colorable field if not set)
   const colorField = config.colorField || null;
-  const colorFieldSchema = colorableFields.find((f) => f.name === colorField);
+  const effectiveColorField = colorField || (colorableFields[0]?.name || null);
+  const colorFieldSchema = colorableFields.find((f) => f.name === effectiveColorField);
   const colorOptions = colorFieldSchema?.options || [];
 
   // Collect date fields for Gantt timeline selection

@@ -699,7 +699,7 @@ function CellEditor({ value, type, options, schemaOptions, onCommit, onCancel, i
 
 // ─── Cell Display Component ───
 
-function CellDisplay({ value, type, fieldName, schema, onClick }) {
+function CellDisplay({ value, type, fieldName, schema, onClick, colorMapping }) {
   if (value === null || value === undefined || value === "") {
     return (
       <span
@@ -715,7 +715,7 @@ function CellDisplay({ value, type, fieldName, schema, onClick }) {
   if (type === "select" || type === "status") {
     const optionNames = getOptionNames(schema, fieldName);
     const schemaOptions = getFieldOptions(schema, fieldName);
-    const { fill, text } = getSolidPillColor(value, optionNames, schemaOptions);
+    const { fill, text } = getSolidPillColor(value, optionNames, schemaOptions, colorMapping);
     return (
       <span style={styles.pill(fill, text)} onClick={onClick}>
         {value}
@@ -730,7 +730,7 @@ function CellDisplay({ value, type, fieldName, schema, onClick }) {
     return (
       <span style={styles.multiPillWrap}>
         {value.map((v, i) => {
-          const { fill, text } = getSolidPillColor(v, optionNames, schemaOptions);
+          const { fill, text } = getSolidPillColor(v, optionNames, schemaOptions, colorMapping);
           return <span key={i} style={styles.pill(fill, text)}>{v}</span>;
         })}
       </span>
@@ -2422,6 +2422,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                       type={type}
                                       fieldName={col}
                                       schema={schema}
+                                      colorMapping={config.colorMapping}
                                       linkInfo={linkData ? { sourceName: linkData.link?.name, stale: linkData.stale } : undefined}
                                       linkedValue={linkData?.value}
                                       onLinkClick={linkData ? () => removeLink(linkData.link.id) : undefined}

@@ -75,7 +75,7 @@ export default function SummaryTiles({ data = [], schema, config = {} }) {
         if (tile.aggregation === "countWhere" && tile.field && schema) {
           const opts = getFieldOptions(schema, tile.field);
           const optNames = opts.map((o) => o.name);
-          numColor = getStatusColor(tile.filterValue, optNames);
+          numColor = getStatusColor(tile.filterValue, optNames, config.colorMapping);
         }
 
         return (

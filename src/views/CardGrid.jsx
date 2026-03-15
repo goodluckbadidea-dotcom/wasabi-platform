@@ -141,7 +141,7 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
               let badgeColor = C.darkMuted;
               if (badge && badgeField) {
                 const optNames = getOptionNames(schema, badgeField);
-                badgeColor = getStatusColor(badge, optNames);
+                badgeColor = getStatusColor(badge, optNames, config.colorMapping);
               }
 
               return (
@@ -214,7 +214,7 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
                             {fieldName}
                           </div>
                           <div style={{ fontSize: 13, color: C.darkText, lineHeight: 1.45 }}>
-                            <CellDisplay value={val} type={type} fieldName={fieldName} schema={schema} />
+                            <CellDisplay value={val} type={type} fieldName={fieldName} schema={schema} colorMapping={config.colorMapping} />
                           </div>
                         </div>
                       );

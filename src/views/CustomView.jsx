@@ -107,7 +107,7 @@ function ChartWidget({ widget, resolvedData, schema }) {
       } else {
         value = pages.length;
       }
-      return { category, value, color: getStatusColor(category, optNames).hex || C.accent, count: pages.length };
+      return { category, value, color: getStatusColor(category, optNames) || C.accent, count: pages.length };
     }).sort((a, b) => chartType === "line" ? 0 : b.value - a.value);
   }, [resolvedData, ds, schema, chartType]);
 

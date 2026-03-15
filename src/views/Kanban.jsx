@@ -79,7 +79,7 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
     // Build column array
     const cols = columnOptions.map((opt) => ({
       name: opt.name,
-      color: getStatusColor(opt.name, optionNames),
+      color: getStatusColor(opt.name, optionNames, config.colorMapping),
       pages: grouped[opt.name] || [],
     }));
 
@@ -387,7 +387,7 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
                         if (val === null || val === undefined) return null;
                         return (
                           <div key={fieldName} style={{ fontSize: 12, color: C.darkMuted, marginTop: 2 }}>
-                            <CellDisplay value={val} type={type} fieldName={fieldName} schema={schema} />
+                            <CellDisplay value={val} type={type} fieldName={fieldName} schema={schema} colorMapping={config.colorMapping} />
                           </div>
                         );
                       })}

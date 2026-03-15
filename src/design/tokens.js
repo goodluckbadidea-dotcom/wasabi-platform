@@ -237,13 +237,13 @@ const INFO_PALETTE = [
   { key: "default", hex: "#8B8B8B", text: "#fff" },      // 0: neutral gray
   { key: "gray",    hex: "#6B7280", text: "#fff" },      // 1: cool gray
   { key: "brown",   hex: "#A0845E", text: "#fff" },      // 2: warm brown
-  { key: "orange",  hex: "#E8A838", text: "#1a1a1a" },   // 3: amber (= Medium priority)
-  { key: "yellow",  hex: "#F0C94E", text: "#1a1a1a" },   // 4: gold
-  { key: "green",   hex: "#4CAF50", text: "#fff" },      // 5: success green
-  { key: "blue",    hex: "#4A90D9", text: "#fff" },      // 6: info blue (= Low priority)
-  { key: "purple",  hex: "#9B6EC6", text: "#fff" },      // 7: purple
-  { key: "pink",    hex: "#E07C9A", text: "#fff" },      // 8: pink/rose
-  { key: "red",     hex: "#E05252", text: "#fff" },      // 9: danger red (= High priority)
+  { key: "orange",  hex: "#FF6B35", text: "#fff" },      // 3: condition orange
+  { key: "yellow",  hex: "#F5B724", text: "#1a1a1a" },   // 4: wasabi gold
+  { key: "green",   hex: "#7DC143", text: "#fff" },      // 5: action green
+  { key: "blue",    hex: "#2196F3", text: "#fff" },      // 6: transform blue
+  { key: "purple",  hex: "#8B6FBE", text: "#fff" },      // 7: node purple
+  { key: "pink",    hex: "#E91E63", text: "#fff" },      // 8: view pink
+  { key: "red",     hex: "#FF5722", text: "#fff" },      // 9: alert red
 ];
 
 // ── Global View Palette ──
@@ -368,7 +368,12 @@ export const FALLBACK_COLORS = [
 ];
 
 // Get a status-like pill color, falling back to palette
-export function getStatusColor(value, options = []) {
+export function getStatusColor(value, options = [], colorMapping = null) {
+  // User color mapping takes priority
+  if (colorMapping && colorMapping[value] !== undefined) {
+    const entry = VIEW_PALETTE[colorMapping[value]] || VIEW_PALETTE[0];
+    return entry.hex;
+  }
   if (STATUS_COLORS[value]) return STATUS_COLORS[value];
   const idx = options.indexOf(value);
   if (idx >= 0) return SELECT_PALETTE[idx % SELECT_PALETTE.length];
@@ -384,7 +389,12 @@ export function getStatusColor(value, options = []) {
  * Get a solid-fill pill style for a select/status value.
  * Uses the Notion color from schema, falling back to palette.
  */
-export function getSolidPillColor(value, options = [], schemaOptions = []) {
+export function getSolidPillColor(value, options = [], schemaOptions = [], colorMapping = null) {
+  // User color mapping takes priority
+  if (colorMapping && colorMapping[value] !== undefined) {
+    const entry = VIEW_PALETTE[colorMapping[value]] || VIEW_PALETTE[0];
+    return { fill: entry.hex, text: isLightColor(entry.hex) ? "#1a1a1a" : "#fff" };
+  }
   const opt = schemaOptions.find((o) => o.name === value);
   if (opt?.color) {
     const wasabi = WASABI_COLORS[opt.color];

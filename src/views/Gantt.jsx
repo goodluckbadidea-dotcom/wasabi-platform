@@ -223,7 +223,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
       if (colorVal && colorField) {
         const schemaField = (schema.statuses || []).concat(schema.selects || []).find((f) => f.name === colorField);
         const schemaOpts = schemaField?.options || [];
-        const resolved = getSolidPillColor(colorVal, colorOptionNames, schemaOpts);
+        const resolved = getSolidPillColor(colorVal, colorOptionNames, schemaOpts, config.colorMapping);
         pillFill = resolved.fill;
         pillText = resolved.text;
       }
