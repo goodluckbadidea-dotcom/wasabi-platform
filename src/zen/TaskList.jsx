@@ -68,11 +68,13 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick }) {
         display: "flex",
         alignItems: "center",
         gap: 10,
-        padding: "8px 12px",
-        borderRadius: RADIUS.lg,
+        padding: "8px 14px",
+        marginBottom: 3,
+        borderRadius: 20,
         cursor: "pointer",
-        transition: "background 0.12s",
-        background: hovered ? C.darkSurf2 : "transparent",
+        transition: "background 0.15s ease, transform 0.15s ease",
+        background: hovered ? C.darkSurf2 : C.darkSurf,
+        transform: hovered ? "scale(1.02)" : "scale(1)",
         opacity: task.done ? 0.5 : 1,
       }}
       onMouseEnter={() => setHovered(true)}
@@ -166,7 +168,7 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, on
             width: "100%",
             boxSizing: "border-box",
             padding: "10px 14px",
-            borderRadius: RADIUS.lg,
+            borderRadius: 20,
             border: `1px solid ${C.darkBorder}`,
             background: C.darkSurf2,
             color: C.darkText,
@@ -229,7 +231,7 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, on
               <div style={{ padding: "4px 12px" }}>
                 {[1, 2, 3].map((i) => (
                   <div key={i} style={{
-                    height: 32, borderRadius: RADIUS.lg,
+                    height: 36, borderRadius: 20,
                     background: C.darkSurf2, marginBottom: 4,
                     animation: "pulse 1.5s ease infinite",
                     opacity: 0.5,

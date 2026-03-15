@@ -158,16 +158,23 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
                     onClick={(e) => { e.stopPropagation(); onEventClick?.(ev); }}
                     style={{
                       display: "flex", alignItems: "center", gap: 8,
-                      padding: "4px 8px", marginBottom: 3,
+                      padding: "5px 10px", marginBottom: 3,
                       background: color + "18",
                       borderLeft: `3px solid ${color}`,
-                      borderRadius: RADIUS.sm,
-                      transition: TRANSITION.color,
+                      borderRadius: 16,
+                      transition: "background 0.15s ease, transform 0.15s ease",
                       animation: ANIM.scrollReveal(idx),
                       cursor: onEventClick ? "pointer" : "default",
+                      transform: "scale(1)",
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = color + "28"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = color + "18"; }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = color + "28";
+                      e.currentTarget.style.transform = "scale(1.02)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = color + "18";
+                      e.currentTarget.style.transform = "scale(1)";
+                    }}
                   >
                     <span style={{
                       fontSize: 12, fontFamily: FONT, fontWeight: 600,
@@ -195,16 +202,23 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
                     onClick={(e) => { e.stopPropagation(); onTaskClick?.(t); }}
                     style={{
                       display: "flex", alignItems: "center", gap: 8,
-                      padding: "4px 8px", marginBottom: 3,
+                      padding: "5px 10px", marginBottom: 3,
                       background: C.accent + "0A",
                       borderLeft: `2px dashed ${C.accent}44`,
-                      borderRadius: RADIUS.sm,
-                      transition: TRANSITION.color,
+                      borderRadius: 16,
+                      transition: "background 0.15s ease, transform 0.15s ease",
                       animation: ANIM.scrollReveal(idx),
                       cursor: onTaskClick ? "pointer" : "default",
+                      transform: "scale(1)",
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = C.accent + "18"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = C.accent + "0A"; }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = C.accent + "18";
+                      e.currentTarget.style.transform = "scale(1.02)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = C.accent + "0A";
+                      e.currentTarget.style.transform = "scale(1)";
+                    }}
                   >
                     <div style={{
                       width: 6, height: 6, borderRadius: "50%",

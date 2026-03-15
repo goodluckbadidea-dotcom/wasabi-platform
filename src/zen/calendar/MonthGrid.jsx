@@ -59,7 +59,9 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
       {/* Header row — Mon–Sun */}
       <div style={{
         display: "grid", gridTemplateColumns: "repeat(7, 1fr)",
-        borderBottom: `1px solid ${C.darkBorder}`,
+        gap: 3,
+        borderBottom: "none",
+        paddingBottom: 2,
         flexShrink: 0,
       }}>
         {DAY_ABBR.map((day, idx) => (
@@ -74,7 +76,6 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
               color: C.darkMuted,
               textTransform: "uppercase",
               letterSpacing: "0.05em",
-              borderRight: idx < 6 ? `1px solid ${C.darkBorder}22` : "none",
             }}
           >
             {day}
@@ -87,6 +88,8 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
         flex: 1, display: "grid",
         gridTemplateColumns: "repeat(7, 1fr)",
         gridTemplateRows: "repeat(6, 1fr)",
+        gap: 3,
+        padding: 2,
         overflow: "hidden",
       }}>
         {cells.map((date, idx) => {
@@ -97,24 +100,28 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
           const isCurrentMonth = date.getMonth() === currentMonth;
           const totalItems = dayEvents.length + dayTasks.length;
           const overflow = totalItems > MAX_VISIBLE_ITEMS;
-          const col = idx % 7;
-
           return (
             <div
               key={idx}
               onClick={() => onDayClick(date)}
               style={{
                 padding: "3px 4px",
-                borderRight: col < 6 ? `1px solid ${C.darkBorder}22` : "none",
-                borderBottom: `1px solid ${C.darkBorder}22`,
+                borderRadius: RADIUS.lg,
                 cursor: "pointer",
                 overflow: "hidden",
                 opacity: isCurrentMonth ? 1 : 0.35,
-                background: isToday ? C.accent + "0A" : "transparent",
-                transition: "background 0.1s",
+                background: isToday ? C.accent + "0A" : C.darkSurf,
+                transition: "background 0.15s ease, transform 0.15s ease",
+                transform: "scale(1)",
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = isToday ? C.accent + "0A" : "transparent"; }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = C.darkSurf2;
+                e.currentTarget.style.transform = "scale(1.02)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = isToday ? C.accent + "0A" : C.darkSurf;
+                e.currentTarget.style.transform = "scale(1)";
+              }}
             >
               {/* Date number */}
               <div style={{
@@ -134,11 +141,11 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
                 const color = ev.calendarColor || C.accent;
                 return (
                   <div key={ev.id || i} onClick={(e) => { e.stopPropagation(); onEventClick?.(ev); }} style={{
-                    padding: "1px 3px",
-                    marginBottom: 1,
+                    padding: "1px 5px",
+                    marginBottom: 2,
                     background: color + "22",
                     borderLeft: `2px solid ${color}`,
-                    borderRadius: 2,
+                    borderRadius: 8,
                     fontSize: 10,
                     fontWeight: 600,
                     fontFamily: FONT,
@@ -157,8 +164,8 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
               {/* Task dots */}
               {dayTasks.slice(0, Math.max(0, MAX_VISIBLE_ITEMS - dayEvents.length)).map((t) => (
                 <div key={t.id} onClick={(e) => { e.stopPropagation(); onTaskClick?.(t); }} style={{
-                  padding: "1px 3px",
-                  marginBottom: 1,
+                  padding: "1px 5px",
+                  marginBottom: 2,
                   display: "flex",
                   alignItems: "center",
                   gap: 3,
