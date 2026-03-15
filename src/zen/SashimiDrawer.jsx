@@ -46,12 +46,13 @@ const tabBarStyle = {
   background: C.darkSurf2, borderRadius: RADIUS.md, padding: 2,
 };
 const tabStyle = (active) => ({
-  flex: 1, padding: "6px 0", border: "none",
+  flex: 1, padding: "8px 0", border: "none",
   background: active ? C.dark : "transparent",
   color: active ? C.darkText : C.darkMuted,
-  fontSize: 11, fontWeight: 600, fontFamily: FONT,
+  fontSize: 12, fontWeight: 600, fontFamily: FONT,
   borderRadius: RADIUS.sm, cursor: "pointer", outline: "none",
   transition: "all 0.15s", letterSpacing: "0.03em",
+  minHeight: 32,
 });
 
 /** Relative time helper */
@@ -250,13 +251,13 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
                       key={opt.name}
                       onClick={() => setStatus(opt.name)}
                       style={{
-                        padding: "5px 12px", borderRadius: RADIUS.pill,
+                        padding: "7px 14px", borderRadius: RADIUS.pill,
                         border: `1.5px solid ${active ? (isDone ? "#4CAF50" : C.accent) : C.darkBorder}`,
                         background: active ? (isDone ? "#4CAF50" : C.accent) : "transparent",
                         color: active ? "#fff" : C.darkMuted,
-                        fontSize: 11, fontWeight: 600, fontFamily: FONT,
+                        fontSize: 12, fontWeight: 600, fontFamily: FONT,
                         cursor: "pointer", outline: "none", transition: "all 0.15s",
-                        letterSpacing: "0.03em",
+                        letterSpacing: "0.03em", minHeight: 32,
                       }}
                     >
                       {opt.name}
@@ -273,7 +274,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
               <button
                 onClick={() => setDone(!done)}
                 style={{
-                  width: 20, height: 20, borderRadius: 5, flexShrink: 0,
+                  width: 24, height: 24, borderRadius: 6, flexShrink: 0,
                   border: `2px solid ${done ? C.accent : C.darkBorder}`,
                   background: done ? C.accent : "transparent",
                   cursor: "pointer", outline: "none", padding: 0,
@@ -315,13 +316,13 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
                 return (
                   <button key={p} onClick={() => setPriority(active ? "" : p)}
                     style={{
-                      padding: "5px 12px", borderRadius: RADIUS.pill,
+                      padding: "7px 14px", borderRadius: RADIUS.pill,
                       border: `1.5px solid ${active ? colors.bg : C.darkBorder}`,
                       background: active ? colors.bg : "transparent",
                       color: active ? colors.text : C.darkMuted,
-                      fontSize: 11, fontWeight: 600, fontFamily: FONT,
+                      fontSize: 12, fontWeight: 600, fontFamily: FONT,
                       cursor: "pointer", outline: "none", transition: "all 0.15s",
-                      letterSpacing: "0.03em",
+                      letterSpacing: "0.03em", minHeight: 32,
                     }}
                   >{p}</button>
                 );
@@ -550,8 +551,9 @@ function TaskCommentsTab({ recordId, pageConfigId }) {
               onClick={() => handleDeleteComment(comment.id)}
               style={{
                 background: "transparent", border: "none", color: C.darkMuted,
-                cursor: "pointer", fontSize: 14, padding: "2px 4px", borderRadius: RADIUS.sm,
+                cursor: "pointer", fontSize: 16, padding: "6px 8px", borderRadius: RADIUS.sm,
                 outline: "none", flexShrink: 0, transition: "color 0.15s",
+                minWidth: 28, minHeight: 28, display: "flex", alignItems: "center", justifyContent: "center",
               }}
               onMouseEnter={(e) => { e.currentTarget.style.color = "#E05252"; }}
               onMouseLeave={(e) => { e.currentTarget.style.color = C.darkMuted; }}

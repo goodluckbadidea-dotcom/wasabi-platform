@@ -86,7 +86,7 @@ export default function DayColumn({ date, events, tasks, isToday: isTodayProp, h
                 return (
                   <div key={ev.id} onClick={() => onEventClick?.(ev)} style={{
                     display: "flex", alignItems: "center", gap: 6,
-                    padding: "3px 8px", marginBottom: 2,
+                    padding: "6px 10px", marginBottom: 3,
                     background: color,
                     borderRadius: RADIUS.lg,
                     fontSize: 12, fontFamily: FONT,
@@ -113,8 +113,9 @@ export default function DayColumn({ date, events, tasks, isToday: isTodayProp, h
               </div>
               {dateOnlyTasks.map((task) => (
                 <div key={task.id} onClick={() => onTaskClick?.(task)} style={{
-                  display: "flex", alignItems: "center", gap: 6,
-                  padding: "3px 0", fontSize: 12, fontFamily: FONT, color: C.darkText, fontWeight: 500,
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "6px 4px", fontSize: 12, fontFamily: FONT, color: C.darkText, fontWeight: 500,
+                  borderRadius: RADIUS.sm,
                   cursor: onTaskClick ? "pointer" : "default",
                 }}>
                   <div style={{

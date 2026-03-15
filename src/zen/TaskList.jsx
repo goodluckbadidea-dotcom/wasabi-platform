@@ -71,7 +71,7 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick }) {
         display: "flex",
         alignItems: "center",
         gap: 10,
-        padding: "8px 12px",
+        padding: "10px 14px",
         marginBottom: 4,
         borderRadius: RADIUS.lg,
         cursor: "pointer",
@@ -115,11 +115,13 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick }) {
           onClick={(e) => { e.stopPropagation(); onDelete(task.id); }}
           style={{
             background: "none", border: "none", cursor: "pointer",
-            padding: 2, display: "flex", opacity: 0.5,
+            padding: 6, display: "flex", opacity: 0.5,
             outline: "none", flexShrink: 0,
+            borderRadius: RADIUS.sm, minWidth: 28, minHeight: 28,
+            alignItems: "center", justifyContent: "center",
           }}
         >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+          <svg width="12" height="12" viewBox="0 0 10 10" fill="none">
             <path d="M2 2L8 8M8 2L2 8" stroke={C.darkMuted} strokeWidth="1.2" />
           </svg>
         </button>
@@ -152,7 +154,7 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, on
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       {/* Quick-add input */}
-      <form onSubmit={handleSubmit} style={{ flexShrink: 0, padding: "12px 12px 4px" }}>
+      <form onSubmit={handleSubmit} style={{ flexShrink: 0, padding: "12px 14px 4px" }}>
         <input
           ref={inputRef}
           type="text"
@@ -162,7 +164,7 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, on
           style={{
             width: "100%",
             boxSizing: "border-box",
-            padding: "10px 14px",
+            padding: "12px 16px",
             borderRadius: 20,
             border: `1px solid ${C.darkBorder}`,
             background: C.darkSurf2,

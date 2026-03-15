@@ -200,7 +200,7 @@ export default function ZenCalendar({ allTasks, refreshRef }) {
       }}>
         {/* Nav arrows + Today */}
         <button onClick={goPrev} style={navBtnStyle} title="Previous">
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+          <svg width="14" height="14" viewBox="0 0 10 10" fill="none">
             <path d="M6.5 2L3.5 5L6.5 8" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
@@ -208,14 +208,14 @@ export default function ZenCalendar({ allTasks, refreshRef }) {
           onClick={goToday}
           style={{
             ...navBtnStyle,
-            fontSize: 11, fontFamily: FONT, color: C.darkMuted,
-            padding: "2px 8px", opacity: isViewingToday ? 0.4 : 0.7,
+            fontSize: 12, fontFamily: FONT, color: C.darkMuted,
+            padding: "4px 12px", opacity: isViewingToday ? 0.4 : 0.7,
           }}
         >
           Today
         </button>
         <button onClick={goNext} style={navBtnStyle} title="Next">
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+          <svg width="14" height="14" viewBox="0 0 10 10" fill="none">
             <path d="M3.5 2L6.5 5L3.5 8" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
@@ -241,7 +241,7 @@ export default function ZenCalendar({ allTasks, refreshRef }) {
                 position: "relative",
               }}
             >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <svg width="14" height="14" viewBox="0 0 12 12" fill="none">
                 <path d="M1.5 3H10.5M3 6H9M4.5 9H7.5" stroke={filterOpen ? C.accent : C.darkMuted} strokeWidth="1.2" strokeLinecap="round" />
               </svg>
               {/* Active filter indicator */}
@@ -277,8 +277,8 @@ export default function ZenCalendar({ allTasks, refreshRef }) {
               style={{
                 background: viewMode === mode ? C.darkSurf2 : "transparent",
                 border: "none", cursor: "pointer",
-                padding: "3px 8px",
-                fontSize: 10, fontFamily: FONT,
+                padding: "6px 12px",
+                fontSize: 12, fontFamily: FONT,
                 color: viewMode === mode ? C.darkText : C.darkMuted,
                 fontWeight: viewMode === mode ? 600 : 400,
                 outline: "none",
@@ -301,7 +301,7 @@ export default function ZenCalendar({ allTasks, refreshRef }) {
               background: quickCreateOpen ? C.accent + "22" : "transparent",
             }}
           >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <svg width="14" height="14" viewBox="0 0 12 12" fill="none">
               <path d="M6 2V10M2 6H10" stroke={quickCreateOpen ? C.accent : C.darkMuted} strokeWidth="1.3" strokeLinecap="round" />
             </svg>
           </button>
@@ -398,7 +398,8 @@ export default function ZenCalendar({ allTasks, refreshRef }) {
 // ── Shared nav button style ──
 const navBtnStyle = {
   background: "none", border: "none", cursor: "pointer",
-  padding: 4, display: "flex", alignItems: "center", justifyContent: "center",
+  padding: 8, display: "flex", alignItems: "center", justifyContent: "center",
   borderRadius: RADIUS.md, outline: "none",
   transition: "opacity 0.15s",
+  minWidth: 32, minHeight: 32,
 };

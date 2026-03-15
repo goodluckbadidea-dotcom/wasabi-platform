@@ -80,12 +80,13 @@ export default function CalendarFilterDropdown({ calendars, hiddenCalendars, onT
                 alignItems: "center",
                 gap: 8,
                 width: "100%",
-                padding: "6px 10px",
+                padding: "8px 12px",
                 background: "transparent",
                 border: "none",
                 cursor: "pointer",
                 outline: "none",
                 transition: "background 0.1s",
+                minHeight: 34,
               }}
               onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
@@ -104,7 +105,7 @@ export default function CalendarFilterDropdown({ calendars, hiddenCalendars, onT
               {/* Calendar name */}
               <span style={{
                 flex: 1,
-                fontSize: 11,
+                fontSize: 12,
                 fontFamily: FONT,
                 color: hidden ? C.darkMuted : C.darkText,
                 textAlign: "left",
@@ -123,9 +124,9 @@ export default function CalendarFilterDropdown({ calendars, hiddenCalendars, onT
 
               {/* Checkbox */}
               <div style={{
-                width: 14,
-                height: 14,
-                borderRadius: 3,
+                width: 18,
+                height: 18,
+                borderRadius: 4,
                 border: `1.5px solid ${hidden ? C.darkMuted : cal.backgroundColor}`,
                 background: hidden ? "transparent" : cal.backgroundColor,
                 display: "flex",
@@ -152,12 +153,13 @@ function quickBtnStyle(disabled) {
     background: "none",
     border: "none",
     cursor: disabled ? "default" : "pointer",
-    fontSize: 10,
+    fontSize: 11,
     fontFamily: FONT,
     color: disabled ? C.darkMuted + "66" : C.accent,
     fontWeight: 500,
-    padding: "2px 4px",
+    padding: "6px 8px",
     opacity: disabled ? 0.4 : 0.8,
     outline: "none",
+    minHeight: 28,
   };
 }

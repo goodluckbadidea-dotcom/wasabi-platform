@@ -92,8 +92,8 @@ export default function QuickCreateBar({ selectedDate, onCreated, onClose }) {
         placeholder="Event title..."
         style={{
           flex: 1, background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-          borderRadius: RADIUS.md, padding: "4px 8px",
-          fontSize: 11, fontFamily: FONT, color: C.darkText,
+          borderRadius: RADIUS.md, padding: "7px 10px",
+          fontSize: 12, fontFamily: FONT, color: C.darkText,
           outline: "none", minWidth: 0,
         }}
       />
@@ -105,9 +105,9 @@ export default function QuickCreateBar({ selectedDate, onCreated, onClose }) {
         onChange={(e) => setStartTime(e.target.value)}
         style={{
           background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-          borderRadius: RADIUS.md, padding: "4px 6px",
-          fontSize: 10, fontFamily: FONT, color: C.darkText,
-          outline: "none", width: 80,
+          borderRadius: RADIUS.md, padding: "7px 8px",
+          fontSize: 11, fontFamily: FONT, color: C.darkText,
+          outline: "none", width: 85,
         }}
       />
 
@@ -124,8 +124,8 @@ export default function QuickCreateBar({ selectedDate, onCreated, onClose }) {
             style={{
               background: durationIdx === idx ? C.darkSurf2 : "transparent",
               border: "none", cursor: "pointer",
-              padding: "3px 6px",
-              fontSize: 9, fontFamily: FONT,
+              padding: "6px 8px",
+              fontSize: 11, fontFamily: FONT,
               color: durationIdx === idx ? C.darkText : C.darkMuted,
               fontWeight: durationIdx === idx ? 600 : 400,
               outline: "none",
@@ -144,7 +144,7 @@ export default function QuickCreateBar({ selectedDate, onCreated, onClose }) {
         style={{
           background: C.accent, color: "#fff",
           border: "none", borderRadius: RADIUS.md,
-          padding: "4px 10px", fontSize: 10, fontFamily: FONT,
+          padding: "7px 14px", fontSize: 11, fontFamily: FONT,
           fontWeight: 600, cursor: title.trim() && !creating ? "pointer" : "default",
           opacity: title.trim() && !creating ? 1 : 0.4,
           outline: "none", whiteSpace: "nowrap",

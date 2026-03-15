@@ -155,7 +155,7 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
                 const isAllDay = ev.start?.date && !ev.start?.dateTime;
                 return isAllDay ? (
                   <div key={ev.id || i} onClick={(e) => { e.stopPropagation(); onEventClick?.(ev); }} style={{
-                    padding: "1px 5px",
+                    padding: "2px 6px",
                     marginBottom: 2,
                     background: color,
                     borderRadius: RADIUS.sm,
@@ -166,14 +166,14 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
-                    lineHeight: "14px",
+                    lineHeight: "16px",
                     cursor: onEventClick ? "pointer" : "default",
                   }}>
                     {ev.summary || "Untitled"}
                   </div>
                 ) : (
                   <div key={ev.id || i} onClick={(e) => { e.stopPropagation(); onEventClick?.(ev); }} style={{
-                    padding: "1px 5px",
+                    padding: "2px 6px",
                     marginBottom: 2,
                     background: C.darkSurf2,
                     borderLeft: `2px solid ${color}`,
@@ -185,7 +185,7 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
-                    lineHeight: "14px",
+                    lineHeight: "16px",
                     cursor: onEventClick ? "pointer" : "default",
                   }}>
                     {ev.summary || "Untitled"}
@@ -198,7 +198,7 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
                 const barColor = getTaskBarColor(t) || C.accent;
                 return (
                   <div key={t.id} onClick={(e) => { e.stopPropagation(); onTaskClick?.(t); }} style={{
-                    padding: "1px 5px",
+                    padding: "2px 6px",
                     marginBottom: 2,
                     background: C.darkSurf2,
                     borderLeft: `2px solid ${barColor}`,
@@ -210,7 +210,7 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
-                    lineHeight: "14px",
+                    lineHeight: "16px",
                     cursor: onTaskClick ? "pointer" : "default",
                   }}>
                     {t.title}

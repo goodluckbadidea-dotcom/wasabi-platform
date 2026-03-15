@@ -123,7 +123,7 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
             <div
               onClick={() => onDayClick(date)}
               style={{
-                padding: "8px 14px 4px",
+                padding: "10px 14px 6px",
                 display: "flex",
                 alignItems: "baseline",
                 gap: 6,
@@ -171,7 +171,7 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
                     onClick={(e) => { e.stopPropagation(); onEventClick?.(ev); }}
                     style={{
                       display: "flex", alignItems: "center", gap: 8,
-                      padding: "5px 10px", marginBottom: 3,
+                      padding: "7px 12px", marginBottom: 4,
                       background: color,
                       borderRadius: RADIUS.lg,
                       animation: ANIM.scrollReveal(idx),
@@ -200,7 +200,7 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
                     onClick={(e) => { e.stopPropagation(); onEventClick?.(ev); }}
                     style={{
                       display: "flex", alignItems: "center", gap: 8,
-                      padding: "5px 10px", marginBottom: 3,
+                      padding: "7px 12px", marginBottom: 4,
                       background: C.darkSurf,
                       borderLeft: `3px solid ${color}`,
                       borderRadius: RADIUS.lg,
@@ -238,7 +238,7 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
                     onClick={(e) => { e.stopPropagation(); onTaskClick?.(t); }}
                     style={{
                       display: "flex", alignItems: "center", gap: 8,
-                      padding: "5px 10px", marginBottom: 3,
+                      padding: "7px 12px", marginBottom: 4,
                       background: C.darkSurf,
                       borderLeft: `3px solid ${barColor}`,
                       borderRadius: RADIUS.lg,

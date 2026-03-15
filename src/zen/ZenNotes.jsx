@@ -207,8 +207,9 @@ export default function ZenNotes() {
               background: saveToOpen ? C.accent + "22" : "transparent",
               border: `1px solid ${saveToOpen ? C.accent + "44" : C.darkBorder}`,
               borderRadius: RADIUS.md,
-              padding: "3px 8px",
-              fontSize: 10, fontFamily: FONT,
+              padding: "6px 12px",
+              fontSize: 11, fontFamily: FONT,
+              minHeight: 30,
               color: saveToOpen ? C.accent : C.darkMuted,
               cursor: "pointer", outline: "none",
               display: "flex", alignItems: "center", gap: 4,
@@ -228,9 +229,11 @@ export default function ZenNotes() {
             title="Clear note"
             style={{
               background: "none", border: "none", cursor: "pointer",
-              padding: 4, display: "flex", opacity: content.trim() ? 0.4 : 0.15,
+              padding: 8, display: "flex", opacity: content.trim() ? 0.4 : 0.15,
               outline: "none", borderRadius: RADIUS.md,
               transition: "opacity 0.15s",
+              minWidth: 30, minHeight: 30,
+              alignItems: "center", justifyContent: "center",
             }}
             onMouseEnter={(e) => { if (content.trim()) e.currentTarget.style.opacity = "0.8"; }}
             onMouseLeave={(e) => { e.currentTarget.style.opacity = content.trim() ? "0.4" : "0.15"; }}
@@ -258,8 +261,8 @@ export default function ZenNotes() {
             placeholder="Page name..."
             style={{
               flex: 1, background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-              borderRadius: RADIUS.md, padding: "4px 8px",
-              fontSize: 11, fontFamily: FONT, color: C.darkText,
+              borderRadius: RADIUS.md, padding: "7px 10px",
+              fontSize: 12, fontFamily: FONT, color: C.darkText,
               outline: "none", minWidth: 0,
             }}
           />
@@ -270,8 +273,8 @@ export default function ZenNotes() {
               onChange={(e) => setSaveToFolder(e.target.value)}
               style={{
                 background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-                borderRadius: RADIUS.md, padding: "4px 6px",
-                fontSize: 10, fontFamily: FONT, color: C.darkText,
+                borderRadius: RADIUS.md, padding: "7px 8px",
+                fontSize: 11, fontFamily: FONT, color: C.darkText,
                 outline: "none", maxWidth: 140,
               }}
             >
@@ -288,7 +291,7 @@ export default function ZenNotes() {
             style={{
               background: saveToStatus === "done" ? "#2A6B38" : C.accent,
               color: "#fff", border: "none", borderRadius: RADIUS.md,
-              padding: "4px 10px", fontSize: 10, fontFamily: FONT,
+              padding: "7px 14px", fontSize: 11, fontFamily: FONT,
               fontWeight: 600, cursor: saveToName.trim() && saveToStatus !== "saving" ? "pointer" : "default",
               opacity: saveToName.trim() && saveToStatus !== "saving" ? 1 : 0.4,
               outline: "none", whiteSpace: "nowrap",

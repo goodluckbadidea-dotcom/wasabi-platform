@@ -100,10 +100,12 @@ function ComposeModal({ onClose, onSent, replyTo }) {
             onClick={onClose}
             style={{
               background: "none", border: "none", cursor: "pointer",
-              padding: 4, display: "flex", outline: "none",
+              padding: 8, display: "flex", outline: "none",
+              borderRadius: RADIUS.sm, minWidth: 28, minHeight: 28,
+              alignItems: "center", justifyContent: "center",
             }}
           >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <svg width="14" height="14" viewBox="0 0 12 12" fill="none">
               <path d="M2 2L10 10M10 2L2 10" stroke={C.darkMuted} strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           </button>
@@ -329,13 +331,14 @@ export default function ZenGmail() {
             style={{
               background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
               border: "none", cursor: "pointer",
-              padding: "5px 12px", borderRadius: RADIUS.md,
+              padding: "7px 14px", borderRadius: RADIUS.md,
               fontSize: 12, fontWeight: 600, fontFamily: FONT,
               color: "#fff", outline: "none",
-              display: "flex", alignItems: "center", gap: 5,
+              display: "flex", alignItems: "center", gap: 6,
+              minHeight: 32,
             }}
           >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <svg width="12" height="12" viewBox="0 0 10 10" fill="none">
               <path d="M5 1V9M1 5H9" stroke="#fff" strokeWidth="1.3" strokeLinecap="round" />
             </svg>
             Compose
@@ -346,9 +349,11 @@ export default function ZenGmail() {
             title="Refresh inbox"
             style={{
               background: "none", border: "none", cursor: "pointer",
-              padding: 4, display: "flex", opacity: 0.5,
+              padding: 8, display: "flex", opacity: 0.5,
               outline: "none", borderRadius: RADIUS.md,
               transition: "opacity 0.15s",
+              minWidth: 32, minHeight: 32,
+              alignItems: "center", justifyContent: "center",
             }}
             onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
             onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
@@ -481,9 +486,11 @@ export default function ZenGmail() {
                     title="Archive"
                     style={{
                       background: "none", border: "none",
-                      cursor: "pointer", padding: 4, display: "flex",
+                      cursor: "pointer", padding: 8, display: "flex",
                       opacity: 0.3, outline: "none", flexShrink: 0,
                       transition: "opacity 0.12s",
+                      borderRadius: RADIUS.sm, minWidth: 30, minHeight: 30,
+                      alignItems: "center", justifyContent: "center",
                     }}
                     onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.8"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.3"; }}
@@ -501,9 +508,11 @@ export default function ZenGmail() {
                     title="Delete"
                     style={{
                       background: "none", border: "none",
-                      cursor: "pointer", padding: 4, display: "flex",
+                      cursor: "pointer", padding: 8, display: "flex",
                       opacity: 0.3, outline: "none", flexShrink: 0,
                       transition: "opacity 0.12s",
+                      borderRadius: RADIUS.sm, minWidth: 30, minHeight: 30,
+                      alignItems: "center", justifyContent: "center",
                     }}
                     onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.8"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.3"; }}
@@ -569,10 +578,11 @@ export default function ZenGmail() {
                             style={{
                               background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
                               border: "none", cursor: "pointer",
-                              padding: "6px 14px", borderRadius: RADIUS.md,
+                              padding: "8px 16px", borderRadius: RADIUS.md,
                               fontSize: 12, fontWeight: 600, fontFamily: FONT,
                               color: "#fff", outline: "none",
-                              display: "flex", alignItems: "center", gap: 5,
+                              display: "flex", alignItems: "center", gap: 6,
+                              minHeight: 34,
                             }}
                           >
                             <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
@@ -587,10 +597,11 @@ export default function ZenGmail() {
                               background: "none",
                               border: `1px solid ${C.darkBorder}`,
                               cursor: "pointer",
-                              padding: "6px 14px", borderRadius: RADIUS.md,
+                              padding: "8px 16px", borderRadius: RADIUS.md,
                               fontSize: 12, fontWeight: 500, fontFamily: FONT,
                               color: C.darkMuted, outline: "none",
-                              display: "flex", alignItems: "center", gap: 5,
+                              display: "flex", alignItems: "center", gap: 6,
+                              minHeight: 34,
                               transition: "background 0.12s",
                             }}
                             onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf; }}
@@ -609,10 +620,11 @@ export default function ZenGmail() {
                               background: "none",
                               border: `1px solid ${C.darkBorder}`,
                               cursor: "pointer",
-                              padding: "6px 14px", borderRadius: RADIUS.md,
+                              padding: "8px 16px", borderRadius: RADIUS.md,
                               fontSize: 12, fontWeight: 500, fontFamily: FONT,
                               color: C.darkMuted, outline: "none",
-                              display: "flex", alignItems: "center", gap: 5,
+                              display: "flex", alignItems: "center", gap: 6,
+                              minHeight: 34,
                               transition: "background 0.12s",
                             }}
                             onMouseEnter={(e) => { e.currentTarget.style.background = "#E0525215"; e.currentTarget.style.borderColor = "#E0525244"; }}
