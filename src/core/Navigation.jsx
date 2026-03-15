@@ -226,12 +226,8 @@ export default function Navigation({
       style={{
         width: SIDEBAR_W,
         flexShrink: 0,
-        background: C.dark,
+        background: `linear-gradient(to bottom, ${C.edgeLine} 10%, ${C.accent}44 30%, ${C.accent}44 70%, ${C.edgeLine} 90%), ${C.dark}`,
         borderRight: "none",
-        backgroundImage: `linear-gradient(to bottom, ${C.edgeLine} 10%, ${C.accent}44 30%, ${C.accent}44 70%, ${C.edgeLine} 90%)`,
-        backgroundSize: "1px 100%",
-        backgroundPosition: "right",
-        backgroundRepeat: "no-repeat",
         display: "flex",
         flexDirection: "column",
         transition: TRANSITION.sidebar,
