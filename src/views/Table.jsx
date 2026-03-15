@@ -492,7 +492,7 @@ function searchableText(value, type) {
 
 // ─── Cell Editor Component ───
 
-function CellEditor({ value, type, options, schemaOptions, onCommit, onCancel, initialChar, isD1Table, onCreateOption, cellRef }) {
+function CellEditor({ value, type, options, schemaOptions, onCommit, onCancel, initialChar, isD1Table, onCreateOption, cellRef, canEditSchema }) {
   const inputRef = useRef(null);
   const [draft, setDraft] = useState(() => {
     if (initialChar && (type === "title" || type === "rich_text" || type === "url" || type === "email" || type === "phone_number")) {
@@ -2413,6 +2413,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                     initialChar={initialChar}
                                     isD1Table={isD1Table}
                                     onCreateOption={(optName) => handleCreateOption(col, optName)}
+                                    canEditSchema={canEditSchema}
                                   />
                                 ) : (
                                   <div style={{ position: "relative", width: "100%", minWidth: 0 }}>

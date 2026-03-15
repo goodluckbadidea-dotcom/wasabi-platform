@@ -7,7 +7,7 @@ import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { fetchDataSource, updateRecord, createRecord, deleteRecords, resolveSourceType } from "../lib/dataSource.js";
-import { savePageConfig } from "../config/pageConfig.js";
+// savePageConfig is handled internally by updatePageConfig (PagesContext)
 import ViewRenderer from "../views/ViewRenderer.jsx";
 import ChatPanel from "../views/ChatPanel.jsx";
 import SubPageNav from "./SubPageNav.jsx";
@@ -181,23 +181,21 @@ export default function PageShell({
   );
 
   // ── View management ──
+  // Note: updatePageConfig already handles both state + D1 persistence.
   const handleRenameView = useCallback((viewIdx, newLabel) => {
     const updatedViews = (pageConfig.views || []).map((v, i) =>
       i === viewIdx ? { ...v, label: newLabel } : v
     );
     updatePageConfig(pageConfig.id, { views: updatedViews });
-    savePageConfig({ ...pageConfig, views: updatedViews }).catch(() => {});
   }, [pageConfig, updatePageConfig]);
 
   const handleDeleteView = useCallback((viewIdx) => {
     const updatedViews = (pageConfig.views || []).filter((_, i) => i !== viewIdx);
     updatePageConfig(pageConfig.id, { views: updatedViews });
-    savePageConfig({ ...pageConfig, views: updatedViews }).catch(() => {});
   }, [pageConfig, updatePageConfig]);
 
   const handleReorderViews = useCallback((newViews) => {
     updatePageConfig(pageConfig.id, { views: newViews });
-    savePageConfig({ ...pageConfig, views: newViews }).catch(() => {});
   }, [pageConfig, updatePageConfig]);
 
   const handleAddView = useCallback(({ type, label }) => {
@@ -209,7 +207,6 @@ export default function PageShell({
     };
     const updatedViews = [...(pageConfig.views || []), newView];
     updatePageConfig(pageConfig.id, { views: updatedViews });
-    savePageConfig({ ...pageConfig, views: updatedViews }).catch(() => {});
     // Switch to the new view
     onSetActiveView?.(updatedViews.length - 1);
   }, [pageConfig, updatePageConfig, onSetActiveView]);
@@ -221,7 +218,6 @@ export default function PageShell({
         : v
     );
     updatePageConfig(pageConfig.id, { views: updatedViews });
-    savePageConfig({ ...pageConfig, views: updatedViews }).catch(() => {});
   }, [pageConfig, activeViewIndex, updatePageConfig]);
 
   // Connected database IDs
@@ -246,15 +242,6 @@ export default function PageShell({
         databaseIds: newDatabaseIds,
         views: newViews,
       });
-      try {
-        await savePageConfig({
-          ...pageConfig,
-          databaseIds: newDatabaseIds,
-          views: newViews,
-        });
-      } catch (err) {
-        console.error("Failed to save updated page config:", err);
-      }
       setShowAddDb(false);
       fetchData();
     },
