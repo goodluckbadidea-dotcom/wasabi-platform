@@ -314,7 +314,7 @@ function ProgressWidget({ widget, resolvedData }) {
   }
 
   const ratio = target > 0 ? Math.min(current / target, 1) : 0;
-  const barColor = ratio >= 0.8 ? (VIEW_PALETTE[7]?.hex || "#4CAF50") : ratio >= 0.5 ? (VIEW_PALETTE[8]?.hex || "#FF9800") : (VIEW_PALETTE[6]?.hex || "#f44336");
+  const barColor = ratio >= 0.8 ? "#4CAF50" : ratio >= 0.5 ? "#FF9800" : "#f44336";
 
   return (
     <div style={{ padding: "20px 16px", display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>

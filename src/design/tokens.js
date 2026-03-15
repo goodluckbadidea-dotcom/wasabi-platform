@@ -229,10 +229,27 @@ function _paleTint(hex) {
   return `#${tr.toString(16).padStart(2, "0")}${tg.toString(16).padStart(2, "0")}${tb.toString(16).padStart(2, "0")}`;
 }
 
+// ── Fixed Informational Palette ──
+// Theme-independent colors for data visualization (pills, bars, charts, badges).
+// Indices match Notion color names via NOTION_TO_PALETTE_IDX.
+// Indices 3, 6, 9 align with Sashimi PRIORITY_COLORS (Medium, Low, High).
+const INFO_PALETTE = [
+  { key: "default", hex: "#8B8B8B", text: "#fff" },      // 0: neutral gray
+  { key: "gray",    hex: "#6B7280", text: "#fff" },      // 1: cool gray
+  { key: "brown",   hex: "#A0845E", text: "#fff" },      // 2: warm brown
+  { key: "orange",  hex: "#E8A838", text: "#1a1a1a" },   // 3: amber (= Medium priority)
+  { key: "yellow",  hex: "#F0C94E", text: "#1a1a1a" },   // 4: gold
+  { key: "green",   hex: "#4CAF50", text: "#fff" },      // 5: success green
+  { key: "blue",    hex: "#4A90D9", text: "#fff" },      // 6: info blue (= Low priority)
+  { key: "purple",  hex: "#9B6EC6", text: "#fff" },      // 7: purple
+  { key: "pink",    hex: "#E07C9A", text: "#fff" },      // 8: pink/rose
+  { key: "red",     hex: "#E05252", text: "#fff" },      // 9: danger red (= High priority)
+];
+
 // ── Global View Palette ──
-// Mutable 10-color palette used by all views for property-driven coloring.
-// Index-based: view configs store palette indices (0-9) in colorMapping.
-export const VIEW_PALETTE = _theme.palette.map((p) => ({ ...p }));
+// Fixed informational palette for all views. Theme-independent.
+// View configs store palette indices (0-9) in colorMapping.
+export const VIEW_PALETTE = INFO_PALETTE.map((p) => ({ ...p }));
 
 // ── Timeline Palette (Gantt) ──
 // Mutable array derived from the vivid VIEW_PALETTE entries (indices 5-9, 3, 4).
@@ -395,17 +412,9 @@ export function applyTheme(name, _mode) {
     accentPale: theme.accentPale,
   });
 
-  // Update VIEW_PALETTE in place
-  const newPalette = theme.palette;
-  for (let i = 0; i < newPalette.length; i++) {
-    VIEW_PALETTE[i] = { ...newPalette[i] };
-  }
-  VIEW_PALETTE.length = newPalette.length;
-
-  // Rebuild derived palettes
-  _rebuildWasabiColors();
-  _rebuildSelectPalette();
-  _rebuildTimelinePalette();
+  // NOTE: VIEW_PALETTE, SELECT_PALETTE, TIMELINE_PALETTE, WASABI_COLORS are now
+  // fixed informational colors (INFO_PALETTE) — not rebuilt on theme switch.
+  // Only C tokens (bg, surface, text, accent) change with theme.
 
   // Persist
   if (typeof localStorage !== "undefined") {
