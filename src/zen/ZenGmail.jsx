@@ -269,6 +269,22 @@ export default function ZenGmail() {
     }
   }, [expandedId, fetchInbox]);
 
+  // ── Trash / Delete ──
+  const handleTrash = useCallback(async (msgId, e) => {
+    if (e) { e.stopPropagation(); }
+    setMessages((prev) => prev.filter((m) => m.id !== msgId));
+    if (expandedId === msgId) {
+      setExpandedId(null);
+      setExpandedBody(null);
+    }
+    try {
+      await modifyEmail(msgId, "trash");
+    } catch (err) {
+      console.error("[ZenGmail] Trash failed:", err);
+      fetchInbox();
+    }
+  }, [expandedId, fetchInbox]);
+
   // ── Reply ──
   const handleReply = useCallback((msg, fullMsg) => {
     setReplyTo({
@@ -478,6 +494,24 @@ export default function ZenGmail() {
                       <path d="M5 7.5H7" stroke={C.darkMuted} strokeWidth="1" strokeLinecap="round" />
                     </svg>
                   </button>
+
+                  {/* Trash button */}
+                  <button
+                    onClick={(e) => handleTrash(msg.id, e)}
+                    title="Delete"
+                    style={{
+                      background: "none", border: "none",
+                      cursor: "pointer", padding: 4, display: "flex",
+                      opacity: 0.3, outline: "none", flexShrink: 0,
+                      transition: "opacity 0.12s",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.8"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.3"; }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 3H10M4 3V2H8V3M4.5 5V9M7.5 5V9M3 3L3.5 10H8.5L9 3" stroke={C.darkMuted} strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
                 </div>
 
                 {/* Expanded body */}
@@ -568,6 +602,26 @@ export default function ZenGmail() {
                               <path d="M5 7.5H7" stroke={C.darkMuted} strokeWidth="1" strokeLinecap="round" />
                             </svg>
                             Archive
+                          </button>
+                          <button
+                            onClick={(e) => handleTrash(msg.id, e)}
+                            style={{
+                              background: "none",
+                              border: `1px solid ${C.darkBorder}`,
+                              cursor: "pointer",
+                              padding: "6px 14px", borderRadius: RADIUS.md,
+                              fontSize: 11, fontWeight: 500, fontFamily: FONT,
+                              color: C.darkMuted, outline: "none",
+                              display: "flex", alignItems: "center", gap: 5,
+                              transition: "background 0.12s",
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = "#E0525215"; e.currentTarget.style.borderColor = "#E0525244"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.borderColor = C.darkBorder; }}
+                          >
+                            <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                              <path d="M2 3H10M4 3V2H8V3M4.5 5V9M7.5 5V9M3 3L3.5 10H8.5L9 3" stroke={C.darkMuted} strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                            Delete
                           </button>
                         </div>
                       </>

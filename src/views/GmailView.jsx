@@ -145,6 +145,17 @@ export default function GmailView() {
     }
   }, [selectedEmail]);
 
+  const handleTrash = useCallback(async () => {
+    if (!selectedEmail) return;
+    try {
+      await modifyEmail(selectedEmail.id, "trash");
+      setEmails((prev) => prev.filter((e) => e.id !== selectedEmail.id));
+      setSelectedEmail(null);
+    } catch (err) {
+      console.error("GmailView: trash failed", err);
+    }
+  }, [selectedEmail]);
+
   const handleToggleRead = useCallback(async () => {
     if (!selectedEmail) return;
     const isUnread = (selectedEmail.labelIds || []).includes("UNREAD");
@@ -388,6 +399,9 @@ export default function GmailView() {
                 </button>
                 <button style={S.actionBtn} onClick={handleToggleRead}>
                   {isUnread ? "Mark Read" : "Mark Unread"}
+                </button>
+                <button style={{ ...S.actionBtn, color: "#E05252" }} onClick={handleTrash}>
+                  Delete
                 </button>
               </div>
 

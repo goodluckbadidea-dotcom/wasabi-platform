@@ -8,7 +8,7 @@ import React, { useState, useRef, useCallback, useEffect, useMemo } from "react"
 import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
 import { TRANSITION } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { IconClose, IconLog, IconChat, IconBell, IconSend, IconPaperclip } from "../design/icons.jsx";
+import { IconClose, IconLog, IconChat, IconSend, IconPaperclip } from "../design/icons.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
 import WasabiOrb from "./WasabiOrb.jsx";
 import ChatUI from "./ChatUI.jsx";
@@ -150,47 +150,6 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
     }
     setPendingApproval(null);
   }, [pendingApproval]);
-
-  // ── Notifications state ──
-  const [notifications, setNotifications] = useState([]);
-  const [notifLoading, setNotifLoading] = useState(false);
-  const notifFetched = useRef(false);
-
-  const fetchNotifications = useCallback(async () => {
-    setNotifLoading(true);
-    try {
-      const result = await api.listNotifications({ limit: 50 });
-      const parsed = (result.notifications || []).map((row) => ({
-        id: row.id,
-        text: row.message || "",
-        read: row.status === "read",
-        timestamp: row.created_at || "",
-        source: row.source || "",
-      }));
-      setNotifications(parsed);
-    } catch (err) {
-      console.error("Failed to fetch notifications:", err);
-    } finally {
-      setNotifLoading(false);
-    }
-  }, []);
-
-  // Fetch notifications when tab is first opened
-  useEffect(() => {
-    if (tab === "notifications" && !notifFetched.current) {
-      notifFetched.current = true;
-      fetchNotifications();
-    }
-  }, [tab, fetchNotifications]);
-
-  const markNotifRead = useCallback(async (notifId) => {
-    setNotifications((prev) => prev.map((n) => (n.id === notifId ? { ...n, read: true } : n)));
-    try {
-      await api.updateNotification(notifId, { status: "read" });
-    } catch (err) {
-      console.error("Failed to mark notification read:", err);
-    }
-  }, []);
 
   // Auto-resize log textarea
   const autoResize = () => {
@@ -635,7 +594,6 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
   }, [pendingChatMessage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pendingCount = batchQueue.filter((e) => e.status === "pending").length;
-  const unreadCount = notifications.filter((n) => !n.read).length;
 
   return (
     <div
@@ -751,12 +709,6 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
           </button>
           <button style={tabBtn(tab === "chat")} onClick={() => setTab("chat")}>
             Chat
-          </button>
-          <button
-            style={tabBtn(tab === "notifications")}
-            onClick={() => setTab("notifications")}
-          >
-            Inbox{unreadCount > 0 ? ` (${unreadCount})` : ""}
           </button>
         </div>
       </div>
@@ -985,118 +937,6 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
               </div>
             </div>
           )}
-        </div>
-      )}
-
-      {/* ═══ NOTIFICATIONS TAB ═══ */}
-      {tab === "notifications" && (
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            minHeight: 0,
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              flex: 1,
-              overflowY: "auto",
-              padding: "12px 12px 6px",
-            }}
-          >
-            {/* Refresh button */}
-            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
-              <button
-                onClick={() => { notifFetched.current = false; fetchNotifications(); }}
-                style={{ background: "none", border: "none", color: C.accent, fontSize: 10, cursor: "pointer", fontFamily: FONT, padding: "2px 6px" }}
-              >
-                Refresh
-              </button>
-            </div>
-
-            {notifLoading && (
-              <div style={{ textAlign: "center", color: C.darkMuted, fontSize: 10, marginTop: 20 }}>
-                Loading notifications...
-              </div>
-            )}
-
-            {!notifLoading && notifications.length === 0 && (
-              <div
-                style={{
-                  textAlign: "center",
-                  color: C.darkMuted,
-                  fontSize: 10,
-                  marginTop: 40,
-                  lineHeight: 2,
-                  letterSpacing: "0.1em",
-                  textTransform: "uppercase",
-                }}
-              >
-                <IconBell size={22} color={C.darkMuted} style={{ marginBottom: 8 }} />
-                <br />
-                No notifications
-                <br />
-                <span style={{ fontSize: 9, opacity: 0.6 }}>
-                  Automations and agents will post here
-                </span>
-              </div>
-            )}
-            {notifications.map((notif, idx) => (
-              <div
-                key={notif.id || idx}
-                style={{
-                  marginBottom: 8,
-                  borderRadius: 8,
-                  border: `1px solid ${notif.read ? C.darkBorder : C.accent + "44"}`,
-                  background: notif.read ? C.dark : C.darkSurf2,
-                  padding: "9px 10px",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
-                  {!notif.read && (
-                    <div style={{ width: 6, height: 6, borderRadius: 3, background: C.accent, marginTop: 5, flexShrink: 0 }} />
-                  )}
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12, color: C.darkText, lineHeight: 1.55 }}>
-                      {notif.text || notif.content}
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
-                      {notif.source && (
-                        <span style={{ fontSize: 9, color: C.accent, background: C.accent + "18", padding: "1px 5px", borderRadius: 3 }}>
-                          {notif.source}
-                        </span>
-                      )}
-                      {notif.timestamp && (
-                        <span style={{ fontSize: 9, color: C.darkMuted, fontFamily: MONO }}>
-                          {timeAgo(notif.timestamp)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {!notif.read && (
-                    <button
-                      onClick={() => markNotifRead(notif.id)}
-                      style={{
-                        background: "none",
-                        border: `1px solid ${C.darkBorder}`,
-                        borderRadius: 4,
-                        color: C.darkMuted,
-                        fontSize: 9,
-                        cursor: "pointer",
-                        padding: "2px 6px",
-                        fontFamily: FONT,
-                        flexShrink: 0,
-                      }}
-                    >
-                      Read
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
       )}
 
