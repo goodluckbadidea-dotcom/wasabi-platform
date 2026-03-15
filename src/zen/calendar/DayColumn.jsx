@@ -4,7 +4,7 @@
 // Supports per-calendar colors and calendar filtering.
 
 import React, { useEffect, useRef, useMemo } from "react";
-import { C, FONT, isLightColor } from "../../design/tokens.js";
+import { C, FONT, RADIUS, isLightColor, mapCalendarColor } from "../../design/tokens.js";
 import { isSameDay, formatHour } from "../zenTaskHelpers.js";
 import CalendarEventBlock from "./CalendarEventBlock.jsx";
 import CalendarTaskBlock from "./CalendarTaskBlock.jsx";
@@ -82,14 +82,13 @@ export default function DayColumn({ date, events, tasks, isToday: isTodayProp, h
           {allDayEvents.length > 0 && (
             <div style={{ marginBottom: dateOnlyTasks.length > 0 ? 4 : 0 }}>
               {allDayEvents.map((ev) => {
-                const color = ev.calendarColor || C.accent;
+                const color = mapCalendarColor(ev.calendarColor) || C.accent;
                 return (
                   <div key={ev.id} onClick={() => onEventClick?.(ev)} style={{
                     display: "flex", alignItems: "center", gap: 6,
                     padding: "3px 8px", marginBottom: 2,
                     background: color,
-                    border: "1px solid rgba(0,0,0,0.08)",
-                    borderRadius: 8,
+                    borderRadius: RADIUS.lg,
                     fontSize: 12, fontFamily: FONT,
                     color: isLightColor(color) ? "#1a1a1a" : "#fff",
                     cursor: onEventClick ? "pointer" : "default",
@@ -97,7 +96,7 @@ export default function DayColumn({ date, events, tasks, isToday: isTodayProp, h
                     <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {ev.summary || "Untitled"}
                     </span>
-                    <span style={{ fontSize: 10, color: isLightColor(color) ? "#1a1a1a99" : "#ffffffaa", flexShrink: 0 }}>All day</span>
+                    <span style={{ fontSize: 11, color: isLightColor(color) ? "#1a1a1a99" : "#ffffffaa", flexShrink: 0 }}>All day</span>
                   </div>
                 );
               })}

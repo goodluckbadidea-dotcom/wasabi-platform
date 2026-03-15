@@ -1,13 +1,13 @@
 // ─── Calendar Event Block ───
 // Renders a Google Calendar event on the day column hour grid.
-// Uses per-calendar color for visual distinction between calendars.
+// Surface bg + left color bar for timed events. Color mapped to theme palette.
 
 import React from "react";
-import { C, FONT, RADIUS, isLightColor } from "../../design/tokens.js";
+import { C, FONT, RADIUS, mapCalendarColor } from "../../design/tokens.js";
 import { formatTime } from "../zenTaskHelpers.js";
 
 export default function CalendarEventBlock({ event, hourHeight, hourStart, onClick }) {
-  const color = event.calendarColor || C.accent;
+  const color = mapCalendarColor(event.calendarColor) || C.accent;
   const start = event.start?.dateTime ? new Date(event.start.dateTime) : null;
   const end = event.end?.dateTime ? new Date(event.end.dateTime) : null;
   if (!start) return null;
@@ -28,13 +28,13 @@ export default function CalendarEventBlock({ event, hourHeight, hourStart, onCli
         right: 4,
         top,
         height,
-        background: color,
-        border: "1px solid rgba(0,0,0,0.08)",
+        background: C.darkSurf,
+        borderLeft: `3px solid ${color}`,
         borderRadius: RADIUS.lg,
         padding: "3px 8px",
         fontSize: 12,
         fontFamily: FONT,
-        color: isLightColor(color) ? "#1a1a1a" : "#fff",
+        color: C.darkText,
         overflow: "hidden",
         zIndex: 2,
         cursor: onClick ? "pointer" : "default",
@@ -46,7 +46,7 @@ export default function CalendarEventBlock({ event, hourHeight, hourStart, onCli
       }}>
         {event.summary || "Untitled"}
       </div>
-      <div style={{ fontSize: 10, color: isLightColor(color) ? "#1a1a1a99" : "#ffffffaa", marginTop: 1 }}>
+      <div style={{ fontSize: 11, color: C.darkMuted, marginTop: 1 }}>
         {formatTime(event.start.dateTime)}
         {end ? ` – ${formatTime(event.end.dateTime)}` : ""}
       </div>

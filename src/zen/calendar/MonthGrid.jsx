@@ -4,24 +4,20 @@
 // Supports per-calendar colors and calendar filtering.
 
 import React, { useMemo } from "react";
-import { C, FONT, RADIUS, isLightColor, getSolidPillColor } from "../../design/tokens.js";
-import { isSameDay, getMonthRange } from "../zenTaskHelpers.js";
+import { C, FONT, RADIUS, isLightColor, VIEW_PALETTE, getSolidPillColor, mapCalendarColor } from "../../design/tokens.js";
+import { isSameDay, getMonthRange, parseDate } from "../zenTaskHelpers.js";
 
-// Priority colors aligned to INFO_PALETTE
-const PRIORITY_COLORS = {
-  High: { fill: "#E05252", text: "#fff" },
-  Medium: { fill: "#E8A838", text: "#1a1a1a" },
-  Normal: { fill: "#F5B724", text: "#1a1a1a" },
-  Low: { fill: "#2196F3", text: "#fff" },
-};
+// Priority → palette index
+const PRIORITY_IDX = { High: 9, Medium: 3, Normal: 4, Low: 6 };
 
-function getTaskColor(t) {
+function getTaskBarColor(t) {
   if (t.status) {
     const opts = (t._statusOptions || []).map((o) => o.name);
-    return getSolidPillColor(t.status, opts, t._statusOptions || []);
+    const pill = getSolidPillColor(t.status, opts, t._statusOptions || []);
+    return pill?.fill || null;
   }
-  if (t.priority && PRIORITY_COLORS[t.priority]) return PRIORITY_COLORS[t.priority];
-  return null;
+  const idx = PRIORITY_IDX[t.priority];
+  return idx !== undefined ? VIEW_PALETTE[idx].hex : null;
 }
 
 const DAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -50,7 +46,7 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
       if (hidden.has(ev.calendarId)) return;
       const evDate = ev.start?.dateTime || ev.start?.date;
       if (!evDate) return;
-      const key = new Date(evDate).toDateString();
+      const key = parseDate(evDate).toDateString();
       if (map.has(key)) map.get(key).push(ev);
     });
     return map;
@@ -62,7 +58,7 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
     cells.forEach((c) => map.set(c.toDateString(), []));
     (tasks || []).forEach((t) => {
       if (!t.due || t.done) return;
-      const key = new Date(t.due).toDateString();
+      const key = parseDate(t.due).toDateString();
       if (map.has(key)) map.get(key).push(t);
     });
     return map;
@@ -155,14 +151,14 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
 
               {/* Event pills */}
               {dayEvents.slice(0, MAX_VISIBLE_ITEMS).map((ev, i) => {
-                const color = ev.calendarColor || C.accent;
-                return (
+                const color = mapCalendarColor(ev.calendarColor) || C.accent;
+                const isAllDay = ev.start?.date && !ev.start?.dateTime;
+                return isAllDay ? (
                   <div key={ev.id || i} onClick={(e) => { e.stopPropagation(); onEventClick?.(ev); }} style={{
                     padding: "1px 5px",
                     marginBottom: 2,
                     background: color,
-                    border: "1px solid rgba(0,0,0,0.08)",
-                    borderRadius: 8,
+                    borderRadius: RADIUS.sm,
                     fontSize: 10,
                     fontWeight: 600,
                     fontFamily: FONT,
@@ -170,7 +166,26 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
-                    lineHeight: "12px",
+                    lineHeight: "14px",
+                    cursor: onEventClick ? "pointer" : "default",
+                  }}>
+                    {ev.summary || "Untitled"}
+                  </div>
+                ) : (
+                  <div key={ev.id || i} onClick={(e) => { e.stopPropagation(); onEventClick?.(ev); }} style={{
+                    padding: "1px 5px",
+                    marginBottom: 2,
+                    background: C.darkSurf2,
+                    borderLeft: `2px solid ${color}`,
+                    borderRadius: RADIUS.sm,
+                    fontSize: 10,
+                    fontWeight: 600,
+                    fontFamily: FONT,
+                    color: C.darkText,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    lineHeight: "14px",
                     cursor: onEventClick ? "pointer" : "default",
                   }}>
                     {ev.summary || "Untitled"}
@@ -180,24 +195,22 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
 
               {/* Task pills */}
               {dayTasks.slice(0, Math.max(0, MAX_VISIBLE_ITEMS - dayEvents.length)).map((t) => {
-                const tc = getTaskColor(t);
-                const tFill = tc?.fill || C.accent;
-                const tText = tc?.text || (isLightColor(tFill) ? "#1a1a1a" : "#fff");
+                const barColor = getTaskBarColor(t) || C.accent;
                 return (
                   <div key={t.id} onClick={(e) => { e.stopPropagation(); onTaskClick?.(t); }} style={{
                     padding: "1px 5px",
                     marginBottom: 2,
-                    background: tFill,
-                    border: "1px solid rgba(0,0,0,0.08)",
-                    borderRadius: 8,
+                    background: C.darkSurf2,
+                    borderLeft: `2px solid ${barColor}`,
+                    borderRadius: RADIUS.sm,
                     fontSize: 10,
                     fontWeight: 600,
                     fontFamily: FONT,
-                    color: tText,
+                    color: C.darkText,
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
-                    lineHeight: "12px",
+                    lineHeight: "14px",
                     cursor: onTaskClick ? "pointer" : "default",
                   }}>
                     {t.title}

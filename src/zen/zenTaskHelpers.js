@@ -173,9 +173,26 @@ function readNotionProp(prop) {
 
 // ── Date helpers ──
 
+/**
+ * Parse a date string safely, handling the critical timezone bug:
+ * "2026-03-17" (date-only, no "T") is parsed by `new Date()` as UTC midnight,
+ * which shifts back a day in US/negative-offset timezones.
+ * This function parses date-only strings as LOCAL midnight instead.
+ */
+export function parseDate(dateStr) {
+  if (!dateStr) return new Date(NaN);
+  // Date-only: "2026-03-17" (10 chars, no "T") → parse as local midnight
+  if (typeof dateStr === "string" && dateStr.length === 10 && !dateStr.includes("T")) {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  }
+  // Has time component or is already a Date object — use standard parsing
+  return new Date(dateStr);
+}
+
 export function isToday(dateStr) {
   if (!dateStr) return false;
-  const d = new Date(dateStr);
+  const d = parseDate(dateStr);
   const now = new Date();
   return d.getFullYear() === now.getFullYear() &&
     d.getMonth() === now.getMonth() &&
@@ -184,7 +201,7 @@ export function isToday(dateStr) {
 
 export function isOverdue(dateStr) {
   if (!dateStr) return false;
-  const d = new Date(dateStr);
+  const d = parseDate(dateStr);
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   return d < now;
@@ -192,11 +209,13 @@ export function isOverdue(dateStr) {
 
 export function formatDueDate(dateStr) {
   if (!dateStr) return "";
-  const d = new Date(dateStr);
+  const d = parseDate(dateStr);
   if (isNaN(d)) return "";
   const now = new Date();
-  const diff = Math.floor((d - now) / (1000 * 60 * 60 * 24));
-  if (isToday(dateStr)) return "Today";
+  now.setHours(0, 0, 0, 0);
+  const dDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diff = Math.round((dDay - now) / (1000 * 60 * 60 * 24));
+  if (diff === 0) return "Today";
   if (diff === 1) return "Tomorrow";
   if (diff === -1) return "Yesterday";
   if (diff < -1) return `${Math.abs(diff)}d overdue`;
@@ -207,11 +226,11 @@ export function formatDueDate(dateStr) {
 
 // ── Calendar date helpers ──
 
-/** Compare two dates ignoring time */
+/** Compare two dates ignoring time (timezone-safe) */
 export function isSameDay(a, b) {
   if (!a || !b) return false;
-  const da = new Date(a);
-  const db = new Date(b);
+  const da = parseDate(typeof a === "string" ? a : a instanceof Date ? a : String(a));
+  const db = parseDate(typeof b === "string" ? b : b instanceof Date ? b : String(b));
   return da.getFullYear() === db.getFullYear() &&
     da.getMonth() === db.getMonth() &&
     da.getDate() === db.getDate();
@@ -243,7 +262,7 @@ export function getWeekColumns(date) {
 
 /** Format a date string to time: "2:30 PM" */
 export function formatTime(dateStr) {
-  const d = new Date(dateStr);
+  const d = parseDate(dateStr);
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 

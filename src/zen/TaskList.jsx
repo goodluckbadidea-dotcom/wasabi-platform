@@ -3,70 +3,50 @@
 // Quick-add input at top, manual tasks, AI-curated tasks, completed section.
 
 import React, { useState, useRef, useCallback } from "react";
-import { C, FONT, RADIUS, getSolidPillColor, isLightColor } from "../design/tokens.js";
+import { C, FONT, RADIUS, VIEW_PALETTE, getSolidPillColor, isLightColor, getThemeMode } from "../design/tokens.js";
 import { formatDueDate, isOverdue, isToday } from "./zenTaskHelpers.js";
 
-// ── Priority colors (aligned to INFO_PALETTE) ──
-const PRIORITY_COLORS = {
-  High: { bg: "#DA4060", text: "#fff" },      // palette[9] crimson
-  Medium: { bg: "#E0845C", text: "#fff" },    // palette[3] coral
-  Normal: { bg: "#DACA68", text: "#1a1a1a" }, // palette[4] gold
-  Low: { bg: "#70AAF0", text: "#fff" },       // palette[6] cornflower
-};
+// ── Priority → palette index mapping ──
+const PRIORITY_IDX = { High: 9, Medium: 3, Normal: 4, Low: 6 };
 
-// Resolve a task's display color from status or priority
-function getTaskColor(task) {
+// Resolve a task's display color (hex string) from status or priority
+function getTaskBarColor(task) {
   if (task.status) {
     const schemaOpts = task._statusOptions || [];
     const optNames = schemaOpts.map((o) => o.name);
-    return getSolidPillColor(task.status, optNames, schemaOpts);
+    const pill = getSolidPillColor(task.status, optNames, schemaOpts);
+    return pill?.fill || null;
   }
-  if (task.priority && PRIORITY_COLORS[task.priority]) {
-    const pc = PRIORITY_COLORS[task.priority];
-    return { fill: pc.bg, text: pc.text };
-  }
+  const idx = PRIORITY_IDX[task.priority];
+  if (idx !== undefined) return VIEW_PALETTE[idx].hex;
   return null;
 }
 
-function PriorityPill({ priority }) {
-  if (!priority) return null;
-  const colors = PRIORITY_COLORS[priority] || { bg: C.darkSurf2, text: C.darkMuted };
-  return (
-    <span style={{
-      fontSize: 9, fontWeight: 600, fontFamily: FONT,
-      padding: "2px 6px", borderRadius: RADIUS.pill,
-      background: colors.bg, color: colors.text,
-      letterSpacing: "0.03em", textTransform: "uppercase",
-      flexShrink: 0,
-    }}>
-      {priority}
-    </span>
-  );
-}
-
-function DueBadge({ due, onFill }) {
+function DueBadge({ due }) {
   if (!due) return null;
   const overdue = isOverdue(due);
   const today = isToday(due);
+  const redHex = VIEW_PALETTE[9].hex;
   return (
     <span style={{
-      fontSize: 10, fontFamily: FONT, flexShrink: 0,
-      color: overdue ? "#E05252" : today ? C.accent : (onFill || C.darkMuted),
-      fontWeight: overdue ? 600 : 400,
+      fontSize: 11, fontFamily: FONT, flexShrink: 0, fontWeight: 500,
+      padding: "2px 7px", borderRadius: RADIUS.pill,
+      background: overdue ? redHex + "20" : C.darkSurf2,
+      color: overdue ? redHex : today ? C.accent : C.darkMuted,
     }}>
       {formatDueDate(due)}
     </span>
   );
 }
 
-function SourceBadge({ sourceName, onFill }) {
+function SourceBadge({ sourceName }) {
   if (!sourceName || sourceName === "Zen Tasks") return null;
   return (
     <span style={{
-      fontSize: 8, fontFamily: FONT, flexShrink: 0,
-      padding: "1px 5px", borderRadius: RADIUS.pill,
-      background: onFill ? "rgba(0,0,0,0.15)" : C.darkSurf2,
-      color: onFill || C.darkMuted,
+      fontSize: 11, fontFamily: FONT, flexShrink: 0,
+      padding: "2px 7px", borderRadius: RADIUS.pill,
+      background: C.darkSurf2,
+      color: C.darkMuted,
       letterSpacing: "0.02em",
     }}>
       {sourceName}
@@ -76,11 +56,13 @@ function SourceBadge({ sourceName, onFill }) {
 
 function TaskRow({ task, onToggle, onDelete, onTaskClick }) {
   const [hovered, setHovered] = useState(false);
-  const tc = getTaskColor(task);
-  const hasFill = !!tc;
-  const fillColor = tc?.fill;
-  const textColor = tc?.text || C.darkText;
-  const arrowColor = hasFill ? (isLightColor(fillColor) ? "#1a1a1a" : "#fff") : C.darkMuted;
+  const barColor = getTaskBarColor(task);
+  const overdue = task.due && isOverdue(task.due);
+  const isDark = getThemeMode() === "dark";
+  // Overdue items get a subtle tinted fill
+  const overdueBg = overdue && barColor
+    ? barColor + (isDark ? "18" : "14")
+    : null;
 
   return (
     <div
@@ -89,47 +71,43 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick }) {
         display: "flex",
         alignItems: "center",
         gap: 10,
-        padding: "8px 14px",
-        marginBottom: 6,
-        borderRadius: 20,
+        padding: "8px 12px",
+        marginBottom: 4,
+        borderRadius: RADIUS.lg,
         cursor: "pointer",
-        transition: "background 0.15s ease, transform 0.15s ease, filter 0.15s ease",
-        background: hasFill ? fillColor : (hovered ? C.darkSurf2 : C.darkSurf),
-        filter: hasFill && hovered ? "brightness(1.15)" : "none",
-        transform: hovered ? "scale(1.02)" : "scale(1)",
+        transition: "background 0.15s ease",
+        background: overdueBg || (hovered ? C.darkSurf2 : C.darkSurf),
         opacity: task.done ? 0.5 : 1,
-        border: "1px solid rgba(0,0,0,0.06)",
+        position: "relative",
+        overflow: "hidden",
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Open arrow */}
-      <div style={{
-        width: 16, height: 16, flexShrink: 0,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        opacity: hovered ? 0.8 : 0.4,
-        transition: "opacity 0.15s ease",
-      }}>
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <path d="M3 9L9 3" stroke={arrowColor} strokeWidth="1.5" strokeLinecap="round" />
-          <path d="M4.5 3H9V7.5" stroke={arrowColor} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </div>
+      {/* Left color bar */}
+      {barColor && (
+        <div style={{
+          position: "absolute",
+          left: 0, top: "20%", bottom: "20%",
+          width: 3, borderRadius: 2,
+          background: barColor,
+        }} />
+      )}
 
       {/* Title */}
       <span style={{
-        flex: 1, fontSize: 13, fontFamily: FONT, color: textColor,
+        flex: 1, fontSize: 13, fontFamily: FONT, color: C.darkText,
         textDecoration: task.done ? "line-through" : "none",
         whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
         minWidth: 0,
+        paddingLeft: barColor ? 4 : 0,
       }}>
         {task.title}
       </span>
 
       {/* Badges */}
-      {!hasFill && <PriorityPill priority={task.priority} />}
-      <DueBadge due={task.due} onFill={hasFill ? textColor : null} />
-      <SourceBadge sourceName={task.sourceName} onFill={hasFill ? textColor : null} />
+      <DueBadge due={task.due} />
+      <SourceBadge sourceName={task.sourceName} />
 
       {/* Delete (on hover, manual tasks only) */}
       {hovered && task.source === "manual" && (
@@ -142,7 +120,7 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick }) {
           }}
         >
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-            <path d="M2 2L8 8M8 2L2 8" stroke={arrowColor} strokeWidth="1.2" />
+            <path d="M2 2L8 8M8 2L2 8" stroke={C.darkMuted} strokeWidth="1.2" />
           </svg>
         </button>
       )}

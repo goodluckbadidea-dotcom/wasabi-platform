@@ -7,7 +7,7 @@ import { usePlatform } from "../context/PlatformContext.jsx";
 import { detectSchema } from "../notion/schema.js";
 import { queryLimited } from "../notion/pagination.js";
 import { listRows, claudeProxy, getTableSchema } from "../lib/api.js";
-import { normalizeNotionTask, normalizeD1Task, getCached, setCache } from "./zenTaskHelpers.js";
+import { normalizeNotionTask, normalizeD1Task, getCached, setCache, parseDate } from "./zenTaskHelpers.js";
 
 const CACHE_KEY = "wasabi_zen_ai_tasks_v4"; // v4: word-boundary name matching
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
@@ -489,7 +489,7 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
             allTasks.sort((a, b) => {
               if (a.due && !b.due) return -1;
               if (!a.due && b.due) return 1;
-              if (a.due && b.due) return new Date(a.due) - new Date(b.due);
+              if (a.due && b.due) return parseDate(a.due) - parseDate(b.due);
               return 0;
             });
             setAiTasks(allTasks.slice(0, 15));
@@ -501,7 +501,7 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
           allTasks.sort((a, b) => {
             if (a.due && !b.due) return -1;
             if (!a.due && b.due) return 1;
-            if (a.due && b.due) return new Date(a.due) - new Date(b.due);
+            if (a.due && b.due) return parseDate(a.due) - parseDate(b.due);
             return 0;
           });
           setAiTasks(allTasks.slice(0, 15));
@@ -512,7 +512,7 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
         allTasks.sort((a, b) => {
           if (a.due && !b.due) return -1;
           if (!a.due && b.due) return 1;
-          if (a.due && b.due) return new Date(a.due) - new Date(b.due);
+          if (a.due && b.due) return parseDate(a.due) - parseDate(b.due);
           return 0;
         });
         setAiTasks(allTasks.slice(0, 15));

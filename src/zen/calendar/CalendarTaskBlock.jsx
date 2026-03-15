@@ -1,21 +1,35 @@
 // ─── Calendar Task Block ───
 // Renders a task with a due time on the day column hour grid.
-// Dotted border, lighter background, accent dot — visually distinct from events.
+// Surface bg + left color bar, matching task list treatment.
 
 import React from "react";
-import { C, FONT, RADIUS } from "../../design/tokens.js";
+import { C, FONT, RADIUS, VIEW_PALETTE, getSolidPillColor } from "../../design/tokens.js";
+import { parseDate } from "../zenTaskHelpers.js";
+
+// Priority → palette index
+const PRIORITY_IDX = { High: 9, Medium: 3, Normal: 4, Low: 6 };
+
+function getTaskBarColor(task) {
+  if (task.status) {
+    const opts = (task._statusOptions || []).map((o) => o.name);
+    const pill = getSolidPillColor(task.status, opts, task._statusOptions || []);
+    return pill?.fill || null;
+  }
+  const idx = PRIORITY_IDX[task.priority];
+  return idx !== undefined ? VIEW_PALETTE[idx].hex : null;
+}
 
 export default function CalendarTaskBlock({ task, hourHeight, hourStart, onClick }) {
   if (!task.due) return null;
-  const d = new Date(task.due);
-  // Only render on the grid if the due date has a time component
+  const d = parseDate(task.due);
   const hasTime = task.due.includes("T");
   if (!hasTime) return null;
 
   const startHour = d.getHours() + d.getMinutes() / 60;
   const top = (startHour - hourStart) * hourHeight;
-
   if (startHour < hourStart) return null;
+
+  const barColor = getTaskBarColor(task) || C.accent;
 
   return (
     <div
@@ -26,8 +40,8 @@ export default function CalendarTaskBlock({ task, hourHeight, hourStart, onClick
         right: 4,
         top,
         height: 24,
-        background: C.accent + "12",
-        border: `1px dashed ${C.accent}44`,
+        background: C.darkSurf,
+        borderLeft: `3px solid ${barColor}`,
         borderRadius: RADIUS.md,
         padding: "3px 6px",
         fontSize: 12,
@@ -41,10 +55,6 @@ export default function CalendarTaskBlock({ task, hourHeight, hourStart, onClick
         cursor: onClick ? "pointer" : "default",
       }}
     >
-      <div style={{
-        width: 6, height: 6, borderRadius: "50%",
-        background: C.accent, flexShrink: 0,
-      }} />
       <span style={{
         fontWeight: 500,
         whiteSpace: "nowrap", overflow: "hidden",

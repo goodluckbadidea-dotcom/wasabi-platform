@@ -229,28 +229,55 @@ function _paleTint(hex) {
   return `#${tr.toString(16).padStart(2, "0")}${tg.toString(16).padStart(2, "0")}${tb.toString(16).padStart(2, "0")}`;
 }
 
-// ── Fixed Informational Palette ──
-// Theme-independent colors for data visualization (pills, bars, charts, badges).
+// ── Theme-Aware Informational Palettes ──
+// 11 info colors per theme, tuned to each theme's temperature/saturation.
+// Semantic colors (red, orange, blue, green) stay recognizable across themes.
+// Non-semantic colors harmonize with the theme's accent and surface tones.
 // Indices match Notion color names via NOTION_TO_PALETTE_IDX.
 // Indices 3, 6, 9 align with Sashimi PRIORITY_COLORS (Medium, Low, High).
-const INFO_PALETTE = [
-  { key: "default", hex: "#848490", text: "#fff" },      // 0: neutral gray
-  { key: "gray",    hex: "#848490", text: "#fff" },      // 1: neutral gray
-  { key: "brown",   hex: "#9E8C5C", text: "#fff" },      // 2: olive
-  { key: "orange",  hex: "#E0845C", text: "#fff" },      // 3: coral
-  { key: "yellow",  hex: "#DACA68", text: "#1a1a1a" },   // 4: warm gold
-  { key: "green",   hex: "#A0CC42", text: "#1a1a1a" },   // 5: lime
-  { key: "blue",    hex: "#70AAF0", text: "#fff" },      // 6: cornflower
-  { key: "purple",  hex: "#9C84C0", text: "#fff" },      // 7: lavender
-  { key: "pink",    hex: "#E54B78", text: "#fff" },      // 8: rose
-  { key: "red",     hex: "#DA4060", text: "#fff" },      // 9: crimson
-  { key: "orchid",  hex: "#BE7ABE", text: "#fff" },      // 10: orchid
-];
+const _PALETTE_KEYS = ["default", "gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red", "orchid"];
+
+const THEME_PALETTES = {
+  // Obsidian: cool/neutral dark — vivid, slight cool undertone
+  obsidian: [
+    "#78788A", "#78788A", "#9A8A60", "#D88058", "#D4C462",
+    "#80C050", "#5C9CE8", "#9480C4", "#DC4878", "#D43E5C", "#B474B4",
+  ],
+  // Shoji: warm light — muted, dusty, earthy, darker for contrast on cream bg
+  shoji: [
+    "#968E86", "#968E86", "#8E7C5E", "#C4684A", "#B8A04A",
+    "#7C9844", "#7080A8", "#8E7498", "#B8506A", "#B44448", "#9C7490",
+  ],
+  // Hinoki: warm dark — amber-shifted, earthy warmth
+  hinoki: [
+    "#887A62", "#887A62", "#A49048", "#D08848", "#CCAE48",
+    "#8AAE40", "#6890A8", "#907CA0", "#CC5468", "#C84440", "#A87498",
+  ],
+  // Kori: cool light — cool-shifted, desaturated, darker for contrast on cool bg
+  kori: [
+    "#8490A4", "#8490A4", "#7C8474", "#C0703C", "#A89C54",
+    "#589860", "#4480CC", "#7474B4", "#B84868", "#BC3848", "#8C6CA4",
+  ],
+  // Sumi: neutral dark — balanced, slight blue-gray undertone
+  sumi: [
+    "#747888", "#747888", "#8A7E60", "#CC7850", "#C4B85C",
+    "#7CB048", "#6490C8", "#8878B0", "#C84E70", "#C44450", "#A070A0",
+  ],
+};
+
+// Build palette entries with auto-computed text contrast
+function _buildInfoPalette(hexes) {
+  return hexes.map((hex, i) => ({
+    key: _PALETTE_KEYS[i],
+    hex,
+    text: isLightColor(hex) ? "#1a1a1a" : "#fff",
+  }));
+}
 
 // ── Global View Palette ──
-// Fixed informational palette for all views. Theme-independent.
+// Mutable informational palette, rebuilt on theme switch.
 // View configs store palette indices (0-11) in colorMapping.
-export const VIEW_PALETTE = INFO_PALETTE.map((p) => ({ ...p }));
+export const VIEW_PALETTE = _buildInfoPalette(THEME_PALETTES[_currentThemeName] || THEME_PALETTES.obsidian);
 
 // ── Timeline Palette (Gantt) ──
 // Mutable array derived from vivid VIEW_PALETTE entries.
@@ -266,11 +293,11 @@ function _rebuildTimelinePalette() {
 }
 _rebuildTimelinePalette();
 
-// Milestone phase colors
+// Milestone phase colors (mutable, rebuilt on theme switch)
 export const PHASE_COLORS = {
-  design:     { color: "#DACA68", bg: "#F5F0D8" },
-  production: { color: "#A0CC42", bg: "#E6F2D0" },
-  shipping:   { color: "#70AAF0", bg: "#DDE8FA" },
+  design:     { color: VIEW_PALETTE[4].hex, bg: _paleTint(VIEW_PALETTE[4].hex) },
+  production: { color: VIEW_PALETTE[5].hex, bg: _paleTint(VIEW_PALETTE[5].hex) },
+  shipping:   { color: VIEW_PALETTE[6].hex, bg: _paleTint(VIEW_PALETTE[6].hex) },
 };
 
 // Map Notion color names → palette index for auto-mapping
@@ -348,24 +375,29 @@ export function getSelectColor(index) {
   return SELECT_PALETTE[index % SELECT_PALETTE.length];
 }
 
-// Status colors (generic — maps status name → color)
-export const STATUS_COLORS = {
-  "Design":              "#E0845C",
-  "Waiting on Deposit":  "#DACA68",
-  "Waiting on Vendor":   "#9E8C5C",
-  "Awaiting PO":         "#9C84C0",
-  "In Production":       "#A0CC42",
-  "Quality Check":       "#70AAF0",
-  "Shipping":            "#848490",
-  "Delivered":           "#A0CC42",
-  "Cancelled":           "#9E8C5C",
+// Status colors (mutable, rebuilt on theme switch from palette indices)
+// Maps status name → palette index
+const _STATUS_MAP = {
+  "Design": 3, "Waiting on Deposit": 4, "Waiting on Vendor": 2,
+  "Awaiting PO": 7, "In Production": 5, "Quality Check": 6,
+  "Shipping": 1, "Delivered": 5, "Cancelled": 2,
 };
+export const STATUS_COLORS = {};
+function _rebuildStatusColors() {
+  for (const [name, idx] of Object.entries(_STATUS_MAP)) {
+    STATUS_COLORS[name] = VIEW_PALETTE[idx].hex;
+  }
+}
+_rebuildStatusColors();
 
-// Fallback colors for items without a status
-export const FALLBACK_COLORS = [
-  "#9E8C5C", "#848490", "#9C84C0", "#BE7ABE",
-  "#70AAF0", "#E0845C", "#DACA68",
-];
+// Fallback colors (mutable, rebuilt on theme switch)
+const _FALLBACK_INDICES = [2, 1, 7, 10, 6, 3, 4];
+export const FALLBACK_COLORS = _FALLBACK_INDICES.map((i) => VIEW_PALETTE[i].hex);
+function _rebuildFallbackColors() {
+  for (let i = 0; i < _FALLBACK_INDICES.length; i++) {
+    FALLBACK_COLORS[i] = VIEW_PALETTE[_FALLBACK_INDICES[i]].hex;
+  }
+}
 
 // Get a status-like pill color, falling back to palette
 export function getStatusColor(value, options = [], colorMapping = null) {
@@ -407,6 +439,30 @@ export function getSolidPillColor(value, options = [], schemaOptions = [], color
   return { fill, text };
 }
 
+/**
+ * Map an external calendar hex color to the nearest info palette entry.
+ * Uses Euclidean RGB distance to find the closest match.
+ * Returns the palette hex color (theme-aware).
+ */
+export function mapCalendarColor(hex) {
+  if (!hex || hex.length < 7) return VIEW_PALETTE[0].hex;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  let bestIdx = 0;
+  let bestDist = Infinity;
+  // Skip index 0 (default gray) and 1 (gray duplicate) — prefer vivid matches
+  for (let i = 2; i < VIEW_PALETTE.length; i++) {
+    const ph = VIEW_PALETTE[i].hex;
+    const pr = parseInt(ph.slice(1, 3), 16);
+    const pg = parseInt(ph.slice(3, 5), 16);
+    const pb = parseInt(ph.slice(5, 7), 16);
+    const dist = (r - pr) ** 2 + (g - pg) ** 2 + (b - pb) ** 2;
+    if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+  }
+  return VIEW_PALETTE[bestIdx].hex;
+}
+
 /** Apply a theme by name. Mode is inherent to the theme. Mutates C and all palettes in place. */
 export function applyTheme(name, _mode) {
   // _mode param accepted for backward compat but ignored — mode is locked per theme
@@ -422,9 +478,23 @@ export function applyTheme(name, _mode) {
     accentPale: theme.accentPale,
   });
 
-  // NOTE: VIEW_PALETTE, SELECT_PALETTE, TIMELINE_PALETTE, WASABI_COLORS are now
-  // fixed informational colors (INFO_PALETTE) — not rebuilt on theme switch.
-  // Only C tokens (bg, surface, text, accent) change with theme.
+  // Rebuild info palette from theme-specific colors
+  const newPalette = _buildInfoPalette(THEME_PALETTES[name] || THEME_PALETTES.obsidian);
+  for (let i = 0; i < newPalette.length; i++) {
+    VIEW_PALETTE[i] = newPalette[i];
+  }
+  VIEW_PALETTE.length = newPalette.length;
+
+  // Rebuild all derived palettes
+  _rebuildWasabiColors();
+  _rebuildSelectPalette();
+  _rebuildTimelinePalette();
+  _rebuildStatusColors();
+  _rebuildFallbackColors();
+  // Update phase colors
+  PHASE_COLORS.design = { color: VIEW_PALETTE[4].hex, bg: _paleTint(VIEW_PALETTE[4].hex) };
+  PHASE_COLORS.production = { color: VIEW_PALETTE[5].hex, bg: _paleTint(VIEW_PALETTE[5].hex) };
+  PHASE_COLORS.shipping = { color: VIEW_PALETTE[6].hex, bg: _paleTint(VIEW_PALETTE[6].hex) };
 
   // Persist
   if (typeof localStorage !== "undefined") {

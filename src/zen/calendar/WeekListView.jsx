@@ -4,25 +4,21 @@
 // Supports per-calendar colors, calendar filtering, and staggered entrance animations.
 
 import React, { useEffect, useRef, useMemo } from "react";
-import { C, FONT, RADIUS, isLightColor, getSolidPillColor } from "../../design/tokens.js";
+import { C, FONT, RADIUS, isLightColor, VIEW_PALETTE, getSolidPillColor, mapCalendarColor } from "../../design/tokens.js";
 import { ANIM, TRANSITION } from "../../design/animations.js";
-import { isSameDay, formatTime } from "../zenTaskHelpers.js";
+import { isSameDay, formatTime, parseDate } from "../zenTaskHelpers.js";
 
-// Priority colors aligned to INFO_PALETTE
-const PRIORITY_COLORS = {
-  High: { fill: "#E05252", text: "#fff" },
-  Medium: { fill: "#E8A838", text: "#1a1a1a" },
-  Normal: { fill: "#F5B724", text: "#1a1a1a" },
-  Low: { fill: "#2196F3", text: "#fff" },
-};
+// Priority → palette index mapping
+const PRIORITY_IDX = { High: 9, Medium: 3, Normal: 4, Low: 6 };
 
-function getTaskColor(t) {
+function getTaskBarColor(t) {
   if (t.status) {
     const opts = (t._statusOptions || []).map((o) => o.name);
-    return getSolidPillColor(t.status, opts, t._statusOptions || []);
+    const pill = getSolidPillColor(t.status, opts, t._statusOptions || []);
+    return pill?.fill || null;
   }
-  if (t.priority && PRIORITY_COLORS[t.priority]) return PRIORITY_COLORS[t.priority];
-  return null;
+  const idx = PRIORITY_IDX[t.priority];
+  return idx !== undefined ? VIEW_PALETTE[idx].hex : null;
 }
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -69,7 +65,7 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
       if (hidden.has(ev.calendarId)) return;
       const evDate = ev.start?.dateTime || ev.start?.date;
       if (!evDate) return;
-      const key = new Date(evDate).toDateString();
+      const key = parseDate(evDate).toDateString();
       if (map.has(key)) map.get(key).push(ev);
     });
     return map;
@@ -81,7 +77,7 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
     days.forEach((d) => map.set(d.toDateString(), []));
     (tasks || []).forEach((t) => {
       if (!t.due || t.done) return;
-      const key = new Date(t.due).toDateString();
+      const key = parseDate(t.due).toDateString();
       if (map.has(key)) map.get(key).push(t);
     });
     return map;
@@ -166,10 +162,10 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
             {/* Events + Tasks */}
             <div style={{ padding: "2px 14px 8px" }}>
               {dayEvents.map((ev) => {
-                const color = ev.calendarColor || C.accent;
+                const color = mapCalendarColor(ev.calendarColor) || C.accent;
                 const isAllDay = ev.start?.date && !ev.start?.dateTime;
                 const idx = itemIndex++;
-                return (
+                return isAllDay ? (
                   <div
                     key={ev.id || idx}
                     onClick={(e) => { e.stopPropagation(); onEventClick?.(ev); }}
@@ -177,20 +173,9 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
                       display: "flex", alignItems: "center", gap: 8,
                       padding: "5px 10px", marginBottom: 3,
                       background: color,
-                      borderRadius: 16,
-                      border: "1px solid rgba(0,0,0,0.08)",
-                      transition: "filter 0.15s ease, transform 0.15s ease",
+                      borderRadius: RADIUS.lg,
                       animation: ANIM.scrollReveal(idx),
                       cursor: onEventClick ? "pointer" : "default",
-                      transform: "scale(1)",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.filter = "brightness(1.15)";
-                      e.currentTarget.style.transform = "scale(1.02)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.filter = "none";
-                      e.currentTarget.style.transform = "scale(1)";
                     }}
                   >
                     <span style={{
@@ -206,7 +191,39 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
                       color: isLightColor(color) ? "#1a1a1a99" : "#ffffffaa",
                       flexShrink: 0,
                     }}>
-                      {isAllDay ? "All day" : ev.start?.dateTime ? formatTime(ev.start.dateTime) : ""}
+                      All day
+                    </span>
+                  </div>
+                ) : (
+                  <div
+                    key={ev.id || idx}
+                    onClick={(e) => { e.stopPropagation(); onEventClick?.(ev); }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      padding: "5px 10px", marginBottom: 3,
+                      background: C.darkSurf,
+                      borderLeft: `3px solid ${color}`,
+                      borderRadius: RADIUS.lg,
+                      transition: "background 0.15s ease",
+                      animation: ANIM.scrollReveal(idx),
+                      cursor: onEventClick ? "pointer" : "default",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = C.darkSurf; }}
+                  >
+                    <span style={{
+                      fontSize: 12, fontFamily: FONT, fontWeight: 600,
+                      color: C.darkText,
+                      whiteSpace: "nowrap", overflow: "hidden",
+                      textOverflow: "ellipsis", flex: 1,
+                    }}>
+                      {ev.summary || "Untitled"}
+                    </span>
+                    <span style={{
+                      fontSize: 11, fontFamily: FONT, color: C.darkMuted,
+                      flexShrink: 0,
+                    }}>
+                      {ev.start?.dateTime ? formatTime(ev.start.dateTime) : ""}
                     </span>
                   </div>
                 );
@@ -214,10 +231,7 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
 
               {dayTasks.map((t) => {
                 const idx = itemIndex++;
-                const tc = getTaskColor(t);
-                const taskFill = tc?.fill || C.accent;
-                const taskText = tc ? tc.text : (isLightColor(C.accent) ? "#1a1a1a" : "#fff");
-                const taskTextMuted = tc ? (isLightColor(taskFill) ? "#1a1a1a99" : "#ffffffaa") : (isLightColor(C.accent) ? "#1a1a1a99" : "#ffffffaa");
+                const barColor = getTaskBarColor(t) || C.accent;
                 return (
                   <div
                     key={t.id}
@@ -225,26 +239,19 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
                     style={{
                       display: "flex", alignItems: "center", gap: 8,
                       padding: "5px 10px", marginBottom: 3,
-                      background: taskFill,
-                      borderRadius: 16,
-                      border: "1px solid rgba(0,0,0,0.08)",
-                      transition: "filter 0.15s ease, transform 0.15s ease",
+                      background: C.darkSurf,
+                      borderLeft: `3px solid ${barColor}`,
+                      borderRadius: RADIUS.lg,
+                      transition: "background 0.15s ease",
                       animation: ANIM.scrollReveal(idx),
                       cursor: onTaskClick ? "pointer" : "default",
-                      transform: "scale(1)",
                     }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.filter = "brightness(1.15)";
-                      e.currentTarget.style.transform = "scale(1.02)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.filter = "none";
-                      e.currentTarget.style.transform = "scale(1)";
-                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = C.darkSurf; }}
                   >
                     <span style={{
                       fontSize: 12, fontFamily: FONT, fontWeight: 600,
-                      color: taskText,
+                      color: C.darkText,
                       whiteSpace: "nowrap", overflow: "hidden",
                       textOverflow: "ellipsis", flex: 1,
                     }}>
@@ -252,7 +259,7 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
                     </span>
                     {t.due && t.due.includes("T") && (
                       <span style={{
-                        fontSize: 11, fontFamily: FONT, color: taskTextMuted,
+                        fontSize: 11, fontFamily: FONT, color: C.darkMuted,
                         flexShrink: 0,
                       }}>
                         {formatTime(t.due)}

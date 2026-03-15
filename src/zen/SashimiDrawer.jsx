@@ -65,10 +65,13 @@ function timeAgo(dateStr) {
 }
 
 // ── Helper: format ISO date for datetime-local input ──
+// Uses parseDate to correctly handle date-only strings (YYYY-MM-DD → local, not UTC)
+import { parseDate } from "./zenTaskHelpers.js";
+
 function toLocalInput(isoStr) {
   if (!isoStr) return "";
   try {
-    const d = new Date(isoStr);
+    const d = parseDate(isoStr);
     if (isNaN(d.getTime())) return "";
     const pad = (n) => String(n).padStart(2, "0");
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -78,7 +81,7 @@ function toLocalInput(isoStr) {
 function toDateInput(isoStr) {
   if (!isoStr) return "";
   try {
-    const d = new Date(isoStr);
+    const d = parseDate(isoStr);
     if (isNaN(d.getTime())) return "";
     const pad = (n) => String(n).padStart(2, "0");
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
