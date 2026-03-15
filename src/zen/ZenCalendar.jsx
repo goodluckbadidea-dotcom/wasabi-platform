@@ -223,7 +223,7 @@ export default function ZenCalendar({ allTasks, refreshRef }) {
         {/* Date label */}
         <div style={{
           flex: 1, fontSize: 16, fontWeight: 600,
-          fontFamily: FONT, color: "#fff", marginLeft: 4,
+          fontFamily: FONT, color: C.darkText, marginLeft: 4,
         }}>
           {dateLabel}
         </div>

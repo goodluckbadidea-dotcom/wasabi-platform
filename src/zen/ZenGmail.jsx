@@ -93,7 +93,7 @@ function ComposeModal({ onClose, onSent, replyTo }) {
           padding: "14px 18px", borderBottom: `1px solid ${C.darkBorder}`,
           display: "flex", alignItems: "center", justifyContent: "space-between",
         }}>
-          <span style={{ fontSize: 14, fontWeight: 600, fontFamily: FONT, color: "#fff" }}>
+          <span style={{ fontSize: 14, fontWeight: 600, fontFamily: FONT, color: C.darkText }}>
             {replyTo ? "Reply" : "Compose"}
           </span>
           <button
@@ -313,7 +313,7 @@ export default function ZenGmail() {
         display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
         <div style={{
-          fontSize: 18, fontWeight: 600, fontFamily: FONT, color: "#fff",
+          fontSize: 18, fontWeight: 600, fontFamily: FONT, color: C.darkText,
           display: "flex", alignItems: "center", gap: 10,
         }}>
           <svg width="20" height="20" viewBox="0 0 16 16" fill="none">

@@ -45,7 +45,7 @@ export default function ZenDashboard() {
         display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
         <div style={{
-          fontSize: 18, fontWeight: 600, fontFamily: FONT, color: "#fff",
+          fontSize: 18, fontWeight: 600, fontFamily: FONT, color: C.darkText,
           display: "flex", alignItems: "center", gap: 10,
         }}>
           <svg width="20" height="20" viewBox="0 0 16 16" fill="none">

@@ -113,7 +113,7 @@ export default function FunctionsPanel({ onOpenChat }) {
         <IconFunction size={22} color={C.accent} />
         <h2 style={{
           fontFamily: FONT, fontSize: 18, fontWeight: 600,
-          color: "#fff", margin: 0, flex: 1,
+          color: C.darkText, margin: 0, flex: 1,
         }}>
           Functions
         </h2>
@@ -146,7 +146,7 @@ export default function FunctionsPanel({ onOpenChat }) {
           placeholder="Search functions..."
           style={{
             flex: 1, background: "transparent", border: "none",
-            color: "#fff", fontFamily: FONT, fontSize: 13, outline: "none",
+            color: C.darkText, fontFamily: FONT, fontSize: 13, outline: "none",
           }}
         />
       </div>
@@ -203,7 +203,7 @@ function EmptyState({ hasSearch, onCreate }) {
           style={{
             marginTop: 8, display: "flex", alignItems: "center", gap: 6,
             background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
-            borderRadius: RADIUS.lg, color: "#fff", fontFamily: FONT,
+            borderRadius: RADIUS.lg, color: C.darkText, fontFamily: FONT,
             fontSize: 13, fontWeight: 500, padding: "8px 20px",
             cursor: "pointer", outline: "none",
           }}
@@ -272,7 +272,7 @@ function FunctionCard({ fn, isHovered, isDeleting, onHover, onRun, onDelete }) {
 
           {/* Name */}
           <span style={{
-            fontSize: 14, fontWeight: 600, color: "#fff",
+            fontSize: 14, fontWeight: 600, color: C.darkText,
             fontFamily: FONT, flex: 1,
             whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
           }}>
