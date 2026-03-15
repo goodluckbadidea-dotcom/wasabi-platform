@@ -275,7 +275,7 @@ function AppContent() {
   };
 
   // Sidebar width for gradient bridge line positioning
-  const sidebarW = sidebarCollapsed ? 48 : 220;
+  const sidebarW = sidebarCollapsed ? 54 : 220;
   const panelW = wasabiPanelOpen ? 320 : 0;
 
   // Orb icon for chat avatars
