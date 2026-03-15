@@ -330,7 +330,7 @@ export default function ZenGmail() {
               background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
               border: "none", cursor: "pointer",
               padding: "5px 12px", borderRadius: RADIUS.md,
-              fontSize: 11, fontWeight: 600, fontFamily: FONT,
+              fontSize: 12, fontWeight: 600, fontFamily: FONT,
               color: "#fff", outline: "none",
               display: "flex", alignItems: "center", gap: 5,
             }}
@@ -435,8 +435,8 @@ export default function ZenGmail() {
 
                   {/* Sender */}
                   <div style={{
-                    width: 120, flexShrink: 0,
-                    fontSize: 11, fontFamily: FONT,
+                    width: 140, flexShrink: 0,
+                    fontSize: 13, fontFamily: FONT,
                     fontWeight: isUnread ? 700 : 400,
                     color: isUnread ? C.darkText : C.darkMuted,
                     whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
@@ -450,7 +450,7 @@ export default function ZenGmail() {
                     display: "flex", alignItems: "baseline", gap: 6,
                   }}>
                     <span style={{
-                      fontSize: 11, fontFamily: FONT,
+                      fontSize: 13, fontFamily: FONT,
                       fontWeight: isUnread ? 600 : 400,
                       color: C.darkText,
                       whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
@@ -459,7 +459,7 @@ export default function ZenGmail() {
                       {truncate(msg.subject || "(no subject)", 40)}
                     </span>
                     <span style={{
-                      fontSize: 10, fontFamily: FONT, color: C.darkMuted,
+                      fontSize: 12, fontFamily: FONT, color: C.darkMuted,
                       whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                       flex: 1, minWidth: 0,
                     }}>
@@ -469,7 +469,7 @@ export default function ZenGmail() {
 
                   {/* Date */}
                   <span style={{
-                    fontSize: 10, fontFamily: FONT, color: C.darkMuted,
+                    fontSize: 11, fontFamily: FONT, color: C.darkMuted,
                     flexShrink: 0,
                   }}>
                     {formatDate(msg.date)}
@@ -488,7 +488,7 @@ export default function ZenGmail() {
                     onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.8"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.3"; }}
                   >
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <svg width="14" height="14" viewBox="0 0 12 12" fill="none">
                       <rect x="1" y="2" width="10" height="3" rx="1" stroke={C.darkMuted} strokeWidth="1" fill="none" />
                       <rect x="2" y="5" width="8" height="5" rx="1" stroke={C.darkMuted} strokeWidth="1" fill="none" />
                       <path d="M5 7.5H7" stroke={C.darkMuted} strokeWidth="1" strokeLinecap="round" />
@@ -508,7 +508,7 @@ export default function ZenGmail() {
                     onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.8"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.3"; }}
                   >
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <svg width="14" height="14" viewBox="0 0 12 12" fill="none">
                       <path d="M2 3H10M4 3V2H8V3M4.5 5V9M7.5 5V9M3 3L3.5 10H8.5L9 3" stroke={C.darkMuted} strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   </button>
@@ -523,14 +523,14 @@ export default function ZenGmail() {
                   }}>
                     {bodyLoading ? (
                       <div style={{
-                        fontSize: 11, fontFamily: FONT, color: C.darkMuted,
+                        fontSize: 12, fontFamily: FONT, color: C.darkMuted,
                         padding: "8px 0",
                       }}>
                         Loading...
                       </div>
                     ) : expandedBody?.error ? (
                       <div style={{
-                        fontSize: 11, fontFamily: FONT, color: "#E05252",
+                        fontSize: 12, fontFamily: FONT, color: "#E05252",
                         padding: "8px 0",
                       }}>
                         Failed to load email content.
@@ -539,7 +539,7 @@ export default function ZenGmail() {
                       <>
                         {/* From / To */}
                         <div style={{
-                          fontSize: 10, fontFamily: FONT, color: C.darkMuted,
+                          fontSize: 12, fontFamily: FONT, color: C.darkMuted,
                           marginBottom: 8, lineHeight: 1.6,
                         }}>
                           <div><strong style={{ color: C.darkText }}>From:</strong> {expandedBody?.from || msg.from || ""}</div>
@@ -549,7 +549,7 @@ export default function ZenGmail() {
 
                         {/* Body */}
                         <div style={{
-                          fontSize: 12, fontFamily: FONT, color: C.darkText,
+                          fontSize: 13, fontFamily: FONT, color: C.darkText,
                           lineHeight: 1.6, whiteSpace: "pre-wrap",
                           padding: "8px 0",
                           maxHeight: 400, overflowY: "auto",
@@ -570,7 +570,7 @@ export default function ZenGmail() {
                               background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
                               border: "none", cursor: "pointer",
                               padding: "6px 14px", borderRadius: RADIUS.md,
-                              fontSize: 11, fontWeight: 600, fontFamily: FONT,
+                              fontSize: 12, fontWeight: 600, fontFamily: FONT,
                               color: "#fff", outline: "none",
                               display: "flex", alignItems: "center", gap: 5,
                             }}
@@ -588,7 +588,7 @@ export default function ZenGmail() {
                               border: `1px solid ${C.darkBorder}`,
                               cursor: "pointer",
                               padding: "6px 14px", borderRadius: RADIUS.md,
-                              fontSize: 11, fontWeight: 500, fontFamily: FONT,
+                              fontSize: 12, fontWeight: 500, fontFamily: FONT,
                               color: C.darkMuted, outline: "none",
                               display: "flex", alignItems: "center", gap: 5,
                               transition: "background 0.12s",
@@ -610,7 +610,7 @@ export default function ZenGmail() {
                               border: `1px solid ${C.darkBorder}`,
                               cursor: "pointer",
                               padding: "6px 14px", borderRadius: RADIUS.md,
-                              fontSize: 11, fontWeight: 500, fontFamily: FONT,
+                              fontSize: 12, fontWeight: 500, fontFamily: FONT,
                               color: C.darkMuted, outline: "none",
                               display: "flex", alignItems: "center", gap: 5,
                               transition: "background 0.12s",
