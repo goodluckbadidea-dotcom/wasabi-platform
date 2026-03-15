@@ -3,15 +3,30 @@
 // Quick-add input at top, manual tasks, AI-curated tasks, completed section.
 
 import React, { useState, useRef, useCallback } from "react";
-import { C, FONT, RADIUS } from "../design/tokens.js";
+import { C, FONT, RADIUS, getSolidPillColor, isLightColor } from "../design/tokens.js";
 import { formatDueDate, isOverdue, isToday } from "./zenTaskHelpers.js";
 
-// ── Priority colors ──
+// ── Priority colors (aligned to INFO_PALETTE) ──
 const PRIORITY_COLORS = {
-  High: { bg: "#E05252", text: "#fff" },
-  Medium: { bg: "#E8A838", text: "#fff" },
-  Low: { bg: "#4A90D9", text: "#fff" },
+  High: { bg: "#E05252", text: "#fff" },      // palette[11] coral red
+  Medium: { bg: "#E8A838", text: "#1a1a1a" }, // palette[10] warm amber
+  Normal: { bg: "#F5B724", text: "#1a1a1a" }, // palette[4] wasabi gold
+  Low: { bg: "#2196F3", text: "#fff" },       // palette[6] blue
 };
+
+// Resolve a task's display color from status or priority
+function getTaskColor(task) {
+  if (task.status) {
+    const schemaOpts = task._statusOptions || [];
+    const optNames = schemaOpts.map((o) => o.name);
+    return getSolidPillColor(task.status, optNames, schemaOpts);
+  }
+  if (task.priority && PRIORITY_COLORS[task.priority]) {
+    const pc = PRIORITY_COLORS[task.priority];
+    return { fill: pc.bg, text: pc.text };
+  }
+  return null;
+}
 
 function PriorityPill({ priority }) {
   if (!priority) return null;
@@ -29,14 +44,14 @@ function PriorityPill({ priority }) {
   );
 }
 
-function DueBadge({ due }) {
+function DueBadge({ due, onFill }) {
   if (!due) return null;
   const overdue = isOverdue(due);
   const today = isToday(due);
   return (
     <span style={{
       fontSize: 10, fontFamily: FONT, flexShrink: 0,
-      color: overdue ? "#E05252" : today ? C.accent : C.darkMuted,
+      color: overdue ? "#E05252" : today ? C.accent : (onFill || C.darkMuted),
       fontWeight: overdue ? 600 : 400,
     }}>
       {formatDueDate(due)}
@@ -44,13 +59,14 @@ function DueBadge({ due }) {
   );
 }
 
-function SourceBadge({ sourceName }) {
+function SourceBadge({ sourceName, onFill }) {
   if (!sourceName || sourceName === "Zen Tasks") return null;
   return (
     <span style={{
       fontSize: 8, fontFamily: FONT, flexShrink: 0,
       padding: "1px 5px", borderRadius: RADIUS.pill,
-      background: C.darkSurf2, color: C.darkMuted,
+      background: onFill ? "rgba(0,0,0,0.15)" : C.darkSurf2,
+      color: onFill || C.darkMuted,
       letterSpacing: "0.02em",
     }}>
       {sourceName}
@@ -60,6 +76,11 @@ function SourceBadge({ sourceName }) {
 
 function TaskRow({ task, onToggle, onDelete, onTaskClick }) {
   const [hovered, setHovered] = useState(false);
+  const tc = getTaskColor(task);
+  const hasFill = !!tc;
+  const fillColor = tc?.fill;
+  const textColor = tc?.text || C.darkText;
+  const arrowColor = hasFill ? (isLightColor(fillColor) ? "#1a1a1a" : "#fff") : C.darkMuted;
 
   return (
     <div
@@ -72,10 +93,12 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick }) {
         marginBottom: 6,
         borderRadius: 20,
         cursor: "pointer",
-        transition: "background 0.15s ease, transform 0.15s ease",
-        background: hovered ? C.darkSurf2 : C.darkSurf,
+        transition: "background 0.15s ease, transform 0.15s ease, filter 0.15s ease",
+        background: hasFill ? fillColor : (hovered ? C.darkSurf2 : C.darkSurf),
+        filter: hasFill && hovered ? "brightness(1.15)" : "none",
         transform: hovered ? "scale(1.02)" : "scale(1)",
         opacity: task.done ? 0.5 : 1,
+        border: "1px solid rgba(0,0,0,0.06)",
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -88,14 +111,14 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick }) {
         transition: "opacity 0.15s ease",
       }}>
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <path d="M3 9L9 3" stroke={C.darkMuted} strokeWidth="1.5" strokeLinecap="round" />
-          <path d="M4.5 3H9V7.5" stroke={C.darkMuted} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M3 9L9 3" stroke={arrowColor} strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M4.5 3H9V7.5" stroke={arrowColor} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </div>
 
       {/* Title */}
       <span style={{
-        flex: 1, fontSize: 13, fontFamily: FONT, color: C.darkText,
+        flex: 1, fontSize: 13, fontFamily: FONT, color: textColor,
         textDecoration: task.done ? "line-through" : "none",
         whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
         minWidth: 0,
@@ -104,9 +127,9 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick }) {
       </span>
 
       {/* Badges */}
-      <PriorityPill priority={task.priority} />
-      <DueBadge due={task.due} />
-      <SourceBadge sourceName={task.sourceName} />
+      {!hasFill && <PriorityPill priority={task.priority} />}
+      <DueBadge due={task.due} onFill={hasFill ? textColor : null} />
+      <SourceBadge sourceName={task.sourceName} onFill={hasFill ? textColor : null} />
 
       {/* Delete (on hover, manual tasks only) */}
       {hovered && task.source === "manual" && (
@@ -119,7 +142,7 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick }) {
           }}
         >
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-            <path d="M2 2L8 8M8 2L2 8" stroke={C.darkMuted} strokeWidth="1.2" />
+            <path d="M2 2L8 8M8 2L2 8" stroke={arrowColor} strokeWidth="1.2" />
           </svg>
         </button>
       )}

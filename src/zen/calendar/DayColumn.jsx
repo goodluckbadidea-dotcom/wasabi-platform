@@ -88,6 +88,7 @@ export default function DayColumn({ date, events, tasks, isToday: isTodayProp, h
                     display: "flex", alignItems: "center", gap: 6,
                     padding: "3px 8px", marginBottom: 2,
                     background: color,
+                    border: "1px solid rgba(0,0,0,0.08)",
                     borderRadius: 8,
                     fontSize: 12, fontFamily: FONT,
                     color: isLightColor(color) ? "#1a1a1a" : "#fff",

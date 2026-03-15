@@ -14,14 +14,15 @@ import { updatePage } from "../notion/client.js";
 import { buildProp } from "../notion/properties.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 
-// ── Priority colors (matches TaskList.jsx) ──
+// ── Priority colors (aligned to INFO_PALETTE) ──
 const PRIORITY_COLORS = {
-  High: { bg: "#E05252", text: "#fff" },
-  Medium: { bg: "#E8A838", text: "#fff" },
-  Low: { bg: "#4A90D9", text: "#fff" },
+  High: { bg: "#E05252", text: "#fff" },      // palette[11] coral red
+  Medium: { bg: "#E8A838", text: "#1a1a1a" }, // palette[10] warm amber
+  Normal: { bg: "#F5B724", text: "#1a1a1a" }, // palette[4] wasabi gold
+  Low: { bg: "#2196F3", text: "#fff" },       // palette[6] blue
 };
 
-const PRIORITIES = ["High", "Medium", "Low"];
+const PRIORITIES = ["High", "Medium", "Normal", "Low"];
 
 // ── Shared input styling ──
 const inputStyle = {

@@ -29,6 +29,7 @@ export default function CalendarEventBlock({ event, hourHeight, hourStart, onCli
         top,
         height,
         background: color,
+        border: "1px solid rgba(0,0,0,0.08)",
         borderRadius: RADIUS.lg,
         padding: "3px 8px",
         fontSize: 12,

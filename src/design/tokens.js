@@ -244,11 +244,13 @@ const INFO_PALETTE = [
   { key: "purple",  hex: "#8B6FBE", text: "#fff" },      // 7: node purple
   { key: "pink",    hex: "#E91E63", text: "#fff" },      // 8: view pink
   { key: "red",     hex: "#FF5722", text: "#fff" },      // 9: alert red
+  { key: "amber",   hex: "#E8A838", text: "#1a1a1a" },   // 10: warm amber
+  { key: "coral",   hex: "#E05252", text: "#fff" },      // 11: coral red
 ];
 
 // ── Global View Palette ──
 // Fixed informational palette for all views. Theme-independent.
-// View configs store palette indices (0-9) in colorMapping.
+// View configs store palette indices (0-11) in colorMapping.
 export const VIEW_PALETTE = INFO_PALETTE.map((p) => ({ ...p }));
 
 // ── Timeline Palette (Gantt) ──

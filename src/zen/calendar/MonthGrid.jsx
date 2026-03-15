@@ -4,8 +4,25 @@
 // Supports per-calendar colors and calendar filtering.
 
 import React, { useMemo } from "react";
-import { C, FONT, RADIUS, isLightColor } from "../../design/tokens.js";
+import { C, FONT, RADIUS, isLightColor, getSolidPillColor } from "../../design/tokens.js";
 import { isSameDay, getMonthRange } from "../zenTaskHelpers.js";
+
+// Priority colors aligned to INFO_PALETTE
+const PRIORITY_COLORS = {
+  High: { fill: "#E05252", text: "#fff" },
+  Medium: { fill: "#E8A838", text: "#1a1a1a" },
+  Normal: { fill: "#F5B724", text: "#1a1a1a" },
+  Low: { fill: "#2196F3", text: "#fff" },
+};
+
+function getTaskColor(t) {
+  if (t.status) {
+    const opts = (t._statusOptions || []).map((o) => o.name);
+    return getSolidPillColor(t.status, opts, t._statusOptions || []);
+  }
+  if (t.priority && PRIORITY_COLORS[t.priority]) return PRIORITY_COLORS[t.priority];
+  return null;
+}
 
 const DAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MAX_VISIBLE_ITEMS = 2;
@@ -144,6 +161,7 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
                     padding: "1px 5px",
                     marginBottom: 2,
                     background: color,
+                    border: "1px solid rgba(0,0,0,0.08)",
                     borderRadius: 8,
                     fontSize: 10,
                     fontWeight: 600,
@@ -160,33 +178,32 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
                 );
               })}
 
-              {/* Task dots */}
-              {dayTasks.slice(0, Math.max(0, MAX_VISIBLE_ITEMS - dayEvents.length)).map((t) => (
-                <div key={t.id} onClick={(e) => { e.stopPropagation(); onTaskClick?.(t); }} style={{
-                  padding: "1px 5px",
-                  marginBottom: 2,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 3,
-                  fontSize: 10,
-                  fontWeight: 500,
-                  fontFamily: FONT,
-                  color: C.darkMuted,
-                  lineHeight: "12px",
-                  cursor: onTaskClick ? "pointer" : "default",
-                }}>
-                  <div style={{
-                    width: 4, height: 4, borderRadius: "50%",
-                    background: C.accent, flexShrink: 0, opacity: 0.7,
-                  }} />
-                  <span style={{
-                    whiteSpace: "nowrap", overflow: "hidden",
-                    textOverflow: "ellipsis", flex: 1,
+              {/* Task pills */}
+              {dayTasks.slice(0, Math.max(0, MAX_VISIBLE_ITEMS - dayEvents.length)).map((t) => {
+                const tc = getTaskColor(t);
+                const tFill = tc?.fill || C.accent;
+                const tText = tc?.text || (isLightColor(tFill) ? "#1a1a1a" : "#fff");
+                return (
+                  <div key={t.id} onClick={(e) => { e.stopPropagation(); onTaskClick?.(t); }} style={{
+                    padding: "1px 5px",
+                    marginBottom: 2,
+                    background: tFill,
+                    border: "1px solid rgba(0,0,0,0.08)",
+                    borderRadius: 8,
+                    fontSize: 10,
+                    fontWeight: 600,
+                    fontFamily: FONT,
+                    color: tText,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    lineHeight: "12px",
+                    cursor: onTaskClick ? "pointer" : "default",
                   }}>
                     {t.title}
-                  </span>
-                </div>
-              ))}
+                  </div>
+                );
+              })}
 
               {/* Overflow */}
               {overflow && (

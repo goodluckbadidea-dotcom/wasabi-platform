@@ -4,9 +4,26 @@
 // Supports per-calendar colors, calendar filtering, and staggered entrance animations.
 
 import React, { useEffect, useRef, useMemo } from "react";
-import { C, FONT, RADIUS, isLightColor } from "../../design/tokens.js";
+import { C, FONT, RADIUS, isLightColor, getSolidPillColor } from "../../design/tokens.js";
 import { ANIM, TRANSITION } from "../../design/animations.js";
 import { isSameDay, formatTime } from "../zenTaskHelpers.js";
+
+// Priority colors aligned to INFO_PALETTE
+const PRIORITY_COLORS = {
+  High: { fill: "#E05252", text: "#fff" },
+  Medium: { fill: "#E8A838", text: "#1a1a1a" },
+  Normal: { fill: "#F5B724", text: "#1a1a1a" },
+  Low: { fill: "#2196F3", text: "#fff" },
+};
+
+function getTaskColor(t) {
+  if (t.status) {
+    const opts = (t._statusOptions || []).map((o) => o.name);
+    return getSolidPillColor(t.status, opts, t._statusOptions || []);
+  }
+  if (t.priority && PRIORITY_COLORS[t.priority]) return PRIORITY_COLORS[t.priority];
+  return null;
+}
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -161,6 +178,7 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
                       padding: "5px 10px", marginBottom: 3,
                       background: color,
                       borderRadius: 16,
+                      border: "1px solid rgba(0,0,0,0.08)",
                       transition: "filter 0.15s ease, transform 0.15s ease",
                       animation: ANIM.scrollReveal(idx),
                       cursor: onEventClick ? "pointer" : "default",
@@ -196,6 +214,10 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
 
               {dayTasks.map((t) => {
                 const idx = itemIndex++;
+                const tc = getTaskColor(t);
+                const taskFill = tc?.fill || C.accent;
+                const taskText = tc ? tc.text : (isLightColor(C.accent) ? "#1a1a1a" : "#fff");
+                const taskTextMuted = tc ? (isLightColor(taskFill) ? "#1a1a1a99" : "#ffffffaa") : (isLightColor(C.accent) ? "#1a1a1a99" : "#ffffffaa");
                 return (
                   <div
                     key={t.id}
@@ -203,30 +225,26 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
                     style={{
                       display: "flex", alignItems: "center", gap: 8,
                       padding: "5px 10px", marginBottom: 3,
-                      background: C.accent + "0A",
-                      borderLeft: `2px dashed ${C.accent}44`,
+                      background: taskFill,
                       borderRadius: 16,
-                      transition: "background 0.15s ease, transform 0.15s ease",
+                      border: "1px solid rgba(0,0,0,0.08)",
+                      transition: "filter 0.15s ease, transform 0.15s ease",
                       animation: ANIM.scrollReveal(idx),
                       cursor: onTaskClick ? "pointer" : "default",
                       transform: "scale(1)",
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.background = C.accent + "18";
+                      e.currentTarget.style.filter = "brightness(1.15)";
                       e.currentTarget.style.transform = "scale(1.02)";
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.background = C.accent + "0A";
+                      e.currentTarget.style.filter = "none";
                       e.currentTarget.style.transform = "scale(1)";
                     }}
                   >
-                    <div style={{
-                      width: 6, height: 6, borderRadius: "50%",
-                      background: C.accent, flexShrink: 0, opacity: 0.7,
-                    }} />
                     <span style={{
-                      fontSize: 12, fontFamily: FONT, fontWeight: 500,
-                      color: C.darkText,
+                      fontSize: 12, fontFamily: FONT, fontWeight: 600,
+                      color: taskText,
                       whiteSpace: "nowrap", overflow: "hidden",
                       textOverflow: "ellipsis", flex: 1,
                     }}>
@@ -234,7 +252,7 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
                     </span>
                     {t.due && t.due.includes("T") && (
                       <span style={{
-                        fontSize: 11, fontFamily: FONT, color: C.darkMuted,
+                        fontSize: 11, fontFamily: FONT, color: taskTextMuted,
                         flexShrink: 0,
                       }}>
                         {formatTime(t.due)}
