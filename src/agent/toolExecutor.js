@@ -1602,7 +1602,7 @@ export function createToolExecutor({
 
         // Validate view spec structure
         const VALID_WIDGET_TYPES = new Set(["metric", "chart", "table", "text", "progress", "list", "html"]);
-        const VALID_DS_TYPES = new Set(["query", "function_result", "static"]);
+        const VALID_DS_TYPES = new Set(["query", "function_result", "static", "inline_html"]);
         if (!view_spec.widgets || !Array.isArray(view_spec.widgets)) {
           return JSON.stringify({ error: "view_spec must contain a widgets array.", step: "validation" });
         }
@@ -1613,6 +1613,9 @@ export function createToolExecutor({
           }
           if (w.dataSource && !VALID_DS_TYPES.has(w.dataSource.type)) {
             return JSON.stringify({ error: `Widget "${w.id}" has invalid dataSource type "${w.dataSource.type}".`, step: "validation" });
+          }
+          if (w.dataSource?.type === "inline_html" && typeof w.dataSource.content !== "string") {
+            return JSON.stringify({ error: `Widget "${w.id}" has inline_html dataSource but "content" is not a string.`, step: "validation" });
           }
         }
 
@@ -1648,6 +1651,67 @@ export function createToolExecutor({
           layout: view_spec.layout || "grid",
           message: "View spec validated. Present the widget summary to the user and ask for approval. Then call save_custom_view again with _confirmed: true to save.",
         });
+      }
+
+      // ─── One-step HTML View Creator ───
+
+      case "create_html_view": {
+        const { name, html, page_id, height, description: htmlDesc } = toolInput;
+        if (!name || !html) return JSON.stringify({ error: "name and html are required." });
+        if (typeof html !== "string") return JSON.stringify({ error: "html must be a string containing HTML/SVG/CSS content." });
+
+        try {
+          // Build a viewSpec with a single full-span HTML widget using inline_html
+          const viewSpec = {
+            version: 1,
+            title: name,
+            layout: "stack",
+            columns: 1,
+            widgets: [{
+              id: "w1",
+              type: "html",
+              title: name,
+              span: 1,
+              height: height || 400,
+              dataSource: { type: "inline_html", content: html },
+            }],
+          };
+
+          // Save as a custom function with type "view"
+          const outputs = { type: "view_spec", spec: viewSpec };
+          const fn = await api.createCustomFunction({
+            name,
+            description: htmlDesc || `HTML view: ${name}`,
+            type: "view",
+            inputs: {},
+            outputs,
+            code: "",
+            status: "active",
+          });
+
+          // If page_id provided, add the view to that page
+          if (page_id) {
+            try {
+              const existingPage = await api.getPageConfig(page_id);
+              const views = existingPage?.views || [];
+              views.push({ type: "customView", position: "main", config: { functionId: fn.id } });
+              await savePageConfig({ ...existingPage, views });
+            } catch (pageErr) {
+              return JSON.stringify({ success: true, functionId: fn.id, warning: `View saved but could not add to page: ${pageErr.message}. Add manually with type "customView" config.functionId="${fn.id}"` });
+            }
+          }
+
+          return JSON.stringify({
+            success: true,
+            functionId: fn.id,
+            pageId: page_id || null,
+            message: page_id
+              ? `HTML view "${name}" created and added to page.`
+              : `HTML view "${name}" created. Add to a page with: create_page_config view type "customView" with config.functionId = "${fn.id}"`,
+          });
+        } catch (err) {
+          return JSON.stringify({ error: `Failed to create HTML view: ${err.message}` });
+        }
       }
 
       // ─── Micro-Plugins ───

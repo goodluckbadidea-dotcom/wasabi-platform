@@ -67,7 +67,7 @@ if (typeof execute === 'function') {
         var _html = '<div style="display:flex;flex-wrap:wrap;gap:16px;justify-content:center;align-items:center;padding:16px;">';
         Object.entries(_data).forEach(function(entry) {
           var key = entry[0], val = entry[1];
-          var display = typeof val === 'number' ? (val < 1 && val > 0 ? percent(val * 100, 1) : compact(val)) : String(val);
+          var display = typeof val === 'number' ? (val < 1 && val > 0 ? percent(val * 100, 1) : compact(val)) : (typeof val === 'object' && val !== null ? JSON.stringify(val) : String(val));
           var label = key.replace(/([A-Z])/g,' $1').replace(/^./,function(s){return s.toUpperCase();});
           _html += '<div style="text-align:center;min-width:80px;padding:12px 16px;background:rgba(255,255,255,0.04);border-radius:12px;border:1px solid rgba(255,255,255,0.06);">';
           _html += '<div style="font-size:24px;font-weight:700;margin-bottom:4px;color:' + window.wasabi.colors.accent + ';">' + display + '</div>';
@@ -77,7 +77,7 @@ if (typeof execute === 'function') {
         _html += '</div>';
         _root.innerHTML = _html;
       } else if (_data !== undefined && _data !== null) {
-        _root.innerHTML = '<div style="text-align:center;padding:20px;font-size:24px;font-weight:700;color:' + window.wasabi.colors.accent + ';">' + String(_data) + '</div>';
+        _root.innerHTML = '<div style="text-align:center;padding:20px;font-size:24px;font-weight:700;color:' + window.wasabi.colors.accent + ';">' + (typeof _data === 'object' && _data !== null ? JSON.stringify(_data, null, 2) : String(_data)) + '</div>';
       }
     }
   } catch(execErr) {

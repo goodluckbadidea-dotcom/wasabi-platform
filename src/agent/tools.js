@@ -574,7 +574,13 @@ Widget types:
 
 IMPORTANT: When a function/plugin contains code that renders visual elements (draws on canvas, creates SVG, manipulates DOM, builds HTML), you MUST use widget type "html" — NOT "metric" or "chart". The "metric" type can only display a single number. The "html" type renders the function's code in a sandboxed iframe with full browser APIs (document, canvas, SVG, CSS, etc.).
 
-Data source types per widget: "query" (uses page data filtered by databaseId), "function_result" (runs a saved custom function by ID), "static" (inline data values).
+Data source types per widget: "query" (uses page data filtered by databaseId), "function_result" (runs a saved custom function by ID), "static" (inline data values), "inline_html" (raw HTML/SVG/CSS string embedded directly — no function needed, great for custom visuals, animations, and interactive content).
+
+Example inline_html widget:
+{ "id": "w1", "type": "html", "title": "Custom SVG", "span": 2, "height": 400,
+  "dataSource": { "type": "inline_html", "content": "<svg width=\\"100%\\" height=\\"100%\\"><circle cx=\\"50\\" cy=\\"50\\" r=\\"40\\" fill=\\"#7B61FF\\"/></svg>" } }
+
+TIP: For creative/visual requests (SVG animations, interactive HTML, custom graphics), prefer "inline_html" over "function_result" — it's simpler and avoids the function creation step. Or use the create_html_view tool for a one-step solution.
 
 The view spec JSON format:
 {
@@ -621,6 +627,40 @@ After saving, tell the user they can add it to a page by creating a page config 
       _confirmed: { type: "boolean", description: "Set to true after user approves the preview to actually save." },
     },
     required: ["name", "view_spec"],
+  },
+};
+
+// ─── One-step HTML View ───
+
+const CREATE_HTML_VIEW = {
+  name: "create_html_view",
+  description: `Create a custom HTML/SVG/CSS view in one step. Embeds raw HTML content directly into a view widget — no separate function creation needed. Perfect for creative visualizations, SVG animations, interactive widgets, custom graphics, gauges, clocks, or any rich visual content.
+
+The HTML content runs inside a sandboxed iframe with access to:
+- window.wasabi.colors (theme colors: bg, surface, text, muted, accent, etc.)
+- window.wasabi.root (the #root DOM element)
+- Full browser APIs: Canvas, SVG, CSS animations, requestAnimationFrame, etc.
+
+Example uses: animated SVG scenes, interactive data visualizations, custom gauges, pixel art, generative art, mini-games, clocks, progress indicators.`,
+  input_schema: {
+    type: "object",
+    properties: {
+      name: { type: "string", description: "View name/title." },
+      html: {
+        type: "string",
+        description: "Raw HTML/SVG/CSS content string. Can be a full HTML document or a JS snippet that renders to #root. For JS snippets, the code runs inside a <script> tag with access to window.wasabi.colors and window.wasabi.root.",
+      },
+      page_id: {
+        type: "string",
+        description: "Optional: page config ID to add this view to. If omitted, the view is saved but not attached to a page.",
+      },
+      height: {
+        type: "number",
+        description: "Optional iframe height in pixels (default 400).",
+      },
+      description: { type: "string", description: "Optional description of the view." },
+    },
+    required: ["name", "html"],
   },
 };
 
@@ -923,6 +963,7 @@ export const WASABI_TOOLS = [
   RUN_CUSTOM_FUNCTION,
   DELETE_CUSTOM_FUNCTION,
   SAVE_CUSTOM_VIEW,
+  CREATE_HTML_VIEW,
   SAVE_PLUGIN,
   INTERPRET_AUTOMATION_NODES,
   BATCH_OPERATIONS,

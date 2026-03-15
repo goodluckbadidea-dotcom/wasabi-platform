@@ -244,11 +244,15 @@ function TableWidget({ widget, resolvedData, schema }) {
       const val = readField(row, col);
       if (val === null || val === undefined) return "";
       if (typeof val === "object" && val.start) return val.start;
+      if (Array.isArray(val)) return val.map(v => typeof v === "object" ? JSON.stringify(v) : String(v)).join(", ");
+      if (typeof val === "object") return JSON.stringify(val);
       return String(val);
     }
     const v = row[col];
     if (v === null || v === undefined) return "";
     if (typeof v === "number") return fmt(v);
+    if (Array.isArray(v)) return v.map(item => typeof item === "object" ? JSON.stringify(item) : String(item)).join(", ");
+    if (typeof v === "object") return JSON.stringify(v);
     return String(v);
   };
 
@@ -394,14 +398,23 @@ function HtmlWidget({ widget, resolvedData }) {
   };
 
   // resolvedData is either { code, html } or a raw HTML/code string
-  const code = typeof resolvedData === "string"
-    ? resolvedData
-    : resolvedData?.code || resolvedData?.html || "";
+  let code = "";
+  if (typeof resolvedData === "string") {
+    code = resolvedData;
+  } else if (resolvedData && typeof resolvedData === "object") {
+    const candidate = resolvedData.code || resolvedData.html || "";
+    code = typeof candidate === "string" ? candidate : "";
+  }
 
   if (!code) {
+    const debugType = resolvedData === null ? "null" : typeof resolvedData;
+    const preview = resolvedData && typeof resolvedData === "object" ? JSON.stringify(resolvedData, null, 2).slice(0, 200) : String(resolvedData ?? "");
     return (
       <div style={{ padding: 24, color: C.darkMuted, fontSize: 12, textAlign: "center" }}>
-        No HTML content to render.
+        <div>No HTML content to render.</div>
+        <div style={{ marginTop: 8, fontSize: 10, opacity: 0.6 }}>
+          Received type: {debugType}{preview ? ` — ${preview}` : ""}
+        </div>
       </div>
     );
   }
@@ -552,7 +565,7 @@ export default function CustomView({ data = [], schema, config = {} }) {
         else if (outputs?.version && outputs?.widgets) setViewSpec(outputs);
         else setViewSpec(null);
       })
-      .catch(() => setViewSpec(null))
+      .catch(err => { console.error(`[CustomView] Failed to load function ${config.functionId}:`, err); setViewSpec(null); })
       .finally(() => setLoading(false));
   }, [config.functionId, config.viewSpec]);
 
@@ -596,6 +609,9 @@ export default function CustomView({ data = [], schema, config = {} }) {
               // Use all parent data
               resolved[widget.id] = ds.limit ? data.slice(0, ds.limit) : data;
             }
+          } else if (ds.type === "inline_html") {
+            // Raw HTML/SVG content embedded directly in the widget spec
+            resolved[widget.id] = typeof ds.content === "string" ? ds.content : "";
           } else if (ds.type === "function_result" && ds.functionId) {
             // Fetch and execute a custom function
             try {
@@ -603,7 +619,9 @@ export default function CustomView({ data = [], schema, config = {} }) {
               if (fn?.code) {
                 // For html widgets, pass the raw code for iframe rendering
                 if (widget.type === "html") {
-                  resolved[widget.id] = { code: fn.code, html: fn.outputs?.html };
+                  const fnCode = typeof fn.code === "string" ? fn.code : "";
+                  const fnHtml = typeof fn.outputs?.html === "string" ? fn.outputs.html : undefined;
+                  resolved[widget.id] = { code: fnCode, html: fnHtml };
                 } else {
                   const { executeSandbox } = await import("../agent/toolExecutor.js");
                   const res = executeSandbox(fn.code, {}, fn.name || "Custom function");
@@ -612,11 +630,13 @@ export default function CustomView({ data = [], schema, config = {} }) {
               } else {
                 resolved[widget.id] = null;
               }
-            } catch {
+            } catch (fnErr) {
+              console.error(`[CustomView] Widget "${widget.id}" function_result error:`, fnErr);
               resolved[widget.id] = null;
             }
           }
-        } catch {
+        } catch (dsErr) {
+          console.error(`[CustomView] Widget "${widget.id}" data resolution error:`, dsErr);
           resolved[widget.id] = null;
         }
       }
