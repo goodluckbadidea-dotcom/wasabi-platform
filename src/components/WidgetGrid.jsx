@@ -80,16 +80,21 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
     };
   }, [isPanning]);
 
-  // ── Zoom toward cursor ──
+  // ── Zoom toward cursor (pinch only) ──
   const handleWheel = useCallback((e) => {
     e.preventDefault();
+    // Only zoom on pinch gesture (ctrlKey is set by trackpad pinch).
+    // Two-finger swipe (regular scroll) is blocked — use click+drag to pan.
+    if (!e.ctrlKey) return;
+
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
 
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+    // Pinch deltaY is typically smaller, so use a larger step
+    const delta = e.deltaY > 0 ? -ZOOM_STEP * 2 : ZOOM_STEP * 2;
     const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom + delta));
     const scale = newZoom / zoom;
 
