@@ -38,7 +38,9 @@ export default function CreateMenu({ onCreateItem, collapsed }) {
         onClick={() => setOpen((o) => !o)}
         style={{
           width: "100%",
-          border: `1px dashed ${C.darkBorder}`,
+          border: collapsed ? "none" : `1px dashed ${C.darkBorder}`,
+          borderTop: collapsed ? `1px dashed ${C.darkBorder}` : undefined,
+          borderBottom: collapsed ? `1px dashed ${C.darkBorder}` : undefined,
           background: "transparent",
           cursor: "pointer",
           display: "flex",

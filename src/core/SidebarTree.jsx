@@ -338,7 +338,7 @@ export default function SidebarTree({
   }
 
   return (
-    <div style={{ flex: 1, overflowY: collapsed ? "hidden" : "auto", paddingTop: 2, paddingBottom: 4 }}>
+    <div style={{ flex: 1, overflow: collapsed ? "hidden" : "hidden auto", paddingTop: 2, paddingBottom: 4 }}>
       {filteredTree.map((node) => (
         <TreeNodeWrapper
           key={node.id}
