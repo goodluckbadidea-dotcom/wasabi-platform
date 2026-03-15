@@ -3,7 +3,7 @@
 // Uses per-calendar color for visual distinction between calendars.
 
 import React from "react";
-import { C, FONT, RADIUS } from "../../design/tokens.js";
+import { C, FONT, RADIUS, isLightColor } from "../../design/tokens.js";
 import { formatTime } from "../zenTaskHelpers.js";
 
 export default function CalendarEventBlock({ event, hourHeight, hourStart, onClick }) {
@@ -28,14 +28,12 @@ export default function CalendarEventBlock({ event, hourHeight, hourStart, onCli
         right: 4,
         top,
         height,
-        background: color + "22",
-        border: `1px solid ${color}44`,
-        borderLeft: `3px solid ${color}`,
-        borderRadius: RADIUS.md,
-        padding: "3px 6px",
+        background: color,
+        borderRadius: RADIUS.lg,
+        padding: "3px 8px",
         fontSize: 12,
         fontFamily: FONT,
-        color: C.darkText,
+        color: isLightColor(color) ? "#1a1a1a" : "#fff",
         overflow: "hidden",
         zIndex: 2,
         cursor: onClick ? "pointer" : "default",
@@ -47,7 +45,7 @@ export default function CalendarEventBlock({ event, hourHeight, hourStart, onCli
       }}>
         {event.summary || "Untitled"}
       </div>
-      <div style={{ fontSize: 10, color: C.darkMuted, marginTop: 1 }}>
+      <div style={{ fontSize: 10, color: isLightColor(color) ? "#1a1a1a99" : "#ffffffaa", marginTop: 1 }}>
         {formatTime(event.start.dateTime)}
         {end ? ` – ${formatTime(event.end.dateTime)}` : ""}
       </div>

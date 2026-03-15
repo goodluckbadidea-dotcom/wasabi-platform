@@ -4,7 +4,7 @@
 // Supports per-calendar colors, calendar filtering, and staggered entrance animations.
 
 import React, { useEffect, useRef, useMemo } from "react";
-import { C, FONT, RADIUS } from "../../design/tokens.js";
+import { C, FONT, RADIUS, isLightColor } from "../../design/tokens.js";
 import { ANIM, TRANSITION } from "../../design/animations.js";
 import { isSameDay, formatTime } from "../zenTaskHelpers.js";
 
@@ -159,33 +159,33 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
                     style={{
                       display: "flex", alignItems: "center", gap: 8,
                       padding: "5px 10px", marginBottom: 3,
-                      background: color + "18",
-                      borderLeft: `3px solid ${color}`,
+                      background: color,
                       borderRadius: 16,
-                      transition: "background 0.15s ease, transform 0.15s ease",
+                      transition: "filter 0.15s ease, transform 0.15s ease",
                       animation: ANIM.scrollReveal(idx),
                       cursor: onEventClick ? "pointer" : "default",
                       transform: "scale(1)",
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.background = color + "28";
+                      e.currentTarget.style.filter = "brightness(1.15)";
                       e.currentTarget.style.transform = "scale(1.02)";
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.background = color + "18";
+                      e.currentTarget.style.filter = "none";
                       e.currentTarget.style.transform = "scale(1)";
                     }}
                   >
                     <span style={{
                       fontSize: 12, fontFamily: FONT, fontWeight: 600,
-                      color: C.darkText,
+                      color: isLightColor(color) ? "#1a1a1a" : "#fff",
                       whiteSpace: "nowrap", overflow: "hidden",
                       textOverflow: "ellipsis", flex: 1,
                     }}>
                       {ev.summary || "Untitled"}
                     </span>
                     <span style={{
-                      fontSize: 11, fontFamily: FONT, color: C.darkMuted,
+                      fontSize: 11, fontFamily: FONT,
+                      color: isLightColor(color) ? "#1a1a1a99" : "#ffffffaa",
                       flexShrink: 0,
                     }}>
                       {isAllDay ? "All day" : ev.start?.dateTime ? formatTime(ev.start.dateTime) : ""}

@@ -69,7 +69,7 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick }) {
         alignItems: "center",
         gap: 10,
         padding: "8px 14px",
-        marginBottom: 3,
+        marginBottom: 6,
         borderRadius: 20,
         cursor: "pointer",
         transition: "background 0.15s ease, transform 0.15s ease",
@@ -80,24 +80,18 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Checkbox */}
-      <button
-        onClick={(e) => { e.stopPropagation(); onToggle(task.id); }}
-        style={{
-          width: 16, height: 16, borderRadius: 4, flexShrink: 0,
-          border: `1.5px solid ${task.done ? C.accent : C.darkBorder}`,
-          background: task.done ? C.accent : "transparent",
-          cursor: "pointer", outline: "none", padding: 0,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          transition: "background 0.12s, border-color 0.12s",
-        }}
-      >
-        {task.done && (
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-            <path d="M2 5L4 7L8 3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        )}
-      </button>
+      {/* Open arrow */}
+      <div style={{
+        width: 16, height: 16, flexShrink: 0,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        opacity: hovered ? 0.8 : 0.4,
+        transition: "opacity 0.15s ease",
+      }}>
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <path d="M3 9L9 3" stroke={C.darkMuted} strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M4.5 3H9V7.5" stroke={C.darkMuted} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
 
       {/* Title */}
       <span style={{
@@ -183,7 +177,7 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, on
       </form>
 
       {/* Scrollable task list */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "4px 0" }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "4px 8px" }}>
         {/* My Tasks section */}
         {activeZen.length > 0 && (
           <div style={{ padding: "4px 0" }}>

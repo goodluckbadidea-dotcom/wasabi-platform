@@ -4,7 +4,7 @@
 // Supports per-calendar colors and calendar filtering.
 
 import React, { useEffect, useRef, useMemo } from "react";
-import { C, FONT } from "../../design/tokens.js";
+import { C, FONT, isLightColor } from "../../design/tokens.js";
 import { isSameDay, formatHour } from "../zenTaskHelpers.js";
 import CalendarEventBlock from "./CalendarEventBlock.jsx";
 import CalendarTaskBlock from "./CalendarTaskBlock.jsx";
@@ -86,17 +86,17 @@ export default function DayColumn({ date, events, tasks, isToday: isTodayProp, h
                 return (
                   <div key={ev.id} onClick={() => onEventClick?.(ev)} style={{
                     display: "flex", alignItems: "center", gap: 6,
-                    padding: "3px 6px", marginBottom: 2,
-                    background: color + "22",
-                    borderLeft: `3px solid ${color}`,
-                    borderRadius: 4,
-                    fontSize: 12, fontFamily: FONT, color: C.darkText,
+                    padding: "3px 8px", marginBottom: 2,
+                    background: color,
+                    borderRadius: 8,
+                    fontSize: 12, fontFamily: FONT,
+                    color: isLightColor(color) ? "#1a1a1a" : "#fff",
                     cursor: onEventClick ? "pointer" : "default",
                   }}>
                     <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {ev.summary || "Untitled"}
                     </span>
-                    <span style={{ fontSize: 10, color: C.darkMuted, flexShrink: 0 }}>All day</span>
+                    <span style={{ fontSize: 10, color: isLightColor(color) ? "#1a1a1a99" : "#ffffffaa", flexShrink: 0 }}>All day</span>
                   </div>
                 );
               })}

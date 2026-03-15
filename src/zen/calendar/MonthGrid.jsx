@@ -4,7 +4,7 @@
 // Supports per-calendar colors and calendar filtering.
 
 import React, { useMemo } from "react";
-import { C, FONT, RADIUS } from "../../design/tokens.js";
+import { C, FONT, RADIUS, isLightColor } from "../../design/tokens.js";
 import { isSameDay, getMonthRange } from "../zenTaskHelpers.js";
 
 const DAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -143,13 +143,12 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
                   <div key={ev.id || i} onClick={(e) => { e.stopPropagation(); onEventClick?.(ev); }} style={{
                     padding: "1px 5px",
                     marginBottom: 2,
-                    background: color + "22",
-                    borderLeft: `2px solid ${color}`,
+                    background: color,
                     borderRadius: 8,
                     fontSize: 10,
                     fontWeight: 600,
                     fontFamily: FONT,
-                    color: C.darkText,
+                    color: isLightColor(color) ? "#1a1a1a" : "#fff",
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
