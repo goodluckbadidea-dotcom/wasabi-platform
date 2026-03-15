@@ -51,14 +51,15 @@ function buildNavStyles() { return {
   viewTab: (isActive) => ({
     display: "inline-flex",
     alignItems: "center",
-    gap: 5,
-    padding: "4px 10px",
+    gap: 6,
+    padding: "6px 12px",
+    minHeight: 32,
     borderRadius: RADIUS.md,
     background: isActive ? C.darkSurf2 : "transparent",
     border: "none",
     cursor: "pointer",
     fontFamily: FONT,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: isActive ? 600 : 400,
     color: isActive ? C.darkText : C.darkMuted,
     whiteSpace: "nowrap",
@@ -71,7 +72,9 @@ function buildNavStyles() { return {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    padding: "4px 8px",
+    padding: "6px 10px",
+    minWidth: 32,
+    minHeight: 32,
     borderRadius: RADIUS.md,
     border: "none",
     background: "transparent",
@@ -170,7 +173,7 @@ export default function SubPageNav({
                   value={label}
                   onCommit={(newLabel) => onRenameView?.(idx, newLabel)}
                   placeholder="View"
-                  fontSize={11}
+                  fontSize={12}
                   fontWeight={isActive ? 600 : 400}
                   color={isActive ? C.darkText : C.darkMuted}
                 />
@@ -185,15 +188,16 @@ export default function SubPageNav({
                   title="Remove view"
                   style={{
                     background: "none", border: "none",
-                    cursor: "pointer", padding: 2,
+                    cursor: "pointer", padding: 6,
                     display: "flex", alignItems: "center",
                     opacity: 0.4, transition: "opacity 0.12s",
                     outline: "none", marginLeft: -4,
+                    minWidth: 24, minHeight: 24, borderRadius: RADIUS.md,
                   }}
                   onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
                   onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.4"; }}
                 >
-                  <IconClose size={8} color={C.darkMuted} />
+                  <IconClose size={10} color={C.darkMuted} />
                 </button>
               )}
             </div>
@@ -208,7 +212,7 @@ export default function SubPageNav({
           onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
         >
-          <IconPlus size={10} color={C.darkMuted} />
+          <IconPlus size={12} color={C.darkMuted} />
         </button>
 
         {/* Spacer pushes page controls to the right */}
@@ -223,7 +227,7 @@ export default function SubPageNav({
             onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
           >
-            <IconEdit size={11} color={C.darkMuted} />
+            <IconEdit size={14} color={C.darkMuted} />
           </button>
         )}
 
@@ -232,12 +236,13 @@ export default function SubPageNav({
             onClick={onToggleSync}
             style={{
               ...ns.addViewBtn,
-              fontSize: 10,
+              fontSize: 12,
               fontFamily: FONT,
               color: showSync ? C.accent : C.darkMuted,
               background: showSync ? C.accent + "18" : "transparent",
               border: showSync ? `1px solid ${C.accent}44` : "1px solid transparent",
-              padding: "3px 8px",
+              padding: "6px 10px",
+              minHeight: 32,
               borderRadius: RADIUS.md,
             }}
             title="Sync settings"
@@ -254,13 +259,13 @@ export default function SubPageNav({
               background: C.darkSurf2,
               border: `1px solid ${C.darkBorder}`,
               borderRadius: RADIUS.md,
-              padding: "2px 6px",
-              fontSize: 10,
+              padding: "4px 8px",
+              fontSize: 12,
               fontFamily: FONT,
               color: C.darkMuted,
               cursor: "pointer",
               outline: "none",
-              height: 24,
+              height: 32,
               flexShrink: 0,
             }}
             value={refreshMs}
@@ -280,7 +285,7 @@ export default function SubPageNav({
             onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
           >
-            <IconRefresh size={12} color={C.darkMuted} />
+            <IconRefresh size={14} color={C.darkMuted} />
           </button>
         )}
       </div>

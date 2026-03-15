@@ -33,7 +33,7 @@ export default function CreateMenu({ onCreateItem, collapsed }) {
   };
 
   return (
-    <div ref={menuRef} style={{ position: "relative", padding: collapsed ? "4px 0" : "4px 8px" }}>
+    <div ref={menuRef} style={{ position: "relative", padding: collapsed ? "6px 0" : "6px 8px" }}>
       <button
         onClick={() => setOpen((o) => !o)}
         style={{
@@ -56,7 +56,7 @@ export default function CreateMenu({ onCreateItem, collapsed }) {
         onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.color = C.accent; }}
         onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; e.currentTarget.style.color = C.darkMuted; }}
       >
-        <IconPlus size={10} color="currentColor" />
+        <IconPlus size={12} color="currentColor" />
         {!collapsed && <span>Create New</span>}
       </button>
 
@@ -96,7 +96,8 @@ export default function CreateMenu({ onCreateItem, collapsed }) {
                     display: "flex",
                     alignItems: "center",
                     gap: 10,
-                    padding: "8px 14px",
+                    padding: "10px 14px",
+                    minHeight: 34,
                     background: "transparent",
                     fontFamily: FONT,
                     transition: "background 0.1s",
@@ -107,7 +108,7 @@ export default function CreateMenu({ onCreateItem, collapsed }) {
                   <Icon size={12} color={C.darkMuted} />
                   <div style={{ display: "flex", flexDirection: "column", gap: 1, textAlign: "left" }}>
                     <span style={{ fontSize: 12, fontWeight: 500, color: C.darkText }}>{opt.label}</span>
-                    <span style={{ fontSize: 10, color: C.darkMuted }}>{opt.description}</span>
+                    <span style={{ fontSize: 11, color: C.darkMuted }}>{opt.description}</span>
                   </div>
                 </button>
               );

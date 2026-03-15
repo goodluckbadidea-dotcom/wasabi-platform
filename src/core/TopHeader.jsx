@@ -74,7 +74,7 @@ export default function TopHeader() {
             background: "transparent",
             border: "none",
             borderRadius: RADIUS.pill,
-            padding: 6,
+            padding: 8,
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
@@ -82,6 +82,7 @@ export default function TopHeader() {
             transition: "opacity 0.15s",
             opacity: 0.4,
             outline: "none",
+            minWidth: 32, minHeight: 32,
           }}
           onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
           onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.4"; }}
@@ -100,14 +101,15 @@ export default function TopHeader() {
             background: overlayActive ? C.accent + "22" : "transparent",
             border: `1px solid ${overlayActive ? C.accent : C.darkBorder}`,
             borderRadius: RADIUS.pill,
-            padding: "5px 10px",
+            padding: "7px 12px",
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
             gap: 6,
             transition: "background 0.15s, border-color 0.15s",
             color: overlayActive ? C.accent : C.darkMuted,
-            fontSize: 11,
+            fontSize: 12,
+            minHeight: 32,
             fontFamily: FONT,
             fontWeight: 500,
             outline: "none",
@@ -125,7 +127,7 @@ export default function TopHeader() {
             }
           }}
         >
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
             <defs>
               <linearGradient id="neuron-grad" x1="0" y1="0" x2="16" y2="16">
                 <stop offset="0%" stopColor={C.accent} />
@@ -167,14 +169,15 @@ export default function TopHeader() {
             background: "transparent",
             border: `1px solid ${C.darkBorder}`,
             borderRadius: RADIUS.pill,
-            padding: "5px 10px",
+            padding: "7px 12px",
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
-            gap: 5,
+            gap: 6,
             transition: "background 0.15s, border-color 0.15s",
             color: C.darkMuted,
-            fontSize: 11,
+            fontSize: 12,
+            minHeight: 32,
             fontFamily: FONT,
             fontWeight: 500,
             outline: "none",
@@ -189,12 +192,12 @@ export default function TopHeader() {
           }}
         >
           {appMode === "zen" ? (
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
               <circle cx="8" cy="8" r="6" stroke={C.darkMuted} strokeWidth="1.5" fill="none" />
               <circle cx="8" cy="8" r="2" fill={C.darkMuted} />
             </svg>
           ) : (
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
               <path d="M8 1L10 6H14L11 9L12.5 14L8 11L3.5 14L5 9L2 6H6L8 1Z" fill={C.darkMuted} />
             </svg>
           )}
@@ -208,16 +211,17 @@ export default function TopHeader() {
             background: "transparent",
             border: `1px solid ${C.darkBorder}`,
             borderRadius: RADIUS.pill,
-            padding: "5px 10px",
+            padding: "7px 12px",
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
-            gap: 5,
+            gap: 6,
             transition: "background 0.15s, border-color 0.15s",
             color: C.darkMuted,
-            fontSize: 11,
+            fontSize: 12,
             fontFamily: FONT,
             fontWeight: 500,
+            minHeight: 32,
           }}
           title="Cycle theme"
           onMouseEnter={(e) => {
@@ -229,7 +233,7 @@ export default function TopHeader() {
             e.currentTarget.style.background = "transparent";
           }}
         >
-          <span style={{ width: 10, height: 10, borderRadius: "50%", background: C.accent, flexShrink: 0 }} />
+          <span style={{ width: 12, height: 12, borderRadius: "50%", background: C.accent, flexShrink: 0 }} />
           {themeName.charAt(0).toUpperCase() + themeName.slice(1)}
         </button>
       </div>

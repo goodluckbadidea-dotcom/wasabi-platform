@@ -202,7 +202,8 @@ export default function Navigation({
     display: "flex",
     alignItems: "center",
     gap: collapsed ? 0 : 10,
-    padding: collapsed ? "8px 0" : "7px 10px",
+    padding: collapsed ? "10px 0" : "8px 12px",
+    minHeight: 34,
     borderRadius: RADIUS.lg,
     transition: "background 0.15s",
     outline: "none",
@@ -279,7 +280,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "zen-dashboard") e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "zen-dashboard") e.currentTarget.style.background = "transparent"; }}
             >
-              <svg width={collapsed ? 16 : 14} height={collapsed ? 16 : 14} viewBox="0 0 16 16" fill="none">
+              <svg width={collapsed ? 18 : 16} height={collapsed ? 18 : 16} viewBox="0 0 16 16" fill="none">
                 <rect x="1" y="1" width="6" height="6" rx="1.5" stroke={activePage === "zen-dashboard" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
                 <rect x="9" y="1" width="6" height="6" rx="1.5" stroke={activePage === "zen-dashboard" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
                 <rect x="1" y="9" width="6" height="6" rx="1.5" stroke={activePage === "zen-dashboard" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
@@ -296,7 +297,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "zen-tasks" && activePage !== null) e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "zen-tasks" && activePage !== null) e.currentTarget.style.background = "transparent"; }}
             >
-              <IconCalendar size={collapsed ? 16 : 14} color={(activePage === "zen-tasks" || activePage === null) ? "#fff" : C.darkMuted} />
+              <IconCalendar size={collapsed ? 18 : 16} color={(activePage === "zen-tasks" || activePage === null) ? "#fff" : C.darkMuted} />
               {!collapsed && <span style={bottomLabelStyle(activePage === "zen-tasks" || activePage === null)}>To-Do & Calendar</span>}
             </button>
 
@@ -308,7 +309,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "zen-notes") e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "zen-notes") e.currentTarget.style.background = "transparent"; }}
             >
-              <svg width={collapsed ? 16 : 14} height={collapsed ? 16 : 14} viewBox="0 0 16 16" fill="none">
+              <svg width={collapsed ? 18 : 16} height={collapsed ? 18 : 16} viewBox="0 0 16 16" fill="none">
                 <rect x="3" y="2" width="10" height="12" rx="1.5" stroke={activePage === "zen-notes" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
                 <line x1="5.5" y1="5.5" x2="10.5" y2="5.5" stroke={activePage === "zen-notes" ? "#fff" : C.darkMuted} strokeWidth="1" />
                 <line x1="5.5" y1="8" x2="10.5" y2="8" stroke={activePage === "zen-notes" ? "#fff" : C.darkMuted} strokeWidth="1" />
@@ -327,12 +328,12 @@ export default function Navigation({
                 onMouseLeave={(e) => { if (activePage !== "zen-gmail") e.currentTarget.style.background = "transparent"; }}
               >
                 <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                  <IconMail size={collapsed ? 16 : 14} color={activePage === "zen-gmail" ? "#fff" : C.darkMuted} />
+                  <IconMail size={collapsed ? 18 : 16} color={activePage === "zen-gmail" ? "#fff" : C.darkMuted} />
                   {unreadCount > 0 && (
                     <span style={{
                       position: "absolute", top: -5, right: -8,
                       background: C.accent, color: "#fff",
-                      fontSize: 8, fontWeight: 700, fontFamily: FONT,
+                      fontSize: 10, fontWeight: 700, fontFamily: FONT,
                       borderRadius: 999, minWidth: 14, height: 14,
                       display: "flex", alignItems: "center", justifyContent: "center",
                       padding: "0 3px", lineHeight: 1,
@@ -353,7 +354,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "system") e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "system") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconGear size={collapsed ? 16 : 14} color={activePage === "system" ? "#fff" : C.darkMuted} />
+              <IconGear size={collapsed ? 18 : 16} color={activePage === "system" ? "#fff" : C.darkMuted} />
               {!collapsed && <span style={bottomLabelStyle(activePage === "system")}>Settings</span>}
             </button>
 
@@ -365,7 +366,7 @@ export default function Navigation({
                   background: "none", border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center",
                   gap: collapsed ? 0 : 10,
-                  padding: collapsed ? "4px 0" : "6px 8px",
+                  padding: collapsed ? "8px 0" : "8px 12px",
                   borderRadius: RADIUS.lg, transition: "background 0.15s",
                   outline: "none", width: "100%",
                   justifyContent: collapsed ? "center" : "flex-start",
@@ -398,7 +399,7 @@ export default function Navigation({
               flexShrink: 0, borderBottom: `1px solid ${C.darkBorder}`,
               padding: "8px 10px", display: "flex", alignItems: "center", gap: 8,
             }}>
-              <IconSearch size={12} color={C.darkMuted} />
+              <IconSearch size={14} color={C.darkMuted} />
               <input
                 type="text"
                 value={searchQuery}
@@ -415,10 +416,11 @@ export default function Navigation({
                   onClick={() => setSearchQuery("")}
                   style={{
                     background: "none", border: "none", cursor: "pointer",
-                    padding: 0, display: "flex", outline: "none",
+                    padding: 4, display: "flex", alignItems: "center", justifyContent: "center",
+                    outline: "none", minWidth: 24, minHeight: 24, borderRadius: RADIUS.md,
                   }}
                 >
-                  <span style={{ fontSize: 10, color: C.darkMuted, lineHeight: 1 }}>&times;</span>
+                  <span style={{ fontSize: 14, color: C.darkMuted, lineHeight: 1 }}>&times;</span>
                 </button>
               )}
             </div>
@@ -476,7 +478,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== null || activeFolder) e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== null || activeFolder) e.currentTarget.style.background = "transparent"; }}
             >
-              <IconStar size={collapsed ? 16 : 14} color={(activePage === null && !activeFolder) ? "#fff" : C.darkMuted} />
+              <IconStar size={collapsed ? 18 : 16} color={(activePage === null && !activeFolder) ? "#fff" : C.darkMuted} />
               {!collapsed && <span style={bottomLabelStyle(activePage === null && !activeFolder)}>Home</span>}
             </button>
 
@@ -488,7 +490,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "inbox") e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "inbox") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconBell size={collapsed ? 16 : 14} color={activePage === "inbox" ? "#fff" : C.darkMuted} />
+              <IconBell size={collapsed ? 18 : 16} color={activePage === "inbox" ? "#fff" : C.darkMuted} />
               {!collapsed && <span style={bottomLabelStyle(activePage === "inbox")}>Inbox</span>}
             </button>
 
@@ -500,7 +502,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "knowledge-base") e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "knowledge-base") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconBrain size={collapsed ? 16 : 14} color={activePage === "knowledge-base" ? "#fff" : C.darkMuted} />
+              <IconBrain size={collapsed ? 18 : 16} color={activePage === "knowledge-base" ? "#fff" : C.darkMuted} />
               {!collapsed && <span style={bottomLabelStyle(activePage === "knowledge-base")}>Knowledge Base</span>}
             </button>
 
@@ -512,7 +514,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "automations") e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "automations") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconBolt size={collapsed ? 16 : 14} color={activePage === "automations" ? "#fff" : C.darkMuted} />
+              <IconBolt size={collapsed ? 18 : 16} color={activePage === "automations" ? "#fff" : C.darkMuted} />
               {!collapsed && <span style={bottomLabelStyle(activePage === "automations")}>Automations</span>}
             </button>
 
@@ -524,7 +526,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "functions") e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "functions") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconFunction size={collapsed ? 16 : 14} color={activePage === "functions" ? "#fff" : C.darkMuted} />
+              <IconFunction size={collapsed ? 18 : 16} color={activePage === "functions" ? "#fff" : C.darkMuted} />
               {!collapsed && <span style={bottomLabelStyle(activePage === "functions")}>Functions</span>}
             </button>
 
@@ -536,7 +538,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "build") e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "build") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconGrid size={collapsed ? 16 : 14} color={activePage === "build" ? "#fff" : C.darkMuted} />
+              <IconGrid size={collapsed ? 18 : 16} color={activePage === "build" ? "#fff" : C.darkMuted} />
               {!collapsed && <span style={bottomLabelStyle(activePage === "build")}>Build</span>}
             </button>
 
@@ -550,12 +552,12 @@ export default function Navigation({
                 onMouseLeave={(e) => { if (activePage !== "gmail") e.currentTarget.style.background = "transparent"; }}
               >
                 <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                  <IconMail size={collapsed ? 16 : 14} color={activePage === "gmail" ? "#fff" : C.darkMuted} />
+                  <IconMail size={collapsed ? 18 : 16} color={activePage === "gmail" ? "#fff" : C.darkMuted} />
                   {unreadCount > 0 && (
                     <span style={{
                       position: "absolute", top: -5, right: -8,
                       background: C.accent, color: "#fff",
-                      fontSize: 8, fontWeight: 700, fontFamily: FONT,
+                      fontSize: 10, fontWeight: 700, fontFamily: FONT,
                       borderRadius: 999, minWidth: 14, height: 14,
                       display: "flex", alignItems: "center", justifyContent: "center",
                       padding: "0 3px", lineHeight: 1,
@@ -577,7 +579,7 @@ export default function Navigation({
                 onMouseEnter={(e) => { if (activePage !== "calendar") e.currentTarget.style.background = C.darkSurf2; }}
                 onMouseLeave={(e) => { if (activePage !== "calendar") e.currentTarget.style.background = "transparent"; }}
               >
-                <IconCalendar size={collapsed ? 16 : 14} color={activePage === "calendar" ? "#fff" : C.darkMuted} />
+                <IconCalendar size={collapsed ? 18 : 16} color={activePage === "calendar" ? "#fff" : C.darkMuted} />
                 {!collapsed && (
                   <span style={bottomLabelStyle(activePage === "calendar")}>
                     {nextEventLabel || "Calendar"}
@@ -594,7 +596,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "system") e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "system") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconGear size={collapsed ? 16 : 14} color={activePage === "system" ? "#fff" : C.darkMuted} />
+              <IconGear size={collapsed ? 18 : 16} color={activePage === "system" ? "#fff" : C.darkMuted} />
               {!collapsed && <span style={bottomLabelStyle(activePage === "system")}>System</span>}
             </button>
 
@@ -606,7 +608,7 @@ export default function Navigation({
                   background: "none", border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center",
                   gap: collapsed ? 0 : 10,
-                  padding: collapsed ? "4px 0" : "6px 8px",
+                  padding: collapsed ? "8px 0" : "8px 12px",
                   borderRadius: RADIUS.lg, transition: "background 0.15s",
                   outline: "none", width: "100%",
                   justifyContent: collapsed ? "center" : "flex-start",
@@ -638,7 +640,7 @@ export default function Navigation({
         style={{
           position: "absolute", top: "50%", right: -12,
           transform: "translateY(-50%)",
-          width: 16, height: 24,
+          width: 20, height: 32,
           background: C.darkSurf,
           border: `1px solid ${C.darkBorder}`,
           borderRadius: "0 4px 4px 0",
@@ -661,8 +663,8 @@ export default function Navigation({
         }}
       >
         {collapsed
-          ? <IconChevronRight size={10} color={C.darkMuted} />
-          : <IconChevronLeft size={10} color={C.darkMuted} />
+          ? <IconChevronRight size={12} color={C.darkMuted} />
+          : <IconChevronLeft size={12} color={C.darkMuted} />
         }
       </button>
 

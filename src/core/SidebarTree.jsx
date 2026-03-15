@@ -140,7 +140,7 @@ function TreeNode({
             transition: "background 0.1s",
             width: "100%",
             justifyContent: collapsed ? "center" : "flex-start",
-            minHeight: nt === "view" ? 24 : 30,
+            minHeight: nt === "view" ? 28 : 34,
             borderRadius: 0,
           }}
         >
@@ -207,13 +207,14 @@ function TreeNode({
               title="Delete"
               style={{
                 marginLeft: "auto", background: "none", border: "none",
-                cursor: "pointer", padding: 2, display: "flex", alignItems: "center",
+                cursor: "pointer", padding: 6, display: "flex", alignItems: "center",
                 opacity: 0.4, transition: "opacity 0.12s", outline: "none", flexShrink: 0,
+                minWidth: 24, minHeight: 24, borderRadius: 4,
               }}
               onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
               onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.4"; }}
             >
-              <IconTrash size={8} color={isActive ? "#fff" : C.darkMuted} />
+              <IconTrash size={10} color={isActive ? "#fff" : C.darkMuted} />
             </button>
           )}
         </button>
