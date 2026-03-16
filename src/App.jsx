@@ -30,7 +30,6 @@ import KnowledgeBase from "./core/KnowledgeBase.jsx";
 import AutomationPage from "./core/AutomationPage.jsx";
 import NotificationFeed from "./views/NotificationFeed.jsx";
 // GmailView removed — Gmail is only available in Sashimi mode (ZenGmail)
-import CalendarView from "./views/CalendarView.jsx";
 import HomePage from "./core/HomePage.jsx";
 import Dashboard from "./core/Dashboard.jsx";
 import WorkspaceSettings from "./views/WorkspaceSettings.jsx";
@@ -390,11 +389,6 @@ function AppContent() {
     // Knowledge Base
     if (activePage === "knowledge-base") {
       return <KnowledgeBase automationEngine={engineRef.current} />;
-    }
-
-    // Calendar
-    if (activePage === "calendar") {
-      return <CalendarView />;
     }
 
     // Build (Custom Views + Plugins)

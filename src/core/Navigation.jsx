@@ -543,24 +543,6 @@ export default function Navigation({
               {!collapsed && <span style={bottomLabelStyle(activePage === "build")}>Build</span>}
             </button>
 
-            {/* Calendar (only when Google connected) */}
-            {googleConnected && (
-              <button
-                onClick={() => setActivePage("calendar")}
-                title="Calendar"
-                style={bottomBtnStyle(activePage === "calendar")}
-                onMouseEnter={(e) => { if (activePage !== "calendar") e.currentTarget.style.background = C.darkSurf2; }}
-                onMouseLeave={(e) => { if (activePage !== "calendar") e.currentTarget.style.background = "transparent"; }}
-              >
-                <IconCalendar size={iconSize(activePage === "calendar")} color={activePage === "calendar" ? "#fff" : C.darkMuted} />
-                {!collapsed && (
-                  <span style={bottomLabelStyle(activePage === "calendar")}>
-                    {nextEventLabel || "Calendar"}
-                  </span>
-                )}
-              </button>
-            )}
-
             {/* System */}
             <button
               onClick={() => setActivePage("system")}
