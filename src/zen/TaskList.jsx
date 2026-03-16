@@ -4,10 +4,27 @@
 
 import React, { useState, useRef, useCallback } from "react";
 import { C, FONT, RADIUS, VIEW_PALETTE, getSolidPillColor, isLightColor, getThemeMode, resolveUnifiedColor } from "../design/tokens.js";
-import { formatDueDate, isOverdue, isToday } from "./zenTaskHelpers.js";
+import { formatDueDate, isOverdue, isToday, parseDate } from "./zenTaskHelpers.js";
 
 // ── Priority → palette index mapping ──
 const PRIORITY_IDX = { High: 9, Medium: 3, Normal: 4, Low: 6 };
+
+// ── Date tier classification ──
+export const DATE_TIERS = ["Overdue", "Due Today", "Due This Week", "Due Later", "No Date"];
+export const DATE_TIER_DEFAULTS = { Overdue: 9, "Due Today": 3, "Due This Week": 7, "Due Later": 0, "No Date": 0 };
+
+function getDateTier(due) {
+  if (!due) return "No Date";
+  if (isOverdue(due)) return "Overdue";
+  if (isToday(due)) return "Due Today";
+  const d = parseDate(due);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const dDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diff = Math.round((dDay - now) / (1000 * 60 * 60 * 24));
+  if (diff <= 7) return "Due This Week";
+  return "Due Later";
+}
 
 // Resolve a task's display color (hex string) from status or priority
 // Supports unified color mapping when provided
@@ -40,17 +57,19 @@ function getTaskBarColor(task, colorMapping) {
   return null;
 }
 
-function DueBadge({ due }) {
+function DueBadge({ due, dateChipColors }) {
   if (!due) return null;
-  const overdue = isOverdue(due);
-  const today = isToday(due);
-  const redHex = VIEW_PALETTE[9].hex;
+  const tier = getDateTier(due);
+  const mapping = dateChipColors || DATE_TIER_DEFAULTS;
+  const paletteIdx = mapping[tier] ?? DATE_TIER_DEFAULTS[tier] ?? 0;
+  const entry = VIEW_PALETTE[paletteIdx] || VIEW_PALETTE[0];
+  const textColor = isLightColor(entry.hex) ? "#1a1a1a" : "#fff";
   return (
     <span style={{
       fontSize: 11, fontFamily: FONT, flexShrink: 0, fontWeight: 500,
       padding: "2px 7px", borderRadius: RADIUS.pill,
-      background: overdue ? redHex + "20" : C.darkSurf2,
-      color: overdue ? redHex : today ? C.accent : C.darkMuted,
+      background: entry.hex,
+      color: textColor,
     }}>
       {formatDueDate(due)}
     </span>
@@ -72,7 +91,7 @@ function SourceBadge({ sourceName }) {
   );
 }
 
-function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping }) {
+function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping, dateChipColors }) {
   const [hovered, setHovered] = useState(false);
   const barColor = getTaskBarColor(task, colorMapping);
   const overdue = task.due && isOverdue(task.due);
@@ -124,7 +143,7 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping }) {
       </span>
 
       {/* Badges */}
-      <DueBadge due={task.due} />
+      <DueBadge due={task.due} dateChipColors={dateChipColors} />
       <SourceBadge sourceName={task.sourceName} />
 
       {/* Delete (on hover, manual tasks only) */}
@@ -148,7 +167,7 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping }) {
   );
 }
 
-export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, onToggleAI, onAddTask, onDeleteTask, onTaskClick, colorMapping }) {
+export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, onToggleAI, onAddTask, onDeleteTask, onTaskClick, colorMapping, dateChipColors }) {
   const [inputValue, setInputValue] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
   const inputRef = useRef(null);
@@ -217,6 +236,7 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, on
                 onDelete={onDeleteTask}
                 onTaskClick={onTaskClick}
                 colorMapping={colorMapping}
+                dateChipColors={dateChipColors}
               />
             ))}
           </div>
@@ -312,6 +332,7 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, on
                 onDelete={task.source === "manual" ? onDeleteTask : () => {}}
                 onTaskClick={onTaskClick}
                 colorMapping={colorMapping}
+                dateChipColors={dateChipColors}
               />
             ))}
           </div>

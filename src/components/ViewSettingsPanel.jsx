@@ -6,9 +6,10 @@
 //   2. Unified (all views): buffered edits with Save/Reset, integrated with ColorMappingContext
 
 import React, { useState, useMemo, useCallback, useEffect } from "react";
-import { C, FONT, RADIUS, SHADOW, VIEW_PALETTE } from "../design/tokens.js";
+import { C, FONT, RADIUS, SHADOW, VIEW_PALETTE, isLightColor } from "../design/tokens.js";
 import { IconClose, IconGear } from "../design/icons.jsx";
 import { ANIM } from "../design/animations.js";
+import { DATE_TIERS, DATE_TIER_DEFAULTS } from "../zen/TaskList.jsx";
 
 // ─── Section Header ───
 
@@ -299,8 +300,8 @@ export default function ViewSettingsPanel({
   viewKey,             // string — unique key for this view in ColorMappingContext
   globalColorMapping,  // object — global default color mappings
   globalColorField,    // string — global default color field
-  viewColorConfig,     // { colorField, colorMapping } — current view-level overrides
-  onSave,              // ({ colorField, colorMapping }) => void — commit buffered changes
+  viewColorConfig,     // { colorField, colorMapping, dateChipColors } — current view-level overrides
+  onSave,              // ({ colorField, colorMapping, dateChipColors }) => void — commit buffered changes
   onReset,             // () => void — clear view overrides
   // Multi-database sections (Tasks view)
   databaseSections,    // [{ dbId, dbName, schema, viewColorConfig }] — per-database configs
@@ -325,7 +326,12 @@ export default function ViewSettingsPanel({
   const [draftColorMapping, setDraftColorMapping] = useState(
     viewColorConfig?.colorMapping || {}
   );
+  const [draftDateChipColors, setDraftDateChipColors] = useState(
+    viewColorConfig?.dateChipColors || {}
+  );
   const [draftDirty, setDraftDirty] = useState(false);
+
+  const isTasksView = viewConfig?.type === "tasks";
 
   // Per-database drafts for Tasks view
   const [sectionDrafts, setSectionDrafts] = useState(() => {
@@ -450,15 +456,23 @@ export default function ViewSettingsPanel({
     setDraftDirty(true);
   }, []);
 
+  const handleDraftDateChipChange = useCallback((tier, paletteIdx) => {
+    setDraftDateChipColors((prev) => ({ ...prev, [tier]: paletteIdx }));
+    setDraftDirty(true);
+  }, []);
+
   const handleSaveUnified = useCallback(() => {
-    onSave?.({ colorField: draftColorField, colorMapping: draftColorMapping });
+    const updates = { colorField: draftColorField, colorMapping: draftColorMapping };
+    if (isTasksView) updates.dateChipColors = draftDateChipColors;
+    onSave?.(updates);
     setDraftDirty(false);
-  }, [onSave, draftColorField, draftColorMapping]);
+  }, [onSave, draftColorField, draftColorMapping, draftDateChipColors, isTasksView]);
 
   const handleResetUnified = useCallback(() => {
     onReset?.();
     setDraftColorField(null);
     setDraftColorMapping({});
+    setDraftDateChipColors({});
     setDraftDirty(false);
   }, [onReset]);
 
@@ -705,6 +719,62 @@ export default function ViewSettingsPanel({
               onColorModeChange={handleColorModeChange}
               showInheritedBadges={true}
             />
+          )}
+
+          {/* ═══ Date Chip Colors (Tasks view only) ═══ */}
+          {isUnifiedMode && isTasksView && (
+            <>
+              <SectionLabel>Date Chip Colors</SectionLabel>
+              <div style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                background: C.dark,
+                borderRadius: RADIUS.lg,
+                padding: "10px 12px",
+                border: `1px solid ${C.edgeLine}`,
+              }}>
+                {DATE_TIERS.map((tier) => {
+                  const currentIdx = draftDateChipColors[tier];
+                  const defaultIdx = DATE_TIER_DEFAULTS[tier];
+                  const displayIdx = currentIdx ?? defaultIdx;
+                  const entry = VIEW_PALETTE[displayIdx] || VIEW_PALETTE[0];
+                  return (
+                    <div key={tier}>
+                      <div style={{
+                        fontSize: 11,
+                        fontWeight: 500,
+                        color: C.darkText,
+                        marginBottom: 4,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                      }}>
+                        <span style={{
+                          fontSize: 10,
+                          fontWeight: 600,
+                          padding: "1px 6px",
+                          borderRadius: RADIUS.pill,
+                          background: entry.hex,
+                          color: isLightColor(entry.hex) ? "#1a1a1a" : "#fff",
+                          flexShrink: 0,
+                        }}>
+                          {tier}
+                        </span>
+                        {currentIdx !== undefined && (
+                          <SourceBadge source="custom" />
+                        )}
+                      </div>
+                      <PalettePicker
+                        value={currentIdx}
+                        onChange={(idx) => handleDraftDateChipChange(tier, idx)}
+                        inheritedIdx={defaultIdx}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           )}
 
           {/* ═══ Inline mode (Sushi Roll) ═══ */}

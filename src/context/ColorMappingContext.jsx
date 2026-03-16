@@ -52,7 +52,7 @@ export function ColorMappingProvider({ children }) {
   // Get color config for a specific view
   const getViewColorConfig = useCallback((viewKey) => {
     const entry = viewConfigs.find((p) => p.viewKey === viewKey);
-    return entry ? { colorField: entry.colorField, colorMapping: entry.colorMapping || {} } : null;
+    return entry ? { colorField: entry.colorField, colorMapping: entry.colorMapping || {}, dateChipColors: entry.dateChipColors || null } : null;
   }, [viewConfigs]);
 
   // Get the effective color mapping for a view (view override merged over global)

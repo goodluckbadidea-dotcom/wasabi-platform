@@ -47,6 +47,7 @@ export default function ZenTasksView() {
     viewColorMapping: viewColorConfig?.colorMapping || null,
     globalColorMapping,
   }), [viewColorConfig, globalColorMapping]);
+  const dateChipColors = viewColorConfig?.dateChipColors || null;
 
   // ── Toggle for AI-curated tasks ──
   // For Notion tasks, we could update the source DB, but for now
@@ -200,6 +201,7 @@ export default function ZenTasksView() {
             onDeleteTask={deleteTask}
             onTaskClick={handleTaskClick}
             colorMapping={taskColorMapping}
+            dateChipColors={dateChipColors}
           />
         </ErrorBoundary>
 
