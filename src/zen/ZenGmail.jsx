@@ -7,6 +7,16 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { ANIM, TRANSITION } from "../design/animations.js";
 import { searchEmails, getEmail, sendEmail, modifyEmail } from "../lib/api.js";
+import { useSashimiDrawer } from "./SashimiDrawerContext.jsx";
+import SashimiDrawer from "./SashimiDrawer.jsx";
+
+// ── Label config ──
+const LABELS = [
+  { key: "INBOX", label: "Inbox", query: "in:inbox" },
+  { key: "SENT", label: "Sent", query: "in:sent" },
+  { key: "DRAFT", label: "Drafts", query: "in:drafts" },
+  { key: "STARRED", label: "Starred", query: "is:starred" },
+];
 
 // ── Date formatting ──
 function formatDate(dateStr) {
@@ -198,27 +208,52 @@ export default function ZenGmail() {
   const [expandedId, setExpandedId] = useState(null);
   const [expandedBody, setExpandedBody] = useState(null);
   const [bodyLoading, setBodyLoading] = useState(false);
-  const [composeOpen, setComposeOpen] = useState(false);
-  const [replyTo, setReplyTo] = useState(null);
   const [error, setError] = useState(null);
+  const [activeLabel, setActiveLabel] = useState("INBOX");
+  const [searchQuery, setSearchQuery] = useState("");
+  const { openDrawer } = useSashimiDrawer();
+  const lastClickRef = useRef({ id: null, time: 0 });
+  const singleClickTimerRef = useRef(null);
+  const searchTimerRef = useRef(null);
 
-  // ── Fetch inbox ──
-  const fetchInbox = useCallback(async () => {
+  // ── Fetch emails (supports label + search) ──
+  const fetchEmails = useCallback(async (query) => {
     setLoading(true);
     setError(null);
     try {
-      const result = await searchEmails("in:inbox", 30);
+      const labelConfig = LABELS.find((l) => l.key === activeLabel);
+      const baseQuery = labelConfig ? labelConfig.query : "in:inbox";
+      const fullQuery = query ? `${baseQuery} ${query}` : baseQuery;
+      const result = await searchEmails(fullQuery, 30);
       setMessages(Array.isArray(result?.messages) ? result.messages : []);
     } catch (err) {
       console.error("[ZenGmail] Fetch failed:", err);
-      setError("Failed to load inbox.");
+      setError("Failed to load emails.");
       setMessages([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeLabel]);
 
-  useEffect(() => { fetchInbox(); }, [fetchInbox]);
+  // Fetch on mount + label change
+  useEffect(() => {
+    setExpandedId(null);
+    setExpandedBody(null);
+    fetchEmails(searchQuery);
+  }, [activeLabel]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Alias for backward compat
+  const fetchInbox = useCallback(() => fetchEmails(searchQuery), [fetchEmails, searchQuery]);
+
+  // ── Search with debounce ──
+  const handleSearchChange = useCallback((e) => {
+    const val = e.target.value;
+    setSearchQuery(val);
+    clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      fetchEmails(val);
+    }, 400);
+  }, [fetchEmails]);
 
   // ── Expand a message ──
   const handleExpand = useCallback(async (msg) => {
@@ -287,21 +322,103 @@ export default function ZenGmail() {
     }
   }, [expandedId, fetchInbox]);
 
-  // ── Reply ──
+  // ── Star / Unstar ──
+  const handleToggleStar = useCallback(async (msgId, e) => {
+    if (e) { e.stopPropagation(); }
+    const msg = messages.find((m) => m.id === msgId);
+    const isStarred = msg?.labelIds?.includes("STARRED");
+    const action = isStarred ? "unstar" : "star";
+    // Optimistic update
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== msgId) return m;
+        const labels = m.labelIds || [];
+        return { ...m, labelIds: isStarred ? labels.filter((l) => l !== "STARRED") : [...labels, "STARRED"] };
+      })
+    );
+    try {
+      await modifyEmail(msgId, action);
+    } catch (err) {
+      console.error("[ZenGmail] Star toggle failed:", err);
+      fetchInbox();
+    }
+  }, [messages, fetchInbox]);
+
+  // ── Mark Read / Unread ──
+  const handleToggleRead = useCallback(async (msgId, e) => {
+    if (e) { e.stopPropagation(); }
+    const msg = messages.find((m) => m.id === msgId);
+    const isUnread = msg?.labelIds?.includes("UNREAD");
+    const action = isUnread ? "mark_read" : "mark_unread";
+    // Optimistic update
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== msgId) return m;
+        const labels = m.labelIds || [];
+        return { ...m, labelIds: isUnread ? labels.filter((l) => l !== "UNREAD") : [...labels, "UNREAD"] };
+      })
+    );
+    try {
+      await modifyEmail(msgId, action);
+    } catch (err) {
+      console.error("[ZenGmail] Read toggle failed:", err);
+      fetchInbox();
+    }
+  }, [messages, fetchInbox]);
+
+  // ── Reply (opens drawer with reply mode) ──
   const handleReply = useCallback((msg, fullMsg) => {
-    setReplyTo({
-      from: fullMsg?.from || msg.from || "",
-      subject: fullMsg?.subject || msg.subject || "",
-      threadId: fullMsg?.threadId || msg.threadId || "",
-      messageId: fullMsg?.messageId || msg.id || "",
+    openDrawer("email", {
+      ...msg,
+      ...(fullMsg || {}),
+      replyMode: "reply",
+      onSent: () => setTimeout(fetchInbox, 1500),
+      onArchived: (msgId) => {
+        setMessages((prev) => prev.filter((m) => m.id !== msgId));
+      },
+      onTrashed: (msgId) => {
+        setMessages((prev) => prev.filter((m) => m.id !== msgId));
+      },
     });
-    setComposeOpen(true);
-  }, []);
+  }, [openDrawer, fetchInbox]);
 
   // ── After send ──
   const handleSent = useCallback(() => {
     setTimeout(fetchInbox, 1500);
   }, [fetchInbox]);
+
+  // ── Double-click detection (500ms timeout) ──
+  const DOUBLE_CLICK_MS = 500;
+
+  const handleRowClick = useCallback((msg) => {
+    const now = Date.now();
+    const last = lastClickRef.current;
+
+    if (last.id === msg.id && (now - last.time) < DOUBLE_CLICK_MS) {
+      // Double-click — open thread drawer
+      clearTimeout(singleClickTimerRef.current);
+      lastClickRef.current = { id: null, time: 0 };
+      openDrawer("email", {
+        ...msg,
+        onSent: () => setTimeout(fetchInbox, 1500),
+        onArchived: (msgId) => {
+          setMessages((prev) => prev.filter((m) => m.id !== msgId));
+        },
+        onTrashed: (msgId) => {
+          setMessages((prev) => prev.filter((m) => m.id !== msgId));
+        },
+      });
+    } else {
+      // First click — schedule inline expand after timeout
+      lastClickRef.current = { id: msg.id, time: now };
+      clearTimeout(singleClickTimerRef.current);
+      singleClickTimerRef.current = setTimeout(() => {
+        if (lastClickRef.current.id === msg.id) {
+          handleExpand(msg);
+        }
+      }, DOUBLE_CLICK_MS + 50);
+    }
+  }, [openDrawer, handleExpand, fetchInbox]);
 
   return (
     <div style={{
@@ -310,59 +427,106 @@ export default function ZenGmail() {
     }}>
       {/* Header */}
       <div style={{
-        flexShrink: 0, padding: "14px 20px 12px",
+        flexShrink: 0, padding: "14px 20px 8px",
         borderBottom: `1px solid ${C.darkBorder}`,
-        display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
+        {/* Top row: title + compose + refresh */}
         <div style={{
-          fontSize: 18, fontWeight: 600, fontFamily: FONT, color: C.darkText,
-          display: "flex", alignItems: "center", gap: 10,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          marginBottom: 10,
         }}>
-          <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
-            <rect x="1" y="3" width="14" height="10" rx="2" stroke={C.accent} strokeWidth="1.3" fill="none" />
-            <path d="M1 5L8 9L15 5" stroke={C.accent} strokeWidth="1.3" strokeLinecap="round" />
-          </svg>
-          Gmail
+          <div style={{
+            fontSize: 18, fontWeight: 600, fontFamily: FONT, color: C.darkText,
+            display: "flex", alignItems: "center", gap: 10,
+          }}>
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
+              <rect x="1" y="3" width="14" height="10" rx="2" stroke={C.accent} strokeWidth="1.3" fill="none" />
+              <path d="M1 5L8 9L15 5" stroke={C.accent} strokeWidth="1.3" strokeLinecap="round" />
+            </svg>
+            Gmail
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              onClick={() => openDrawer("email", { compose: true, onSent: handleSent })}
+              style={{
+                background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
+                border: "none", cursor: "pointer",
+                padding: "7px 14px", borderRadius: RADIUS.md,
+                fontSize: 12, fontWeight: 600, fontFamily: FONT,
+                color: "#fff", outline: "none",
+                display: "flex", alignItems: "center", gap: 6,
+                minHeight: 32,
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 10 10" fill="none">
+                <path d="M5 1V9M1 5H9" stroke="#fff" strokeWidth="1.3" strokeLinecap="round" />
+              </svg>
+              Compose
+            </button>
+            <button
+              onClick={fetchInbox}
+              title="Refresh"
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                padding: 8, display: "flex", opacity: 0.5,
+                outline: "none", borderRadius: RADIUS.md,
+                transition: "opacity 0.15s",
+                minWidth: 32, minHeight: 32,
+                alignItems: "center", justifyContent: "center",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <path d="M14 2v5h-5" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M12.5 10A5.5 5.5 0 1 1 13 6" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
         </div>
-        <div style={{ display: "flex", gap: 6 }}>
-          {/* Compose button */}
-          <button
-            onClick={() => { setReplyTo(null); setComposeOpen(true); }}
+
+        {/* Search bar */}
+        <div style={{ position: "relative", marginBottom: 8 }}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"
+            style={{ position: "absolute", left: 10, top: 9, pointerEvents: "none" }}>
+            <circle cx="6" cy="6" r="4.5" stroke={C.darkMuted} strokeWidth="1.2" />
+            <path d="M9.5 9.5L12.5 12.5" stroke={C.darkMuted} strokeWidth="1.2" strokeLinecap="round" />
+          </svg>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={handleSearchChange}
+            placeholder="Search emails..."
             style={{
-              background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
-              border: "none", cursor: "pointer",
-              padding: "7px 14px", borderRadius: RADIUS.md,
-              fontSize: 12, fontWeight: 600, fontFamily: FONT,
-              color: "#fff", outline: "none",
-              display: "flex", alignItems: "center", gap: 6,
-              minHeight: 32,
+              width: "100%", boxSizing: "border-box",
+              background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
+              borderRadius: RADIUS.md, padding: "8px 12px 8px 32px",
+              color: C.darkText, fontFamily: FONT, fontSize: 13,
+              outline: "none", transition: "border-color 0.15s",
             }}
-          >
-            <svg width="12" height="12" viewBox="0 0 10 10" fill="none">
-              <path d="M5 1V9M1 5H9" stroke="#fff" strokeWidth="1.3" strokeLinecap="round" />
-            </svg>
-            Compose
-          </button>
-          {/* Refresh button */}
-          <button
-            onClick={fetchInbox}
-            title="Refresh inbox"
-            style={{
-              background: "none", border: "none", cursor: "pointer",
-              padding: 8, display: "flex", opacity: 0.5,
-              outline: "none", borderRadius: RADIUS.md,
-              transition: "opacity 0.15s",
-              minWidth: 32, minHeight: 32,
-              alignItems: "center", justifyContent: "center",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-              <path d="M14 2v5h-5" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M12.5 10A5.5 5.5 0 1 1 13 6" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" />
-            </svg>
-          </button>
+            onFocus={(e) => { e.target.style.borderColor = C.accent; }}
+            onBlur={(e) => { e.target.style.borderColor = C.darkBorder; }}
+          />
+        </div>
+
+        {/* Label tabs */}
+        <div style={{ display: "flex", gap: 4 }}>
+          {LABELS.map((l) => (
+            <button
+              key={l.key}
+              onClick={() => setActiveLabel(l.key)}
+              style={{
+                background: activeLabel === l.key ? C.accent + "22" : "transparent",
+                border: `1px solid ${activeLabel === l.key ? C.accent + "44" : C.darkBorder}`,
+                color: activeLabel === l.key ? C.accent : C.darkMuted,
+                padding: "4px 12px", borderRadius: RADIUS.pill,
+                cursor: "pointer", fontFamily: FONT, fontSize: 11, fontWeight: 600,
+                outline: "none", transition: "all 0.12s",
+              }}
+            >
+              {l.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -419,7 +583,7 @@ export default function ZenGmail() {
               >
                 {/* Message row */}
                 <div
-                  onClick={() => handleExpand(msg)}
+                  onClick={() => handleRowClick(msg)}
                   style={{
                     display: "flex", alignItems: "center", gap: 10,
                     padding: "10px 18px",
@@ -479,6 +643,54 @@ export default function ZenGmail() {
                   }}>
                     {formatDate(msg.date)}
                   </span>
+
+                  {/* Star button */}
+                  {(() => {
+                    const starred = msg.labelIds?.includes("STARRED");
+                    return (
+                      <button
+                        onClick={(e) => handleToggleStar(msg.id, e)}
+                        title={starred ? "Unstar" : "Star"}
+                        style={{
+                          background: "none", border: "none",
+                          cursor: "pointer", padding: 6, display: "flex",
+                          opacity: starred ? 1 : 0.3,
+                          outline: "none", flexShrink: 0,
+                          transition: "opacity 0.12s",
+                          borderRadius: RADIUS.sm, minWidth: 26, minHeight: 26,
+                          alignItems: "center", justifyContent: "center",
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.opacity = starred ? "1" : "0.3"; }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill={starred ? C.accent : "none"}>
+                          <path d="M7 1.5L8.8 5.2L13 5.8L10 8.6L10.7 12.8L7 10.8L3.3 12.8L4 8.6L1 5.8L5.2 5.2L7 1.5Z"
+                            stroke={starred ? C.accent : C.darkMuted} strokeWidth="1.2" strokeLinejoin="round" />
+                        </svg>
+                      </button>
+                    );
+                  })()}
+
+                  {/* Mark read/unread button */}
+                  <button
+                    onClick={(e) => handleToggleRead(msg.id, e)}
+                    title={isUnread ? "Mark read" : "Mark unread"}
+                    style={{
+                      background: "none", border: "none",
+                      cursor: "pointer", padding: 6, display: "flex",
+                      opacity: 0.3, outline: "none", flexShrink: 0,
+                      transition: "opacity 0.12s",
+                      borderRadius: RADIUS.sm, minWidth: 26, minHeight: 26,
+                      alignItems: "center", justifyContent: "center",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.8"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.3"; }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <rect x="1" y="3" width="12" height="8" rx="1.5" stroke={C.darkMuted} strokeWidth="1" fill={isUnread ? "none" : C.darkMuted + "33"} />
+                      <path d="M1 4.5L7 8L13 4.5" stroke={C.darkMuted} strokeWidth="1" strokeLinecap="round" />
+                    </svg>
+                  </button>
 
                   {/* Archive button */}
                   <button
@@ -646,14 +858,8 @@ export default function ZenGmail() {
         )}
       </div>
 
-      {/* Compose / Reply Modal */}
-      {composeOpen && (
-        <ComposeModal
-          onClose={() => { setComposeOpen(false); setReplyTo(null); }}
-          onSent={handleSent}
-          replyTo={replyTo}
-        />
-      )}
+      {/* Drawer for email threads, compose, and reply */}
+      <SashimiDrawer />
     </div>
   );
 }

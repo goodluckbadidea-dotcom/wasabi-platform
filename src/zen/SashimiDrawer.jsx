@@ -1,6 +1,6 @@
 // ─── Sashimi Drawer ───
-// Right-side slide-out drawer for editing tasks and calendar events in Sashimi mode.
-// Wraps the generic Drawer component with TaskEditor and EventEditor sub-components.
+// Right-side slide-out drawer for editing tasks, calendar events, and email threads in Sashimi mode.
+// Wraps the generic Drawer component with TaskEditor, EventEditor, and EmailThreadDrawer sub-components.
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
@@ -13,6 +13,7 @@ import {
 import { updatePage } from "../notion/client.js";
 import { buildProp } from "../notion/properties.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
+import EmailThreadDrawer from "./EmailThreadDrawer.jsx";
 
 // ── Priority colors (aligned to INFO_PALETTE) ──
 const PRIORITY_COLORS = {
@@ -805,15 +806,25 @@ export default function SashimiDrawer({ onTaskUpdated, onTaskDeleted, onEventUpd
 
   if (!drawerItem) return null;
 
-  const title = drawerItem.type === "task" ? "Edit Task" : "Edit Event";
+  const title = drawerItem.type === "task"
+    ? "Edit Task"
+    : drawerItem.type === "email"
+      ? (drawerItem.data?.compose ? "Compose" : "Email")
+      : "Edit Event";
+  const width = drawerItem.type === "email" ? 560 : 420;
 
   return (
-    <Drawer open={!!drawerItem} onClose={closeDrawer} title={title} side="right" width={420}>
+    <Drawer open={!!drawerItem} onClose={closeDrawer} title={title} side="right" width={width}>
       {drawerItem.type === "task" ? (
         <TaskEditor
           task={drawerItem.data}
           onSaved={onTaskUpdated}
           onDeleted={onTaskDeleted}
+          onClose={closeDrawer}
+        />
+      ) : drawerItem.type === "email" ? (
+        <EmailThreadDrawer
+          email={drawerItem.data}
           onClose={closeDrawer}
         />
       ) : (

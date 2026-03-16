@@ -623,6 +623,17 @@ export async function modifyEmail(messageId, action) {
   });
 }
 
+export async function getThread(threadId) {
+  return apiFetch(`/google/gmail/threads/${threadId}`, { method: "GET" });
+}
+
+export async function updateDraft(draftId, { to, subject, bodyText, threadId }) {
+  return apiFetch(`/google/gmail/drafts/${draftId}`, {
+    method: "PUT",
+    body: { to, subject, bodyText, threadId },
+  });
+}
+
 // ─── Google Calendar ───
 
 export async function listCalendars() {

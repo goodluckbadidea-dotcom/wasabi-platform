@@ -1,100 +1,39 @@
 // ─── Zen Notes ───
-// Single scratchpad for Zen mode. Markdown-ready textarea with auto-save.
-// "Save to" creates a new document page in the Samurai page tree.
-// Persisted in R2 via the /docs API.
+// Full block editor scratchpad for Zen mode.
+// Uses DocumentEditor in standalone mode with R2 storage.
+// "Save to" copies the scratchpad into a new Samurai page.
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
+import React, { useState, useCallback, useMemo } from "react";
+import { C, FONT, RADIUS } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { getDocument, saveDocument } from "../lib/api.js";
 import { createStandaloneDocConfig, savePageConfig } from "../config/pageConfig.js";
+import DocumentEditor from "../views/DocumentEditor.jsx";
 
 const DOC_ID = "zen-scratchpad";
-const SAVE_DEBOUNCE = 1500; // Auto-save after 1.5s of inactivity
+
+const PAGE_CONFIG = { id: DOC_ID, standalone: true };
 
 export default function ZenNotes() {
   const { addPage, folders } = usePlatform();
 
-  const [content, setContent] = useState("");
-  const [loaded, setLoaded] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [lastSaved, setLastSaved] = useState(null);
+  const [resetKey, setResetKey] = useState(0);
   const [saveToOpen, setSaveToOpen] = useState(false);
   const [saveToName, setSaveToName] = useState("");
   const [saveToFolder, setSaveToFolder] = useState("");
   const [saveToStatus, setSaveToStatus] = useState(null); // "saving" | "done" | "error"
-  const textareaRef = useRef(null);
-  const debounceRef = useRef(null);
 
-  // ── Load note on mount ──
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        // Try localStorage cache first for instant display
-        const cached = localStorage.getItem("wasabi_zen_notes_cache");
-        if (cached && !cancelled) {
-          setContent(cached);
-        }
-
-        const result = await getDocument(DOC_ID);
-        if (cancelled) return;
-        const text = typeof result?.content === "string"
-          ? result.content
-          : (result?.blocks?.map((b) => b.text || "").join("\n") || "");
-        setContent(text);
-        try { localStorage.setItem("wasabi_zen_notes_cache", text); } catch {}
-      } catch (err) {
-        // 404 is fine — first time use, no note yet
-        if (err?.status !== 404) {
-          console.warn("[ZenNotes] Load failed:", err);
-        }
-      } finally {
-        if (!cancelled) setLoaded(true);
-      }
-    }
-    load();
-    return () => { cancelled = true; };
-  }, []);
-
-  // ── Auto-save with debounce ──
-  const persistNote = useCallback(async (text) => {
-    setSaving(true);
-    try {
-      await saveDocument(DOC_ID, text);
-      try { localStorage.setItem("wasabi_zen_notes_cache", text); } catch {}
-      setLastSaved(new Date());
-    } catch (err) {
-      console.warn("[ZenNotes] Save failed:", err);
-    } finally {
-      setSaving(false);
-    }
-  }, []);
-
-  const handleChange = useCallback((e) => {
-    const text = e.target.value;
-    setContent(text);
-
-    // Debounced auto-save
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => persistNote(text), SAVE_DEBOUNCE);
-  }, [persistNote]);
-
-  // Cleanup debounce on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, []);
-
-  // ── Clear note ──
-  const handleClear = useCallback(() => {
-    if (!content.trim()) return;
+  // ── Clear note (resets editor via key change) ──
+  const handleClear = useCallback(async () => {
     if (!window.confirm("Clear this note? This cannot be undone.")) return;
-    setContent("");
-    persistNote("");
-  }, [content, persistNote]);
+    try {
+      await saveDocument(DOC_ID, { version: 1, blocks: [], word_count: 0 });
+    } catch (err) {
+      console.warn("[ZenNotes] Clear failed:", err);
+    }
+    setResetKey((k) => k + 1);
+  }, []);
 
   // ── Save to Samurai page tree ──
   const handleSaveTo = useCallback(async () => {
@@ -111,10 +50,13 @@ export default function ZenNotes() {
       const id = await savePageConfig(config);
       config.id = id;
 
-      // Save the note content as the document body
-      await saveDocument(id, content);
+      // Copy current scratchpad content to the new document
+      const doc = await getDocument(DOC_ID);
+      if (doc?.content) {
+        await saveDocument(id, doc.content);
+      }
 
-      // Add to Samurai page tree (this also navigates to it)
+      // Add to Samurai page tree
       addPage(config);
 
       setSaveToStatus("done");
@@ -129,15 +71,7 @@ export default function ZenNotes() {
       setSaveToStatus("error");
       setTimeout(() => setSaveToStatus(null), 2000);
     }
-  }, [saveToName, saveToFolder, saveToStatus, content, addPage]);
-
-  // ── Stats ──
-  const stats = useMemo(() => {
-    const chars = content.length;
-    const words = content.trim() ? content.trim().split(/\s+/).length : 0;
-    const lines = content.split("\n").length;
-    return { chars, words, lines };
-  }, [content]);
+  }, [saveToName, saveToFolder, saveToStatus, addPage]);
 
   // ── Folder options for Save To ──
   const folderOptions = useMemo(() => {
@@ -146,17 +80,6 @@ export default function ZenNotes() {
       name: f.name || "Untitled Folder",
     }));
   }, [folders]);
-
-  if (!loaded) {
-    return (
-      <div style={{
-        flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-        color: C.darkMuted, fontFamily: FONT, fontSize: 12,
-      }}>
-        Loading...
-      </div>
-    );
-  }
 
   return (
     <div style={{
@@ -184,18 +107,6 @@ export default function ZenNotes() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          {/* Save status indicator */}
-          {saving && (
-            <span style={{ fontSize: 9, fontFamily: FONT, color: C.darkMuted, opacity: 0.6 }}>
-              Saving...
-            </span>
-          )}
-          {!saving && lastSaved && (
-            <span style={{ fontSize: 9, fontFamily: FONT, color: C.darkMuted, opacity: 0.4 }}>
-              Saved
-            </span>
-          )}
-
           {/* Save To button */}
           <button
             onClick={() => {
@@ -231,14 +142,14 @@ export default function ZenNotes() {
             title="Clear note"
             style={{
               background: "none", border: "none", cursor: "pointer",
-              padding: 8, display: "flex", opacity: content.trim() ? 0.4 : 0.15,
+              padding: 8, display: "flex", opacity: 0.4,
               outline: "none", borderRadius: RADIUS.md,
               transition: "opacity 0.15s",
               minWidth: 30, minHeight: 30,
               alignItems: "center", justifyContent: "center",
             }}
-            onMouseEnter={(e) => { if (content.trim()) e.currentTarget.style.opacity = "0.8"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.opacity = content.trim() ? "0.4" : "0.15"; }}
+            onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.8"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.4"; }}
           >
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
               <path d="M4 4l8 8M12 4l-8 8" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" />
@@ -305,42 +216,9 @@ export default function ZenNotes() {
         </div>
       )}
 
-      {/* ── Textarea ── */}
-      <textarea
-        ref={textareaRef}
-        value={content}
-        onChange={handleChange}
-        placeholder="Start writing...&#10;&#10;Markdown formatting is supported."
-        spellCheck={true}
-        style={{
-          flex: 1,
-          width: "100%",
-          background: "transparent",
-          border: "none",
-          outline: "none",
-          resize: "none",
-          padding: "16px 20px",
-          fontSize: 13,
-          fontFamily: MONO,
-          lineHeight: 1.7,
-          color: C.darkText,
-          caretColor: C.accent,
-          letterSpacing: "0.01em",
-          tabSize: 2,
-        }}
-      />
-
-      {/* ── Footer stats ── */}
-      <div style={{
-        flexShrink: 0, padding: "4px 14px 6px",
-        borderTop: `1px solid ${C.darkBorder}`,
-        fontSize: 9, fontFamily: FONT, color: C.darkMuted,
-        opacity: 0.5,
-        display: "flex", gap: 12,
-      }}>
-        <span>{stats.words} words</span>
-        <span>{stats.lines} lines</span>
-        <span>{stats.chars} chars</span>
+      {/* ── Document Editor ── */}
+      <div style={{ flex: 1, overflow: "hidden" }}>
+        <DocumentEditor key={resetKey} pageConfig={PAGE_CONFIG} />
       </div>
     </div>
   );

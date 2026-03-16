@@ -384,9 +384,18 @@ export default {
         const body = await request.json();
         return await handleGmailSend(env, body);
       }
+      if (path.match(/^\/google\/gmail\/threads\/[^/]+$/) && request.method === "GET") {
+        const threadId = path.split("/google/gmail/threads/")[1];
+        return await handleGmailGetThread(env, threadId);
+      }
       if (path === "/google/gmail/drafts" && request.method === "POST") {
         const body = await request.json();
         return await handleGmailCreateDraft(env, body);
+      }
+      if (path.match(/^\/google\/gmail\/drafts\/[^/]+$/) && request.method === "PUT") {
+        const draftId = path.split("/google/gmail/drafts/")[1];
+        const body = await request.json();
+        return await handleGmailUpdateDraft(env, draftId, body);
       }
       if (path.match(/^\/google\/gmail\/modify\/[^/]+$/) && request.method === "POST") {
         const msgId = path.split("/google/gmail/modify/")[1];
@@ -1691,6 +1700,7 @@ async function handleGmailGetMessage(env, messageId) {
     return jsonResponse({
       id: msg.id,
       threadId: msg.threadId,
+      messageId: headers.find((h) => h.name === "Message-ID" || h.name === "Message-Id")?.value || "",
       subject: headers.find((h) => h.name === "Subject")?.value || "",
       from: headers.find((h) => h.name === "From")?.value || "",
       to: headers.find((h) => h.name === "To")?.value || "",
@@ -1701,6 +1711,98 @@ async function handleGmailGetMessage(env, messageId) {
       snippet: msg.snippet || "",
       labelIds: msg.labelIds || [],
     });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleGmailGetThread(env, threadId) {
+  const tokens = await getGoogleAccessToken(env);
+  if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
+
+  try {
+    const res = await fetch(`${GMAIL_API}/threads/${threadId}?format=full`, {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      return jsonResponse({ _error: `Gmail API error: ${errText}` }, res.status);
+    }
+    const thread = await res.json();
+
+    const messages = (thread.messages || []).map((msg) => {
+      let body = "";
+      let htmlBody = "";
+      function extractBody(part) {
+        if (part.mimeType === "text/plain" && part.body?.data) {
+          body = atob(part.body.data.replace(/-/g, "+").replace(/_/g, "/"));
+        } else if (part.mimeType === "text/html" && part.body?.data) {
+          htmlBody = atob(part.body.data.replace(/-/g, "+").replace(/_/g, "/"));
+        }
+        if (part.parts) part.parts.forEach(extractBody);
+      }
+      if (msg.payload) extractBody(msg.payload);
+
+      const headers = msg.payload?.headers || [];
+      return {
+        id: msg.id,
+        threadId: msg.threadId,
+        messageId: headers.find((h) => h.name === "Message-ID" || h.name === "Message-Id")?.value || "",
+        subject: headers.find((h) => h.name === "Subject")?.value || "",
+        from: headers.find((h) => h.name === "From")?.value || "",
+        to: headers.find((h) => h.name === "To")?.value || "",
+        cc: headers.find((h) => h.name === "Cc")?.value || "",
+        date: headers.find((h) => h.name === "Date")?.value || "",
+        references: headers.find((h) => h.name === "References")?.value || "",
+        body,
+        htmlBody,
+        snippet: msg.snippet || "",
+        labelIds: msg.labelIds || [],
+      };
+    });
+
+    return jsonResponse({ threadId: thread.id, messages });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleGmailUpdateDraft(env, draftId, body) {
+  const tokens = await getGoogleAccessToken(env);
+  if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
+
+  const { to, subject, bodyText, threadId } = body;
+  if (!bodyText && !to && !subject) return jsonResponse({ _error: "Nothing to update" }, 400);
+
+  try {
+    const lines = [
+      to ? `To: ${to}` : "",
+      `Subject: ${subject || ""}`,
+      `Content-Type: text/plain; charset=utf-8`,
+      "",
+      bodyText || "",
+    ].filter((l, i) => i >= 3 || l);
+
+    const raw = btoa(unescape(encodeURIComponent(lines.join("\r\n"))))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+    const payload = { message: { raw } };
+    if (threadId) payload.message.threadId = threadId;
+
+    const res = await fetch(`${GMAIL_API}/drafts/${draftId}`, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${tokens.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ id: draftId, ...payload }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      return jsonResponse({ _error: `Draft update failed: ${errText}` }, res.status);
+    }
+    const result = await res.json();
+    return jsonResponse({ ok: true, id: result.id });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
   }
@@ -3006,9 +3108,11 @@ async function handleSaveDoc(env, id, body) {
   const r2Key = `docs/${id}.json`;
 
   try {
-    // Calculate word count from blocks
+    // Calculate word count from blocks or plain string
     let wordCount = 0;
-    if (content.blocks) {
+    if (typeof content === "string") {
+      wordCount = content.split(/\s+/).filter(Boolean).length;
+    } else if (content.blocks) {
       for (const block of content.blocks) {
         const text = block.content || "";
         wordCount += text.split(/\s+/).filter(Boolean).length;

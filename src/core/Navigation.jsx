@@ -543,34 +543,6 @@ export default function Navigation({
               {!collapsed && <span style={bottomLabelStyle(activePage === "build")}>Build</span>}
             </button>
 
-            {/* Gmail (only when Google connected) */}
-            {googleConnected && (
-              <button
-                onClick={() => setActivePage("gmail")}
-                title="Gmail"
-                style={bottomBtnStyle(activePage === "gmail")}
-                onMouseEnter={(e) => { if (activePage !== "gmail") e.currentTarget.style.background = C.darkSurf2; }}
-                onMouseLeave={(e) => { if (activePage !== "gmail") e.currentTarget.style.background = "transparent"; }}
-              >
-                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                  <IconMail size={iconSize(activePage === "gmail")} color={activePage === "gmail" ? "#fff" : C.darkMuted} />
-                  {unreadCount > 0 && (
-                    <span style={{
-                      position: "absolute", top: -5, right: -8,
-                      background: C.accent, color: "#fff",
-                      fontSize: 10, fontWeight: 700, fontFamily: FONT,
-                      borderRadius: 999, minWidth: 14, height: 14,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      padding: "0 3px", lineHeight: 1,
-                    }}>
-                      {unreadCount > 99 ? "99+" : unreadCount}
-                    </span>
-                  )}
-                </div>
-                {!collapsed && <span style={bottomLabelStyle(activePage === "gmail")}>Gmail</span>}
-              </button>
-            )}
-
             {/* Calendar (only when Google connected) */}
             {googleConnected && (
               <button

@@ -887,9 +887,12 @@ export default function DocumentEditor({ pageId: legacyPageId, config, pageConfi
   const saveTimerRef = useRef(null);
   const blockRefs = useRef({});
   const deletedIdsRef = useRef([]);
+  const loadingRef = useRef(false);
+  const needsMigrationSaveRef = useRef(false);
 
   // ── Load blocks ──
   const loadBlocks = useCallback(async () => {
+    if (loadingRef.current) return; // Guard against StrictMode double-mount
     if (!docId) {
       setLoading(false);
       return;
@@ -901,14 +904,30 @@ export default function DocumentEditor({ pageId: legacyPageId, config, pageConfi
       return;
     }
 
+    loadingRef.current = true;
     try {
       let loaded;
 
       if (isStandalone) {
         // ── Standalone: load from R2 ──
         const doc = await getDocument(docId);
-        const r2Blocks = doc?.content?.blocks || doc?.blocks || [];
-        loaded = r2Blocks.map((b) => r2BlockToEditor(b));
+        let r2Blocks = doc?.content?.blocks || doc?.blocks || [];
+
+        // Migrate plain-text content to blocks (one-time for legacy scratchpads)
+        let migrated = false;
+        if (!r2Blocks.length && typeof doc?.content === "string" && doc.content.trim()) {
+          r2Blocks = doc.content.split("\n").map((line) => ({
+            id: tempId(), type: "paragraph", content: line, rich_text: [],
+          }));
+          migrated = true;
+        }
+
+        loaded = r2Blocks.map((b) => {
+          const block = r2BlockToEditor(b);
+          if (migrated) { block._dirty = true; block._isNew = true; }
+          return block;
+        });
+        if (migrated) needsMigrationSaveRef.current = true;
       } else {
         // ── Notion-backed: load from Notion API ──
         const result = await getBlocks(user.workerUrl, user.notionKey, docId);
@@ -931,6 +950,7 @@ export default function DocumentEditor({ pageId: legacyPageId, config, pageConfi
       setError(err.message);
     } finally {
       setLoading(false);
+      loadingRef.current = false;
     }
   }, [user, docId, isStandalone]);
 
@@ -1029,18 +1049,29 @@ export default function DocumentEditor({ pageId: legacyPageId, config, pageConfi
     }
   }, [blocks, user, docId, isStandalone]);
 
+  // Trigger save immediately after migration loads dirty blocks
+  useEffect(() => {
+    if (needsMigrationSaveRef.current && !loading && blocks.some((b) => b._dirty)) {
+      needsMigrationSaveRef.current = false;
+      performSave();
+    }
+  }, [loading, blocks, performSave]);
+
   const scheduleSave = useCallback(() => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     setSaveStatus("unsaved");
     saveTimerRef.current = setTimeout(performSave, SAVE_DEBOUNCE_MS);
   }, [performSave]);
 
-  // Cleanup timer
+  // Flush pending save on unmount (standalone only)
   useEffect(() => {
     return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        if (isStandalone) performSave();
+      }
     };
-  }, []);
+  }, [isStandalone, performSave]);
 
   // ── Block Operations ──
 
