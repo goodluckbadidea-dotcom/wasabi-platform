@@ -336,6 +336,7 @@ function GoogleConnectionRow({ connected, email, onConnect, onDisconnect, loadin
 
 export default function SystemManager() {
   const { user, platformIds, pages, updatePageConfig, workerConnection, updateConnectionKey } = usePlatform();
+  const { appMode } = useTheme();
 
   // ── Tab state ──
   const [tab, setTab] = useState("overview");
@@ -574,12 +575,14 @@ export default function SystemManager() {
           >
             Connections
           </button>
-          <button
-            style={tabBtn(tab === "workspaces")}
-            onClick={() => setTab("workspaces")}
-          >
-            Workspaces
-          </button>
+          {appMode !== "zen" && (
+            <button
+              style={tabBtn(tab === "workspaces")}
+              onClick={() => setTab("workspaces")}
+            >
+              Workspaces
+            </button>
+          )}
           <button
             style={tabBtn(tab === "settings")}
             onClick={() => setTab("settings")}
@@ -1034,7 +1037,7 @@ export default function SystemManager() {
         )}
 
         {/* ═══ WORKSPACES TAB ═══ */}
-        {tab === "workspaces" && <WorkspacesTab />}
+        {tab === "workspaces" && appMode !== "zen" && <WorkspacesTab />}
 
         {/* ═══ SETTINGS TAB ═══ */}
         {tab === "settings" && <SettingsTab />}
