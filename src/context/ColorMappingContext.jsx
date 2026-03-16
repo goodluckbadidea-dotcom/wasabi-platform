@@ -110,6 +110,7 @@ export function ColorMappingProvider({ children }) {
         views: [],
         colorField: updates.colorField ?? null,
         colorMapping: updates.colorMapping || {},
+        dateChipColors: updates.dateChipColors || null,
       };
       try {
         const id = await savePageConfig(newConfig);
@@ -124,7 +125,7 @@ export function ColorMappingProvider({ children }) {
   const resetViewColorConfig = useCallback(async (viewKey) => {
     const existing = viewConfigs.find((p) => p.viewKey === viewKey);
     if (existing?.id) {
-      updatePageConfig(existing.id, { colorField: null, colorMapping: {} });
+      updatePageConfig(existing.id, { colorField: null, colorMapping: {}, dateChipColors: null });
     }
   }, [viewConfigs, updatePageConfig]);
 
