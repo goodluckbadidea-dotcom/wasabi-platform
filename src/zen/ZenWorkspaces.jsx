@@ -8,7 +8,9 @@ import { C, FONT, RADIUS } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { useTheme } from "../context/ThemeContext.jsx";
-import { IconFolder, IconSearch, IconChevronRight, IconGlobe } from "../design/icons.jsx";
+import { IconFolder, IconSearch, IconChevronRight, IconGlobe, IconGear } from "../design/icons.jsx";
+import { useSashimiDrawer } from "./SashimiDrawerContext.jsx";
+import SashimiDrawer from "./SashimiDrawer.jsx";
 
 // ── Card hover helpers ──
 function applyHover(e) {
@@ -36,6 +38,7 @@ function PageIcon({ size = 16, color = C.accent }) {
 export default function ZenWorkspaces() {
   const { pageTree, pages, setActivePage, setActiveFolder } = usePlatform();
   const { setAppMode } = useTheme();
+  const { openDrawer } = useSashimiDrawer();
 
   // Breadcrumb path: array of { id, name, node }
   const [path, setPath] = useState([]);
@@ -122,6 +125,11 @@ export default function ZenWorkspaces() {
     setActivePage(page.id);
     if (page.parentId) setActiveFolder(page.parentId);
   }, [setAppMode, setActivePage, setActiveFolder]);
+
+  const handleOpenSettings = useCallback((e, item) => {
+    e.stopPropagation();
+    openDrawer("workspace-settings", item);
+  }, [openDrawer]);
 
   const handleBreadcrumb = useCallback((index) => {
     // index -1 = home (root)
@@ -304,11 +312,29 @@ export default function ZenWorkspaces() {
               onMouseEnter={applyHover}
               onMouseLeave={removeHover}
             >
-              {item.itemType === "folder" ? (
-                <IconFolder size={18} color={C.accent} />
-              ) : (
-                <PageIcon size={18} color={C.accent} />
-              )}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                {item.itemType === "folder" ? (
+                  <IconFolder size={18} color={C.accent} />
+                ) : (
+                  <PageIcon size={18} color={C.accent} />
+                )}
+                {path.length === 0 && item.itemType === "folder" && (
+                  <button
+                    onClick={(e) => handleOpenSettings(e, item)}
+                    style={{
+                      background: "none", border: "none", cursor: "pointer",
+                      padding: 4, borderRadius: RADIUS.sm, display: "flex",
+                      alignItems: "center", justifyContent: "center",
+                      opacity: 0.4, transition: "opacity 0.15s",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.4"; }}
+                    title="Workspace settings"
+                  >
+                    <IconGear size={14} color={C.darkMuted} />
+                  </button>
+                )}
+              </div>
               <div style={styles.cardTitle}>{item.name}</div>
               <div style={styles.cardMeta}>
                 {item.itemType === "folder"
@@ -329,6 +355,9 @@ export default function ZenWorkspaces() {
           }
         </div>
       )}
+
+      {/* Drawer for workspace settings */}
+      <SashimiDrawer />
     </div>
   );
 }

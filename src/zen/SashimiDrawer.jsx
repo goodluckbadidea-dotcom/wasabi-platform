@@ -880,6 +880,181 @@ function EventEditor({ event, onSaved, onDeleted, onClose }) {
 }
 
 // ════════════════════════════════════════════
+// WorkspaceSettingsEditor
+// ════════════════════════════════════════════
+function WorkspaceSettingsEditor({ workspace, onClose }) {
+  const { pages, updatePageConfig } = usePlatform();
+
+  // Find the pageConfig for this workspace
+  const pageConfig = pages.find((p) => p.id === workspace.id) || workspace;
+  const settings = pageConfig.settings || pageConfig.config?.settings || {};
+
+  const [instructions, setInstructions] = useState(settings.aiInstructions || "");
+  const [model, setModel] = useState(settings.defaultModel || "auto");
+  const [agentMode, setAgentMode] = useState(settings.agentMode || "auto");
+  const [autoKb, setAutoKb] = useState(settings.autoSearchKb !== false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Reset when workspace changes
+  useEffect(() => {
+    const s = pageConfig.settings || pageConfig.config?.settings || {};
+    setInstructions(s.aiInstructions || "");
+    setModel(s.defaultModel || "auto");
+    setAgentMode(s.agentMode || "auto");
+    setAutoKb(s.autoSearchKb !== false);
+    setError(null);
+  }, [workspace.id]);
+
+  const handleSave = useCallback(() => {
+    setSaving(true);
+    setError(null);
+    try {
+      const newSettings = {
+        aiInstructions: instructions,
+        defaultModel: model,
+        agentMode,
+        autoSearchKb: autoKb,
+        kbCategories: settings.kbCategories || [],
+      };
+      updatePageConfig(pageConfig.id, { settings: newSettings });
+      onClose();
+    } catch (err) {
+      console.error("[SashimiDrawer] Save workspace settings failed:", err);
+      setError("Failed to save settings.");
+    } finally {
+      setSaving(false);
+    }
+  }, [pageConfig.id, instructions, model, agentMode, autoKb, settings.kbCategories, updatePageConfig, onClose]);
+
+  const handleCancel = useCallback(() => {
+    onClose();
+  }, [onClose]);
+
+  const radioBtn = (active) => ({
+    flex: 1, padding: "10px 12px",
+    background: active ? C.accent + "18" : C.darkSurf2,
+    border: `1px solid ${active ? C.accent + "55" : C.darkBorder}`,
+    borderRadius: RADIUS.md, cursor: "pointer", fontFamily: FONT,
+    fontSize: 12, fontWeight: active ? 600 : 400,
+    color: active ? C.accent : C.darkMuted,
+    transition: "all 0.15s", outline: "none", textAlign: "center",
+  });
+
+  return (
+    <div>
+      {/* AI Instructions */}
+      <div style={fieldGroup}>
+        <label style={labelStyle}>AI Instructions</label>
+        <div style={{ fontSize: 11, color: C.darkMuted, marginBottom: 8 }}>
+          Custom instructions injected into the system prompt for this workspace.
+        </div>
+        <textarea
+          value={instructions}
+          onChange={(e) => setInstructions(e.target.value)}
+          placeholder={"e.g. This workspace tracks inventory for our retail stores.\nAlways check the Products database before suggesting new items."}
+          rows={5}
+          style={{ ...inputStyle, resize: "vertical", minHeight: 100, lineHeight: 1.6 }}
+          onFocus={(e) => { e.target.style.borderColor = C.accent; }}
+          onBlur={(e) => { e.target.style.borderColor = C.darkBorder; }}
+        />
+      </div>
+
+      {/* Default Model */}
+      <div style={fieldGroup}>
+        <label style={labelStyle}>Default Model</label>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button style={radioBtn(model === "auto")} onClick={() => setModel("auto")}>Auto</button>
+          <button style={radioBtn(model === "haiku")} onClick={() => setModel("haiku")}>Haiku (Fast)</button>
+          <button style={radioBtn(model === "sonnet")} onClick={() => setModel("sonnet")}>Sonnet (Powerful)</button>
+        </div>
+        <div style={{ fontSize: 11, color: C.darkMuted, marginTop: 6 }}>
+          Auto routes simple queries to Haiku and complex ones to Sonnet.
+        </div>
+      </div>
+
+      {/* Agent Behavior */}
+      <div style={fieldGroup}>
+        <label style={labelStyle}>Agent Behavior</label>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button style={radioBtn(agentMode === "auto")} onClick={() => setAgentMode("auto")}>Auto-Accept</button>
+          <button style={radioBtn(agentMode === "confirm")} onClick={() => setAgentMode("confirm")}>Ask Permission</button>
+          <button style={radioBtn(agentMode === "plan")} onClick={() => setAgentMode("plan")}>Plan Mode</button>
+        </div>
+        <div style={{ fontSize: 11, color: C.darkMuted, marginTop: 6 }}>
+          {agentMode === "auto" && "Execute actions immediately without asking."}
+          {agentMode === "confirm" && "Ask before creating, updating, or deleting records."}
+          {agentMode === "plan" && "Present a plan before taking any actions."}
+        </div>
+      </div>
+
+      {/* Knowledge Base */}
+      <div style={fieldGroup}>
+        <label style={labelStyle}>Knowledge Base</label>
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "8px 0",
+        }}>
+          <div>
+            <div style={{ fontSize: 13, color: C.darkText, fontFamily: FONT }}>Auto-search Knowledge Base</div>
+            <div style={{ fontSize: 11, color: C.darkMuted, marginTop: 2 }}>
+              Search your KB for relevant context before every response.
+            </div>
+          </div>
+          <div
+            style={{
+              width: 36, height: 20, borderRadius: 10,
+              background: autoKb ? C.accent : C.darkSurf2,
+              border: `1px solid ${autoKb ? C.accent : C.darkBorder}`,
+              position: "relative", cursor: "pointer", transition: "all 0.2s", flexShrink: 0,
+            }}
+            onClick={() => setAutoKb(!autoKb)}
+          >
+            <div style={{
+              width: 16, height: 16, borderRadius: "50%",
+              background: autoKb ? "#fff" : C.darkMuted,
+              position: "absolute", top: 1, left: autoKb ? 17 : 1,
+              transition: "all 0.2s",
+            }} />
+          </div>
+        </div>
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div style={{
+          fontSize: 11, fontFamily: FONT, color: "#E05252",
+          marginBottom: 12, padding: "6px 10px",
+          background: "#E0525215", borderRadius: RADIUS.md,
+        }}>{error}</div>
+      )}
+
+      {/* Save / Cancel */}
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <button onClick={handleSave} disabled={saving}
+          style={{
+            flex: 1, padding: "10px 16px", borderRadius: RADIUS.md,
+            background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
+            color: "#fff", border: "none", fontSize: 13,
+            fontWeight: 600, fontFamily: FONT, cursor: saving ? "wait" : "pointer",
+            outline: "none", opacity: saving ? 0.7 : 1, transition: "opacity 0.15s",
+          }}
+        >{saving ? "Saving..." : "Save"}</button>
+        <button onClick={handleCancel}
+          style={{
+            padding: "10px 16px", borderRadius: RADIUS.md,
+            background: "transparent",
+            color: C.darkMuted, border: `1.5px solid ${C.darkBorder}`,
+            fontSize: 13, fontWeight: 600, fontFamily: FONT,
+            cursor: "pointer", outline: "none", transition: "all 0.15s",
+          }}
+        >Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════
 // SashimiDrawer (main export)
 // ════════════════════════════════════════════
 export default function SashimiDrawer({ onTaskUpdated, onTaskDeleted, onEventUpdated, onEventDeleted }) {
@@ -891,8 +1066,10 @@ export default function SashimiDrawer({ onTaskUpdated, onTaskDeleted, onEventUpd
     ? "Edit Task"
     : drawerItem.type === "email"
       ? (drawerItem.data?.compose ? "Compose" : "Email")
-      : "Edit Event";
-  const width = drawerItem.type === "email" ? 560 : 420;
+      : drawerItem.type === "workspace-settings"
+        ? `${drawerItem.data?.name || "Workspace"} Settings`
+        : "Edit Event";
+  const width = drawerItem.type === "email" ? 560 : 480;
 
   return (
     <Drawer open={!!drawerItem} onClose={closeDrawer} title={title} side="right" width={width}>
@@ -906,6 +1083,11 @@ export default function SashimiDrawer({ onTaskUpdated, onTaskDeleted, onEventUpd
       ) : drawerItem.type === "email" ? (
         <EmailThreadDrawer
           email={drawerItem.data}
+          onClose={closeDrawer}
+        />
+      ) : drawerItem.type === "workspace-settings" ? (
+        <WorkspaceSettingsEditor
+          workspace={drawerItem.data}
           onClose={closeDrawer}
         />
       ) : (
