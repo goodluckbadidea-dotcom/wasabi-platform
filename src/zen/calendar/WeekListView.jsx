@@ -39,7 +39,7 @@ function formatDateHeader(date) {
   return `${DAY_NAMES[date.getDay()]}, ${MONTH_NAMES[date.getMonth()]} ${date.getDate()}`;
 }
 
-export default function WeekListView({ selectedDate, events, tasks, onDayClick, hiddenCalendars, onEventClick, onTaskClick }) {
+export default function WeekListView({ selectedDate, events, tasks, onDayClick, hiddenCalendars, calendarColorMap, onEventClick, onTaskClick }) {
   const scrollRef = useRef(null);
   const todayRef = useRef(null);
   const hidden = hiddenCalendars || new Set();
@@ -162,7 +162,8 @@ export default function WeekListView({ selectedDate, events, tasks, onDayClick, 
             {/* Events + Tasks */}
             <div style={{ padding: "2px 14px 8px" }}>
               {dayEvents.map((ev) => {
-                const color = mapCalendarColor(ev.calendarColor) || C.accent;
+                const calName = ev.calendarName || ev.calendarId;
+                const color = (calendarColorMap && calName && calendarColorMap[calName]) || mapCalendarColor(ev.calendarColor) || C.accent;
                 const isAllDay = ev.start?.date && !ev.start?.dateTime;
                 const idx = itemIndex++;
                 return isAllDay ? (

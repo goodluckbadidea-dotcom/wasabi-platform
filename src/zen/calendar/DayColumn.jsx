@@ -13,7 +13,7 @@ const HOUR_START = 7;
 const HOUR_END = 22;
 const HOUR_HEIGHT = 48;
 
-export default function DayColumn({ date, events, tasks, isToday: isTodayProp, hiddenCalendars, onEventClick, onTaskClick }) {
+export default function DayColumn({ date, events, tasks, isToday: isTodayProp, hiddenCalendars, calendarColorMap, onEventClick, onTaskClick }) {
   const nowLineRef = useRef(null);
   const scrollRef = useRef(null);
 
@@ -82,7 +82,8 @@ export default function DayColumn({ date, events, tasks, isToday: isTodayProp, h
           {allDayEvents.length > 0 && (
             <div style={{ marginBottom: dateOnlyTasks.length > 0 ? 4 : 0 }}>
               {allDayEvents.map((ev) => {
-                const color = mapCalendarColor(ev.calendarColor) || C.accent;
+                const calName = ev.calendarName || ev.calendarId;
+                const color = (calendarColorMap && calName && calendarColorMap[calName]) || mapCalendarColor(ev.calendarColor) || C.accent;
                 return (
                   <div key={ev.id} onClick={() => onEventClick?.(ev)} style={{
                     display: "flex", alignItems: "center", gap: 6,
@@ -192,6 +193,7 @@ export default function DayColumn({ date, events, tasks, isToday: isTodayProp, h
             hourHeight={HOUR_HEIGHT}
             hourStart={HOUR_START}
             onClick={onEventClick}
+            calendarColorMap={calendarColorMap}
           />
         ))}
 

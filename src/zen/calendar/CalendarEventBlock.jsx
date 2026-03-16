@@ -6,8 +6,9 @@ import React from "react";
 import { C, FONT, RADIUS, mapCalendarColor } from "../../design/tokens.js";
 import { formatTime } from "../zenTaskHelpers.js";
 
-export default function CalendarEventBlock({ event, hourHeight, hourStart, onClick }) {
-  const color = mapCalendarColor(event.calendarColor) || C.accent;
+export default function CalendarEventBlock({ event, hourHeight, hourStart, onClick, calendarColorMap }) {
+  const calName = event.calendarName || event.calendarId;
+  const color = (calendarColorMap && calName && calendarColorMap[calName]) || mapCalendarColor(event.calendarColor) || C.accent;
   const start = event.start?.dateTime ? new Date(event.start.dateTime) : null;
   const end = event.end?.dateTime ? new Date(event.end.dateTime) : null;
   if (!start) return null;

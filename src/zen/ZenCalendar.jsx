@@ -5,7 +5,7 @@
 // Includes a filter dropdown to toggle individual calendars on/off.
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { C, FONT, RADIUS } from "../design/tokens.js";
+import { C, FONT, RADIUS, VIEW_PALETTE } from "../design/tokens.js";
 import { IconEdit } from "../design/icons.jsx";
 import { getGoogleStatus, listCalendarEvents } from "../lib/api.js";
 import { isSameDay, getWeekRange, getMonthRange, getListViewRange, formatWeekDateHeader, formatMonthHeader } from "./zenTaskHelpers.js";
@@ -70,6 +70,21 @@ export default function ZenCalendar({ allTasks, refreshRef }) {
       dates: [],
     };
   }, [calendars]);
+
+  // Resolve calendar name → palette hex from color mapping context
+  const calendarColorMap = useMemo(() => {
+    const viewConfig = getViewColorConfig("zen-calendar");
+    const viewMapping = viewConfig?.colorMapping || {};
+    const map = {};
+    for (const cal of calendars) {
+      const name = cal.summary || cal.id;
+      const idx = viewMapping[name] ?? globalColorMapping?.[name];
+      if (idx !== undefined) {
+        map[name] = VIEW_PALETTE[idx]?.hex || null;
+      }
+    }
+    return map;
+  }, [calendars, getViewColorConfig, globalColorMapping]);
 
   const today = useMemo(() => new Date(), []);
   const isViewingToday = isSameDay(selectedDate, today);
@@ -372,6 +387,7 @@ export default function ZenCalendar({ allTasks, refreshRef }) {
           tasks={allTasks}
           isToday={isViewingToday}
           hiddenCalendars={hiddenCalendars}
+          calendarColorMap={calendarColorMap}
           onEventClick={handleEventClick}
           onTaskClick={handleTaskClick}
         />
@@ -382,6 +398,7 @@ export default function ZenCalendar({ allTasks, refreshRef }) {
           tasks={allTasks}
           onDayClick={handleDayClick}
           hiddenCalendars={hiddenCalendars}
+          calendarColorMap={calendarColorMap}
           onEventClick={handleEventClick}
           onTaskClick={handleTaskClick}
         />
@@ -392,6 +409,7 @@ export default function ZenCalendar({ allTasks, refreshRef }) {
           tasks={allTasks}
           onDayClick={handleDayClick}
           hiddenCalendars={hiddenCalendars}
+          calendarColorMap={calendarColorMap}
           onEventClick={handleEventClick}
           onTaskClick={handleTaskClick}
         />

@@ -23,7 +23,7 @@ function getTaskBarColor(t) {
 const DAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MAX_VISIBLE_ITEMS = 2;
 
-export default function MonthGrid({ monthDate, events, tasks, onDayClick, hiddenCalendars, onEventClick, onTaskClick }) {
+export default function MonthGrid({ monthDate, events, tasks, onDayClick, hiddenCalendars, calendarColorMap, onEventClick, onTaskClick }) {
   const hidden = hiddenCalendars || new Set();
   const today = useMemo(() => new Date(), []);
   const currentMonth = monthDate.getMonth();
@@ -151,7 +151,8 @@ export default function MonthGrid({ monthDate, events, tasks, onDayClick, hidden
 
               {/* Event pills */}
               {dayEvents.slice(0, MAX_VISIBLE_ITEMS).map((ev, i) => {
-                const color = mapCalendarColor(ev.calendarColor) || C.accent;
+                const calName = ev.calendarName || ev.calendarId;
+                const color = (calendarColorMap && calName && calendarColorMap[calName]) || mapCalendarColor(ev.calendarColor) || C.accent;
                 const isAllDay = ev.start?.date && !ev.start?.dateTime;
                 return isAllDay ? (
                   <div key={ev.id || i} onClick={(e) => { e.stopPropagation(); onEventClick?.(ev); }} style={{
