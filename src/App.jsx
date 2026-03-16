@@ -52,6 +52,7 @@ const ZenNotes = React.lazy(() => import("./zen/ZenNotes.jsx"));
 const ZenDashboard = React.lazy(() => import("./zen/ZenDashboard.jsx"));
 const ZenGmail = React.lazy(() => import("./zen/ZenGmail.jsx"));
 const ZenWorkspaces = React.lazy(() => import("./zen/ZenWorkspaces.jsx"));
+const ZenKnowledgeHub = React.lazy(() => import("./zen/ZenKnowledgeHub.jsx"));
 
 // Inject CSS animations on app load
 injectAnimations();
@@ -337,6 +338,18 @@ function AppContent() {
             </div>
           }>
             <ZenWorkspaces />
+          </React.Suspense>
+        );
+      }
+      // Zen Knowledge Hub (KB, Automations, Functions, Build)
+      if (activePage === "zen-knowledge") {
+        return (
+          <React.Suspense fallback={
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
+              Loading...
+            </div>
+          }>
+            <ZenKnowledgeHub />
           </React.Suspense>
         );
       }

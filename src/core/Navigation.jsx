@@ -353,6 +353,18 @@ export default function Navigation({
               </button>
             )}
 
+            {/* Knowledge Base */}
+            <button
+              onClick={() => { setActivePage("zen-knowledge"); setActiveFolder(null); }}
+              title="Knowledge Base"
+              style={bottomBtnStyle(activePage === "zen-knowledge")}
+              onMouseEnter={(e) => { if (activePage !== "zen-knowledge") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activePage !== "zen-knowledge") e.currentTarget.style.background = "transparent"; }}
+            >
+              <IconBrain size={iconSize(activePage === "zen-knowledge")} color={activePage === "zen-knowledge" ? "#fff" : C.darkMuted} />
+              {!collapsed && <span style={bottomLabelStyle(activePage === "zen-knowledge")}>Knowledge Base</span>}
+            </button>
+
             {/* Settings */}
             <button
               onClick={() => setActivePage("system")}
