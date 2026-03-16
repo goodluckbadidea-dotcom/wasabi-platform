@@ -4,10 +4,11 @@
 // No emojis. Dark theme. Inline CSS-in-JS.
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { C, FONT, MONO, RADIUS, THEME_LIST, THEMES } from "../design/tokens.js";
+import { C, FONT, MONO, RADIUS, THEME_LIST, THEMES, VIEW_PALETTE } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { useTheme } from "../context/ThemeContext.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
+import { useColorMapping } from "../context/ColorMappingContext.jsx";
 import WorkspaceSettings from "../views/WorkspaceSettings.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
 import { IconGear } from "../design/icons.jsx";
@@ -1054,8 +1055,16 @@ export default function SystemManager() {
 
 function SettingsTab() {
   const { themeName, setThemeName } = useTheme();
+  const { globalColorMapping, globalConfig, updateGlobalDefaults } = useColorMapping();
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [draftMapping, setDraftMapping] = useState(globalColorMapping || {});
+  const [mappingDirty, setMappingDirty] = useState(false);
+
+  // Sync draft when global config changes externally
+  useEffect(() => {
+    if (!mappingDirty) setDraftMapping(globalColorMapping || {});
+  }, [globalColorMapping, mappingDirty]);
 
   const handleLogout = useCallback(() => {
     clearConnection();
@@ -1221,6 +1230,113 @@ function SettingsTab() {
       {/* Mode indicator (inherent to theme) */}
       <div style={{ fontSize: 10, color: C.darkMuted, fontFamily: FONT, marginBottom: 0 }}>
         Mode is set by theme selection
+      </div>
+
+      {/* ── Default Color Mapping ── */}
+      <div
+        style={{
+          fontSize: 10,
+          color: C.darkMuted,
+          fontFamily: FONT,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          marginTop: 40,
+          marginBottom: 14,
+        }}
+      >
+        Default Color Mapping
+      </div>
+
+      <p style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT, margin: "0 0 12px", lineHeight: 1.4 }}>
+        Set global color defaults for status and priority values. Views inherit these unless overridden.
+      </p>
+
+      <div style={{
+        background: C.darkSurf,
+        border: `1px solid ${C.darkBorder}`,
+        borderRadius: RADIUS.lg,
+        padding: "14px 16px",
+        marginBottom: 12,
+        maxHeight: 400,
+        overflowY: "auto",
+      }}>
+        {Object.entries(draftMapping).map(([name, paletteIdx]) => (
+          <div key={name} style={{ marginBottom: 10 }}>
+            <div style={{
+              fontSize: 11,
+              fontWeight: 500,
+              color: C.darkText,
+              fontFamily: FONT,
+              marginBottom: 4,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}>
+              <span style={{
+                width: 8, height: 8, borderRadius: "50%",
+                background: VIEW_PALETTE[paletteIdx]?.hex || C.darkMuted,
+                flexShrink: 0,
+              }} />
+              {name}
+            </div>
+            <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+              {VIEW_PALETTE.map((p, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    setDraftMapping((prev) => ({ ...prev, [name]: idx }));
+                    setMappingDirty(true);
+                  }}
+                  title={p.key}
+                  style={{
+                    width: 18, height: 18, borderRadius: RADIUS.sm,
+                    background: p.hex,
+                    border: paletteIdx === idx ? "2px solid #fff" : "2px solid transparent",
+                    outline: paletteIdx === idx ? `2px solid ${C.accent}` : "none",
+                    cursor: "pointer",
+                    transition: "all 0.1s",
+                    flexShrink: 0,
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Save / Reset buttons */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 28 }}>
+        <button
+          onClick={() => {
+            setDraftMapping(globalColorMapping || {});
+            setMappingDirty(false);
+          }}
+          style={{
+            flex: 1, padding: "8px 12px", fontSize: 12, fontWeight: 500,
+            fontFamily: FONT, border: `1px solid ${C.darkBorder}`,
+            borderRadius: RADIUS.md, background: "transparent",
+            color: C.darkMuted, cursor: "pointer",
+          }}
+        >
+          Reset
+        </button>
+        <button
+          onClick={() => {
+            updateGlobalDefaults({ colorMapping: draftMapping });
+            setMappingDirty(false);
+          }}
+          disabled={!mappingDirty}
+          style={{
+            flex: 1, padding: "8px 12px", fontSize: 12, fontWeight: 600,
+            fontFamily: FONT, border: "none", borderRadius: RADIUS.md,
+            background: mappingDirty ? C.accent : C.darkSurf2,
+            color: mappingDirty ? "#fff" : C.darkMuted,
+            cursor: mappingDirty ? "pointer" : "default",
+            transition: "all 0.15s",
+          }}
+        >
+          Save Defaults
+        </button>
       </div>
 
       {/* ── Account ── */}

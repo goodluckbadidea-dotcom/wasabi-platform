@@ -1,8 +1,11 @@
 // ─── View Settings Panel ───
 // Per-view configuration panel for color coding, visible properties, sort, card size, and bar labels.
 // Shared across all view types — sections render conditionally based on viewType.
+// Supports two modes:
+//   1. Inline (Sushi Roll): changes apply immediately via onConfigChange
+//   2. Unified (all views): buffered edits with Save/Reset, integrated with ColorMappingContext
 
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { C, FONT, RADIUS, SHADOW, VIEW_PALETTE } from "../design/tokens.js";
 import { IconClose, IconGear } from "../design/icons.jsx";
 import { ANIM } from "../design/animations.js";
@@ -26,11 +29,12 @@ function SectionLabel({ children }) {
 
 // ─── Color Swatch Row ───
 
-function PalettePicker({ value, onChange }) {
+function PalettePicker({ value, onChange, inheritedIdx }) {
   return (
     <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
       {VIEW_PALETTE.map((p, idx) => {
         const isActive = value === idx;
+        const isInherited = inheritedIdx === idx && value === undefined;
         return (
           <button
             key={idx}
@@ -41,11 +45,16 @@ function PalettePicker({ value, onChange }) {
               height: 20,
               borderRadius: RADIUS.sm,
               background: p.hex,
-              border: isActive ? "2px solid #fff" : "2px solid transparent",
+              border: isActive
+                ? "2px solid #fff"
+                : isInherited
+                  ? `2px dashed ${C.darkMuted}`
+                  : "2px solid transparent",
               outline: isActive ? `2px solid ${C.accent}` : "none",
               cursor: "pointer",
               transition: "all 0.1s",
               flexShrink: 0,
+              opacity: isInherited && !isActive ? 0.7 : 1,
             }}
           />
         );
@@ -152,23 +161,187 @@ function FieldListBox({ children, maxHeight = 180 }) {
   );
 }
 
+// ─── Source Badge (inherited vs custom) ───
+
+function SourceBadge({ source }) {
+  if (!source) return null;
+  const isInherited = source === "inherited";
+  return (
+    <span style={{
+      fontSize: 9,
+      fontWeight: 500,
+      padding: "1px 5px",
+      borderRadius: RADIUS.sm,
+      background: isInherited ? C.darkSurf2 : C.accent + "22",
+      color: isInherited ? C.darkMuted : C.accent,
+      marginLeft: 4,
+      flexShrink: 0,
+    }}>
+      {isInherited ? "inherited" : "custom"}
+    </span>
+  );
+}
+
+// ─── Color Mapping Section (shared between modes) ───
+
+function ColorMappingSection({
+  colorableFields,
+  colorField,
+  colorOptions,
+  colorMapping,
+  globalColorMapping,
+  onColorFieldChange,
+  onColorMappingChange,
+  isGantt,
+  colorMode,
+  onColorModeChange,
+  showInheritedBadges,
+}) {
+  return (
+    <>
+      {/* Color Mode (Gantt only) */}
+      {isGantt && (
+        <>
+          <SectionLabel>Color Mode</SectionLabel>
+          <ToggleButtons
+            options={[
+              { key: "dateField", label: "By Date Field" },
+              { key: "property", label: "By Property" },
+            ]}
+            value={colorMode}
+            onChange={onColorModeChange}
+          />
+        </>
+      )}
+
+      {/* Color Source */}
+      {colorableFields.length > 0 && (
+        <>
+          <SectionLabel>Color Source</SectionLabel>
+          <StyledSelect
+            value={colorField}
+            onChange={onColorFieldChange}
+            placeholder="Auto-detect"
+          >
+            {colorableFields.map((f) => (
+              <option key={f.name} value={f.name}>{f.name} ({f.type})</option>
+            ))}
+          </StyledSelect>
+        </>
+      )}
+
+      {/* Color Mapping */}
+      {colorOptions.length > 0 && (colorMode === "property" || !isGantt) && (
+        <>
+          <SectionLabel>Color Mapping</SectionLabel>
+          <div style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            background: C.dark,
+            borderRadius: RADIUS.lg,
+            padding: "10px 12px",
+            border: `1px solid ${C.edgeLine}`,
+          }}>
+            {colorOptions.map((opt) => {
+              const currentIdx = colorMapping[opt.name];
+              const globalIdx = globalColorMapping?.[opt.name];
+              const isCustom = currentIdx !== undefined;
+              const displayIdx = isCustom ? currentIdx : globalIdx;
+              return (
+                <div key={opt.name}>
+                  <div style={{
+                    fontSize: 11,
+                    fontWeight: 500,
+                    color: C.darkText,
+                    marginBottom: 4,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}>
+                    <span style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: displayIdx !== undefined
+                        ? VIEW_PALETTE[displayIdx]?.hex || C.darkMuted
+                        : C.darkMuted,
+                      flexShrink: 0,
+                    }} />
+                    {opt.name}
+                    {showInheritedBadges && (
+                      <SourceBadge source={isCustom ? "custom" : (globalIdx !== undefined ? "inherited" : null)} />
+                    )}
+                  </div>
+                  <PalettePicker
+                    value={currentIdx}
+                    onChange={(idx) => onColorMappingChange(opt.name, idx)}
+                    inheritedIdx={showInheritedBadges ? globalIdx : undefined}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 // ─── Main Panel ───
 
 export default function ViewSettingsPanel({
-  viewConfig,      // { type, label, config }
-  schema,          // classified schema from PageShell
-  onConfigChange,  // (configUpdates) => void
+  viewConfig,          // { type, label, config }
+  schema,              // classified schema from PageShell
+  onConfigChange,      // (configUpdates) => void — inline mode
   onClose,
+  // Unified color mapping props (optional — when present, enables Save/Reset mode)
+  viewKey,             // string — unique key for this view in ColorMappingContext
+  globalColorMapping,  // object — global default color mappings
+  globalColorField,    // string — global default color field
+  viewColorConfig,     // { colorField, colorMapping } — current view-level overrides
+  onSave,              // ({ colorField, colorMapping }) => void — commit buffered changes
+  onReset,             // () => void — clear view overrides
+  // Multi-database sections (Tasks view)
+  databaseSections,    // [{ dbId, dbName, schema, viewColorConfig }] — per-database configs
+  onSaveSection,       // (dbId, { colorField, colorMapping }) => void
+  onResetSection,      // (dbId) => void
 }) {
+  const isUnifiedMode = !!viewKey || !!databaseSections;
+
   const viewType = viewConfig?.type;
   const config = viewConfig?.config || {};
   const isGantt = viewType === "gantt";
   const isCardGrid = viewType === "cardGrid";
   const isKanban = viewType === "kanban";
   const isTable = viewType === "table";
-  const showVisibleProps = isCardGrid || isKanban || isTable;
+  const showVisibleProps = (isCardGrid || isKanban || isTable) && !isUnifiedMode;
+  const showViewSettings = !isUnifiedMode;
 
-  // Collect select/status/multi_select fields for color source dropdown
+  // ─── Unified mode: buffered state ───
+  const [draftColorField, setDraftColorField] = useState(
+    viewColorConfig?.colorField ?? null
+  );
+  const [draftColorMapping, setDraftColorMapping] = useState(
+    viewColorConfig?.colorMapping || {}
+  );
+  const [draftDirty, setDraftDirty] = useState(false);
+
+  // Per-database drafts for Tasks view
+  const [sectionDrafts, setSectionDrafts] = useState(() => {
+    if (!databaseSections) return {};
+    const drafts = {};
+    for (const sec of databaseSections) {
+      drafts[sec.dbId] = {
+        colorField: sec.viewColorConfig?.colorField ?? null,
+        colorMapping: sec.viewColorConfig?.colorMapping || {},
+        dirty: false,
+      };
+    }
+    return drafts;
+  });
+
+  // ─── Inline mode: collect fields from schema ───
   const colorableFields = useMemo(() => {
     if (!schema) return [];
     const fields = [];
@@ -178,7 +351,6 @@ export default function ViewSettingsPanel({
     return fields;
   }, [schema]);
 
-  // Collect all displayable fields
   const allFields = useMemo(() => {
     if (!schema) return [];
     return (schema.allFields || []).filter(
@@ -186,22 +358,18 @@ export default function ViewSettingsPanel({
     );
   }, [schema]);
 
-  // Sortable fields (all fields)
   const sortableFields = allFields;
 
-  // Current color field's options (auto-detect first colorable field if not set)
   const colorField = config.colorField || null;
   const effectiveColorField = colorField || (colorableFields[0]?.name || null);
   const colorFieldSchema = colorableFields.find((f) => f.name === effectiveColorField);
   const colorOptions = colorFieldSchema?.options || [];
 
-  // Collect date fields for Gantt timeline selection
   const dateFieldNames = useMemo(() => {
     if (!schema) return [];
     return (schema.dates || []).map((f) => f.name);
   }, [schema]);
 
-  // Current config values
   const colorMode = config.colorMode || "dateField";
   const colorMapping = config.colorMapping || {};
   const sidebarFields = config.sidebarFields || [];
@@ -212,18 +380,18 @@ export default function ViewSettingsPanel({
   const sortDir = config.sortDir || "asc";
   const cardSize = config.cardSize || "standard";
 
-  // ─── Handlers ───
+  // ─── Inline mode handlers ───
 
   const handleColorFieldChange = useCallback((fieldName) => {
-    onConfigChange({ colorField: fieldName, colorMapping: {} });
+    onConfigChange?.({ colorField: fieldName, colorMapping: {} });
   }, [onConfigChange]);
 
   const handleColorModeChange = useCallback((mode) => {
-    onConfigChange({ colorMode: mode });
+    onConfigChange?.({ colorMode: mode });
   }, [onConfigChange]);
 
   const handleColorMappingChange = useCallback((optionName, paletteIdx) => {
-    onConfigChange({
+    onConfigChange?.({
       colorMapping: { ...colorMapping, [optionName]: paletteIdx },
     });
   }, [onConfigChange, colorMapping]);
@@ -232,44 +400,168 @@ export default function ViewSettingsPanel({
     const updated = checked
       ? [...sidebarFields.filter((f) => f !== fieldName), fieldName]
       : sidebarFields.filter((f) => f !== fieldName);
-    onConfigChange({ sidebarFields: updated });
+    onConfigChange?.({ sidebarFields: updated });
   }, [onConfigChange, sidebarFields]);
 
   const toggleBarField = useCallback((fieldName, checked) => {
     const updated = checked
       ? [...barFields.filter((f) => f !== fieldName), fieldName]
       : barFields.filter((f) => f !== fieldName);
-    onConfigChange({ barFields: updated });
+    onConfigChange?.({ barFields: updated });
   }, [onConfigChange, barFields]);
 
   const toggleVisibleField = useCallback((fieldName, checked) => {
     const updated = checked
       ? [...visibleFields.filter((f) => f !== fieldName), fieldName]
       : visibleFields.filter((f) => f !== fieldName);
-    onConfigChange({ visibleFields: updated });
+    onConfigChange?.({ visibleFields: updated });
   }, [onConfigChange, visibleFields]);
 
   const toggleDateField = useCallback((fieldName, checked) => {
-    // When dateFields is empty, all fields are shown by default.
-    // On first toggle, start from all fields and remove the unchecked one.
     const base = dateFields.length > 0 ? dateFields : dateFieldNames;
     const updated = checked
       ? [...base.filter((f) => f !== fieldName), fieldName]
       : base.filter((f) => f !== fieldName);
-    onConfigChange({ dateFields: updated });
+    onConfigChange?.({ dateFields: updated });
   }, [onConfigChange, dateFields, dateFieldNames]);
 
   const handleSortFieldChange = useCallback((field) => {
-    onConfigChange({ sortField: field });
+    onConfigChange?.({ sortField: field });
   }, [onConfigChange]);
 
   const handleSortDirChange = useCallback((dir) => {
-    onConfigChange({ sortDir: dir });
+    onConfigChange?.({ sortDir: dir });
   }, [onConfigChange]);
 
   const handleCardSizeChange = useCallback((size) => {
-    onConfigChange({ cardSize: size });
+    onConfigChange?.({ cardSize: size });
   }, [onConfigChange]);
+
+  // ─── Unified mode handlers ───
+
+  const handleDraftColorFieldChange = useCallback((fieldName) => {
+    setDraftColorField(fieldName);
+    setDraftColorMapping({});
+    setDraftDirty(true);
+  }, []);
+
+  const handleDraftColorMappingChange = useCallback((optionName, paletteIdx) => {
+    setDraftColorMapping((prev) => ({ ...prev, [optionName]: paletteIdx }));
+    setDraftDirty(true);
+  }, []);
+
+  const handleSaveUnified = useCallback(() => {
+    onSave?.({ colorField: draftColorField, colorMapping: draftColorMapping });
+    setDraftDirty(false);
+  }, [onSave, draftColorField, draftColorMapping]);
+
+  const handleResetUnified = useCallback(() => {
+    onReset?.();
+    setDraftColorField(null);
+    setDraftColorMapping({});
+    setDraftDirty(false);
+  }, [onReset]);
+
+  // Per-database section handlers
+  const handleSectionColorFieldChange = useCallback((dbId, fieldName) => {
+    setSectionDrafts((prev) => ({
+      ...prev,
+      [dbId]: { colorField: fieldName, colorMapping: {}, dirty: true },
+    }));
+  }, []);
+
+  const handleSectionColorMappingChange = useCallback((dbId, optionName, paletteIdx) => {
+    setSectionDrafts((prev) => ({
+      ...prev,
+      [dbId]: {
+        ...prev[dbId],
+        colorMapping: { ...(prev[dbId]?.colorMapping || {}), [optionName]: paletteIdx },
+        dirty: true,
+      },
+    }));
+  }, []);
+
+  const handleSaveSection = useCallback((dbId) => {
+    const draft = sectionDrafts[dbId];
+    if (draft) {
+      onSaveSection?.(dbId, { colorField: draft.colorField, colorMapping: draft.colorMapping });
+      setSectionDrafts((prev) => ({ ...prev, [dbId]: { ...prev[dbId], dirty: false } }));
+    }
+  }, [sectionDrafts, onSaveSection]);
+
+  const handleResetSection = useCallback((dbId) => {
+    onResetSection?.(dbId);
+    setSectionDrafts((prev) => ({
+      ...prev,
+      [dbId]: { colorField: null, colorMapping: {}, dirty: false },
+    }));
+  }, [onResetSection]);
+
+  const anySectionDirty = Object.values(sectionDrafts).some((d) => d.dirty);
+
+  // ─── Unified mode: resolve color options from draft state ───
+  const unifiedColorableFields = useMemo(() => {
+    if (!isUnifiedMode || !schema) return [];
+    const fields = [];
+    for (const f of (schema.statuses || [])) fields.push(f);
+    for (const f of (schema.selects || [])) fields.push(f);
+    for (const f of (schema.multiSelects || [])) fields.push(f);
+    return fields;
+  }, [isUnifiedMode, schema]);
+
+  const unifiedEffectiveField = draftColorField || globalColorField || (unifiedColorableFields[0]?.name || null);
+  const unifiedFieldSchema = unifiedColorableFields.find((f) => f.name === unifiedEffectiveField);
+  const unifiedColorOptions = unifiedFieldSchema?.options || [];
+
+  // ─── Render helper: Save/Reset footer ───
+  function renderFooter(isDirty, onSaveClick, onResetClick) {
+    return (
+      <div style={{
+        padding: "12px 16px",
+        borderTop: `1px solid ${C.edgeLine}`,
+        display: "flex",
+        gap: 8,
+        flexShrink: 0,
+      }}>
+        <button
+          onClick={onResetClick}
+          style={{
+            flex: 1,
+            padding: "8px 12px",
+            fontSize: 12,
+            fontWeight: 500,
+            fontFamily: FONT,
+            border: `1px solid ${C.darkBorder}`,
+            borderRadius: RADIUS.md,
+            background: "transparent",
+            color: C.darkMuted,
+            cursor: "pointer",
+          }}
+        >
+          Reset to Default
+        </button>
+        <button
+          onClick={onSaveClick}
+          disabled={!isDirty}
+          style={{
+            flex: 1,
+            padding: "8px 12px",
+            fontSize: 12,
+            fontWeight: 600,
+            fontFamily: FONT,
+            border: "none",
+            borderRadius: RADIUS.md,
+            background: isDirty ? C.accent : C.darkSurf2,
+            color: isDirty ? "#fff" : C.darkMuted,
+            cursor: isDirty ? "pointer" : "default",
+            transition: "all 0.15s",
+          }}
+        >
+          Save
+        </button>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -316,7 +608,7 @@ export default function ViewSettingsPanel({
               View Settings
             </span>
             <span style={{ fontSize: 10, color: C.darkMuted, fontWeight: 400 }}>
-              {viewConfig?.label || viewType}
+              {viewConfig?.label || viewType || viewKey}
             </span>
           </div>
           <button
@@ -330,213 +622,239 @@ export default function ViewSettingsPanel({
         {/* Content */}
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 16px 24px" }}>
 
-          {/* ─── Visible Properties (CardGrid, Kanban, Table) ─── */}
-          {showVisibleProps && allFields.length > 0 && (
-            <>
-              <SectionLabel>Visible Properties</SectionLabel>
-              <p style={{ fontSize: 10, color: C.darkMuted, margin: "0 0 6px" }}>
-                Choose which fields appear on cards/rows. Empty = auto-detect.
-              </p>
-              <FieldListBox maxHeight={200}>
-                {allFields.map((f) => (
-                  <FieldToggle
-                    key={f.name}
-                    label={`${f.name} (${f.type})`}
-                    checked={visibleFields.includes(f.name)}
-                    onChange={(checked) => toggleVisibleField(f.name, checked)}
-                  />
-                ))}
-              </FieldListBox>
-            </>
-          )}
+          {/* ═══ Multi-database sections (Tasks view) ═══ */}
+          {databaseSections && databaseSections.map((sec) => {
+            const secColorableFields = (() => {
+              if (!sec.schema) return [];
+              const fields = [];
+              for (const f of (sec.schema.statuses || [])) fields.push(f);
+              for (const f of (sec.schema.selects || [])) fields.push(f);
+              for (const f of (sec.schema.multiSelects || [])) fields.push(f);
+              return fields;
+            })();
+            const draft = sectionDrafts[sec.dbId] || { colorField: null, colorMapping: {} };
+            const effField = draft.colorField || globalColorField || (secColorableFields[0]?.name || null);
+            const fieldSchema = secColorableFields.find((f) => f.name === effField);
+            const secColorOptions = fieldSchema?.options || [];
 
-          {/* ─── Sort (all views) ─── */}
-          {sortableFields.length > 0 && (
-            <>
-              <SectionLabel>Sort</SectionLabel>
-              <div style={{ display: "flex", gap: 6 }}>
-                <div style={{ flex: 2 }}>
-                  <StyledSelect
-                    value={sortField}
-                    onChange={handleSortFieldChange}
-                    placeholder="No sort"
-                  >
-                    {sortableFields.map((f) => (
-                      <option key={f.name} value={f.name}>{f.name}</option>
-                    ))}
-                  </StyledSelect>
+            return (
+              <div key={sec.dbId} style={{ marginBottom: 16 }}>
+                <div style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: C.accent,
+                  padding: "8px 0 4px",
+                  borderBottom: `1px solid ${C.edgeLine}`,
+                  marginBottom: 4,
+                }}>
+                  {sec.dbName}
                 </div>
-                <div style={{ flex: 1 }}>
-                  <ToggleButtons
-                    options={[
-                      { key: "asc", label: "A-Z" },
-                      { key: "desc", label: "Z-A" },
-                    ]}
-                    value={sortDir}
-                    onChange={handleSortDirChange}
-                  />
-                </div>
+                <ColorMappingSection
+                  colorableFields={secColorableFields}
+                  colorField={draft.colorField}
+                  colorOptions={secColorOptions}
+                  colorMapping={draft.colorMapping}
+                  globalColorMapping={globalColorMapping}
+                  onColorFieldChange={(f) => handleSectionColorFieldChange(sec.dbId, f)}
+                  onColorMappingChange={(opt, idx) => handleSectionColorMappingChange(sec.dbId, opt, idx)}
+                  isGantt={false}
+                  colorMode="property"
+                  onColorModeChange={() => {}}
+                  showInheritedBadges={true}
+                />
+                {draft.dirty && (
+                  <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                    <button
+                      onClick={() => handleResetSection(sec.dbId)}
+                      style={{
+                        flex: 1, padding: "6px 8px", fontSize: 11, fontFamily: FONT,
+                        border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.md,
+                        background: "transparent", color: C.darkMuted, cursor: "pointer",
+                      }}
+                    >
+                      Reset
+                    </button>
+                    <button
+                      onClick={() => handleSaveSection(sec.dbId)}
+                      style={{
+                        flex: 1, padding: "6px 8px", fontSize: 11, fontWeight: 600, fontFamily: FONT,
+                        border: "none", borderRadius: RADIUS.md,
+                        background: C.accent, color: "#fff", cursor: "pointer",
+                      }}
+                    >
+                      Save
+                    </button>
+                  </div>
+                )}
               </div>
-            </>
+            );
+          })}
+
+          {/* ═══ Single-database unified mode ═══ */}
+          {isUnifiedMode && !databaseSections && (
+            <ColorMappingSection
+              colorableFields={unifiedColorableFields}
+              colorField={draftColorField}
+              colorOptions={unifiedColorOptions}
+              colorMapping={draftColorMapping}
+              globalColorMapping={globalColorMapping}
+              onColorFieldChange={handleDraftColorFieldChange}
+              onColorMappingChange={handleDraftColorMappingChange}
+              isGantt={isGantt}
+              colorMode={colorMode}
+              onColorModeChange={handleColorModeChange}
+              showInheritedBadges={true}
+            />
           )}
 
-          {/* ─── Card Size (CardGrid only) ─── */}
-          {isCardGrid && (
+          {/* ═══ Inline mode (Sushi Roll) ═══ */}
+          {!isUnifiedMode && (
             <>
-              <SectionLabel>Card Size</SectionLabel>
-              <ToggleButtons
-                options={[
-                  { key: "compact", label: "Compact" },
-                  { key: "standard", label: "Standard" },
-                ]}
-                value={cardSize}
-                onChange={handleCardSizeChange}
-              />
-            </>
-          )}
+              {/* Visible Properties */}
+              {showVisibleProps && allFields.length > 0 && (
+                <>
+                  <SectionLabel>Visible Properties</SectionLabel>
+                  <p style={{ fontSize: 10, color: C.darkMuted, margin: "0 0 6px" }}>
+                    Choose which fields appear on cards/rows. Empty = auto-detect.
+                  </p>
+                  <FieldListBox maxHeight={200}>
+                    {allFields.map((f) => (
+                      <FieldToggle
+                        key={f.name}
+                        label={`${f.name} (${f.type})`}
+                        checked={visibleFields.includes(f.name)}
+                        onChange={(checked) => toggleVisibleField(f.name, checked)}
+                      />
+                    ))}
+                  </FieldListBox>
+                </>
+              )}
 
-          {/* ─── Timeline Fields (Gantt only) ─── */}
-          {isGantt && dateFieldNames.length > 0 && (
-            <>
-              <SectionLabel>Timeline Fields</SectionLabel>
-              <p style={{ fontSize: 10, color: C.darkMuted, margin: "0 0 6px" }}>
-                Date properties shown as bars in the timeline.
-              </p>
-              <FieldListBox>
-                {dateFieldNames.map((fname) => {
-                  const isChecked = dateFields.length === 0
-                    ? true  // all shown by default
-                    : dateFields.includes(fname);
-                  return (
-                    <FieldToggle
-                      key={fname}
-                      label={fname}
-                      checked={isChecked}
-                      onChange={(checked) => toggleDateField(fname, checked)}
-                    />
-                  );
-                })}
-              </FieldListBox>
-            </>
-          )}
-
-          {/* ─── Color Mode (Gantt only) ─── */}
-          {isGantt && (
-            <>
-              <SectionLabel>Color Mode</SectionLabel>
-              <ToggleButtons
-                options={[
-                  { key: "dateField", label: "By Date Field" },
-                  { key: "property", label: "By Property" },
-                ]}
-                value={colorMode}
-                onChange={handleColorModeChange}
-              />
-            </>
-          )}
-
-          {/* ─── Color Source ─── */}
-          {colorableFields.length > 0 && (
-            <>
-              <SectionLabel>Color Source</SectionLabel>
-              <StyledSelect
-                value={colorField}
-                onChange={handleColorFieldChange}
-                placeholder="Auto-detect"
-              >
-                {colorableFields.map((f) => (
-                  <option key={f.name} value={f.name}>{f.name} ({f.type})</option>
-                ))}
-              </StyledSelect>
-            </>
-          )}
-
-          {/* ─── Color Mapping ─── */}
-          {colorOptions.length > 0 && (colorMode === "property" || !isGantt) && (
-            <>
-              <SectionLabel>Color Mapping</SectionLabel>
-              <div style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 8,
-                background: C.dark,
-                borderRadius: RADIUS.lg,
-                padding: "10px 12px",
-                border: `1px solid ${C.edgeLine}`,
-              }}>
-                {colorOptions.map((opt) => {
-                  const currentIdx = colorMapping[opt.name];
-                  return (
-                    <div key={opt.name}>
-                      <div style={{
-                        fontSize: 11,
-                        fontWeight: 500,
-                        color: C.darkText,
-                        marginBottom: 4,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
-                      }}>
-                        {/* Current color dot */}
-                        <span style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: "50%",
-                          background: currentIdx !== undefined
-                            ? VIEW_PALETTE[currentIdx].hex
-                            : C.darkMuted,
-                          flexShrink: 0,
-                        }} />
-                        {opt.name}
-                      </div>
-                      <PalettePicker
-                        value={currentIdx}
-                        onChange={(idx) => handleColorMappingChange(opt.name, idx)}
+              {/* Sort */}
+              {sortableFields.length > 0 && (
+                <>
+                  <SectionLabel>Sort</SectionLabel>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <div style={{ flex: 2 }}>
+                      <StyledSelect
+                        value={sortField}
+                        onChange={handleSortFieldChange}
+                        placeholder="No sort"
+                      >
+                        {sortableFields.map((f) => (
+                          <option key={f.name} value={f.name}>{f.name}</option>
+                        ))}
+                      </StyledSelect>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <ToggleButtons
+                        options={[
+                          { key: "asc", label: "A-Z" },
+                          { key: "desc", label: "Z-A" },
+                        ]}
+                        value={sortDir}
+                        onChange={handleSortDirChange}
                       />
                     </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
+                  </div>
+                </>
+              )}
 
-          {/* ─── Sidebar Fields (Gantt only) ─── */}
-          {isGantt && allFields.length > 0 && (
-            <>
-              <SectionLabel>Sidebar Badges</SectionLabel>
-              <FieldListBox>
-                {allFields.map((f) => (
-                  <FieldToggle
-                    key={f.name}
-                    label={f.name}
-                    checked={sidebarFields.includes(f.name)}
-                    onChange={(checked) => toggleSidebarField(f.name, checked)}
+              {/* Card Size */}
+              {isCardGrid && (
+                <>
+                  <SectionLabel>Card Size</SectionLabel>
+                  <ToggleButtons
+                    options={[
+                      { key: "compact", label: "Compact" },
+                      { key: "standard", label: "Standard" },
+                    ]}
+                    value={cardSize}
+                    onChange={handleCardSizeChange}
                   />
-                ))}
-              </FieldListBox>
-            </>
-          )}
+                </>
+              )}
 
-          {/* ─── Bar Fields (Gantt only) ─── */}
-          {isGantt && allFields.length > 0 && (
-            <>
-              <SectionLabel>Bar Labels</SectionLabel>
-              <p style={{ fontSize: 10, color: C.darkMuted, margin: "0 0 6px" }}>
-                Properties shown as text inside Gantt bars. Bars resize vertically to fit.
-              </p>
-              <FieldListBox>
-                {allFields.map((f) => (
-                  <FieldToggle
-                    key={f.name}
-                    label={f.name}
-                    checked={barFields.includes(f.name)}
-                    onChange={(checked) => toggleBarField(f.name, checked)}
-                  />
-                ))}
-              </FieldListBox>
+              {/* Timeline Fields */}
+              {isGantt && dateFieldNames.length > 0 && (
+                <>
+                  <SectionLabel>Timeline Fields</SectionLabel>
+                  <p style={{ fontSize: 10, color: C.darkMuted, margin: "0 0 6px" }}>
+                    Date properties shown as bars in the timeline.
+                  </p>
+                  <FieldListBox>
+                    {dateFieldNames.map((fname) => {
+                      const isChecked = dateFields.length === 0 ? true : dateFields.includes(fname);
+                      return (
+                        <FieldToggle
+                          key={fname}
+                          label={fname}
+                          checked={isChecked}
+                          onChange={(checked) => toggleDateField(fname, checked)}
+                        />
+                      );
+                    })}
+                  </FieldListBox>
+                </>
+              )}
+
+              {/* Color sections (inline) */}
+              <ColorMappingSection
+                colorableFields={colorableFields}
+                colorField={colorField}
+                colorOptions={colorOptions}
+                colorMapping={colorMapping}
+                globalColorMapping={null}
+                onColorFieldChange={handleColorFieldChange}
+                onColorMappingChange={handleColorMappingChange}
+                isGantt={isGantt}
+                colorMode={colorMode}
+                onColorModeChange={handleColorModeChange}
+                showInheritedBadges={false}
+              />
+
+              {/* Sidebar Fields */}
+              {isGantt && allFields.length > 0 && (
+                <>
+                  <SectionLabel>Sidebar Badges</SectionLabel>
+                  <FieldListBox>
+                    {allFields.map((f) => (
+                      <FieldToggle
+                        key={f.name}
+                        label={f.name}
+                        checked={sidebarFields.includes(f.name)}
+                        onChange={(checked) => toggleSidebarField(f.name, checked)}
+                      />
+                    ))}
+                  </FieldListBox>
+                </>
+              )}
+
+              {/* Bar Fields */}
+              {isGantt && allFields.length > 0 && (
+                <>
+                  <SectionLabel>Bar Labels</SectionLabel>
+                  <p style={{ fontSize: 10, color: C.darkMuted, margin: "0 0 6px" }}>
+                    Properties shown as text inside Gantt bars. Bars resize vertically to fit.
+                  </p>
+                  <FieldListBox>
+                    {allFields.map((f) => (
+                      <FieldToggle
+                        key={f.name}
+                        label={f.name}
+                        checked={barFields.includes(f.name)}
+                        onChange={(checked) => toggleBarField(f.name, checked)}
+                      />
+                    ))}
+                  </FieldListBox>
+                </>
+              )}
             </>
           )}
         </div>
+
+        {/* Footer with Save/Reset (unified mode only) */}
+        {isUnifiedMode && !databaseSections && renderFooter(draftDirty, handleSaveUnified, handleResetUnified)}
       </div>
     </>
   );

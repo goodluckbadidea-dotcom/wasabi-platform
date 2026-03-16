@@ -3,14 +3,32 @@
 // Quick-add input at top, manual tasks, AI-curated tasks, completed section.
 
 import React, { useState, useRef, useCallback } from "react";
-import { C, FONT, RADIUS, VIEW_PALETTE, getSolidPillColor, isLightColor, getThemeMode } from "../design/tokens.js";
+import { C, FONT, RADIUS, VIEW_PALETTE, getSolidPillColor, isLightColor, getThemeMode, resolveUnifiedColor } from "../design/tokens.js";
 import { formatDueDate, isOverdue, isToday } from "./zenTaskHelpers.js";
 
 // ── Priority → palette index mapping ──
 const PRIORITY_IDX = { High: 9, Medium: 3, Normal: 4, Low: 6 };
 
 // Resolve a task's display color (hex string) from status or priority
-function getTaskBarColor(task) {
+// Supports unified color mapping when provided
+function getTaskBarColor(task, colorMapping) {
+  const value = task.status || task.priority;
+  if (!value) return null;
+
+  // Use unified color resolution if mapping is available
+  if (colorMapping) {
+    const schemaOpts = task._statusOptions || [];
+    const optNames = schemaOpts.map((o) => o.name);
+    const resolved = resolveUnifiedColor(value, {
+      viewColorMapping: colorMapping.viewColorMapping,
+      globalColorMapping: colorMapping.globalColorMapping,
+      schemaOptions: schemaOpts,
+      options: optNames,
+    });
+    return resolved.hex;
+  }
+
+  // Fallback: original behavior
   if (task.status) {
     const schemaOpts = task._statusOptions || [];
     const optNames = schemaOpts.map((o) => o.name);
@@ -54,9 +72,9 @@ function SourceBadge({ sourceName }) {
   );
 }
 
-function TaskRow({ task, onToggle, onDelete, onTaskClick }) {
+function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping }) {
   const [hovered, setHovered] = useState(false);
-  const barColor = getTaskBarColor(task);
+  const barColor = getTaskBarColor(task, colorMapping);
   const overdue = task.due && isOverdue(task.due);
   const isDark = getThemeMode() === "dark";
   // Overdue items get a subtle tinted fill
@@ -130,7 +148,7 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick }) {
   );
 }
 
-export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, onToggleAI, onAddTask, onDeleteTask, onTaskClick }) {
+export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, onToggleAI, onAddTask, onDeleteTask, onTaskClick, colorMapping }) {
   const [inputValue, setInputValue] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
   const inputRef = useRef(null);
@@ -198,6 +216,7 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, on
                 onToggle={onToggleZen}
                 onDelete={onDeleteTask}
                 onTaskClick={onTaskClick}
+                colorMapping={colorMapping}
               />
             ))}
           </div>
@@ -243,6 +262,7 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, on
                   onToggle={onToggleAI}
                   onDelete={() => {}}
                   onTaskClick={onTaskClick}
+                  colorMapping={colorMapping}
                 />
               ))
             )}
@@ -291,6 +311,7 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, on
                 onToggle={task.source === "manual" ? onToggleZen : onToggleAI}
                 onDelete={task.source === "manual" ? onDeleteTask : () => {}}
                 onTaskClick={onTaskClick}
+                colorMapping={colorMapping}
               />
             ))}
           </div>

@@ -463,6 +463,76 @@ export function mapCalendarColor(hex) {
   return VIEW_PALETTE[bestIdx].hex;
 }
 
+// ── Unified Color Resolution ──
+// Single entry point for all color mapping in the app.
+// Resolution order: per-view mapping → global defaults → Notion schema → auto-detect.
+
+/**
+ * Resolve a value to a palette color using the unified mapping hierarchy.
+ * @param {string} value — the property value to colorize (e.g. "High", "Design", "In Progress")
+ * @param {object} opts
+ * @param {object} [opts.viewColorMapping] — per-view color mapping { value: paletteIndex }
+ * @param {object} [opts.globalColorMapping] — global default mapping { value: paletteIndex }
+ * @param {Array}  [opts.schemaOptions] — Notion schema options [{ name, color }]
+ * @param {Array}  [opts.options] — flat list of option names for index-based fallback
+ * @returns {{ hex: string, text: string, paletteIndex: number, source: string }}
+ */
+export function resolveUnifiedColor(value, opts = {}) {
+  const { viewColorMapping, globalColorMapping, schemaOptions, options } = opts;
+
+  // 1. Per-view explicit mapping
+  if (viewColorMapping && viewColorMapping[value] !== undefined) {
+    const idx = viewColorMapping[value];
+    const entry = VIEW_PALETTE[idx] || VIEW_PALETTE[0];
+    return { hex: entry.hex, text: entry.text, paletteIndex: idx, source: "view" };
+  }
+
+  // 2. Global default mapping
+  if (globalColorMapping && globalColorMapping[value] !== undefined) {
+    const idx = globalColorMapping[value];
+    const entry = VIEW_PALETTE[idx] || VIEW_PALETTE[0];
+    return { hex: entry.hex, text: entry.text, paletteIndex: idx, source: "global" };
+  }
+
+  // 3. Notion schema color
+  if (schemaOptions) {
+    const opt = schemaOptions.find((o) => o.name === value);
+    if (opt?.color && NOTION_TO_PALETTE_IDX[opt.color] !== undefined) {
+      const idx = NOTION_TO_PALETTE_IDX[opt.color];
+      const entry = VIEW_PALETTE[idx];
+      return { hex: entry.hex, text: entry.text, paletteIndex: idx, source: "schema" };
+    }
+  }
+
+  // 4. STATUS_COLORS named match
+  if (STATUS_COLORS[value]) {
+    const hex = STATUS_COLORS[value];
+    return { hex, text: isLightColor(hex) ? "#1a1a1a" : "#fff", paletteIndex: -1, source: "status" };
+  }
+
+  // 5. Option index fallback
+  if (options) {
+    const idx = options.indexOf(value);
+    if (idx >= 0) {
+      const hex = SELECT_PALETTE[idx % SELECT_PALETTE.length];
+      return { hex, text: isLightColor(hex) ? "#1a1a1a" : "#fff", paletteIndex: -1, source: "index" };
+    }
+  }
+
+  // 6. Hash fallback
+  if (value) {
+    let hash = 0;
+    for (let i = 0; i < value.length; i++) {
+      hash = value.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const idx = Math.abs(hash) % VIEW_PALETTE.length;
+    const entry = VIEW_PALETTE[idx];
+    return { hex: entry.hex, text: entry.text, paletteIndex: idx, source: "hash" };
+  }
+
+  return { hex: VIEW_PALETTE[0].hex, text: VIEW_PALETTE[0].text, paletteIndex: 0, source: "default" };
+}
+
 /** Apply a theme by name. Mode is inherent to the theme. Mutates C and all palettes in place. */
 export function applyTheme(name, _mode) {
   // _mode param accepted for backward compat but ignored — mode is locked per theme

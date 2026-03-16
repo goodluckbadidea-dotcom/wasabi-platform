@@ -9,6 +9,7 @@ import { PlatformProvider, usePlatform } from "./context/PlatformContext.jsx";
 import { LinksProvider } from "./context/LinksContext.jsx";
 import { NeuronsProvider } from "./neurons/NeuronsContext.jsx";
 import { SashimiDrawerProvider } from "./zen/SashimiDrawerContext.jsx";
+import { ColorMappingProvider } from "./context/ColorMappingContext.jsx";
 import { ThemeProvider, useTheme } from "./context/ThemeContext.jsx";
 import { injectAnimations, ANIM, TRANSITION } from "./design/animations.js";
 import { S } from "./design/styles.js";
@@ -616,15 +617,17 @@ export default function App() {
   return (
     <ThemeProvider>
       <PlatformProvider>
-        <LinksProvider>
-          <NeuronsProvider>
-            <SashimiDrawerProvider>
-              <ErrorBoundary fallbackLabel="Wasabi Platform">
-                <AppContent />
-              </ErrorBoundary>
-            </SashimiDrawerProvider>
-          </NeuronsProvider>
-        </LinksProvider>
+        <ColorMappingProvider>
+          <LinksProvider>
+            <NeuronsProvider>
+              <SashimiDrawerProvider>
+                <ErrorBoundary fallbackLabel="Wasabi Platform">
+                  <AppContent />
+                </ErrorBoundary>
+              </SashimiDrawerProvider>
+            </NeuronsProvider>
+          </LinksProvider>
+        </ColorMappingProvider>
       </PlatformProvider>
     </ThemeProvider>
   );

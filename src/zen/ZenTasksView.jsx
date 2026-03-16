@@ -3,9 +3,10 @@
 // Left 40%: AI-curated to-do list + quick-add.
 // Right 60%: Today's schedule / calendar.
 
-import React, { useCallback, useMemo, useRef } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
+import { IconEdit } from "../design/icons.jsx";
 import useZenTasks from "./useZenTasks.js";
 import useAICuratedTasks from "./useAICuratedTasks.js";
 import TaskList from "./TaskList.jsx";
@@ -13,6 +14,8 @@ import ZenCalendar from "./ZenCalendar.jsx";
 import SashimiDrawer from "./SashimiDrawer.jsx";
 import { useSashimiDrawer } from "./SashimiDrawerContext.jsx";
 import { ErrorBoundary } from "../core/ErrorBoundary.jsx";
+import { useColorMapping } from "../context/ColorMappingContext.jsx";
+const ViewSettingsPanel = React.lazy(() => import("../components/ViewSettingsPanel.jsx"));
 
 export default function ZenTasksView() {
   const {
@@ -35,6 +38,15 @@ export default function ZenTasksView() {
 
   const { openDrawer } = useSashimiDrawer();
   const calendarRefreshRef = useRef(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const { globalColorMapping, globalColorField, getViewColorConfig, updateViewColorConfig, resetViewColorConfig } = useColorMapping();
+
+  // Build colorMapping object for TaskRow color resolution
+  const viewColorConfig = getViewColorConfig("zen-tasks");
+  const taskColorMapping = useMemo(() => ({
+    viewColorMapping: viewColorConfig?.colorMapping || null,
+    globalColorMapping,
+  }), [viewColorConfig, globalColorMapping]);
 
   // ── Toggle for AI-curated tasks ──
   // For Notion tasks, we could update the source DB, but for now
@@ -113,26 +125,46 @@ export default function ZenTasksView() {
             Tasks
           </div>
 
-          {/* Refresh button */}
-          <button
-            onClick={handleRefresh}
-            title="Refresh tasks"
-            style={{
-              background: "none", border: "none", cursor: "pointer",
-              padding: 8, display: "flex", opacity: 0.5,
-              outline: "none", borderRadius: RADIUS.md,
-              transition: "opacity 0.15s",
-              minWidth: 32, minHeight: 32,
-              alignItems: "center", justifyContent: "center",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-              <path d="M14 2v5h-5" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M12.5 10A5.5 5.5 0 1 1 13 6" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" />
-            </svg>
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            {/* View settings */}
+            <button
+              onClick={() => setShowSettings(true)}
+              title="View settings"
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                padding: 8, display: "flex", opacity: 0.5,
+                outline: "none", borderRadius: RADIUS.md,
+                transition: "opacity 0.15s",
+                minWidth: 32, minHeight: 32,
+                alignItems: "center", justifyContent: "center",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
+            >
+              <IconEdit size={14} color={C.darkMuted} />
+            </button>
+
+            {/* Refresh button */}
+            <button
+              onClick={handleRefresh}
+              title="Refresh tasks"
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                padding: 8, display: "flex", opacity: 0.5,
+                outline: "none", borderRadius: RADIUS.md,
+                transition: "opacity 0.15s",
+                minWidth: 32, minHeight: 32,
+                alignItems: "center", justifyContent: "center",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <path d="M14 2v5h-5" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M12.5 10A5.5 5.5 0 1 1 13 6" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Task list content */}
@@ -146,6 +178,7 @@ export default function ZenTasksView() {
             onAddTask={handleAddTask}
             onDeleteTask={deleteTask}
             onTaskClick={handleTaskClick}
+            colorMapping={taskColorMapping}
           />
         </ErrorBoundary>
 
@@ -199,6 +232,22 @@ export default function ZenTasksView() {
         onEventUpdated={handleEventUpdated}
         onEventDeleted={handleEventDeleted}
       />
+
+      {/* View settings panel */}
+      {showSettings && (
+        <React.Suspense fallback={null}>
+          <ViewSettingsPanel
+            viewKey="zen-tasks"
+            viewConfig={{ type: "tasks", label: "Tasks" }}
+            globalColorMapping={globalColorMapping}
+            globalColorField={globalColorField}
+            viewColorConfig={getViewColorConfig("zen-tasks")}
+            onSave={(updates) => updateViewColorConfig("zen-tasks", updates)}
+            onReset={() => resetViewColorConfig("zen-tasks")}
+            onClose={() => setShowSettings(false)}
+          />
+        </React.Suspense>
+      )}
     </div>
   );
 }

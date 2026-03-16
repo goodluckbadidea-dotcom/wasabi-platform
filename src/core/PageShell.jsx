@@ -18,6 +18,7 @@ import { IconWarning, IconPlus, IconClose } from "../design/icons.jsx";
 import { ANIM } from "../design/animations.js";
 import SyncPanel from "../components/SyncPanel.jsx";
 import ViewSettingsPanel from "../components/ViewSettingsPanel.jsx";
+import { useColorMapping } from "../context/ColorMappingContext.jsx";
 
 const DEFAULT_REFRESH_MS = 30000;
 
@@ -28,6 +29,7 @@ export default function PageShell({
   onPageDataReady,    // callback to lift page data/schema to App for WasabiPanel
 }) {
   const { user, updatePageConfig } = usePlatform();
+  const { globalColorMapping, globalColorField } = useColorMapping();
 
   const [data, setData] = useState([]);
   const [schema, setSchema] = useState(null);
@@ -354,6 +356,8 @@ export default function PageShell({
             schema={schema}
             onConfigChange={handleViewConfigChange}
             onClose={() => setShowViewSettings(false)}
+            globalColorMapping={globalColorMapping}
+            globalColorField={globalColorField}
           />
         )}
 

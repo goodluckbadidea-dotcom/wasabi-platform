@@ -21,7 +21,10 @@ import {
   IconChevronRight,
   IconClose,
   IconTrash,
+  IconEdit,
 } from "../design/icons.jsx";
+import { useColorMapping } from "../context/ColorMappingContext.jsx";
+const ViewSettingsPanel = React.lazy(() => import("../components/ViewSettingsPanel.jsx"));
 
 // ─── Date Helpers ───
 
@@ -609,7 +612,9 @@ export default function CalendarView() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
   const dayViewRef = useRef(null);
+  const { globalColorMapping, globalColorField, getViewColorConfig, updateViewColorConfig, resetViewColorConfig } = useColorMapping();
 
   // ── Derived week range ──
   const weekRange = useMemo(() => getWeekRange(selectedDate), [selectedDate]);
@@ -854,6 +859,11 @@ export default function CalendarView() {
         >
           <IconPlus size={13} color={C.accent} />
           New Event
+        </button>
+
+        {/* View settings */}
+        <button style={S.refreshBtn} onClick={() => setShowSettings(true)} title="View settings" {...hoverBg(C.darkSurf2)}>
+          <IconEdit size={14} color={C.darkMuted} />
         </button>
 
         {/* Refresh */}
@@ -1220,6 +1230,22 @@ export default function CalendarView() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* View settings panel */}
+      {showSettings && (
+        <React.Suspense fallback={null}>
+          <ViewSettingsPanel
+            viewKey="zen-calendar"
+            viewConfig={{ type: "calendar", label: "Calendar" }}
+            globalColorMapping={globalColorMapping}
+            globalColorField={globalColorField}
+            viewColorConfig={getViewColorConfig("zen-calendar")}
+            onSave={(updates) => updateViewColorConfig("zen-calendar", updates)}
+            onReset={() => resetViewColorConfig("zen-calendar")}
+            onClose={() => setShowSettings(false)}
+          />
+        </React.Suspense>
       )}
     </div>
   );
