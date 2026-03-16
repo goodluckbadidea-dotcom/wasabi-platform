@@ -6,14 +6,17 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
+import { IconEdit } from "../design/icons.jsx";
 import { getGoogleStatus, listCalendarEvents } from "../lib/api.js";
 import { isSameDay, getWeekRange, getMonthRange, getListViewRange, formatWeekDateHeader, formatMonthHeader } from "./zenTaskHelpers.js";
 import { useSashimiDrawer } from "./SashimiDrawerContext.jsx";
+import { useColorMapping } from "../context/ColorMappingContext.jsx";
 import DayColumn from "./calendar/DayColumn.jsx";
 import WeekListView from "./calendar/WeekListView.jsx";
 import MonthGrid from "./calendar/MonthGrid.jsx";
 import QuickCreateBar from "./calendar/QuickCreateBar.jsx";
 import CalendarFilterDropdown from "./calendar/CalendarFilterDropdown.jsx";
+const ViewSettingsPanel = React.lazy(() => import("../components/ViewSettingsPanel.jsx"));
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -47,8 +50,26 @@ export default function ZenCalendar({ allTasks, refreshRef }) {
   const [loading, setLoading] = useState(true);
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [error, setError] = useState(null); // "auth" | "fetch" | null
   const [refreshCounter, setRefreshCounter] = useState(0);
+  const { globalColorMapping, globalColorField, getViewColorConfig, updateViewColorConfig, resetViewColorConfig } = useColorMapping();
+
+  // Build schema from calendars for ViewSettingsPanel
+  const calendarSchema = useMemo(() => {
+    const options = calendars.map((cal) => ({
+      name: cal.summary || cal.id,
+      color: cal.backgroundColor || "default",
+    }));
+    if (options.length === 0) return null;
+    return {
+      statuses: [{ name: "Calendar", type: "status", options }],
+      selects: [],
+      multiSelects: [],
+      allFields: [],
+      dates: [],
+    };
+  }, [calendars]);
 
   const today = useMemo(() => new Date(), []);
   const isViewingToday = isSameDay(selectedDate, today);
@@ -228,6 +249,22 @@ export default function ZenCalendar({ allTasks, refreshRef }) {
           {dateLabel}
         </div>
 
+        {/* View settings button */}
+        {calendars.length > 0 && (
+          <button
+            onClick={() => setShowSettings(true)}
+            title="View settings"
+            style={{
+              ...navBtnStyle,
+              opacity: 0.5,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
+          >
+            <IconEdit size={14} color={C.darkMuted} />
+          </button>
+        )}
+
         {/* Calendar filter button (only if we have calendars) */}
         {calendars.length > 1 && (
           <div style={{ position: "relative" }}>
@@ -390,6 +427,23 @@ export default function ZenCalendar({ allTasks, refreshRef }) {
         }}>
           Connect Google Calendar in Settings for events
         </div>
+      )}
+
+      {/* View settings panel */}
+      {showSettings && calendarSchema && (
+        <React.Suspense fallback={null}>
+          <ViewSettingsPanel
+            viewKey="zen-calendar"
+            viewConfig={{ type: "calendar", label: "Calendar" }}
+            schema={calendarSchema}
+            globalColorMapping={globalColorMapping}
+            globalColorField={globalColorField}
+            viewColorConfig={getViewColorConfig("zen-calendar")}
+            onSave={(updates) => updateViewColorConfig("zen-calendar", updates)}
+            onReset={() => resetViewColorConfig("zen-calendar")}
+            onClose={() => setShowSettings(false)}
+          />
+        </React.Suspense>
       )}
     </div>
   );
