@@ -267,17 +267,24 @@ export default function Navigation({
               transition: "padding 0.25s",
             }}
           >
-            {/* Workspaces */}
-            <button
-              onClick={() => { setActivePage("zen-workspaces"); setActiveFolder(null); }}
-              title="Workspaces"
-              style={bottomBtnStyle(activePage === "zen-workspaces")}
-              onMouseEnter={(e) => { if (activePage !== "zen-workspaces") e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activePage !== "zen-workspaces") e.currentTarget.style.background = "transparent"; }}
-            >
-              <IconGlobe size={iconSize(activePage === "zen-workspaces")} color={activePage === "zen-workspaces" ? "#fff" : C.darkMuted} />
-              {!collapsed && <span style={bottomLabelStyle(activePage === "zen-workspaces")}>Workspaces</span>}
-            </button>
+            {/* Workspaces — also highlighted when viewing a real page opened from workspaces */}
+            {(() => {
+              const SYSTEM_PAGES = new Set(["system", "wasabi", "inbox", "automations", "functions", "build", "knowledge-base", "dashboard"]);
+              const isWsActive = activePage === "zen-workspaces" ||
+                (activePage && !activePage.startsWith("zen-") && !SYSTEM_PAGES.has(activePage) && pages.some(p => p.id === activePage));
+              return (
+                <button
+                  onClick={() => { setActivePage("zen-workspaces"); setActiveFolder(null); }}
+                  title="Workspaces"
+                  style={bottomBtnStyle(isWsActive)}
+                  onMouseEnter={(e) => { if (!isWsActive) e.currentTarget.style.background = C.darkSurf2; }}
+                  onMouseLeave={(e) => { if (!isWsActive) e.currentTarget.style.background = "transparent"; }}
+                >
+                  <IconGlobe size={iconSize(isWsActive)} color={isWsActive ? "#fff" : C.darkMuted} />
+                  {!collapsed && <span style={bottomLabelStyle(isWsActive)}>Workspaces</span>}
+                </button>
+              );
+            })()}
 
             {/* Dashboard */}
             <button
@@ -352,6 +359,18 @@ export default function Navigation({
                 {!collapsed && <span style={bottomLabelStyle(activePage === "zen-gmail")}>Gmail</span>}
               </button>
             )}
+
+            {/* Notifications */}
+            <button
+              onClick={() => setActivePage("zen-notifications")}
+              title="Notifications"
+              style={bottomBtnStyle(activePage === "zen-notifications")}
+              onMouseEnter={(e) => { if (activePage !== "zen-notifications") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activePage !== "zen-notifications") e.currentTarget.style.background = "transparent"; }}
+            >
+              <IconBell size={iconSize(activePage === "zen-notifications")} color={activePage === "zen-notifications" ? "#fff" : C.darkMuted} />
+              {!collapsed && <span style={bottomLabelStyle(activePage === "zen-notifications")}>Notifications</span>}
+            </button>
 
             {/* Knowledge Base */}
             <button

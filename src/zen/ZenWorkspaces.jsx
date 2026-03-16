@@ -7,7 +7,6 @@ import React, { useState, useMemo, useCallback } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { useTheme } from "../context/ThemeContext.jsx";
 import { IconFolder, IconSearch, IconChevronRight, IconGlobe, IconGear } from "../design/icons.jsx";
 import { useSashimiDrawer } from "./SashimiDrawerContext.jsx";
 import SashimiDrawer from "./SashimiDrawer.jsx";
@@ -37,7 +36,6 @@ function PageIcon({ size = 16, color = C.accent }) {
 
 export default function ZenWorkspaces() {
   const { pageTree, pages, setActivePage, setActiveFolder } = usePlatform();
-  const { setAppMode } = useTheme();
   const { openDrawer } = useSashimiDrawer();
 
   // Breadcrumb path: array of { id, name, node }
@@ -121,10 +119,9 @@ export default function ZenWorkspaces() {
   }, []);
 
   const handleOpenPage = useCallback((page) => {
-    setAppMode("samurai");
     setActivePage(page.id);
     if (page.parentId) setActiveFolder(page.parentId);
-  }, [setAppMode, setActivePage, setActiveFolder]);
+  }, [setActivePage, setActiveFolder]);
 
   const handleOpenSettings = useCallback((e, item) => {
     e.stopPropagation();

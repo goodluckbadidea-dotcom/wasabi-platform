@@ -5,6 +5,7 @@
 import React, { useMemo } from "react";
 import { C, FONT } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
+import { useTheme } from "../context/ThemeContext.jsx";
 
 // Special page labels
 const SPECIAL_PAGES = {
@@ -27,6 +28,7 @@ function Chevron() {
 
 export default function Breadcrumb() {
   const { activePage, pages, setActivePage } = usePlatform();
+  const { appMode } = useTheme();
 
   const segments = useMemo(() => {
     // No active page → Home
@@ -36,6 +38,9 @@ export default function Breadcrumb() {
     if (SPECIAL_PAGES[activePage]) {
       return [{ label: SPECIAL_PAGES[activePage], id: activePage, isCurrent: true }];
     }
+
+    // Zen-prefixed pages don't show breadcrumbs
+    if (typeof activePage === "string" && activePage.startsWith("zen-")) return [];
 
     // Find page config
     const pageConfig = pages.find((p) => p.id === activePage);
@@ -55,12 +60,18 @@ export default function Breadcrumb() {
         label: current.name || "Untitled",
         id: current.id,
         isCurrent: current.id === activePage,
+        isFolder: current.type === "folder",
       });
       current = current.parentId ? byId[current.parentId] : null;
     }
 
+    // In zen/sashimi mode, prepend "Workspaces" root for navigation back
+    if (appMode === "zen" && chain.length > 0) {
+      chain.unshift({ label: "Workspaces", id: "zen-workspaces", isCurrent: false, isFolder: false });
+    }
+
     return chain;
-  }, [activePage, pages]);
+  }, [activePage, pages, appMode]);
 
   if (segments.length === 0) return null;
 
@@ -79,7 +90,13 @@ export default function Breadcrumb() {
           {i > 0 && <Chevron />}
           <button
             onClick={() => {
-              if (!seg.isCurrent) setActivePage(seg.id);
+              if (seg.isCurrent) return;
+              // In zen mode, clicking a folder goes back to workspaces browser
+              if (appMode === "zen" && seg.isFolder) {
+                setActivePage("zen-workspaces");
+              } else {
+                setActivePage(seg.id);
+              }
             }}
             style={{
               background: "none",

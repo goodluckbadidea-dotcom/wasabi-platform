@@ -353,6 +353,33 @@ function AppContent() {
           </React.Suspense>
         );
       }
+      // Zen Notifications
+      if (activePage === "zen-notifications") {
+        return <NotificationFeed />;
+      }
+      // Real page opened from Workspaces — render inline with full functionality
+      if (activePageConfig && (activePageConfig.pageType === "workspace" || activePageConfig.page_type === "workspace")) {
+        return (
+          <WorkspaceSettings
+            pageConfig={activePageConfig}
+            onUpdate={(updates) => updatePageConfig(activePageConfig.id, updates)}
+          />
+        );
+      }
+      if (activePageConfig && activePageConfig.type === "folder") {
+        setActivePage("zen-workspaces");
+        return null;
+      }
+      if (activePageConfig) {
+        return (
+          <PageShell
+            pageConfig={activePageConfig}
+            activeViewIndex={activeViewIndex}
+            onSetActiveView={setActiveView}
+            onPageDataReady={setActivePageData}
+          />
+        );
+      }
       // Default: Tasks split view (To-Do + Calendar)
       return (
         <React.Suspense fallback={
