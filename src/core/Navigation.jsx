@@ -22,6 +22,7 @@ import SidebarTree from "./SidebarTree.jsx";
 import CreateMenu from "./CreateMenu.jsx";
 import ContextMenu from "./ContextMenu.jsx";
 import { getCreateMenuItems } from "./CreateMenu.jsx";
+import useZenInsight from "../zen/useZenInsight.js";
 
 export default function Navigation({
   collapsed,
@@ -41,6 +42,7 @@ export default function Navigation({
   } = usePlatform();
 
   const { appMode } = useTheme();
+  const zenInsight = useZenInsight();
 
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
@@ -256,8 +258,19 @@ export default function Navigation({
             </div>
           )}
 
-          {/* Spacer to push buttons to bottom */}
-          <div style={{ flex: 1 }} />
+          {/* Zen Insight + spacer */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: collapsed ? 0 : "12px 14px", overflow: "hidden" }}>
+            {!collapsed && zenInsight && (
+              <div style={{
+                fontSize: 11, lineHeight: 1.5, fontFamily: FONT,
+                color: C.darkMuted, fontStyle: "italic",
+                opacity: 0.85, transition: "opacity 0.4s ease",
+                textAlign: "center", padding: "0 4px",
+              }}>
+                {zenInsight}
+              </div>
+            )}
+          </div>
 
           {/* Zen bottom nav */}
           <div

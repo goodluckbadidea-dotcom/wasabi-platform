@@ -13,6 +13,7 @@ import {
 } from "./zenTaskHelpers.js";
 
 const CACHE_KEY = "wasabi_zen_ai_tasks_v4"; // v4: word-boundary name matching
+const INSIGHT_CACHE_KEY = "wasabi_zen_insight";
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 const MAX_DATABASES = 5;
 const MAX_ITEMS_PER_DB = 30;
@@ -254,6 +255,7 @@ export default function useAICuratedTasks() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [error, setError] = useState(null);
+  const [insight, setInsight] = useState(null);
   const scanningRef = useRef(false);
 
   // Load cached results immediately + clean up old cache keys
@@ -268,6 +270,9 @@ export default function useAICuratedTasks() {
       setLastUpdated(new Date(JSON.parse(localStorage.getItem(CACHE_KEY))?.ts));
       setLoading(false);
     }
+    // Load cached insight
+    const cachedInsight = getCached(INSIGHT_CACHE_KEY, CACHE_TTL);
+    if (cachedInsight) setInsight(cachedInsight);
   }, []);
 
   // Background scan and AI curation
@@ -492,7 +497,7 @@ export default function useAICuratedTasks() {
             dbSummaries[name].push(compressTask(task));
           }
 
-          const prompt = `You are a smart task prioritizer. Tasks have been pre-filtered to only include items approaching deadlines, overdue, or not recently updated.
+          const prompt = `You are a smart task prioritizer and workspace advisor. Tasks have been pre-filtered to only include items approaching deadlines, overdue, or not recently updated.
 
 Each task includes:
 - nearestDate: the closest date across ALL date fields (timeline ends, deadlines, etc.)
@@ -502,16 +507,23 @@ Each task includes:
 
 Today is ${today}.
 
-RANK these tasks from most to least urgent (priority_score 5 = most urgent, 1 = least).
+Do TWO things:
 
+1. RANK these tasks from most to least urgent (priority_score 5 = most urgent, 1 = least).
 Priority rules:
-1. Overdue + stale items — highest priority (score 5)
-2. Due today or tomorrow (score 4-5)
-3. Stale items approaching deadlines (score 3-4)
-4. High priority or urgent status (score 3-4)
-5. In-progress items approaching dates (score 2-3)
+- Overdue + stale items — highest priority (score 5)
+- Due today or tomorrow (score 4-5)
+- Stale items approaching deadlines (score 3-4)
+- High priority or urgent status (score 3-4)
+- In-progress items approaching dates (score 2-3)
+Exclude any items that are NOT actionable tasks (contacts, records, inventory, labels).
 
-Exclude any items that are NOT actionable tasks (contacts, records, inventory, labels). Return ONLY a JSON array: [{ "title": "exact title", "priority_score": 1-5, "reason": "brief reason" }]. Return valid JSON only, no markdown.
+2. Generate ONE short workspace insight (max 120 chars). This appears in a zen/mindfulness sidebar. It should feel illuminating — not a status report. Observe patterns, convergences, risks, or perspective across the whole workspace. Be specific to the actual data. Examples of tone:
+- "3 projects share the same delivery window. Consider staggering."
+- "Your busiest week this quarter starts Monday. Today is a good day to prepare."
+- "Everything shipping this week is already in production. Breathe."
+
+Return valid JSON only, no markdown: { "tasks": [{ "title": "exact title", "priority_score": 1-5, "reason": "brief reason" }], "insight": "your insight here" }
 
 Items by database:
 ${JSON.stringify(dbSummaries, null, 0)}`;
@@ -524,16 +536,34 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
 
           const responseText = aiResult.content?.[0]?.text || aiResult.text || "";
 
-          // Parse AI response
+          // Parse AI response (new format: { tasks: [...], insight: "..." })
           let prioritized = [];
+          let aiInsight = null;
           try {
-            // Extract JSON from response (handle potential markdown wrapping)
-            const jsonMatch = responseText.match(/\[[\s\S]*\]/);
-            if (jsonMatch) {
-              prioritized = JSON.parse(jsonMatch[0]);
+            // Try object format first: { tasks: [...], insight: "..." }
+            const objMatch = responseText.match(/\{[\s\S]*\}/);
+            if (objMatch) {
+              const parsed = JSON.parse(objMatch[0]);
+              if (Array.isArray(parsed.tasks)) {
+                prioritized = parsed.tasks;
+                aiInsight = parsed.insight || null;
+              } else if (Array.isArray(parsed)) {
+                prioritized = parsed;
+              }
+            }
+            // Fallback: bare array format
+            if (prioritized.length === 0) {
+              const arrMatch = responseText.match(/\[[\s\S]*\]/);
+              if (arrMatch) prioritized = JSON.parse(arrMatch[0]);
             }
           } catch {
             console.warn("[AICurated] Failed to parse AI response");
+          }
+
+          // Store insight
+          if (aiInsight) {
+            setInsight(aiInsight);
+            setCache(INSIGHT_CACHE_KEY, aiInsight);
           }
 
           // Map AI prioritized titles back to full task objects
@@ -628,5 +658,6 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
     lastUpdated,
     refresh: forceRefresh,
     error,
+    insight,
   };
 }
