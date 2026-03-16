@@ -248,24 +248,35 @@ export default function Navigation({
             gap: 6,
             borderBottom: `1px solid ${C.darkBorder}`,
           }}>
-            {/* Expand / Collapse toggle */}
+            {/* Expand / Collapse toggle — sidebar menu icon */}
             <button
               onClick={onToggleCollapse}
               title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
               style={{
                 background: "none", border: "none", cursor: "pointer",
-                display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "flex-start",
-                padding: collapsed ? "6px" : "6px 8px",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                padding: "6px",
                 borderRadius: RADIUS.sm, transition: "background 0.15s",
-                outline: "none", width: "100%",
+                outline: "none", width: collapsed ? "100%" : "auto", alignSelf: collapsed ? "center" : "flex-start",
               }}
               onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
             >
-              {collapsed
-                ? <IconChevronRight size={14} color={C.darkMuted} />
-                : <IconChevronLeft size={14} color={C.darkMuted} />
-              }
+              {collapsed ? (
+                /* Hamburger menu icon */
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <line x1="2" y1="4" x2="14" y2="4" stroke={C.darkMuted} strokeWidth="1.4" strokeLinecap="round" />
+                  <line x1="2" y1="8" x2="14" y2="8" stroke={C.darkMuted} strokeWidth="1.4" strokeLinecap="round" />
+                  <line x1="2" y1="12" x2="14" y2="12" stroke={C.darkMuted} strokeWidth="1.4" strokeLinecap="round" />
+                </svg>
+              ) : (
+                /* Sidebar collapse icon (panel with arrow) */
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <rect x="1.5" y="2" width="13" height="12" rx="1.5" stroke={C.darkMuted} strokeWidth="1.3" fill="none" />
+                  <line x1="6" y1="2" x2="6" y2="14" stroke={C.darkMuted} strokeWidth="1.3" />
+                  <path d="M11 6.5L9 8L11 9.5" stroke={C.darkMuted} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
             </button>
 
             {/* Search bar (expanded only) */}
@@ -366,59 +377,9 @@ export default function Navigation({
               transition: "padding 0.25s",
             }}
           >
-            {/* Create New */}
-            <button
-              onClick={() => {
-                // Show a simple dropdown inline — reuse CreateMenu logic
-                const menuEl = document.getElementById("zen-create-menu");
-                if (menuEl) menuEl.style.display = menuEl.style.display === "none" ? "flex" : "none";
-              }}
-              title="Create New"
-              style={bottomBtnStyle(false)}
-              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-            >
-              <IconPlus size={iconSize(false)} color={C.accent} />
-              {!collapsed && <span style={{ ...bottomLabelStyle(false), color: C.accent }}>Create New</span>}
-            </button>
-            {/* Create dropdown */}
-            <div
-              id="zen-create-menu"
-              style={{
-                display: "none", flexDirection: "column", gap: 1,
-                padding: "2px 0 4px", marginLeft: collapsed ? 0 : 8,
-              }}
-            >
-              {[
-                { type: "workspace", label: "Workspace" },
-                { type: "folder", label: "Folder" },
-                { type: "dashboard", label: "Dashboard" },
-                { type: "page", label: "Page" },
-              ].map((item) => (
-                <button
-                  key={item.type}
-                  onClick={() => {
-                    handleCreateItem(item.type);
-                    const menuEl = document.getElementById("zen-create-menu");
-                    if (menuEl) menuEl.style.display = "none";
-                  }}
-                  style={{
-                    background: "none", border: "none", cursor: "pointer",
-                    display: "flex", alignItems: "center", gap: 8,
-                    padding: collapsed ? "5px 6px" : "5px 10px",
-                    borderRadius: RADIUS.sm, transition: "background 0.12s",
-                    outline: "none", width: "100%",
-                    justifyContent: collapsed ? "center" : "flex-start",
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                  title={item.label}
-                >
-                  {!collapsed && <span style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>{item.label}</span>}
-                  {collapsed && <span style={{ fontSize: 9, color: C.darkMuted, fontFamily: FONT }}>{item.label.charAt(0)}</span>}
-                </button>
-              ))}
-            </div>
+            {/* Create New — "+" icon above Workspaces, triggers CreateMenu dropdown */}
+            <CreateMenu onCreateItem={handleCreateItem} collapsed={collapsed} />
+
             {/* Workspaces — also highlighted when viewing a real page opened from workspaces */}
             {(() => {
               const SYSTEM_PAGES = new Set(["system", "wasabi", "inbox", "automations", "functions", "build", "knowledge-base", "dashboard"]);

@@ -291,6 +291,15 @@ function AppContent() {
       if (activePage === "system") {
         return <SystemManager />;
       }
+      // Page builder (create new page)
+      if (activePage === "wasabi") {
+        return (
+          <PageBuilder
+            initialTemplate={builderTemplate}
+            WasabiFlameIcon={WasabiFlameIcon}
+          />
+        );
+      }
       // Zen Notes scratchpad
       if (activePage === "zen-notes") {
         return (
