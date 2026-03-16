@@ -84,12 +84,12 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Left color bar */}
+      {/* Left color fill */}
       {barColor && (
         <div style={{
           position: "absolute",
-          left: 0, top: "20%", bottom: "20%",
-          width: 3, borderRadius: 2,
+          left: 0, top: 0, bottom: 0,
+          width: 6, borderRadius: 0,
           background: barColor,
         }} />
       )}
