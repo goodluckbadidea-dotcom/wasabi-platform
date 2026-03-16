@@ -6,6 +6,7 @@
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
+import { ANIM } from "../design/animations.js";
 import { IconBrain, IconUpload, IconTrash, IconSearch } from "../design/icons.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import * as api from "../lib/api.js";
@@ -637,9 +638,9 @@ export default function KnowledgeBase({ automationEngine }) {
         flexShrink: 0, padding: "16px 32px 0",
         borderBottom: `1px solid ${C.darkBorder}`,
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, animation: ANIM.snapUp(0.03) }}>
           <IconBrain size={22} color={C.accent} />
-          <span style={{ fontSize: 18, fontWeight: 600, color: "#fff", fontFamily: FONT }}>
+          <span style={{ fontSize: 18, fontWeight: 600, color: C.darkText, fontFamily: FONT }}>
             Knowledge Base
           </span>
         </div>

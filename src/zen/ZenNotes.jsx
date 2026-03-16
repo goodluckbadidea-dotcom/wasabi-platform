@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
+import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { getDocument, saveDocument } from "../lib/api.js";
 import { createStandaloneDocConfig, savePageConfig } from "../config/pageConfig.js";
@@ -171,6 +172,7 @@ export default function ZenNotes() {
         <div style={{
           fontSize: 18, fontWeight: 600, fontFamily: FONT, color: C.darkText,
           display: "flex", alignItems: "center", gap: 10,
+          animation: ANIM.snapUp(0.03),
         }}>
           <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
             <rect x="3" y="2" width="10" height="12" rx="1.5" stroke={C.accent} strokeWidth="1.3" fill="none" />

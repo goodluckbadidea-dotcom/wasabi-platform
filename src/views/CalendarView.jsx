@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
+import { ANIM } from "../design/animations.js";
 import {
   listCalendarEvents,
   createCalendarEvent,
@@ -157,6 +158,7 @@ const S = {
     alignItems: "center",
     gap: 8,
     marginRight: 8,
+    animation: ANIM.snapUp(0.03),
   },
   navGroup: {
     display: "flex",

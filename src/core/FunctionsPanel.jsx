@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
+import { ANIM } from "../design/animations.js";
 import { IconFunction, IconPlus, IconSearch, IconTrash, IconPlay } from "../design/icons.jsx";
 import * as api from "../lib/api.js";
 import { timeAgo } from "../utils/helpers.js";
@@ -108,7 +109,7 @@ export default function FunctionsPanel({ onOpenChat }) {
       {/* Header */}
       <div style={{
         display: "flex", alignItems: "center", gap: 12,
-        marginBottom: 20,
+        marginBottom: 20, animation: ANIM.snapUp(0.03),
       }}>
         <IconFunction size={22} color={C.accent} />
         <h2 style={{

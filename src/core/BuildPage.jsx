@@ -734,11 +734,11 @@ export default function BuildPage({ onOpenChat }) {
       background: C.darkBg, padding: "24px 32px", overflow: "auto",
     }}>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, animation: ANIM.snapUp(0.03) }}>
         {activeTab === "views"
           ? <IconGrid size={22} color={C.accent} />
           : <IconBrain size={22} color={C.accent} />}
-        <h2 style={{ fontFamily: FONT, fontSize: 18, fontWeight: 600, color: "#fff", margin: 0 }}>
+        <h2 style={{ fontFamily: FONT, fontSize: 18, fontWeight: 600, color: C.darkText, margin: 0 }}>
           Build
         </h2>
 

@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
+import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import * as api from "../lib/api.js";
 import { timeAgo } from "../utils/helpers.js";
@@ -83,9 +84,9 @@ export default function NotificationFeed() {
         borderBottom: `1px solid ${C.edgeLine}`,
       }}>
         {/* Title row */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, animation: ANIM.snapUp(0.03) }}>
           <IconBell size={22} color={C.accent} />
-          <span style={{ fontSize: 18, fontWeight: 600, color: "#fff", fontFamily: FONT }}>
+          <span style={{ fontSize: 18, fontWeight: 600, color: C.darkText, fontFamily: FONT }}>
             Inbox
           </span>
           <div style={{ flex: 1 }} />

@@ -5,6 +5,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { C, FONT, MONO, RADIUS, THEME_LIST, THEMES } from "../design/tokens.js";
+import { ANIM } from "../design/animations.js";
 import { useTheme } from "../context/ThemeContext.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import WorkspaceSettings from "../views/WorkspaceSettings.jsx";
@@ -538,6 +539,7 @@ export default function SystemManager() {
             alignItems: "center",
             gap: 8,
             marginBottom: 12,
+            animation: ANIM.snapUp(0.03),
           }}
         >
           <IconGear size={22} color={C.accent} />

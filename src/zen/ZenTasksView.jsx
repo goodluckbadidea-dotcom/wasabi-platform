@@ -5,6 +5,7 @@
 
 import React, { useCallback, useMemo, useRef } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
+import { ANIM } from "../design/animations.js";
 import useZenTasks from "./useZenTasks.js";
 import useAICuratedTasks from "./useAICuratedTasks.js";
 import TaskList from "./TaskList.jsx";
@@ -103,6 +104,7 @@ export default function ZenTasksView() {
           <div style={{
             fontSize: 18, fontWeight: 600, fontFamily: FONT, color: C.darkText,
             display: "flex", alignItems: "center", gap: 10,
+            animation: ANIM.snapUp(0.03),
           }}>
             <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
               <circle cx="8" cy="8" r="6" stroke={C.accent} strokeWidth="1.3" fill="none" />

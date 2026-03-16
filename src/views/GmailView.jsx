@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
+import { ANIM } from "../design/animations.js";
 import {
   searchEmails,
   getEmail,
@@ -506,6 +507,7 @@ const S = {
     display: "flex",
     alignItems: "center",
     gap: 8,
+    animation: ANIM.snapUp(0.03),
   },
   headerTitle: {
     fontSize: 16,
