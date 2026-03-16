@@ -51,6 +51,7 @@ const ZenTasksView = React.lazy(() => import("./zen/ZenTasksView.jsx"));
 const ZenNotes = React.lazy(() => import("./zen/ZenNotes.jsx"));
 const ZenDashboard = React.lazy(() => import("./zen/ZenDashboard.jsx"));
 const ZenGmail = React.lazy(() => import("./zen/ZenGmail.jsx"));
+const ZenWorkspaces = React.lazy(() => import("./zen/ZenWorkspaces.jsx"));
 
 // Inject CSS animations on app load
 injectAnimations();
@@ -325,6 +326,18 @@ function AppContent() {
               <ZenGmail />
             </React.Suspense>
           </ErrorBoundary>
+        );
+      }
+      // Zen Workspaces browser
+      if (activePage === "zen-workspaces") {
+        return (
+          <React.Suspense fallback={
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
+              Loading...
+            </div>
+          }>
+            <ZenWorkspaces />
+          </React.Suspense>
         );
       }
       // Default: Tasks split view (To-Do + Calendar)

@@ -12,7 +12,7 @@ import { archivePage } from "../notion/client.js";
 import {
   IconBolt, IconGear, IconStar, IconSearch, IconBrain, IconBell,
   IconChevronLeft, IconChevronRight, IconMail, IconCalendar, IconFunction,
-  IconGrid,
+  IconGrid, IconGlobe,
 } from "../design/icons.jsx";
 import { useTheme } from "../context/ThemeContext.jsx";
 import { getGoogleStatus, getGmailSummary, getCalendarSummary } from "../lib/api.js";
@@ -239,33 +239,14 @@ export default function Navigation({
       {/* ── Zen mode: simplified sidebar ── */}
       {appMode === "zen" ? (
         <>
-          {/* Zen header label */}
-          {!collapsed && (
-            <div style={{
-              flexShrink: 0, borderBottom: `1px solid ${C.darkBorder}`,
-              padding: "14px 14px 12px", display: "flex", alignItems: "center", gap: 8,
-            }}>
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                <circle cx="8" cy="8" r="6" stroke={C.accent} strokeWidth="1.5" fill="none" />
-                <circle cx="8" cy="8" r="2" fill={C.accent} />
-              </svg>
-              <span style={{
-                fontFamily: FONT, fontSize: 12, fontWeight: 600,
-                color: C.darkText, letterSpacing: "0.04em", textTransform: "uppercase",
-              }}>
-                Sashimi
-              </span>
-            </div>
-          )}
-
           {/* Zen Insight + spacer */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: collapsed ? 0 : "12px 14px", overflow: "hidden" }}>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: collapsed ? 0 : "20px 16px", overflow: "hidden" }}>
             {!collapsed && zenInsight && (
               <div style={{
-                fontSize: 11, lineHeight: 1.5, fontFamily: FONT,
+                fontSize: 13, lineHeight: 1.6, fontFamily: FONT,
                 color: C.darkMuted, fontStyle: "italic",
                 opacity: 0.85, transition: "opacity 0.4s ease",
-                textAlign: "center", padding: "0 4px",
+                textAlign: "center", padding: "0 2px",
               }}>
                 {zenInsight}
               </div>
@@ -286,6 +267,18 @@ export default function Navigation({
               transition: "padding 0.25s",
             }}
           >
+            {/* Workspaces */}
+            <button
+              onClick={() => { setActivePage("zen-workspaces"); setActiveFolder(null); }}
+              title="Workspaces"
+              style={bottomBtnStyle(activePage === "zen-workspaces")}
+              onMouseEnter={(e) => { if (activePage !== "zen-workspaces") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activePage !== "zen-workspaces") e.currentTarget.style.background = "transparent"; }}
+            >
+              <IconGlobe size={iconSize(activePage === "zen-workspaces")} color={activePage === "zen-workspaces" ? "#fff" : C.darkMuted} />
+              {!collapsed && <span style={bottomLabelStyle(activePage === "zen-workspaces")}>Workspaces</span>}
+            </button>
+
             {/* Dashboard */}
             <button
               onClick={() => { setActivePage("zen-dashboard"); setActiveFolder(null); }}
