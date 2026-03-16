@@ -94,6 +94,27 @@ export default function ZenTasksView() {
   // ── Collect tasks due today for the schedule panel ──
   const allTasks = useMemo(() => [...zenTasks, ...aiTasks], [zenTasks, aiTasks]);
 
+  // ── Build synthetic schema from task status options for ViewSettingsPanel ──
+  const taskSchema = useMemo(() => {
+    const seen = new Set();
+    const options = [];
+    for (const t of allTasks) {
+      for (const opt of (t._statusOptions || [])) {
+        if (!seen.has(opt.name)) {
+          seen.add(opt.name);
+          options.push(opt);
+        }
+      }
+    }
+    // Also include priority values as options if no status options found
+    if (options.length === 0) {
+      for (const name of ["High", "Medium", "Normal", "Low"]) {
+        options.push({ name, color: "default" });
+      }
+    }
+    return { statuses: [{ name: "Status", type: "status", options }], selects: [], multiSelects: [], allFields: [], dates: [] };
+  }, [allTasks]);
+
   return (
     <div style={{
       flex: 1, display: "flex", overflow: "hidden",
@@ -239,6 +260,7 @@ export default function ZenTasksView() {
           <ViewSettingsPanel
             viewKey="zen-tasks"
             viewConfig={{ type: "tasks", label: "Tasks" }}
+            schema={taskSchema}
             globalColorMapping={globalColorMapping}
             globalColorField={globalColorField}
             viewColorConfig={getViewColorConfig("zen-tasks")}
