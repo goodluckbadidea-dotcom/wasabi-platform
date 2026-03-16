@@ -283,6 +283,7 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, on
                   onDelete={() => {}}
                   onTaskClick={onTaskClick}
                   colorMapping={colorMapping}
+                  dateChipColors={dateChipColors}
                 />
               ))
             )}
