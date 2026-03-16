@@ -244,6 +244,14 @@ CREATE TABLE IF NOT EXISTS flow_executions (
   completed_at TEXT,
   error TEXT DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS task_activity (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL,
+  source TEXT NOT NULL,
+  last_activity_at TEXT NOT NULL,
+  UNIQUE(task_id, source)
+);
 `;
 
 const D1_INDEXES = `
@@ -258,6 +266,7 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_rule ON rule_snapshots(rule_id);
 CREATE INDEX IF NOT EXISTS idx_custom_fn_status ON custom_functions(status);
 CREATE INDEX IF NOT EXISTS idx_fn_exec_fn ON function_executions(function_id, executed_at);
 CREATE INDEX IF NOT EXISTS idx_flow_exec_flow ON flow_executions(flow_id, started_at);
+CREATE INDEX IF NOT EXISTS idx_task_activity_lookup ON task_activity(task_id, source);
 `;
 
 // ─── Auth Middleware ───
@@ -521,6 +530,24 @@ export default {
           const body = await request.json();
           return await handleCreateComment(env, recordId, body);
         }
+      }
+
+      // ─── Task Activity ───
+      const taskActivityMatch = path.match(/^\/task-activity\/([^/]+)$/);
+      if (taskActivityMatch) {
+        const taskId = taskActivityMatch[1];
+        if (request.method === "GET") {
+          const source = url.searchParams.get("source");
+          return await handleGetTaskActivity(env, taskId, source);
+        }
+        if (request.method === "PUT") {
+          const body = await request.json();
+          return await handleUpsertTaskActivity(env, taskId, body);
+        }
+      }
+      if (path === "/task-activity" && request.method === "GET") {
+        const source = url.searchParams.get("source");
+        return await handleListTaskActivity(env, source);
       }
 
       // ─── Sheet Routes ───
@@ -1235,6 +1262,8 @@ async function handleInit(env) {
       "ALTER TABLE sheet_data ADD COLUMN frozen TEXT DEFAULT '{}'",
       "ALTER TABLE sheet_data ADD COLUMN cell_styles TEXT DEFAULT '{}'",
       "ALTER TABLE custom_functions ADD COLUMN meta TEXT DEFAULT '{}'",
+      "CREATE TABLE IF NOT EXISTS task_activity (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, source TEXT NOT NULL, last_activity_at TEXT NOT NULL, UNIQUE(task_id, source))",
+      "CREATE INDEX IF NOT EXISTS idx_task_activity_lookup ON task_activity(task_id, source)",
     ];
     for (const sql of migrations) {
       try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }
@@ -2577,6 +2606,53 @@ async function handleCreateComment(env, recordId, body) {
 async function handleDeleteComment(env, recordId, commentId) {
   try {
     await env.DB.prepare("DELETE FROM record_comments WHERE id = ? AND record_id = ?").bind(commentId, recordId).run();
+    return jsonResponse({ ok: true });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// ─── Task Activity Handlers ───
+
+async function handleListTaskActivity(env, source) {
+  try {
+    if (!source) return jsonResponse({ _error: "source query param required" }, 400);
+    const results = await env.DB.prepare(
+      "SELECT * FROM task_activity WHERE source = ?"
+    ).bind(source).all();
+    return jsonResponse({ activities: results.results || [] });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleGetTaskActivity(env, taskId, source) {
+  try {
+    if (source) {
+      const row = await env.DB.prepare(
+        "SELECT * FROM task_activity WHERE task_id = ? AND source = ?"
+      ).bind(taskId, source).first();
+      return jsonResponse({ activity: row || null });
+    }
+    const results = await env.DB.prepare(
+      "SELECT * FROM task_activity WHERE task_id = ?"
+    ).bind(taskId).all();
+    return jsonResponse({ activities: results.results || [] });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleUpsertTaskActivity(env, taskId, body) {
+  try {
+    const { source, last_activity_at } = body;
+    if (!source || !last_activity_at) return jsonResponse({ _error: "source and last_activity_at required" }, 400);
+    const id = `${taskId}:${source}`;
+    await env.DB.prepare(
+      `INSERT INTO task_activity (id, task_id, source, last_activity_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET last_activity_at = excluded.last_activity_at`
+    ).bind(id, taskId, source, last_activity_at).run();
     return jsonResponse({ ok: true });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);

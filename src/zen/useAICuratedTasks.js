@@ -6,8 +6,11 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { detectSchema } from "../notion/schema.js";
 import { queryLimited } from "../notion/pagination.js";
-import { listRows, claudeProxy, getTableSchema } from "../lib/api.js";
-import { normalizeNotionTask, normalizeD1Task, getCached, setCache, parseDate } from "./zenTaskHelpers.js";
+import { listRows, claudeProxy, getTableSchema, listTaskActivity, upsertTaskActivity } from "../lib/api.js";
+import {
+  normalizeNotionTask, normalizeD1Task, getCached, setCache, parseDate,
+  scoreTerminalStatuses, shouldIncludeTask, isSmartOverdue,
+} from "./zenTaskHelpers.js";
 
 const CACHE_KEY = "wasabi_zen_ai_tasks_v4"; // v4: word-boundary name matching
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
@@ -234,7 +237,14 @@ function compressTask(task) {
   if (task.status) obj.status = task.status;
   if (task.done) obj.done = true;
   if (task.priority) obj.priority = task.priority;
-  if (task.due) obj.due = task.due;
+  if (task.nearestDate) {
+    obj.nearestDate = task.nearestDate;
+    obj.nearestDateField = task.nearestDateField;
+  } else if (task.due) {
+    obj.nearestDate = task.due;
+  }
+  if (task._isOverdue) obj.isOverdue = true;
+  if (task._isStale) obj.isStale = true;
   return obj;
 }
 
@@ -354,12 +364,20 @@ export default function useAICuratedTasks() {
       }
 
       // Step 2: Fetch items from each database (parallel with retry)
+      // Also compute terminal statuses per database for smart done detection
       const allTasks = [];
       let fetchErrors = 0;
 
       const fetchPromises = taskDbs.map(async (db) => {
         try {
           if (db.type === "notion") {
+            // Compute terminal statuses for this database
+            const allOptions = [
+              ...(db.schema?.statuses || []).flatMap((f) => f.options || []),
+              ...(db.schema?.selects || []).flatMap((f) => f.options || []),
+            ];
+            const terminalStatuses = scoreTerminalStatuses(allOptions);
+
             const results = await withRetry(
               () => queryLimited(
                 user.workerUrl, user.notionKey, db.dbId,
@@ -371,10 +389,10 @@ export default function useAICuratedTasks() {
             );
             const tasks = [];
             for (const page of (results || [])) {
-              const task = normalizeNotionTask(page, db.schema, db.pageName);
+              const task = normalizeNotionTask(page, db.schema, db.pageName, terminalStatuses);
               if (!task.done) tasks.push(task);
             }
-            return tasks;
+            return { tasks, source: `notion:${db.dbId}` };
           } else if (db.type === "d1") {
             const result = await withRetry(
               () => listRows(db.tableId, { limit: MAX_ITEMS_PER_DB }),
@@ -387,19 +405,21 @@ export default function useAICuratedTasks() {
               task.source = `d1:${db.tableId}`;
               if (!task.done) tasks.push(task);
             }
-            return tasks;
+            return { tasks, source: `d1:${db.tableId}` };
           }
         } catch (err) {
           console.warn(`[AICurated] Failed to fetch from "${db.pageName}":`, err.message);
           fetchErrors++;
         }
-        return [];
+        return { tasks: [], source: "" };
       });
 
       const fetchResults = await Promise.allSettled(fetchPromises);
+      const tasksBySource = {};
       for (const r of fetchResults) {
         if (r.status === "fulfilled" && r.value) {
-          allTasks.push(...r.value);
+          allTasks.push(...r.value.tasks);
+          if (r.value.source) tasksBySource[r.value.source] = r.value.tasks;
         }
       }
 
@@ -415,32 +435,83 @@ export default function useAICuratedTasks() {
         return;
       }
 
-      // Step 3: Call Haiku for prioritization
-      if (user.claudeKey) {
+      // Step 2.5: Fetch activity data and apply smart inclusion filter
+      const activityMap = new Map(); // taskId → lastActivityAt
+      const bootstrapQueue = [];
+
+      // Fetch existing activity records per source (in parallel)
+      const activityPromises = Object.keys(tasksBySource).map(async (source) => {
+        try {
+          const result = await listTaskActivity(source);
+          for (const a of (result?.activities || [])) {
+            activityMap.set(a.task_id, a.last_activity_at);
+          }
+        } catch (err) {
+          console.warn(`[AICurated] Activity fetch failed for ${source}:`, err.message);
+        }
+      });
+      await Promise.allSettled(activityPromises);
+
+      // Bootstrap missing activity records from lastEditedTime
+      for (const task of allTasks) {
+        if (!activityMap.has(task.id) && task.lastEditedTime) {
+          activityMap.set(task.id, task.lastEditedTime);
+          bootstrapQueue.push({ taskId: task.id, source: task.source, time: task.lastEditedTime });
+        }
+      }
+      // Bootstrap in background (don't block UI)
+      if (bootstrapQueue.length > 0) {
+        Promise.allSettled(
+          bootstrapQueue.map((b) => upsertTaskActivity(b.taskId, b.source, b.time))
+        ).catch(() => {});
+      }
+
+      // Apply smart inclusion filter
+      const filteredTasks = allTasks.filter((task) => {
+        const lastActivity = activityMap.get(task.id) || null;
+        const nearest = task.nearestDate || task.due;
+
+        // Tasks with no dates: include them (let AI decide relevance)
+        if (!nearest) return true;
+
+        // Annotate for AI prompt
+        task._isOverdue = isSmartOverdue(nearest, lastActivity);
+        task._isStale = shouldIncludeTask(nearest, lastActivity);
+
+        return shouldIncludeTask(nearest, lastActivity);
+      });
+
+      // Step 3: Call Haiku for prioritization (on filtered tasks)
+      if (user.claudeKey && filteredTasks.length > 0) {
         try {
           const today = new Date().toISOString().split("T")[0];
           const dbSummaries = {};
-          for (const task of allTasks) {
+          for (const task of filteredTasks) {
             const name = task.sourceName;
             if (!dbSummaries[name]) dbSummaries[name] = [];
             dbSummaries[name].push(compressTask(task));
           }
 
-          const prompt = `You are a smart task prioritizer. Given items from the user's databases, do TWO things:
+          const prompt = `You are a smart task prioritizer. Tasks have been pre-filtered to only include items approaching deadlines, overdue, or not recently updated.
 
-1. FILTER: Exclude anything that is NOT an actionable task. Skip contacts, records, reference entries, inventory items, labels, categories, or any non-actionable item. A real task is something a person needs to DO (write, call, fix, review, build, send, prepare, etc.). Items with statuses like "Active/Inactive" on contacts are NOT tasks.
+Each task includes:
+- nearestDate: the closest date across ALL date fields (timeline ends, deadlines, etc.)
+- nearestDateField: which field it came from (e.g., "Design Deadline", "Timeline")
+- isOverdue: true if this date passed and the task wasn't updated since
+- isStale: true if the task hasn't been touched relative to how close its deadline is
 
-2. PRIORITIZE: From the remaining real tasks, select the top 10-15 most important for today (${today}).
+Today is ${today}.
 
-Priority rules (in order):
-1. Overdue items (due date before today) — highest priority
-2. Due today
-3. Marked high priority or urgent
-4. In-progress / actively being worked on
-5. Recently created actionable items
+RANK these tasks from most to least urgent (priority_score 5 = most urgent, 1 = least).
 
-Return ONLY a JSON array of objects with: { "title": "exact title", "priority_score": 1-5, "reason": "brief reason" }
-Where 5 = most urgent, 1 = least urgent. If NO items are real actionable tasks, return an empty array []. Return valid JSON only, no markdown.
+Priority rules:
+1. Overdue + stale items — highest priority (score 5)
+2. Due today or tomorrow (score 4-5)
+3. Stale items approaching deadlines (score 3-4)
+4. High priority or urgent status (score 3-4)
+5. In-progress items approaching dates (score 2-3)
+
+Exclude any items that are NOT actionable tasks (contacts, records, inventory, labels). Return ONLY a JSON array: [{ "title": "exact title", "priority_score": 1-5, "reason": "brief reason" }]. Return valid JSON only, no markdown.
 
 Items by database:
 ${JSON.stringify(dbSummaries, null, 0)}`;
@@ -469,7 +540,7 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
           if (prioritized.length > 0) {
             const result = [];
             for (const item of prioritized) {
-              const match = allTasks.find((t) =>
+              const match = filteredTasks.find((t) =>
                 t.title.toLowerCase() === item.title?.toLowerCase()
               );
               if (match) {
@@ -485,38 +556,43 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
             setAiTasks(result);
             setCache(CACHE_KEY, result);
           } else {
-            // Fallback: show all tasks sorted by due date
-            allTasks.sort((a, b) => {
-              if (a.due && !b.due) return -1;
-              if (!a.due && b.due) return 1;
-              if (a.due && b.due) return parseDate(a.due) - parseDate(b.due);
+            // Fallback: show filtered tasks sorted by nearest date
+            filteredTasks.sort((a, b) => {
+              const aDate = a.nearestDate || a.due;
+              const bDate = b.nearestDate || b.due;
+              if (aDate && !bDate) return -1;
+              if (!aDate && bDate) return 1;
+              if (aDate && bDate) return parseDate(aDate) - parseDate(bDate);
               return 0;
             });
-            setAiTasks(allTasks.slice(0, 15));
-            setCache(CACHE_KEY, allTasks.slice(0, 15));
+            setAiTasks(filteredTasks.slice(0, 15));
+            setCache(CACHE_KEY, filteredTasks.slice(0, 15));
           }
         } catch (err) {
           console.warn("[AICurated] AI call failed, using fallback:", err.message);
-          // Fallback without AI
-          allTasks.sort((a, b) => {
-            if (a.due && !b.due) return -1;
-            if (!a.due && b.due) return 1;
-            if (a.due && b.due) return parseDate(a.due) - parseDate(b.due);
+          filteredTasks.sort((a, b) => {
+            const aDate = a.nearestDate || a.due;
+            const bDate = b.nearestDate || b.due;
+            if (aDate && !bDate) return -1;
+            if (!aDate && bDate) return 1;
+            if (aDate && bDate) return parseDate(aDate) - parseDate(bDate);
             return 0;
           });
-          setAiTasks(allTasks.slice(0, 15));
-          setCache(CACHE_KEY, allTasks.slice(0, 15));
+          setAiTasks(filteredTasks.slice(0, 15));
+          setCache(CACHE_KEY, filteredTasks.slice(0, 15));
         }
       } else {
-        // No Claude key — just sort by due date
-        allTasks.sort((a, b) => {
-          if (a.due && !b.due) return -1;
-          if (!a.due && b.due) return 1;
-          if (a.due && b.due) return parseDate(a.due) - parseDate(b.due);
+        // No Claude key or no filtered tasks — sort by nearest date
+        filteredTasks.sort((a, b) => {
+          const aDate = a.nearestDate || a.due;
+          const bDate = b.nearestDate || b.due;
+          if (aDate && !bDate) return -1;
+          if (!aDate && bDate) return 1;
+          if (aDate && bDate) return parseDate(aDate) - parseDate(bDate);
           return 0;
         });
-        setAiTasks(allTasks.slice(0, 15));
-        setCache(CACHE_KEY, allTasks.slice(0, 15));
+        setAiTasks(filteredTasks.slice(0, 15));
+        setCache(CACHE_KEY, filteredTasks.slice(0, 15));
       }
 
       setLastUpdated(new Date());

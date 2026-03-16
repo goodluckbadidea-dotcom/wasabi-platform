@@ -9,10 +9,12 @@ import { useSashimiDrawer } from "./SashimiDrawerContext.jsx";
 import {
   updateRow, deleteRow, updateCalendarEvent, deleteCalendarEvent,
   getRecordNote, saveRecordNote, listRecordComments, createRecordComment, deleteRecordComment,
+  upsertTaskActivity,
 } from "../lib/api.js";
 import { updatePage } from "../notion/client.js";
 import { buildProp } from "../notion/properties.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
+import { useTheme } from "../context/ThemeContext.jsx";
 import EmailThreadDrawer from "./EmailThreadDrawer.jsx";
 
 // ── Priority colors (aligned to INFO_PALETTE) ──
@@ -94,7 +96,8 @@ function toDateInput(isoStr) {
 // TaskEditor
 // ════════════════════════════════════════════
 function TaskEditor({ task, onSaved, onDeleted, onClose }) {
-  const { user } = usePlatform();
+  const { user, pages, setActivePage } = usePlatform();
+  const { setAppMode } = useTheme();
   const isNotion = task.source && task.source.startsWith("notion:");
   const isD1 = task.source === "manual" || (task.source && task.source.startsWith("d1:"));
   const isEditable = isD1 || isNotion;
@@ -204,6 +207,42 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
       setConfirmDelete(false);
     }
   }, [task, confirmDelete, onDeleted, onClose]);
+
+  // ── "Remove from To Do" — logs activity to reset staleness ──
+  const [removing, setRemoving] = useState(false);
+  const handleRemoveFromTodo = useCallback(async () => {
+    setRemoving(true);
+    try {
+      await upsertTaskActivity(task.id, task.source, new Date().toISOString());
+      onSaved?.({ ...task, _removedFromTodo: true });
+      onClose();
+    } catch (err) {
+      console.error("[SashimiDrawer] Remove from to do failed:", err);
+      setError("Failed to remove.");
+    } finally {
+      setRemoving(false);
+    }
+  }, [task, onSaved, onClose]);
+
+  // ── "Go To Task" — switch to Sushi Roll and navigate to source DB ──
+  const handleGoToTask = useCallback(() => {
+    const dbId = task.source?.split(":")[1];
+    if (!dbId) return;
+    const matchedPage = pages.find((p) =>
+      p.databaseIds?.includes(dbId)
+    );
+    if (matchedPage) {
+      setAppMode("samurai");
+      setActivePage(matchedPage.id);
+      onClose();
+    }
+  }, [task, pages, setAppMode, setActivePage, onClose]);
+
+  // Can we navigate to this task's source?
+  const canGoToTask = (() => {
+    const dbId = task.source?.split(":")[1];
+    return dbId && pages.some((p) => p.databaseIds?.includes(dbId));
+  })();
 
   return (
     <div>
@@ -392,6 +431,48 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
                   transition: "all 0.15s",
                 }}
               >{deleting ? "Deleting..." : confirmDelete ? "Confirm Delete" : "Delete"}</button>
+            )}
+          </div>
+
+          {/* ── Smart To-Do actions ── */}
+          <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+            {task.source !== "manual" && (
+              <button onClick={handleRemoveFromTodo} disabled={removing}
+                style={{
+                  flex: 1, padding: "8px 12px", borderRadius: RADIUS.md,
+                  background: "transparent",
+                  color: C.darkMuted, border: `1px solid ${C.darkBorder}`,
+                  fontSize: 11, fontWeight: 500, fontFamily: FONT,
+                  cursor: removing ? "wait" : "pointer", outline: "none",
+                  transition: "all 0.15s", display: "flex", alignItems: "center",
+                  justifyContent: "center", gap: 5,
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                  <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                </svg>
+                {removing ? "Removing..." : "Remove from To Do"}
+              </button>
+            )}
+            {canGoToTask && (
+              <button onClick={handleGoToTask}
+                style={{
+                  flex: 1, padding: "8px 12px", borderRadius: RADIUS.md,
+                  background: "transparent",
+                  color: C.accent, border: `1px solid ${C.accent}44`,
+                  fontSize: 11, fontWeight: 500, fontFamily: FONT,
+                  cursor: "pointer", outline: "none",
+                  transition: "all 0.15s", display: "flex", alignItems: "center",
+                  justifyContent: "center", gap: 5,
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                  <path d="M6 3H3v10h10v-3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                  <path d="M9 2h5v5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M14 2L7 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                </svg>
+                Go To Task
+              </button>
             )}
           </div>
         </>

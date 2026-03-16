@@ -634,6 +634,19 @@ export async function updateDraft(draftId, { to, subject, bodyText, threadId }) 
   });
 }
 
+// ─── Task Activity ───
+
+export async function listTaskActivity(source) {
+  return apiFetch(`/task-activity?source=${encodeURIComponent(source)}`);
+}
+
+export async function upsertTaskActivity(taskId, source, lastActivityAt) {
+  return apiFetch(`/task-activity/${taskId}`, {
+    method: "PUT",
+    body: { source, last_activity_at: lastActivityAt },
+  });
+}
+
 // ─── Google Calendar ───
 
 export async function listCalendars() {

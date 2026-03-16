@@ -1,5 +1,138 @@
 // ─── Zen Task Helpers ───
 // Shared utilities for the Zen To-Do engine: normalization, dates, caching.
+// Smart filtering: nearest-date scanning, activity-aware staleness, terminal status detection.
+
+// ── Smart To-Do Helpers ──
+
+/**
+ * Scan ALL date fields on a Notion page and find the nearest date.
+ * For date ranges (start/end), both dates are considered.
+ * Returns the closest upcoming date, or if none upcoming, the most recently past date.
+ */
+export function findNearestDate(page, schema) {
+  const props = page.properties || {};
+  const allDates = [];
+
+  for (const field of (schema?.dates || [])) {
+    const val = readNotionProp(props[field.name]);
+    if (!val) continue;
+    if (typeof val === "object") {
+      // Date range: { start, end }
+      if (val.start) allDates.push({ date: val.start, fieldName: field.name });
+      if (val.end) allDates.push({ date: val.end, fieldName: field.name });
+    } else if (typeof val === "string") {
+      allDates.push({ date: val, fieldName: field.name });
+    }
+  }
+
+  if (!allDates.length) return { date: null, fieldName: null, allDates: [] };
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const nowMs = now.getTime();
+
+  let closestUpcoming = null; // smallest positive delta
+  let closestPast = null;     // smallest negative delta (most recent past)
+
+  for (const entry of allDates) {
+    const d = parseDate(entry.date);
+    if (isNaN(d)) continue;
+    const dMs = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const delta = dMs - nowMs;
+
+    if (delta >= 0) {
+      if (!closestUpcoming || delta < closestUpcoming.delta) {
+        closestUpcoming = { ...entry, delta };
+      }
+    } else {
+      if (!closestPast || delta > closestPast.delta) {
+        closestPast = { ...entry, delta };
+      }
+    }
+  }
+
+  const nearest = closestUpcoming || closestPast;
+  return {
+    date: nearest?.date || null,
+    fieldName: nearest?.fieldName || null,
+    allDates,
+  };
+}
+
+/**
+ * Smart overdue detection: a past date is overdue ONLY if
+ * the record hasn't been updated since that date passed.
+ */
+export function isSmartOverdue(dateStr, lastActivityAt) {
+  if (!dateStr) return false;
+  const d = parseDate(dateStr);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  if (d >= now) return false; // not past
+
+  if (!lastActivityAt) return true; // no activity → overdue
+  const activity = new Date(lastActivityAt);
+  return activity < d; // overdue only if last activity was before the date
+}
+
+/**
+ * Staleness filter: determines if a task should appear on the to-do list.
+ * Returns true if the task should be included.
+ *
+ * Inclusion criteria (any one):
+ * - Nearest date is smart-overdue (past + no recent activity)
+ * - Nearest date is today or tomorrow
+ * - Stale: not updated within 1/3 of remaining time
+ */
+export function shouldIncludeTask(nearestDate, lastActivityAt) {
+  if (!nearestDate) return false; // no dates → handled separately
+
+  const d = parseDate(nearestDate);
+  if (isNaN(d)) return false;
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const dDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diffDays = Math.round((dDay - now) / (1000 * 60 * 60 * 24));
+
+  // Today or tomorrow → always include
+  if (diffDays >= 0 && diffDays <= 1) return true;
+
+  // Overdue → include only if smart-overdue
+  if (diffDays < 0) return isSmartOverdue(nearestDate, lastActivityAt);
+
+  // Future → check staleness (1/3 ratio)
+  if (!lastActivityAt) return true; // no activity record → stale
+  const activity = new Date(lastActivityAt);
+  const remainingMs = dDay.getTime() - now.getTime();
+  const timeSinceActivityMs = now.getTime() - activity.getTime();
+  return timeSinceActivityMs > remainingMs / 3;
+}
+
+/**
+ * Score status options to identify "terminal" (done) statuses per database.
+ * Returns a Set of lowercase status names that represent completion.
+ */
+export function scoreTerminalStatuses(statusOptions) {
+  const FINALITY_SCORES = {
+    complete: 3, completed: 3, done: 3,
+    shipped: 2, delivered: 2, closed: 2, archived: 2,
+    cancelled: 2, canceled: 2, resolved: 2, finished: 2,
+    invoiced: 1, paid: 1, released: 1, launched: 1,
+  };
+
+  const terminal = new Set();
+  for (const opt of (statusOptions || [])) {
+    const name = (typeof opt === "string" ? opt : opt.name || "").toLowerCase().trim();
+    if (!name) continue;
+    let score = 0;
+    for (const [word, pts] of Object.entries(FINALITY_SCORES)) {
+      if (name.includes(word)) score += pts;
+    }
+    if (score >= 2) terminal.add(name);
+  }
+  return terminal;
+}
 
 /**
  * Normalize a D1 row into a uniform task object.
@@ -23,16 +156,50 @@ export function normalizeD1Task(row, columns) {
     return null;
   };
 
+  // Scan all date-type columns for nearest date
+  const allDates = [];
+  for (const [key, val] of Object.entries(cells)) {
+    const col = colMap[key];
+    const colType = (col?.type || "").toLowerCase();
+    const colName = (col?.name || key).toLowerCase();
+    if (colType === "date" || colName.includes("date") || colName.includes("deadline") || colName.includes("timeline")) {
+      if (val && typeof val === "string") allDates.push({ date: val, fieldName: col?.name || key });
+    }
+  }
+
+  // Find nearest date from all date fields
+  let nearestDate = null;
+  let nearestDateField = null;
+  if (allDates.length) {
+    const now = new Date(); now.setHours(0, 0, 0, 0);
+    const nowMs = now.getTime();
+    let closestUp = null, closestPast = null;
+    for (const entry of allDates) {
+      const d = parseDate(entry.date);
+      if (isNaN(d)) continue;
+      const delta = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() - nowMs;
+      if (delta >= 0) { if (!closestUp || delta < closestUp.delta) closestUp = { ...entry, delta }; }
+      else { if (!closestPast || delta > closestPast.delta) closestPast = { ...entry, delta }; }
+    }
+    const nearest = closestUp || closestPast;
+    nearestDate = nearest?.date || null;
+    nearestDateField = nearest?.fieldName || null;
+  }
+
   return {
     id: row.id,
     title: findCell(["task", "title", "name"]) || "Untitled",
     done: !!findCell(["done", "complete", "check"]),
     priority: findCell(["priority"]) || null,
-    due: findCell(["due", "date"]) || null,
+    due: nearestDate || findCell(["due", "date"]) || null,
+    nearestDate,
+    nearestDateField,
+    allDates,
     notes: findCell(["notes", "note", "description"]) || "",
     source: "manual",
     sourceName: "Zen Tasks",
     createdAt: row.created_at || null,
+    lastEditedTime: row.updated_at || null,
     _raw: row,
   };
 }
@@ -40,7 +207,7 @@ export function normalizeD1Task(row, columns) {
 /**
  * Normalize a Notion page into a uniform task object.
  */
-export function normalizeNotionTask(page, schema, dbName) {
+export function normalizeNotionTask(page, schema, dbName, terminalStatuses) {
   const props = page.properties || {};
 
   // Find title
@@ -69,14 +236,19 @@ export function normalizeNotionTask(page, schema, dbName) {
   // Track title field name (store just the property name string)
   if (schema?.title) _fieldMap.title = schema.title.name || schema.title;
 
+  // Build terminal statuses set if not provided
+  const _terminal = terminalStatuses || scoreTerminalStatuses([
+    ...(schema?.statuses || []).flatMap((f) => f.options || []),
+    ...(schema?.selects || []).flatMap((f) => f.options || []),
+  ]);
+
   let statusFieldType = null;
   // Check Notion `status`-type properties first
   for (const field of (schema?.statuses || [])) {
     const val = readNotionProp(props[field.name]);
     if (val) {
       status = val;
-      const lower = String(val).toLowerCase();
-      done = lower === "done" || lower === "complete" || lower === "completed";
+      done = _terminal.has(String(val).toLowerCase());
     }
     if (!_fieldMap.status) {
       _fieldMap.status = field.name;
@@ -92,8 +264,7 @@ export function normalizeNotionTask(page, schema, dbName) {
         const val = readNotionProp(props[field.name]);
         if (val) {
           status = val;
-          const lower = String(val).toLowerCase();
-          done = lower === "done" || lower === "complete" || lower === "completed";
+          done = _terminal.has(String(val).toLowerCase());
         }
         _fieldMap.status = field.name;
         statusFieldType = "select";
@@ -124,16 +295,15 @@ export function normalizeNotionTask(page, schema, dbName) {
     }
   }
 
-  // Find due date + track field mapping
-  let due = null;
+  // Find nearest date across ALL date fields
+  const nearest = findNearestDate(page, schema);
+
+  // Also track the first "due"/"deadline" field for writes
   for (const field of (schema?.dates || [])) {
     const name = field.name.toLowerCase();
     if (name.includes("due") || name.includes("deadline") || name.includes("date")) {
-      const val = readNotionProp(props[field.name]);
-      if (val) {
-        due = typeof val === "object" ? val.start : val;
-      }
       if (!_fieldMap.due) _fieldMap.due = field.name;
+      break;
     }
   }
 
@@ -143,10 +313,14 @@ export function normalizeNotionTask(page, schema, dbName) {
     done,
     status,
     priority,
-    due,
+    due: nearest.date, // nearest date across all fields (backward compat)
+    nearestDate: nearest.date,
+    nearestDateField: nearest.fieldName,
+    allDates: nearest.allDates,
     notes: "",
     source: `notion:${page._databaseId || "unknown"}`,
     sourceName: dbName || "Database",
+    lastEditedTime: page.last_edited_time || null,
     _raw: page,
     _fieldMap,
     _statusOptions,
@@ -155,7 +329,7 @@ export function normalizeNotionTask(page, schema, dbName) {
 }
 
 /** Read a Notion property value to a plain JS value */
-function readNotionProp(prop) {
+export function readNotionProp(prop) {
   if (!prop) return null;
   const t = prop.type;
   if (t === "title") return (prop.title || []).map((r) => r.plain_text).join("");
