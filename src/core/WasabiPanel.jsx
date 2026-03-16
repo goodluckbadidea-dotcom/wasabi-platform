@@ -59,7 +59,7 @@ const DEFAULT_WIDTH = 320;
 const MIN_WIDTH = 280;
 const MAX_WIDTH = 640;
 
-export default function WasabiPanel({ onClose, isThinking, activePageConfig, activePageData, pendingChatMessage, onClearPendingMessage }) {
+export default function WasabiPanel({ onClose, isThinking, activePageConfig, activePageData, pendingChatMessage, onClearPendingMessage, embedded = false }) {
   const { user, platformIds, pages, batchQueue, addToQueue, updateQueueItem, removeQueueItem, addPage } =
     usePlatform();
   const [tab, setTab] = useState("log");
@@ -598,8 +598,10 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
   return (
     <div
       style={{
-        width: panelWidth,
+        width: embedded ? "100%" : panelWidth,
+        flexGrow: embedded ? 1 : 0,
         flexShrink: 0,
+        flexBasis: embedded ? 0 : "auto",
         borderRight: "none",
         background: C.darkSurf,
         display: "flex",
@@ -608,15 +610,15 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
         minHeight: 0,
         fontFamily: FONT,
         position: "relative",
-        transition: isDragging ? "none" : TRANSITION.panelResize,
+        transition: isDragging && !embedded ? "none" : embedded ? undefined : TRANSITION.panelResize,
       }}
     >
-      {/* ── Header ── */}
+      {/* ── Header (hidden when embedded in SashimiChatPanel) ── */}
+      {!embedded && (
       <div
         style={{
           padding: "14px 14px 0",
           flexShrink: 0,
-          borderBottom: `1px solid ${C.darkBorder}`,
           background: C.dark,
         }}
       >
@@ -692,25 +694,28 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
             </button>
           </div>
         </div>
+      </div>
+      )}
 
-        {/* Tab bar */}
-        <div
-          style={{
-            display: "flex",
-            gap: 3,
-            marginBottom: 12,
-            background: C.darkSurf,
-            borderRadius: 999,
-            padding: 3,
-          }}
-        >
-          <button style={tabBtn(tab === "log")} onClick={() => setTab("log")}>
-            Log{pendingCount > 0 ? ` (${pendingCount})` : ""}
-          </button>
-          <button style={tabBtn(tab === "chat")} onClick={() => setTab("chat")}>
-            Chat
-          </button>
-        </div>
+      {/* Tab bar (always visible, including when embedded) */}
+      <div
+        style={{
+          display: "flex",
+          gap: 3,
+          margin: embedded ? "0 10px 8px" : "0 14px 12px",
+          background: C.darkSurf,
+          borderRadius: 999,
+          padding: 3,
+          flexShrink: 0,
+          borderBottom: `1px solid ${C.darkBorder}`,
+        }}
+      >
+        <button style={tabBtn(tab === "log")} onClick={() => setTab("log")}>
+          Log{pendingCount > 0 ? ` (${pendingCount})` : ""}
+        </button>
+        <button style={tabBtn(tab === "chat")} onClick={() => setTab("chat")}>
+          Chat
+        </button>
       </div>
 
       {/* ═══ LOG TAB ═══ */}
@@ -940,7 +945,8 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
         </div>
       )}
 
-      {/* ── Drag handle (right edge) ── */}
+      {/* ── Drag handle (right edge, hidden when embedded) ── */}
+      {!embedded && (
       <div
         onMouseDown={handleDragStart}
         style={{
@@ -958,6 +964,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
         onMouseEnter={(e) => { if (!isDragging) e.currentTarget.style.background = C.accent + "22"; }}
         onMouseLeave={(e) => { if (!isDragging) e.currentTarget.style.background = "transparent"; }}
       />
+      )}
     </div>
   );
 }

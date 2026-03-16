@@ -995,3 +995,10 @@ export const SYSTEM_TOOLS = [
   SEARCH_KNOWLEDGE_BASE,
   UPDATE_KNOWLEDGE_BASE,
 ];
+
+// Lightweight tool set for Zen/Sashimi chat
+export const ZEN_TOOLS = [
+  SEARCH_EMAILS,
+  LIST_CALENDAR_EVENTS,
+  CREATE_CALENDAR_EVENT,
+];

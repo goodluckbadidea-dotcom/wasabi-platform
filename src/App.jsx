@@ -19,7 +19,7 @@ import SetupWizard from "./core/SetupWizard.jsx";
 import TopHeader from "./core/TopHeader.jsx";
 import Navigation from "./core/Navigation.jsx";
 import WasabiPanel from "./core/WasabiPanel.jsx";
-const ZenChatPanel = React.lazy(() => import("./zen/ZenChatPanel.jsx"));
+const SashimiChatPanel = React.lazy(() => import("./zen/SashimiChatPanel.jsx"));
 import Onboarding from "./core/Onboarding.jsx";
 import PageBuilder from "./core/PageBuilder.jsx";
 import PageShell from "./core/PageShell.jsx";
@@ -525,7 +525,13 @@ function AppContent() {
           }}>
             {appMode === "zen" ? (
               <React.Suspense fallback={null}>
-                <ZenChatPanel onClose={() => setWasabiPanelOpen(false)} />
+                <SashimiChatPanel
+                  onClose={() => setWasabiPanelOpen(false)}
+                  activePageConfig={activePageConfig}
+                  activePageData={activePageData}
+                  pendingChatMessage={pendingChatMessage}
+                  onClearPendingMessage={() => setPendingChatMessage(null)}
+                />
               </React.Suspense>
             ) : (
               <WasabiPanel
@@ -563,7 +569,13 @@ function AppContent() {
             }}>
               {appMode === "zen" ? (
                 <React.Suspense fallback={null}>
-                  <ZenChatPanel onClose={() => setWasabiPanelOpen(false)} />
+                  <SashimiChatPanel
+                    onClose={() => setWasabiPanelOpen(false)}
+                    activePageConfig={activePageConfig}
+                    activePageData={activePageData}
+                    pendingChatMessage={pendingChatMessage}
+                    onClearPendingMessage={() => setPendingChatMessage(null)}
+                  />
                 </React.Suspense>
               ) : (
                 <WasabiPanel
