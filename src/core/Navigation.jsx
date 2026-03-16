@@ -10,7 +10,7 @@ import { usePlatform } from "../context/PlatformContext.jsx";
 import { savePageConfig, archivePageConfig, createFolderConfig, createWorkspaceConfig, createDashboardConfig } from "../config/pageConfig.js";
 import { archivePage } from "../notion/client.js";
 import {
-  IconBolt, IconGear, IconStar, IconSearch, IconBrain, IconBell,
+  IconBolt, IconGear, IconStar, IconSearch, IconBrain, IconBell, IconPlus,
   IconChevronLeft, IconChevronRight, IconMail, IconCalendar, IconFunction,
   IconGrid, IconGlobe,
 } from "../design/icons.jsx";
@@ -239,9 +239,75 @@ export default function Navigation({
       {/* ── Zen mode: simplified sidebar ── */}
       {appMode === "zen" ? (
         <>
+          {/* Top: expand/collapse toggle + search */}
+          <div style={{
+            flexShrink: 0,
+            padding: collapsed ? "8px 4px" : "8px 10px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            borderBottom: `1px solid ${C.darkBorder}`,
+          }}>
+            {/* Expand / Collapse toggle */}
+            <button
+              onClick={onToggleCollapse}
+              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "flex-start",
+                padding: collapsed ? "6px" : "6px 8px",
+                borderRadius: RADIUS.sm, transition: "background 0.15s",
+                outline: "none", width: "100%",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            >
+              {collapsed
+                ? <IconChevronRight size={14} color={C.darkMuted} />
+                : <IconChevronLeft size={14} color={C.darkMuted} />
+              }
+            </button>
+
+            {/* Search bar (expanded only) */}
+            {!collapsed && (
+              <div style={{ position: "relative" }}>
+                <div style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+                  <IconSearch size={13} color={C.darkMuted} />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    width: "100%", padding: "7px 10px 7px 28px",
+                    background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
+                    borderRadius: RADIUS.lg, fontSize: 12, fontFamily: FONT,
+                    color: C.darkText, outline: "none", transition: "border-color 0.15s",
+                    boxSizing: "border-box",
+                  }}
+                  onFocus={(e) => { e.target.style.borderColor = C.accent; }}
+                  onBlur={(e) => { e.target.style.borderColor = C.darkBorder; }}
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    style={{
+                      position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)",
+                      background: "none", border: "none", cursor: "pointer",
+                      fontSize: 12, color: C.darkMuted, padding: "2px 4px",
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Zen Insight + spacer */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: collapsed ? 0 : "20px 16px", overflow: "hidden" }}>
-            {!collapsed && zenInsight && (
+            {!collapsed && zenInsight && !searchQuery && (
               <div style={{
                 fontSize: 13, lineHeight: 1.6, fontFamily: FONT,
                 color: C.darkMuted, fontStyle: "italic",
@@ -251,9 +317,42 @@ export default function Navigation({
                 {zenInsight}
               </div>
             )}
+            {/* Search results (expanded, when query active) */}
+            {!collapsed && searchQuery && (
+              <div style={{ padding: "0 4px", overflowY: "auto", flex: 1 }}>
+                {pages
+                  .filter((p) => !p._zenInternal && p.name?.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .slice(0, 15)
+                  .map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => { setActivePage(p.id); setSearchQuery(""); }}
+                      style={{
+                        background: "none", border: "none", cursor: "pointer",
+                        display: "flex", alignItems: "center", gap: 8,
+                        padding: "6px 8px", borderRadius: RADIUS.sm,
+                        width: "100%", textAlign: "left", transition: "background 0.12s",
+                        outline: "none",
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    >
+                      <span style={{ fontSize: 12, color: C.darkText, fontFamily: FONT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {p.name}
+                      </span>
+                    </button>
+                  ))
+                }
+                {pages.filter((p) => !p._zenInternal && p.name?.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
+                  <div style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT, textAlign: "center", padding: "12px 0" }}>
+                    No results
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Zen bottom nav */}
+          {/* Zen nav items */}
           <div
             style={{
               flexShrink: 0,
@@ -267,6 +366,59 @@ export default function Navigation({
               transition: "padding 0.25s",
             }}
           >
+            {/* Create New */}
+            <button
+              onClick={() => {
+                // Show a simple dropdown inline — reuse CreateMenu logic
+                const menuEl = document.getElementById("zen-create-menu");
+                if (menuEl) menuEl.style.display = menuEl.style.display === "none" ? "flex" : "none";
+              }}
+              title="Create New"
+              style={bottomBtnStyle(false)}
+              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            >
+              <IconPlus size={iconSize(false)} color={C.accent} />
+              {!collapsed && <span style={{ ...bottomLabelStyle(false), color: C.accent }}>Create New</span>}
+            </button>
+            {/* Create dropdown */}
+            <div
+              id="zen-create-menu"
+              style={{
+                display: "none", flexDirection: "column", gap: 1,
+                padding: "2px 0 4px", marginLeft: collapsed ? 0 : 8,
+              }}
+            >
+              {[
+                { type: "workspace", label: "Workspace" },
+                { type: "folder", label: "Folder" },
+                { type: "dashboard", label: "Dashboard" },
+                { type: "page", label: "Page" },
+              ].map((item) => (
+                <button
+                  key={item.type}
+                  onClick={() => {
+                    handleCreateItem(item.type);
+                    const menuEl = document.getElementById("zen-create-menu");
+                    if (menuEl) menuEl.style.display = "none";
+                  }}
+                  style={{
+                    background: "none", border: "none", cursor: "pointer",
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: collapsed ? "5px 6px" : "5px 10px",
+                    borderRadius: RADIUS.sm, transition: "background 0.12s",
+                    outline: "none", width: "100%",
+                    justifyContent: collapsed ? "center" : "flex-start",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                  title={item.label}
+                >
+                  {!collapsed && <span style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>{item.label}</span>}
+                  {collapsed && <span style={{ fontSize: 9, color: C.darkMuted, fontFamily: FONT }}>{item.label.charAt(0)}</span>}
+                </button>
+              ))}
+            </div>
             {/* Workspaces — also highlighted when viewing a real page opened from workspaces */}
             {(() => {
               const SYSTEM_PAGES = new Set(["system", "wasabi", "inbox", "automations", "functions", "build", "knowledge-base", "dashboard"]);
@@ -625,41 +777,43 @@ export default function Navigation({
         </>
       )}
 
-      {/* -- Collapse / Expand Chevron -- */}
-      <button
-        onClick={onToggleCollapse}
-        title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        style={{
-          position: "absolute", top: "50%", right: -12,
-          transform: "translateY(-50%)",
-          width: 20, height: 32,
-          background: C.dark,
-          border: `1px solid ${C.darkBorder}`,
-          borderLeft: "none",
-          borderRadius: "0 4px 4px 0",
-          cursor: "pointer",
-          outline: "none",
-          zIndex: 10,
-          transition: "background 0.15s, border-color 0.15s",
-          padding: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = C.darkSurf2;
-          e.currentTarget.style.borderColor = C.accent;
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = C.dark;
-          e.currentTarget.style.borderColor = C.darkBorder;
-        }}
-      >
-        {collapsed
-          ? <IconChevronRight size={12} color={C.darkMuted} />
-          : <IconChevronLeft size={12} color={C.darkMuted} />
-        }
-      </button>
+      {/* -- Collapse / Expand Chevron (Samurai mode only — Zen uses top toggle) -- */}
+      {appMode !== "zen" && (
+        <button
+          onClick={onToggleCollapse}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          style={{
+            position: "absolute", top: "50%", right: -12,
+            transform: "translateY(-50%)",
+            width: 20, height: 32,
+            background: C.dark,
+            border: `1px solid ${C.darkBorder}`,
+            borderLeft: "none",
+            borderRadius: "0 4px 4px 0",
+            cursor: "pointer",
+            outline: "none",
+            zIndex: 10,
+            transition: "background 0.15s, border-color 0.15s",
+            padding: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = C.darkSurf2;
+            e.currentTarget.style.borderColor = C.accent;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = C.dark;
+            e.currentTarget.style.borderColor = C.darkBorder;
+          }}
+        >
+          {collapsed
+            ? <IconChevronRight size={12} color={C.darkMuted} />
+            : <IconChevronLeft size={12} color={C.darkMuted} />
+          }
+        </button>
+      )}
 
       {/* -- Context Menu -- */}
       {contextMenu && (

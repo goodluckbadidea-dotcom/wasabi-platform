@@ -93,8 +93,8 @@ export default function TopHeader() {
           </svg>
         </button>
 
-        {/* Neurons toggle (Sushi Roll mode only) */}
-        {appMode !== "zen" && <button
+        {/* Neurons toggle */}
+        <button
           onClick={toggleOverlay}
           title={overlayActive ? "Exit Neurons mode (Esc)" : "Enter Neurons mode"}
           style={{
@@ -159,7 +159,7 @@ export default function TopHeader() {
               {selection.length}
             </span>
           )}
-        </button>}
+        </button>
 
         {/* Sashimi / Sushi Roll mode toggle */}
         <button

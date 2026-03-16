@@ -226,7 +226,7 @@ function AppContent() {
     {
       shortcut: "mod+j",
       description: "Toggle Neurons overlay",
-      handler: () => { if (appMode !== "zen") toggleNeurons(); },
+      handler: () => { toggleNeurons(); },
     },
     {
       shortcut: "mod+h",
@@ -527,11 +527,9 @@ function AppContent() {
       {/* ── Top Header Bar ── */}
       <TopHeader />
 
-      {/* ── Neuron Overlay (glass pane for selection mode — Sushi Roll only) ── */}
-      {appMode !== "zen" && <>
-        <NeuronOverlay />
-        <NeuronLines />
-      </>}
+      {/* ── Neuron Overlay (glass pane for selection mode) ── */}
+      <NeuronOverlay />
+      <NeuronLines />
 
       {/* ── Main Row: [Wasabi Panel] [Sidebar] [Content] ── */}
       <div
