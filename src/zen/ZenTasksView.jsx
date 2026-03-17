@@ -3,7 +3,7 @@
 // Left 40%: AI-curated to-do list + quick-add.
 // Right 60%: Today's schedule / calendar.
 
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { IconEdit } from "../design/icons.jsx";
@@ -36,9 +36,22 @@ export default function ZenTasksView() {
     error: aiError,
   } = useAICuratedTasks();
 
-  const { openDrawer } = useSashimiDrawer();
+  const { openDrawer, onSaved, onDeleted } = useSashimiDrawer();
   const calendarRefreshRef = useRef(null);
   const [showSettings, setShowSettings] = useState(false);
+
+  // Subscribe to drawer save/delete events (works regardless of which view rendered the drawer)
+  useEffect(() => {
+    const unsubSave = onSaved((type) => {
+      if (type === "task") { refreshZen(); refreshAI(); }
+      if (type === "event") calendarRefreshRef.current?.();
+    });
+    const unsubDelete = onDeleted((type) => {
+      if (type === "task") refreshZen();
+      if (type === "event") calendarRefreshRef.current?.();
+    });
+    return () => { unsubSave(); unsubDelete(); };
+  }, [onSaved, onDeleted, refreshZen, refreshAI]);
   const { globalColorMapping, globalColorField, getViewColorConfig, updateViewColorConfig, resetViewColorConfig } = useColorMapping();
 
   // Build colorMapping object for TaskRow color resolution

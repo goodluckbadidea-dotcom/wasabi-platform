@@ -14,6 +14,22 @@ export function PagesProvider({ children }) {
 
   const [pages, setPages] = useState(() => loadCachedConfigs());
 
+  // Save status: "idle" | "saving" | "saved" | "error"
+  const [saveStatus, setSaveStatus] = useState("idle");
+  const saveTimerRef = useRef(null);
+
+  // Warn on tab close if saving
+  useEffect(() => {
+    const handler = (e) => {
+      if (saveStatus === "saving") {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [saveStatus]);
+
   // ── Batch queue (log) ──
   const [batchQueue, setBatchQueue] = useState([]);
 
@@ -161,15 +177,34 @@ export function PagesProvider({ children }) {
     });
   }, []);
 
-  const updatePageConfig = useCallback((id, updates) => {
-    setPages((prev) => {
-      const updated = prev.map((p) => (p.id === id ? { ...p, ...updates } : p));
-      try { localStorage.setItem("wasabi_page_configs", JSON.stringify(updated)); } catch {}
-      const changed = updated.find((p) => p.id === id);
-      if (changed) savePageConfig(changed).catch((err) => console.error("[Pages] Persist failed:", err));
-      return updated;
-    });
-  }, []);
+  const updatePageConfig = useCallback(async (id, updates) => {
+    // Capture previous state for rollback
+    const prevPages = pages;
+    const updated = pages.map((p) => (p.id === id ? { ...p, ...updates } : p));
+    const changed = updated.find((p) => p.id === id);
+
+    // Optimistic update
+    setPages(updated);
+    try { localStorage.setItem("wasabi_page_configs", JSON.stringify(updated)); } catch {}
+
+    // Persist to D1 with rollback on failure
+    if (changed) {
+      setSaveStatus("saving");
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      try {
+        await savePageConfig(changed);
+        setSaveStatus("saved");
+        saveTimerRef.current = setTimeout(() => setSaveStatus("idle"), 2000);
+      } catch (err) {
+        console.error("[Pages] Persist failed, rolling back:", err);
+        setSaveStatus("error");
+        saveTimerRef.current = setTimeout(() => setSaveStatus("idle"), 4000);
+        // Rollback: restore previous state and localStorage
+        setPages(prevPages);
+        try { localStorage.setItem("wasabi_page_configs", JSON.stringify(prevPages)); } catch {}
+      }
+    }
+  }, [pages]);
 
   const removePageRaw = useCallback((id) => {
     setPages((prev) => {
@@ -222,6 +257,7 @@ export function PagesProvider({ children }) {
     folders,
     getFolderPages,
     globalDashboard,
+    saveStatus,
     batchQueue,
     addToQueue,
     updateQueueItem,

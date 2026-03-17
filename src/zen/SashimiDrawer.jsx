@@ -8,7 +8,7 @@ import Drawer from "../core/Drawer.jsx";
 import { useSashimiDrawer } from "./SashimiDrawerContext.jsx";
 import {
   updateRow, deleteRow, updateCalendarEvent, deleteCalendarEvent,
-  getRecordNote, saveRecordNote, listRecordComments, createRecordComment, deleteRecordComment,
+  listRecordComments, createRecordComment, deleteRecordComment,
   upsertTaskActivity,
 } from "../lib/api.js";
 import { updatePage } from "../notion/client.js";
@@ -96,6 +96,7 @@ function toDateInput(isoStr) {
 // ════════════════════════════════════════════
 function TaskEditor({ task, onSaved, onDeleted, onClose }) {
   const { user, pages, setActivePage } = usePlatform();
+  const { notifySaved, notifyDeleted } = useSashimiDrawer();
   const isNotion = task.source && task.source.startsWith("notion:");
   const isD1 = task.source === "manual" || (task.source && task.source.startsWith("d1:"));
   const isEditable = isD1 || isNotion;
@@ -166,10 +167,15 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
         if (fieldMap.due && due !== toDateInput(task.due)) {
           properties[fieldMap.due] = buildProp("date", due || null);
         }
+        if (fieldMap.notes && notes !== (task.notes || "")) {
+          properties[fieldMap.notes] = buildProp("rich_text", notes);
+        }
         if (Object.keys(properties).length > 0) {
           await updatePage(user.workerUrl, user.notionKey, task.id, properties);
         }
-        onSaved?.({ ...task, title, done, status, priority, due, notes });
+        const updated = { ...task, title, done, status, priority, due, notes };
+        onSaved?.(updated);
+        notifySaved("task", updated);
         onClose();
       } else {
         const tableId = task.tableId || (task.source?.startsWith("d1:") ? task.source.split(":")[1] : null);
@@ -177,7 +183,9 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
         await updateRow(tableId, task.id, {
           cells: { task: title, done, priority: priority || null, due: due || null, notes },
         });
-        onSaved?.({ ...task, title, done, priority, due, notes });
+        const updated = { ...task, title, done, priority, due, notes };
+        onSaved?.(updated);
+        notifySaved("task", updated);
         onClose();
       }
     } catch (err) {
@@ -196,6 +204,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
       if (!tableId) throw new Error("No table ID");
       await deleteRow(tableId, task.id);
       onDeleted?.(task.id);
+      notifyDeleted("task", task.id);
       onClose();
     } catch (err) {
       console.error("[SashimiDrawer] Delete task failed:", err);
@@ -263,7 +272,6 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
       <div style={tabBarStyle}>
         {[
           { key: "details", label: "Details" },
-          { key: "notes", label: "Notes" },
           { key: "comments", label: "Comments" },
         ].map((t) => (
           <button key={t.key} style={tabStyle(activeTab === t.key)} onClick={() => setActiveTab(t.key)}>
@@ -374,17 +382,16 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
             />
           </div>
 
-          {/* Inline notes for D1 tasks */}
-          {!isNotion && (
-            <div style={fieldGroup}>
-              <label style={labelStyle}>Notes</label>
-              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4}
-                style={{ ...inputStyle, resize: "vertical", minHeight: 80 }}
-                onFocus={(e) => { e.target.style.borderColor = C.accent; }}
-                onBlur={(e) => { e.target.style.borderColor = C.darkBorder; }}
-              />
-            </div>
-          )}
+          {/* Inline notes */}
+          <div style={fieldGroup}>
+            <label style={labelStyle}>Notes</label>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4}
+              style={{ ...inputStyle, resize: "vertical", minHeight: 80 }}
+              placeholder={isNotion && !fieldMap.notes ? "Notes (stored locally — no Notion notes field detected)" : ""}
+              onFocus={(e) => { e.target.style.borderColor = C.accent; }}
+              onBlur={(e) => { e.target.style.borderColor = C.darkBorder; }}
+            />
+          </div>
 
           {/* Source badge */}
           {task.sourceName && (
@@ -475,11 +482,6 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
         </>
       )}
 
-      {/* ── Notes tab ── */}
-      {activeTab === "notes" && (
-        <TaskNotesTab recordId={task.id} pageConfigId={pageConfigId} />
-      )}
-
       {/* ── Comments tab ── */}
       {activeTab === "comments" && (
         <TaskCommentsTab recordId={task.id} pageConfigId={pageConfigId} />
@@ -488,73 +490,6 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
   );
 }
 
-// ════════════════════════════════════════════
-// TaskNotesTab — auto-saving notes per record
-// ════════════════════════════════════════════
-function TaskNotesTab({ recordId, pageConfigId }) {
-  const [content, setContent] = useState("");
-  const [saveStatus, setSaveStatus] = useState("");
-  const [loading, setLoading] = useState(true);
-  const debounceRef = useRef(null);
-  const latestRef = useRef("");
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    getRecordNote(recordId, pageConfigId)
-      .then((res) => { if (!cancelled) { const t = res?.note?.content || ""; setContent(t); latestRef.current = t; } })
-      .catch(() => { if (!cancelled) setContent(""); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [recordId, pageConfigId]);
-
-  const doSave = useCallback(async (text) => {
-    setSaveStatus("Saving...");
-    try { await saveRecordNote(recordId, pageConfigId, text); setSaveStatus("Saved"); }
-    catch { setSaveStatus("Save failed"); }
-  }, [recordId, pageConfigId]);
-
-  const handleChange = useCallback((e) => {
-    const val = e.target.value;
-    setContent(val);
-    latestRef.current = val;
-    setSaveStatus("");
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => doSave(val), 1000);
-  }, [doSave]);
-
-  const handleBlur = useCallback(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    doSave(latestRef.current);
-  }, [doSave]);
-
-  useEffect(() => { return () => { if (debounceRef.current) clearTimeout(debounceRef.current); }; }, []);
-
-  if (loading) {
-    return <div style={{ fontSize: 12, fontFamily: FONT, color: C.darkMuted, padding: "20px 0", textAlign: "center" }}>Loading notes...</div>;
-  }
-
-  return (
-    <div>
-      <textarea
-        value={content}
-        onChange={handleChange}
-        onBlur={handleBlur}
-        placeholder="Write notes about this task..."
-        rows={10}
-        style={{ ...inputStyle, resize: "vertical", minHeight: 180 }}
-        onFocus={(e) => { e.target.style.borderColor = C.accent; }}
-        onBlurCapture={(e) => { e.target.style.borderColor = C.darkBorder; }}
-      />
-      {saveStatus && (
-        <div style={{
-          fontSize: 10, fontFamily: FONT, marginTop: 6,
-          color: saveStatus === "Save failed" ? "#E05252" : C.darkMuted,
-        }}>{saveStatus}</div>
-      )}
-    </div>
-  );
-}
 
 // ════════════════════════════════════════════
 // TaskCommentsTab — threaded comments per record
@@ -564,13 +499,19 @@ function TaskCommentsTab({ recordId, pageConfigId }) {
   const [loading, setLoading] = useState(true);
   const [newComment, setNewComment] = useState("");
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState(null);
   const inputRef = useRef(null);
 
   const fetchComments = useCallback(async () => {
     try {
+      setError(null);
       const res = await listRecordComments(recordId, pageConfigId);
       setComments(res?.comments || []);
-    } catch { setComments([]); }
+    } catch (err) {
+      console.error("[Comments] Failed to load:", err);
+      setError("Failed to load comments.");
+      setComments([]);
+    }
     finally { setLoading(false); }
   }, [recordId, pageConfigId]);
 
@@ -580,20 +521,28 @@ function TaskCommentsTab({ recordId, pageConfigId }) {
     const text = newComment.trim();
     if (!text || sending) return;
     setSending(true);
+    setError(null);
     try {
       await createRecordComment(recordId, pageConfigId, text);
       setNewComment("");
       await fetchComments();
       inputRef.current?.focus();
-    } catch (err) { console.error("Failed to add comment:", err); }
+    } catch (err) {
+      console.error("[Comments] Failed to add:", err);
+      setError("Failed to send comment. Please try again.");
+    }
     finally { setSending(false); }
   }, [newComment, sending, recordId, pageConfigId, fetchComments]);
 
   const handleDeleteComment = useCallback(async (commentId) => {
     try {
+      setError(null);
       await deleteRecordComment(recordId, commentId);
       setComments((prev) => prev.filter((c) => c.id !== commentId));
-    } catch (err) { console.error("Failed to delete comment:", err); }
+    } catch (err) {
+      console.error("[Comments] Failed to delete:", err);
+      setError("Failed to delete comment.");
+    }
   }, [recordId]);
 
   const handleKeyDown = useCallback((e) => {
@@ -642,6 +591,15 @@ function TaskCommentsTab({ recordId, pageConfigId }) {
         ))}
       </div>
 
+      {/* Error message */}
+      {error && (
+        <div style={{
+          fontSize: 11, fontFamily: FONT, color: "#E05252",
+          marginBottom: 8, padding: "6px 10px",
+          background: "#E0525215", borderRadius: RADIUS.md,
+        }}>{error}</div>
+      )}
+
       {/* New comment input */}
       <div style={{ display: "flex", gap: 6 }}>
         <input
@@ -676,6 +634,7 @@ function TaskCommentsTab({ recordId, pageConfigId }) {
 // EventEditor
 // ════════════════════════════════════════════
 function EventEditor({ event, onSaved, onDeleted, onClose }) {
+  const { notifySaved, notifyDeleted } = useSashimiDrawer();
   const [summary, setSummary] = useState(event.summary || "");
   const [startDT, setStartDT] = useState(toLocalInput(event.start?.dateTime || event.start?.date));
   const [endDT, setEndDT] = useState(toLocalInput(event.end?.dateTime || event.end?.date));
@@ -720,7 +679,9 @@ function EventEditor({ event, onSaved, onDeleted, onClose }) {
       if (location !== undefined) updates.location = location;
 
       await updateCalendarEvent(event.id, updates);
-      onSaved?.({ ...event, ...updates });
+      const updated = { ...event, ...updates };
+      onSaved?.(updated);
+      notifySaved("event", updated);
       onClose();
     } catch (err) {
       console.error("[SashimiDrawer] Save event failed:", err);
@@ -739,6 +700,7 @@ function EventEditor({ event, onSaved, onDeleted, onClose }) {
     try {
       await deleteCalendarEvent(event.id);
       onDeleted?.(event.id);
+      notifyDeleted("event", event.id);
       onClose();
     } catch (err) {
       console.error("[SashimiDrawer] Delete event failed:", err);

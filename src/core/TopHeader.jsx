@@ -6,11 +6,13 @@ import React from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { useTheme } from "../context/ThemeContext.jsx";
 import { useNeurons } from "../neurons/NeuronsContext.jsx";
+import { usePages } from "../context/PagesContext.jsx";
 import Breadcrumb from "../components/Breadcrumb.jsx";
 
 export default function TopHeader() {
   const { themeName, toggleMode } = useTheme();
   const { overlayActive, toggleOverlay, selection } = useNeurons();
+  const { saveStatus } = usePages();
 
   return (
     <header
@@ -53,6 +55,20 @@ export default function TopHeader() {
         {/* Breadcrumb */}
         <Breadcrumb />
       </div>
+
+      {/* Save status indicator */}
+      {saveStatus !== "idle" && (
+        <div style={{
+          fontSize: 10, fontFamily: FONT, fontWeight: 500,
+          color: saveStatus === "error" ? "#E05252" : saveStatus === "saving" ? C.darkMuted : C.accent,
+          padding: "4px 10px", borderRadius: RADIUS.pill, flexShrink: 0,
+          background: saveStatus === "error" ? "#E0525215" : "transparent",
+          transition: "all 0.2s",
+          letterSpacing: "0.03em",
+        }}>
+          {saveStatus === "saving" ? "Saving..." : saveStatus === "saved" ? "Saved" : "Save failed"}
+        </div>
+      )}
 
       {/* Right: Refresh + Neurons toggle + Theme cycle */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>

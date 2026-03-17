@@ -307,6 +307,19 @@ export function normalizeNotionTask(page, schema, dbName, terminalStatuses) {
     }
   }
 
+  // Find notes/description field for reads and writes
+  let notesValue = "";
+  for (const field of (schema?.richTexts || [])) {
+    const name = field.name.toLowerCase();
+    if (name.includes("note") || name.includes("description") || name.includes("detail") || name.includes("comment")) {
+      if (!_fieldMap.notes) {
+        _fieldMap.notes = field.name;
+        notesValue = readNotionProp(props[field.name]) || "";
+      }
+      break;
+    }
+  }
+
   return {
     id: page.id,
     title: title || "Untitled",
@@ -317,7 +330,7 @@ export function normalizeNotionTask(page, schema, dbName, terminalStatuses) {
     nearestDate: nearest.date,
     nearestDateField: nearest.fieldName,
     allDates: nearest.allDates,
-    notes: "",
+    notes: notesValue,
     source: `notion:${page._databaseId || "unknown"}`,
     sourceName: dbName || "Database",
     lastEditedTime: page.last_edited_time || null,
