@@ -69,11 +69,17 @@ function AppContent() {
   const { theme, themeName } = useTheme();
   const { toggleOverlay: toggleNeurons } = useNeurons();
 
-  // ── UI State ──
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
-  const [wasabiPanelOpen, setWasabiPanelOpen] = useState(false);
+  // ── UI State (persisted to localStorage) ──
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { const v = localStorage.getItem("wasabi_sidebar_collapsed"); return v !== null ? JSON.parse(v) : true; } catch { return true; }
+  });
+  const [wasabiPanelOpen, setWasabiPanelOpen] = useState(() => {
+    try { const v = localStorage.getItem("wasabi_panel_open"); return v !== null ? JSON.parse(v) : false; } catch { return false; }
+  });
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
-  const [viewStates, setViewStates] = useState({}); // { [pageId]: activeViewIndex }
+  const [viewStates, setViewStates] = useState(() => {
+    try { const v = localStorage.getItem("wasabi_view_states"); return v ? JSON.parse(v) : {}; } catch { return {}; }
+  });
   const [builderTemplate, setBuilderTemplate] = useState(null);
   const [activePageData, setActivePageData] = useState(null); // { data, schema } from PageShell for WasabiPanel chat
   const [pendingChatMessage, setPendingChatMessage] = useState(null); // Scaffold from FunctionBuilder → WasabiPanel
@@ -89,6 +95,11 @@ function AppContent() {
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, []);
+
+  // ── Persist UI state to localStorage ──
+  useEffect(() => { try { localStorage.setItem("wasabi_sidebar_collapsed", JSON.stringify(sidebarCollapsed)); } catch {} }, [sidebarCollapsed]);
+  useEffect(() => { try { localStorage.setItem("wasabi_panel_open", JSON.stringify(wasabiPanelOpen)); } catch {} }, [wasabiPanelOpen]);
+  useEffect(() => { try { localStorage.setItem("wasabi_view_states", JSON.stringify(viewStates)); } catch {} }, [viewStates]);
 
   // ── Clear page controls when navigating away ──
   const prevActivePage = useRef(activePage);

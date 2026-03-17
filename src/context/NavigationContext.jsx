@@ -2,24 +2,46 @@
 // Active page, active folder, expanded tree nodes.
 // Split from PlatformContext for focused re-renders.
 // Uses usePages() internally for auto-expand.
+// Persists navigation state to localStorage so the app feels like a persistent desk.
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { usePages } from "./PagesContext.jsx";
 
 const NavigationContext = createContext(null);
 
+// ── localStorage helpers ──
+function loadJSON(key, fallback) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
+}
+function saveJSON(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
+
 export function NavigationProvider({ children }) {
   const { pages } = usePages();
 
-  const [activePage, setActivePage] = useState(null);
-  const [activeFolder, setActiveFolder] = useState(null);
-  const [expandedNodes, setExpandedNodes] = useState(new Set());
+  const [activePage, setActivePage] = useState(() => loadJSON("wasabi_active_page", null));
+  const [activeFolder, setActiveFolder] = useState(() => loadJSON("wasabi_active_folder", null));
+  const [expandedNodes, setExpandedNodes] = useState(() => {
+    const saved = loadJSON("wasabi_expanded_nodes", null);
+    return saved ? new Set(saved) : new Set();
+  });
+
+  // Navigation signal for breadcrumb → ZenWorkspaces path sync
+  const [targetFolderPath, setTargetFolderPath] = useState(null);
+
+  // ── Persist to localStorage ──
+  useEffect(() => { saveJSON("wasabi_active_page", activePage); }, [activePage]);
+  useEffect(() => { saveJSON("wasabi_active_folder", activeFolder); }, [activeFolder]);
+  useEffect(() => { saveJSON("wasabi_expanded_nodes", [...expandedNodes]); }, [expandedNodes]);
 
   // ── Auto-expand workspaces on first load ──
   const hasAutoExpanded = useRef(false);
   useEffect(() => {
     if (hasAutoExpanded.current || pages.length === 0) return;
     hasAutoExpanded.current = true;
+    // Only auto-expand if no saved state
+    if (expandedNodes.size > 0) return;
     const workspaces = pages.filter((p) => p.page_type === "workspace" || p.pageType === "workspace");
     if (workspaces.length > 0) {
       setExpandedNodes(new Set(workspaces.map((w) => w.id)));
@@ -44,6 +66,8 @@ export function NavigationProvider({ children }) {
     setActiveFolder,
     expandedNodes,
     toggleExpand,
+    targetFolderPath,
+    setTargetFolderPath,
   };
 
   return <NavigationContext.Provider value={value}>{children}</NavigationContext.Provider>;

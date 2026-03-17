@@ -6,6 +6,7 @@ import React, { useState, useCallback, useEffect, useRef } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { ANIM, TRANSITION } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
+import { useNavigation } from "../context/NavigationContext.jsx";
 import { savePageConfig, archivePageConfig, createFolderConfig, createWorkspaceConfig, createDashboardConfig } from "../config/pageConfig.js";
 import { archivePage } from "../notion/client.js";
 import {
@@ -36,6 +37,7 @@ export default function Navigation({
     updatePageConfig, removePage, addPage,
     activeFolder, setActiveFolder,
   } = usePlatform();
+  const { setTargetFolderPath } = useNavigation();
 
   const zenInsight = useZenInsight();
 
@@ -379,7 +381,27 @@ export default function Navigation({
                 (activePage && !activePage.startsWith("zen-") && !SYSTEM_PAGES.has(activePage) && pages.some(p => p.id === activePage));
               return (
                 <button
-                  onClick={() => { setActivePage("zen-workspaces"); setActiveFolder(null); }}
+                  onClick={() => {
+                    // If viewing a page, return to the folder containing it
+                    if (activePage && activePage !== "zen-workspaces" && !activePage.startsWith("zen-")) {
+                      const pageConfig = pages.find((p) => p.id === activePage);
+                      if (pageConfig?.parentId) {
+                        const byId = {};
+                        for (const p of pages) byId[p.id] = p;
+                        const folderPath = [];
+                        let cur = byId[pageConfig.parentId];
+                        const seen = new Set();
+                        while (cur) {
+                          if (seen.has(cur.id)) break;
+                          seen.add(cur.id);
+                          folderPath.unshift({ id: cur.id, name: cur.name || "Untitled" });
+                          cur = cur.parentId ? byId[cur.parentId] : null;
+                        }
+                        setTargetFolderPath(folderPath);
+                      }
+                    }
+                    setActivePage("zen-workspaces");
+                  }}
                   title="Workspaces"
                   style={bottomBtnStyle(isWsActive)}
                   onMouseEnter={(e) => { if (!isWsActive) e.currentTarget.style.background = C.darkSurf2; }}

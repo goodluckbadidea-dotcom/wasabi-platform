@@ -2,9 +2,10 @@
 // Shows navigation path: Workspace > Folder > Page.
 // Each segment is clickable to navigate. Current page is bold.
 
-import React, { useMemo } from "react";
+import React, { useMemo, useCallback } from "react";
 import { C, FONT } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
+import { useNavigation } from "../context/NavigationContext.jsx";
 // Special page labels
 const SPECIAL_PAGES = {
   system: "System",
@@ -26,6 +27,7 @@ function Chevron() {
 
 export default function Breadcrumb() {
   const { activePage, pages, setActivePage } = usePlatform();
+  const { setTargetFolderPath } = useNavigation();
   const segments = useMemo(() => {
     // No active page → Home
     if (!activePage) return [];
@@ -87,8 +89,20 @@ export default function Breadcrumb() {
           <button
             onClick={() => {
               if (seg.isCurrent) return;
-              // Clicking a folder goes back to workspaces browser
               if (seg.isFolder) {
+                // Compute the path from root to this folder for ZenWorkspaces
+                const byId = {};
+                for (const p of pages) byId[p.id] = p;
+                const folderPath = [];
+                let cur = byId[seg.id];
+                const seen = new Set();
+                while (cur) {
+                  if (seen.has(cur.id)) break;
+                  seen.add(cur.id);
+                  folderPath.unshift({ id: cur.id, name: cur.name || "Untitled" });
+                  cur = cur.parentId ? byId[cur.parentId] : null;
+                }
+                setTargetFolderPath(folderPath);
                 setActivePage("zen-workspaces");
               } else {
                 setActivePage(seg.id);

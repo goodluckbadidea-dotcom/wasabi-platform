@@ -109,8 +109,15 @@ export default function SashimiChatPanel({
 }) {
   const { user } = usePlatform();
 
-  // ── Tab state ──
-  const [activeTab, setActiveTab] = useState("zen");
+  // ── Tab state (persisted) ──
+  const [activeTab, setActiveTab] = useState(() => {
+    try { return localStorage.getItem("wasabi_chat_tab") || "zen"; } catch { return "zen"; }
+  });
+
+  // Persist chat tab
+  useEffect(() => {
+    try { localStorage.setItem("wasabi_chat_tab", activeTab); } catch {}
+  }, [activeTab]);
 
   // ── Zen chat state ──
   const [zenMessages, setZenMessages] = useState([]);
@@ -119,8 +126,10 @@ export default function SashimiChatPanel({
   const zenHistoryRef = useRef([]);
   const googleContextRef = useRef("");
 
-  // ── Resize ──
-  const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH);
+  // ── Resize (persisted) ──
+  const [panelWidth, setPanelWidth] = useState(() => {
+    try { const v = localStorage.getItem("wasabi_panel_width"); return v ? parseInt(v, 10) : DEFAULT_WIDTH; } catch { return DEFAULT_WIDTH; }
+  });
   const [isDragging, setIsDragging] = useState(false);
   const dragRef = useRef({ startX: 0, startWidth: 0 });
   const isResized = panelWidth !== DEFAULT_WIDTH;
@@ -152,6 +161,11 @@ export default function SashimiChatPanel({
       document.body.style.userSelect = "";
     };
   }, [isDragging]);
+
+  // Persist panel width
+  useEffect(() => {
+    try { localStorage.setItem("wasabi_panel_width", String(panelWidth)); } catch {}
+  }, [panelWidth]);
 
   // ── Auto-switch to Wasabi tab when pendingChatMessage arrives ──
   useEffect(() => {

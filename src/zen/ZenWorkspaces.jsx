@@ -3,10 +3,11 @@
 // Levels: Workspaces → Folders → Pages
 // Clicking a page opens it inline with full PageShell rendering.
 
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
+import { useNavigation } from "../context/NavigationContext.jsx";
 import { IconFolder, IconSearch, IconChevronRight, IconGlobe, IconGear } from "../design/icons.jsx";
 import { useSashimiDrawer } from "./SashimiDrawerContext.jsx";
 import SashimiDrawer from "./SashimiDrawer.jsx";
@@ -36,12 +37,28 @@ function PageIcon({ size = 16, color = C.accent }) {
 
 export default function ZenWorkspaces() {
   const { pageTree, pages, setActivePage, setActiveFolder } = usePlatform();
+  const { targetFolderPath, setTargetFolderPath } = useNavigation();
   const { openDrawer } = useSashimiDrawer();
 
-  // Breadcrumb path: array of { id, name, node }
-  const [path, setPath] = useState([]);
+  // Breadcrumb path: array of { id, name, node } — persisted to localStorage
+  const [path, setPath] = useState(() => {
+    try { const v = localStorage.getItem("wasabi_workspace_path"); return v ? JSON.parse(v) : []; } catch { return []; }
+  });
   const [searchQuery, setSearchQuery] = useState("");
   const [searchAll, setSearchAll] = useState(false);
+
+  // Persist path to localStorage
+  useEffect(() => {
+    try { localStorage.setItem("wasabi_workspace_path", JSON.stringify(path)); } catch {}
+  }, [path]);
+
+  // Listen for breadcrumb/navigation signals to set path
+  useEffect(() => {
+    if (targetFolderPath) {
+      setPath(targetFolderPath);
+      setTargetFolderPath(null);
+    }
+  }, [targetFolderPath, setTargetFolderPath]);
 
   // ── Resolve current level items ──
   const currentItems = useMemo(() => {
