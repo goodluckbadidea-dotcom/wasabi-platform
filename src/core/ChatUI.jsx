@@ -10,6 +10,7 @@ import { ANIM, injectAnimations } from "../design/animations.js";
 import { renderMarkdown } from "../utils/markdown.js";
 import { parseFile } from "../utils/files.js";
 import { IconPaperclip } from "../design/icons.jsx";
+import { hasReportableContent, generateReport, downloadReport } from "../utils/reportGenerator.js";
 
 export default function ChatUI({
   messages = [],
@@ -105,6 +106,29 @@ export default function ChatUI({
     setFiles((prev) => prev.filter((_, i) => i !== idx));
   }, []);
 
+  // Per-message report generation state: { [msgIndex]: "idle" | "generating" | "ready" }
+  const [reportStates, setReportStates] = useState({});
+  const reportBlobsRef = useRef({});
+
+  const handleGenerateReport = useCallback(async (msgIndex, content) => {
+    setReportStates((prev) => ({ ...prev, [msgIndex]: "generating" }));
+    try {
+      // Run in a microtask to avoid blocking UI
+      await new Promise((r) => setTimeout(r, 50));
+      const blob = generateReport(content);
+      reportBlobsRef.current[msgIndex] = blob;
+      setReportStates((prev) => ({ ...prev, [msgIndex]: "ready" }));
+    } catch (err) {
+      console.error("Report generation failed:", err);
+      setReportStates((prev) => ({ ...prev, [msgIndex]: "error" }));
+    }
+  }, []);
+
+  const handleDownloadReport = useCallback((msgIndex) => {
+    const blob = reportBlobsRef.current[msgIndex];
+    if (blob) downloadReport(blob);
+  }, []);
+
   const hasContent = input.trim().length > 0 || files.length > 0;
   const maxMsgW = compact ? "100%" : 680;
 
@@ -171,6 +195,137 @@ export default function ChatUI({
                         <line x1="12" y1="16" x2="12.01" y2="16" />
                       </svg>
                       Response was cut short. Try asking me to continue or rephrase with a more specific question.
+                    </div>
+                  )}
+
+                  {/* Report generation button — shown for data-rich messages */}
+                  {msg.role === "assistant" && hasReportableContent(msg.content) && (
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      marginTop: 8,
+                      animation: ANIM.settleIn(0.1),
+                    }}>
+                      {(!reportStates[i] || reportStates[i] === "idle") && (
+                        <button
+                          onClick={() => handleGenerateReport(i, msg.content)}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            background: C.accent + "14",
+                            border: `1px solid ${C.accent}44`,
+                            borderRadius: RADIUS.md,
+                            padding: "5px 12px",
+                            fontSize: 11,
+                            fontWeight: 500,
+                            color: C.accent,
+                            cursor: "pointer",
+                            fontFamily: "inherit",
+                            transition: "all 0.15s",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = C.accent + "28";
+                            e.currentTarget.style.borderColor = C.accent + "66";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = C.accent + "14";
+                            e.currentTarget.style.borderColor = C.accent + "44";
+                          }}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                            <line x1="16" y1="13" x2="8" y2="13" />
+                            <line x1="16" y1="17" x2="8" y2="17" />
+                          </svg>
+                          Generate Report
+                        </button>
+                      )}
+
+                      {reportStates[i] === "generating" && (
+                        <div style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          padding: "5px 12px",
+                          fontSize: 11,
+                          color: C.darkMuted,
+                        }}>
+                          <div style={{
+                            width: 12,
+                            height: 12,
+                            border: `2px solid ${C.accent}44`,
+                            borderTopColor: C.accent,
+                            borderRadius: "50%",
+                            animation: "spin 0.8s linear infinite",
+                          }} />
+                          Generating PDF...
+                          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+                        </div>
+                      )}
+
+                      {reportStates[i] === "ready" && (
+                        <button
+                          onClick={() => handleDownloadReport(i)}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            background: C.accent,
+                            border: "none",
+                            borderRadius: RADIUS.md,
+                            padding: "6px 14px",
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: "#fff",
+                            cursor: "pointer",
+                            fontFamily: "inherit",
+                            transition: "all 0.15s",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.opacity = "0.85";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.opacity = "1";
+                          }}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="7 10 12 15 17 10" />
+                            <line x1="12" y1="15" x2="12" y2="3" />
+                          </svg>
+                          Download Report
+                        </button>
+                      )}
+
+                      {reportStates[i] === "error" && (
+                        <div style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          fontSize: 11,
+                          color: "#C13929",
+                        }}>
+                          Failed to generate report
+                          <button
+                            onClick={() => handleGenerateReport(i, msg.content)}
+                            style={{
+                              background: "transparent",
+                              border: `1px solid #C1392944`,
+                              borderRadius: RADIUS.sm,
+                              padding: "2px 8px",
+                              fontSize: 10,
+                              color: "#C13929",
+                              cursor: "pointer",
+                              fontFamily: "inherit",
+                            }}
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
