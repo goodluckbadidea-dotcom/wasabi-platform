@@ -9,12 +9,13 @@ import { useRecordDrawer } from "./RecordDrawerContext.jsx";
 import {
   updateRow, deleteRow, updateCalendarEvent, deleteCalendarEvent,
   listRecordComments, createRecordComment, deleteRecordComment,
-  upsertTaskActivity,
+  upsertTaskActivity, putRecordView,
 } from "../lib/api.js";
 import { updatePage } from "../notion/client.js";
 import { buildProp } from "../notion/properties.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import EmailThreadDrawer from "./EmailThreadDrawer.jsx";
+import MentionInput from "../components/MentionInput.jsx";
 
 // ── Priority colors (aligned to INFO_PALETTE) ──
 const PRIORITY_COLORS = {
@@ -610,19 +611,17 @@ function TaskCommentsTab({ recordId, pageConfigId }) {
         }}>{error}</div>
       )}
 
-      {/* New comment input */}
+      {/* New comment input with @mention support */}
       <div style={{ display: "flex", gap: 6 }}>
-        <input
-          ref={inputRef}
-          type="text"
-          value={newComment}
-          onChange={(e) => setNewComment(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Add a comment..."
-          style={{ ...inputStyle, flex: 1 }}
-          onFocus={(e) => { e.target.style.borderColor = C.accent; }}
-          onBlur={(e) => { e.target.style.borderColor = C.darkBorder; }}
-        />
+        <div style={{ flex: 1 }}>
+          <MentionInput
+            value={newComment}
+            onChange={setNewComment}
+            onKeyDown={handleKeyDown}
+            placeholder="Add a comment... (@ to mention)"
+            style={{ ...inputStyle, width: "100%" }}
+          />
+        </div>
         <button
           onClick={handleSend}
           disabled={sending || !newComment.trim()}
@@ -1028,6 +1027,17 @@ function WorkspaceSettingsEditor({ workspace, onClose }) {
 // ════════════════════════════════════════════
 export default function RecordDrawer({ onTaskUpdated, onTaskDeleted, onEventUpdated, onEventDeleted }) {
   const { drawerItem, closeDrawer } = useRecordDrawer();
+  const { identity } = usePlatform();
+
+  // Track record view for read receipts
+  const lastTrackedRef = useRef(null);
+  useEffect(() => {
+    if (!drawerItem?.data?.id || !identity?.id) return;
+    const recordId = drawerItem.data.id;
+    if (lastTrackedRef.current === recordId) return;
+    lastTrackedRef.current = recordId;
+    putRecordView(recordId).catch(() => {});
+  }, [drawerItem, identity]);
 
   if (!drawerItem) return null;
 

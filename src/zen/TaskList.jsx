@@ -57,6 +57,58 @@ function getTaskBarColor(task, colorMapping) {
   return null;
 }
 
+// ── Reason tag config: icon + color per tag type ──
+const TAG_CONFIG = {
+  overdue: { icon: "\u23F0", color: "#E05252" },         // alarm clock
+  "due soon": { icon: "\u23F1", color: "#E09B52" },      // stopwatch
+  stale: { icon: "\u231B", color: "#9B8553" },            // hourglass
+  "unread comment": { icon: "\uD83D\uDCAC", color: "#5B8DEF" }, // speech bubble
+  mentioned: { icon: "@", color: "#9B7BEA" },
+  blocking: { icon: "\u26D3", color: "#E05252" },         // chains
+  blocked: { icon: "\u26D4", color: "#888" },              // no entry
+  assigned: { icon: "\uD83D\uDC64", color: "#5BAF7C" },   // person
+  owned: { icon: "\u2605", color: "#E0C552" },             // star
+  urgent: { icon: "\u26A0", color: "#E05252" },            // warning
+  "high priority": { icon: "\u2191", color: "#E09B52" },   // up arrow
+};
+
+function ReasonPills({ reason }) {
+  if (!reason) return null;
+  // Extract [tag] patterns from reason string
+  const tagMatches = reason.match(/\[([^\]]+)\]/g);
+  if (!tagMatches || tagMatches.length === 0) return null;
+
+  const tags = tagMatches.map((t) => t.slice(1, -1)); // Remove brackets
+
+  return (
+    <span style={{ display: "flex", gap: 3, flexShrink: 0, alignItems: "center" }}>
+      {tags.slice(0, 3).map((tag, i) => {
+        const key = tag.toLowerCase().replace(/\s*\d+$/, ""); // "blocking 2" → "blocking"
+        const cfg = TAG_CONFIG[key] || { icon: "\u2022", color: C.darkMuted };
+        return (
+          <span
+            key={i}
+            title={tag}
+            style={{
+              fontSize: 10,
+              fontFamily: FONT,
+              padding: "1px 5px",
+              borderRadius: RADIUS.pill,
+              background: cfg.color + "1A",
+              color: cfg.color,
+              fontWeight: 500,
+              whiteSpace: "nowrap",
+              lineHeight: "16px",
+            }}
+          >
+            {cfg.icon} {tag}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 function DueBadge({ due, dateChipColors }) {
   if (!due) return null;
   const tier = getDateTier(due);
@@ -141,6 +193,9 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping, dateChip
       }}>
         {task.title}
       </span>
+
+      {/* Reason tags (from AI scoring) */}
+      {task._aiReason && <ReasonPills reason={task._aiReason} />}
 
       {/* Badges */}
       <DueBadge due={task.due} dateChipColors={dateChipColors} />

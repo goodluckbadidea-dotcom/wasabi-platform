@@ -108,11 +108,18 @@ function OverflowMenu({ item, onDelete, onClose, anchorRect }) {
   const ref = useRef(null);
 
   useEffect(() => {
-    const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) onClose();
+    // Delay attaching so the opening click doesn't immediately close the menu
+    const timer = setTimeout(() => {
+      const handler = (e) => {
+        if (ref.current && !ref.current.contains(e.target)) onClose();
+      };
+      document.addEventListener("mousedown", handler);
+      ref.current._cleanup = () => document.removeEventListener("mousedown", handler);
+    }, 50);
+    return () => {
+      clearTimeout(timer);
+      if (ref.current?._cleanup) ref.current._cleanup();
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
   }, [onClose]);
 
   const top = anchorRect ? anchorRect.bottom + 4 : 0;
@@ -162,6 +169,7 @@ export default function WorkspaceBrowser() {
   // Overflow menu state
   const [menuItem, setMenuItem] = useState(null);
   const [menuAnchor, setMenuAnchor] = useState(null);
+  const menuJustOpened = useRef(false);
 
   // Delete confirm state
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -278,9 +286,12 @@ export default function WorkspaceBrowser() {
   // ── Overflow menu ──
   const handleOverflowClick = useCallback((e, item) => {
     e.stopPropagation();
+    e.preventDefault();
     const rect = e.currentTarget.getBoundingClientRect();
-    setMenuAnchor(rect);
+    setMenuAnchor({ top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right });
     setMenuItem(item);
+    menuJustOpened.current = true;
+    setTimeout(() => { menuJustOpened.current = false; }, 100);
   }, []);
 
   const closeMenu = useCallback(() => {
@@ -704,7 +715,9 @@ export default function WorkspaceBrowser() {
                 ...styles.card(i * 0.02),
                 ...getDropIndicatorStyle(item.id),
               }}
-              onClick={() => {
+              onClick={(e) => {
+                // Don't navigate if overflow menu was just opened
+                if (menuJustOpened.current || menuItem) return;
                 if (item.itemType === "folder") {
                   handleDrillDown(item);
                 } else {
@@ -719,6 +732,8 @@ export default function WorkspaceBrowser() {
               }}
               onMouseLeave={(e) => {
                 removeHover(e);
+                // Don't hide overflow buttons if the menu is open for this card
+                if (menuItem?.id === item.id) return;
                 const btns = e.currentTarget.querySelectorAll("[data-overflow]");
                 btns.forEach((b) => { b.style.opacity = "0"; });
               }}

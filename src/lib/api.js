@@ -796,6 +796,37 @@ export async function resetUserPassword(id) {
   return apiFetch(`/users/${id}/reset`, { method: "POST" });
 }
 
+// ─── Per-User State ───
+
+export async function getUserState() {
+  return apiFetch("/user-state", { method: "GET" });
+}
+
+export async function putUserState(updates) {
+  return apiFetch("/user-state", { method: "PUT", body: updates });
+}
+
+// ─── Per-User Dashboard ───
+
+export async function getUserDashboard() {
+  return apiFetch("/user-dashboard", { method: "GET" });
+}
+
+export async function putUserDashboard(widgets) {
+  return apiFetch("/user-dashboard", { method: "PUT", body: { widgets } });
+}
+
+// ─── Record Views ───
+
+export async function putRecordView(recordId) {
+  return apiFetch(`/record-views/${recordId}`, { method: "PUT" });
+}
+
+export async function getRecordViews(since) {
+  const params = since ? `?since=${encodeURIComponent(since)}` : "";
+  return apiFetch(`/record-views${params}`, { method: "GET" });
+}
+
 // ─── PIN Lock ───
 
 export async function setPin(pin) {

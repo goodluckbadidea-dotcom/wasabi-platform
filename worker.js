@@ -279,6 +279,26 @@ CREATE TABLE IF NOT EXISTS user_connections (
   updated_at TEXT DEFAULT (datetime('now')),
   PRIMARY KEY (user_id, key)
 );
+
+CREATE TABLE IF NOT EXISTS user_state (
+  user_id TEXT PRIMARY KEY,
+  last_page TEXT,
+  zen_tasks_table_id TEXT,
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS user_dashboards (
+  user_id TEXT PRIMARY KEY,
+  widgets TEXT NOT NULL DEFAULT '[]',
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS record_views (
+  user_id TEXT NOT NULL,
+  record_id TEXT NOT NULL,
+  last_viewed_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, record_id)
+);
 `;
 
 const D1_INDEXES = `
@@ -297,6 +317,7 @@ CREATE INDEX IF NOT EXISTS idx_task_activity_lookup ON task_activity(task_id, so
 CREATE INDEX IF NOT EXISTS idx_sync_dirty ON table_rows(sync_dirty) WHERE sync_dirty = 1;
 CREATE INDEX IF NOT EXISTS idx_users_invite ON users(invite_code);
 CREATE INDEX IF NOT EXISTS idx_user_conn ON user_connections(user_id);
+CREATE INDEX IF NOT EXISTS idx_record_views_user ON record_views(user_id);
 `;
 
 // ─── JWT Utilities (HS256 via Web Crypto) ───
@@ -551,6 +572,45 @@ export default {
         return await handleVerifyPin(env, body);
       }
 
+      // ─── Per-User State ───
+      if (path === "/user-state" && request.method === "GET") {
+        const user = await extractUser(request, env);
+        if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
+        return await handleGetUserState(env, user);
+      }
+      if (path === "/user-state" && request.method === "PUT") {
+        const user = await extractUser(request, env);
+        if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
+        const body = await request.json();
+        return await handlePutUserState(env, user, body);
+      }
+
+      // ─── Per-User Dashboard ───
+      if (path === "/user-dashboard" && request.method === "GET") {
+        const user = await extractUser(request, env);
+        if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
+        return await handleGetUserDashboard(env, user);
+      }
+      if (path === "/user-dashboard" && request.method === "PUT") {
+        const user = await extractUser(request, env);
+        if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
+        const body = await request.json();
+        return await handlePutUserDashboard(env, user, body);
+      }
+
+      // ─── Record Views ───
+      if (path.match(/^\/record-views\/[^/]+$/) && request.method === "PUT") {
+        const user = await extractUser(request, env);
+        if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
+        const recordId = path.split("/record-views/")[1];
+        return await handlePutRecordView(env, user, recordId);
+      }
+      if (path === "/record-views" && request.method === "GET") {
+        const user = await extractUser(request, env);
+        if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
+        return await handleGetRecordViews(env, user, url);
+      }
+
       // ─── Connections CRUD ───
       if (path === "/connections" && request.method === "GET") {
         return await handleGetConnections(env);
@@ -690,7 +750,8 @@ export default {
         const [, tableId, rowId] = rowMatch;
         if (request.method === "PATCH") {
           const body = await request.json();
-          return await handleUpdateRow(env, tableId, rowId, body);
+          const user = await extractUser(request, env);
+          return await handleUpdateRow(env, tableId, rowId, body, user);
         }
         if (request.method === "DELETE") return await handleDeleteRow(env, tableId, rowId);
       }
@@ -1495,6 +1556,12 @@ async function handleInit(env) {
       "ALTER TABLE table_rows ADD COLUMN owner_user_id TEXT DEFAULT 'default'",
       // Sprint 6: Account recovery
       "ALTER TABLE users ADD COLUMN deleted_at TEXT DEFAULT NULL",
+      // Sprint 7: Per-user state persistence
+      "CREATE TABLE IF NOT EXISTS user_state (user_id TEXT PRIMARY KEY, last_page TEXT, zen_tasks_table_id TEXT, updated_at TEXT DEFAULT (datetime('now')))",
+      "CREATE TABLE IF NOT EXISTS user_dashboards (user_id TEXT PRIMARY KEY, widgets TEXT NOT NULL DEFAULT '[]', updated_at TEXT DEFAULT (datetime('now')))",
+      // Sprint 8: Record read receipts
+      "CREATE TABLE IF NOT EXISTS record_views (user_id TEXT NOT NULL, record_id TEXT NOT NULL, last_viewed_at TEXT NOT NULL, PRIMARY KEY (user_id, record_id))",
+      "CREATE INDEX IF NOT EXISTS idx_record_views_user ON record_views(user_id)",
     ];
     for (const sql of migrations) {
       try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }
@@ -1780,6 +1847,97 @@ async function handleUpdateUser(env, userId, body) {
     return jsonResponse({ ok: true, user });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// ─── Per-User State Handlers ───
+
+async function handleGetUserState(env, user) {
+  try {
+    const row = await env.DB.prepare("SELECT * FROM user_state WHERE user_id = ?").bind(user.sub).first();
+    return jsonResponse({ state: row || { user_id: user.sub, last_page: null, zen_tasks_table_id: null } });
+  } catch (err) {
+    return jsonResponse({ state: { user_id: user.sub, last_page: null, zen_tasks_table_id: null } });
+  }
+}
+
+async function handlePutUserState(env, user, body) {
+  try {
+    const sets = ["updated_at = datetime('now')"];
+    const binds = [];
+    if (body.last_page !== undefined) { sets.push("last_page = ?"); binds.push(body.last_page); }
+    if (body.zen_tasks_table_id !== undefined) { sets.push("zen_tasks_table_id = ?"); binds.push(body.zen_tasks_table_id); }
+
+    // Upsert
+    await env.DB.prepare(
+      `INSERT INTO user_state (user_id, last_page, zen_tasks_table_id, updated_at)
+       VALUES (?, ?, ?, datetime('now'))
+       ON CONFLICT(user_id) DO UPDATE SET ${sets.join(", ")}`
+    ).bind(user.sub, body.last_page || null, body.zen_tasks_table_id || null, ...binds).run();
+
+    return jsonResponse({ ok: true });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// ─── Per-User Dashboard Handlers ───
+
+async function handleGetUserDashboard(env, user) {
+  try {
+    const row = await env.DB.prepare("SELECT * FROM user_dashboards WHERE user_id = ?").bind(user.sub).first();
+    const widgets = row?.widgets ? JSON.parse(row.widgets) : [];
+    return jsonResponse({ widgets });
+  } catch (err) {
+    return jsonResponse({ widgets: [] });
+  }
+}
+
+async function handlePutUserDashboard(env, user, body) {
+  try {
+    const widgetsJson = JSON.stringify(body.widgets || []);
+    await env.DB.prepare(
+      `INSERT INTO user_dashboards (user_id, widgets, updated_at)
+       VALUES (?, ?, datetime('now'))
+       ON CONFLICT(user_id) DO UPDATE SET widgets = ?, updated_at = datetime('now')`
+    ).bind(user.sub, widgetsJson, widgetsJson).run();
+    return jsonResponse({ ok: true });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// ─── Record Views Handlers ───
+
+async function handlePutRecordView(env, user, recordId) {
+  try {
+    await env.DB.prepare(
+      `INSERT INTO record_views (user_id, record_id, last_viewed_at)
+       VALUES (?, ?, datetime('now'))
+       ON CONFLICT(user_id, record_id) DO UPDATE SET last_viewed_at = datetime('now')`
+    ).bind(user.sub, recordId).run();
+    return jsonResponse({ ok: true });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleGetRecordViews(env, user, url) {
+  try {
+    const since = url.searchParams.get("since");
+    let rows;
+    if (since) {
+      rows = await env.DB.prepare(
+        "SELECT record_id, last_viewed_at FROM record_views WHERE user_id = ? AND last_viewed_at >= ?"
+      ).bind(user.sub, since).all();
+    } else {
+      rows = await env.DB.prepare(
+        "SELECT record_id, last_viewed_at FROM record_views WHERE user_id = ?"
+      ).bind(user.sub).all();
+    }
+    return jsonResponse({ views: rows.results || [] });
+  } catch (err) {
+    return jsonResponse({ views: [] });
   }
 }
 
@@ -3066,14 +3224,14 @@ async function handleCreateRows(env, tableId, body, user) {
   }
 }
 
-async function handleUpdateRow(env, tableId, rowId, body) {
+async function handleUpdateRow(env, tableId, rowId, body, user) {
   const sets = [];
   const binds = [];
 
   try {
     // Read existing row for merge and automation trigger comparison
     const existing = await env.DB.prepare(
-      "SELECT cells, metadata FROM table_rows WHERE id = ? AND table_id = ?"
+      "SELECT cells, metadata, owner_user_id FROM table_rows WHERE id = ? AND table_id = ?"
     ).bind(rowId, tableId).first();
     const oldCells = existing ? JSON.parse(existing.cells || "{}") : {};
 
@@ -3123,6 +3281,72 @@ async function handleUpdateRow(env, tableId, rowId, body) {
       checkAutomationTriggers(env, tableId, rowId, oldCells, newCells).catch((err) =>
         console.error("[AutoTrigger] Error:", err.message)
       );
+    }
+
+    // ── Status change notifications (non-blocking) ──
+    if (body.cells !== undefined && !body._fromSync && user) {
+      (async () => {
+        try {
+          // Detect status-like field changes
+          const statusFields = ["status", "Status", "stage", "Stage", "state", "State", "phase", "Phase"];
+          for (const field of statusFields) {
+            if (newCells[field] !== undefined && oldCells[field] !== undefined && newCells[field] !== oldCells[field]) {
+              // Get record title for notification
+              const title = newCells.task || newCells.title || newCells.name || newCells.Task || newCells.Title || newCells.Name || "Record";
+              const ownerUserIds = existing?.owner_user_id;
+              if (ownerUserIds && ownerUserIds !== "default" && ownerUserIds !== "unassigned") {
+                let owners = [];
+                try { owners = JSON.parse(ownerUserIds); } catch { owners = [ownerUserIds]; }
+                for (const ownerId of owners) {
+                  if (ownerId !== user.sub) {
+                    await createNotificationInternal(env, {
+                      message: `${user.name || "Someone"} changed ${field} to "${newCells[field]}" on "${title}"`,
+                      type: "status_change",
+                      source: rowId,
+                      target_user_id: ownerId,
+                    });
+                  }
+                }
+              }
+              break; // Only notify for the first status field change
+            }
+          }
+        } catch (_) {}
+      })();
+    }
+
+    // ── Assignment change notifications (Sprint 11B) ──
+    if (body.owner_user_id !== undefined && user) {
+      (async () => {
+        try {
+          let oldOwners = [];
+          if (existing?.owner_user_id && existing.owner_user_id !== "default" && existing.owner_user_id !== "unassigned") {
+            try { oldOwners = JSON.parse(existing.owner_user_id); } catch { oldOwners = [existing.owner_user_id]; }
+          }
+          let newOwners = [];
+          const ownerVal = body.owner_user_id;
+          if (ownerVal && ownerVal !== "unassigned") {
+            if (Array.isArray(ownerVal)) newOwners = ownerVal;
+            else newOwners = [ownerVal];
+          }
+          // Find newly assigned users
+          const newlyAssigned = newOwners.filter((id) => !oldOwners.includes(id));
+          if (newlyAssigned.length > 0) {
+            const title = (body.cells ? (body.cells.task || body.cells.title || body.cells.name) : null)
+              || oldCells.task || oldCells.title || oldCells.name || oldCells.Task || oldCells.Title || oldCells.Name || "Record";
+            for (const assigneeId of newlyAssigned) {
+              if (assigneeId !== user.sub) {
+                await createNotificationInternal(env, {
+                  message: `${user.name || "Someone"} assigned you to "${title}"`,
+                  type: "assignment",
+                  source: rowId,
+                  target_user_id: assigneeId,
+                });
+              }
+            }
+          }
+        } catch (_) {}
+      })();
     }
 
     return jsonResponse({ ok: true, id: rowId });
@@ -3231,6 +3455,25 @@ async function handleListComments(env, recordId, pageConfigId) {
   }
 }
 
+// ─── Internal Notification Helper ───
+async function createNotificationInternal(env, { message, type = "notification", source = "", target_user_id = "all" }) {
+  try {
+    const id = crypto.randomUUID();
+    await env.DB.prepare(
+      `INSERT INTO notifications (id, message, type, status, source, target_user_id, created_at)
+       VALUES (?, ?, ?, 'unread', ?, ?, datetime('now'))`
+    ).bind(id, message, type, source, target_user_id).run();
+  } catch (_) {}
+}
+
+// ─── Extract @mentions from text ───
+function extractMentions(text) {
+  if (!text) return [];
+  const matches = text.match(/@[\w\s]+(?=\s|$|[.,!?;:])/g);
+  if (!matches) return [];
+  return matches.map((m) => m.slice(1).trim());
+}
+
 async function handleCreateComment(env, recordId, body) {
   try {
     const { page_config_id, content, user_id, user_name } = body;
@@ -3240,6 +3483,51 @@ async function handleCreateComment(env, recordId, body) {
       `INSERT INTO record_comments (id, record_id, page_config_id, user_id, user_name, content)
        VALUES (?, ?, ?, ?, ?, ?)`
     ).bind(id, recordId, page_config_id, user_id || "default", user_name || "User", content).run();
+
+    // ── Notification triggers ──
+    const commenterName = user_name || "Someone";
+    const preview = content.length > 60 ? content.slice(0, 60) + "..." : content;
+
+    // 1. Notify record owner(s) if commenter != owner
+    try {
+      const row = await env.DB.prepare("SELECT owner_user_id FROM table_rows WHERE id = ?").bind(recordId).first();
+      if (row?.owner_user_id && row.owner_user_id !== "default" && row.owner_user_id !== "unassigned") {
+        let ownerIds = [];
+        try { ownerIds = JSON.parse(row.owner_user_id); } catch { ownerIds = [row.owner_user_id]; }
+        for (const ownerId of ownerIds) {
+          if (ownerId !== user_id) {
+            await createNotificationInternal(env, {
+              message: `${commenterName} commented: "${preview}"`,
+              type: "comment",
+              source: recordId,
+              target_user_id: ownerId,
+            });
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 2. Notify @mentioned users
+    try {
+      const mentions = extractMentions(content);
+      if (mentions.length > 0) {
+        const users = await env.DB.prepare("SELECT id, display_name FROM users WHERE deleted_at IS NULL").all();
+        const userList = users.results || [];
+        for (const mentionName of mentions) {
+          const mentionLower = mentionName.toLowerCase();
+          const matched = userList.find((u) => u.display_name.toLowerCase() === mentionLower);
+          if (matched && matched.id !== user_id) {
+            await createNotificationInternal(env, {
+              message: `${commenterName} mentioned you: "${preview}"`,
+              type: "mention",
+              source: recordId,
+              target_user_id: matched.id,
+            });
+          }
+        }
+      }
+    } catch (_) {}
+
     return jsonResponse({ id, ok: true });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);

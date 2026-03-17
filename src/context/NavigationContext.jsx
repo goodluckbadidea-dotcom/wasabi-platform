@@ -2,10 +2,12 @@
 // Active page, active folder, expanded tree nodes.
 // Split from PlatformContext for focused re-renders.
 // Uses usePages() internally for auto-expand.
-// Persists navigation state to localStorage so the app feels like a persistent desk.
+// Persists navigation state to localStorage + D1 (per-user) so the app feels like a persistent desk.
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { usePages } from "./PagesContext.jsx";
+import { useAuth } from "./AuthContext.jsx";
+import { getUserState, putUserState } from "../lib/api.js";
 
 const NavigationContext = createContext(null);
 
@@ -19,6 +21,7 @@ function saveJSON(key, value) {
 
 export function NavigationProvider({ children }) {
   const { pages } = usePages();
+  const { identity } = useAuth();
 
   const [activePage, setActivePage] = useState(() => loadJSON("wasabi_active_page", null));
   const [activeFolder, setActiveFolder] = useState(() => loadJSON("wasabi_active_folder", null));
@@ -34,6 +37,37 @@ export function NavigationProvider({ children }) {
   useEffect(() => { saveJSON("wasabi_active_page", activePage); }, [activePage]);
   useEffect(() => { saveJSON("wasabi_active_folder", activeFolder); }, [activeFolder]);
   useEffect(() => { saveJSON("wasabi_expanded_nodes", [...expandedNodes]); }, [expandedNodes]);
+
+  // ── Restore per-user state from D1 on login ──
+  const hasRestoredUserState = useRef(false);
+  useEffect(() => {
+    if (!identity?.id || hasRestoredUserState.current) return;
+    hasRestoredUserState.current = true;
+    getUserState()
+      .then(({ state }) => {
+        if (state?.last_page) {
+          setActivePage(state.last_page);
+          saveJSON("wasabi_active_page", state.last_page);
+        }
+      })
+      .catch(() => {});
+  }, [identity]);
+
+  // Reset restoration flag on identity change (user switch)
+  useEffect(() => {
+    if (!identity) hasRestoredUserState.current = false;
+  }, [identity]);
+
+  // ── Debounced save to D1 on page navigation ──
+  const saveTimerRef = useRef(null);
+  useEffect(() => {
+    if (!identity?.id || !activePage) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      putUserState({ last_page: activePage }).catch(() => {});
+    }, 500);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [activePage, identity]);
 
   // ── Auto-expand workspaces on first load ──
   const hasAutoExpanded = useRef(false);

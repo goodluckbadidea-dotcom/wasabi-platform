@@ -1,14 +1,13 @@
 // ─── useZenTasks Hook ───
-// Manages the "Zen Tasks" D1 table: auto-provisions on first use,
+// Manages per-user "Zen Tasks" D1 table: auto-provisions on first use per user,
 // provides CRUD operations with optimistic updates.
+// Each user gets their own isolated task table, stored in user_state.
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { createTableConfig, savePageConfig } from "../config/pageConfig.js";
-import { listRows, createRows, updateRow, deleteRow } from "../lib/api.js";
+import { listRows, createRows, updateRow, deleteRow, getUserState, putUserState } from "../lib/api.js";
 import { normalizeD1Task } from "./taskHelpers.js";
-
-const ZEN_TABLE_LS_KEY = "wasabi_tasks_table_id";
 
 // Column definitions for the Zen Tasks table
 const ZEN_COLUMNS = [
@@ -20,44 +19,69 @@ const ZEN_COLUMNS = [
 ];
 
 export default function useTasksTable() {
-  const { pages, addPage } = usePlatform();
+  const { pages, addPage, identity } = usePlatform();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tableId, setTableId] = useState(null);
   const provisioningRef = useRef(false);
+  const hasInitRef = useRef(false);
 
-  // ── Find or create the Zen Tasks table ──
+  // ── Find or create per-user Zen Tasks table ──
   useEffect(() => {
     let cancelled = false;
+    hasInitRef.current = false;
 
     async function initTable() {
-      // 1. Check localStorage cache
-      const cachedId = localStorage.getItem(ZEN_TABLE_LS_KEY);
-      if (cachedId) {
-        setTableId(cachedId);
-        return;
+      if (hasInitRef.current) return;
+      hasInitRef.current = true;
+
+      // 1. If logged in, check user_state for per-user table ID
+      if (identity?.id) {
+        try {
+          const { state } = await getUserState();
+          if (state?.zen_tasks_table_id) {
+            if (!cancelled) setTableId(state.zen_tasks_table_id);
+            return;
+          }
+        } catch {}
       }
 
-      // 2. Search existing pages for a zen-internal page
-      const existing = pages.find((p) => p._systemInternal);
-      if (existing) {
-        setTableId(existing.id);
-        localStorage.setItem(ZEN_TABLE_LS_KEY, existing.id);
-        return;
+      // 2. Fallback for single-user mode: check localStorage
+      if (!identity?.id) {
+        const cachedId = localStorage.getItem("wasabi_tasks_table_id");
+        if (cachedId) {
+          if (!cancelled) setTableId(cachedId);
+          return;
+        }
+
+        // Search existing pages for a system-internal page
+        const existing = pages.find((p) => p._systemInternal);
+        if (existing) {
+          if (!cancelled) setTableId(existing.id);
+          localStorage.setItem("wasabi_tasks_table_id", existing.id);
+          return;
+        }
       }
 
-      // 3. Auto-provision (only once)
+      // 3. Auto-provision a new table for this user
       if (provisioningRef.current) return;
       provisioningRef.current = true;
 
       try {
-        const config = createTableConfig("Zen Tasks", "check", ZEN_COLUMNS);
+        const suffix = identity?.display_name ? ` (${identity.display_name})` : "";
+        const config = createTableConfig(`Zen Tasks${suffix}`, "check", ZEN_COLUMNS);
         config._systemInternal = true;
         const id = await savePageConfig(config);
         if (!cancelled) {
           setTableId(id);
-          localStorage.setItem(ZEN_TABLE_LS_KEY, id);
           addPage({ ...config, id });
+
+          // Save to user_state if logged in
+          if (identity?.id) {
+            putUserState({ zen_tasks_table_id: id }).catch(() => {});
+          } else {
+            localStorage.setItem("wasabi_tasks_table_id", id);
+          }
         }
       } catch (err) {
         console.error("[ZenTasks] Failed to create table:", err);
@@ -68,7 +92,16 @@ export default function useTasksTable() {
 
     initTable();
     return () => { cancelled = true; };
-  }, [pages, addPage]);
+  }, [pages, addPage, identity]);
+
+  // Reset when user changes
+  useEffect(() => {
+    setTableId(null);
+    setTasks([]);
+    setLoading(true);
+    hasInitRef.current = false;
+    provisioningRef.current = false;
+  }, [identity?.id]);
 
   // ── Fetch tasks from D1 ──
   const fetchTasks = useCallback(async () => {

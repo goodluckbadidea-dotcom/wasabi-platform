@@ -6,7 +6,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { detectSchema } from "../notion/schema.js";
 import { queryLimited } from "../notion/pagination.js";
-import { listRows, claudeProxy, getTableSchema, listTaskActivity, upsertTaskActivity } from "../lib/api.js";
+import {
+  listRows, claudeProxy, getTableSchema, listTaskActivity, upsertTaskActivity,
+  getRecordViews, listRecordComments,
+} from "../lib/api.js";
 import {
   normalizeNotionTask, normalizeD1Task, getCached, setCache, parseDate,
   scoreTerminalStatuses, shouldIncludeTask, isSmartOverdue,
@@ -246,11 +249,19 @@ function compressTask(task) {
   }
   if (task._isOverdue) obj.isOverdue = true;
   if (task._isStale) obj.isStale = true;
+  // Per-user signals
+  if (task._isOwned) obj.ownedByUser = true;
+  if (task._isAssigned) obj.assignedToUser = true;
+  if (task._hasUnreadComments) obj.hasUnreadComments = true;
+  if (task._isMentioned) obj.mentionedUser = true;
+  if (task._lastViewedDaysAgo !== undefined) obj.lastViewedDaysAgo = task._lastViewedDaysAgo;
+  if (task._blockingCount) obj.blockingCount = task._blockingCount;
+  if (task._blockedByOthers) obj.blockedByOthers = true;
   return obj;
 }
 
 export default function useAICuratedTasks() {
-  const { user, pages } = usePlatform();
+  const { user, pages, identity } = usePlatform();
   const [aiTasks, setAiTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -486,6 +497,121 @@ export default function useAICuratedTasks() {
         return shouldIncludeTask(nearest, lastActivity);
       });
 
+      // Step 2.7: Enrich tasks with per-user signals
+      if (identity?.id) {
+        try {
+          // Fetch record views for "last viewed" / "unread" detection
+          const viewsResult = await getRecordViews().catch(() => ({ views: [] }));
+          const viewMap = new Map();
+          for (const v of (viewsResult.views || [])) {
+            viewMap.set(v.record_id, v.last_viewed_at);
+          }
+
+          const userName = identity.display_name?.toLowerCase() || "";
+          const userId = identity.id;
+          const now = Date.now();
+
+          for (const task of filteredTasks) {
+            // Ownership: owner_user_id includes current user
+            if (task._ownerUserIds && Array.isArray(task._ownerUserIds)) {
+              task._isOwned = task._ownerUserIds.includes(userId);
+            }
+
+            // Assignment: task assignee field matches user display name
+            const assignee = (task.assignee || task.owner || task.assigned || "").toLowerCase();
+            if (assignee && assignee.includes(userName)) {
+              task._isAssigned = true;
+            }
+
+            // Last viewed: days since user viewed this record
+            const lastViewed = viewMap.get(task.id);
+            if (lastViewed) {
+              task._lastViewedDaysAgo = Math.floor((now - new Date(lastViewed).getTime()) / 86400000);
+            }
+
+            // @mention detection: check if user was mentioned in task comments
+            // (lightweight — only check comment text from task metadata if available)
+            if (task._comments) {
+              for (const c of task._comments) {
+                if (c.content && c.content.toLowerCase().includes(`@${userName}`)) {
+                  task._isMentioned = true;
+                  // Unread if mentioned after last view
+                  if (!lastViewed || new Date(c.created_at) > new Date(lastViewed)) {
+                    task._hasUnreadComments = true;
+                  }
+                  break;
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.warn("[AICurated] Per-user signal enrichment failed:", err.message);
+        }
+      }
+
+      // Step 2.8: Dependency awareness (Phase 1 — implicit keyword scanning)
+      try {
+        const DEP_KEYWORDS = [
+          "blocked", "blocking", "waiting on", "depends on", "prerequisite",
+          "before we can", "blocked by", "waiting for", "can't start until",
+        ];
+        const titleIndex = new Map(); // lowercase title → task
+        for (const task of filteredTasks) {
+          titleIndex.set(task.title.toLowerCase(), task);
+        }
+
+        // Build dependency map by scanning task text content for keywords + title references
+        const blockingMap = new Map(); // taskId → Set of taskIds it blocks
+        const blockedByMap = new Map(); // taskId → Set of taskIds blocking it
+
+        for (const task of filteredTasks) {
+          // Combine all text content for scanning
+          const textContent = [
+            task.notes || "",
+            task.description || "",
+            ...(task._comments || []).map((c) => c.content || ""),
+          ].join(" ").toLowerCase();
+
+          if (!textContent) continue;
+
+          // Check for dependency keywords
+          const hasDep = DEP_KEYWORDS.some((kw) => textContent.includes(kw));
+          if (!hasDep) continue;
+
+          // Look for references to other task titles in the text
+          for (const [otherTitle, otherTask] of titleIndex) {
+            if (otherTask.id === task.id) continue;
+            if (otherTitle.length < 4) continue; // Skip very short titles to avoid false matches
+            if (textContent.includes(otherTitle)) {
+              // This task references another task in a dependency context
+              // "blocked by X" → this task is blocked, X is blocking
+              const isBlockedPattern = /block(ed|ing)\s*(by|on)|waiting\s*(on|for)|depends\s*on|can't start until/i;
+              if (isBlockedPattern.test(textContent)) {
+                // This task is blocked BY the other
+                if (!blockedByMap.has(task.id)) blockedByMap.set(task.id, new Set());
+                blockedByMap.get(task.id).add(otherTask.id);
+                if (!blockingMap.has(otherTask.id)) blockingMap.set(otherTask.id, new Set());
+                blockingMap.get(otherTask.id).add(task.id);
+              }
+            }
+          }
+        }
+
+        // Annotate tasks with blocking/blocked signals
+        for (const task of filteredTasks) {
+          const blocking = blockingMap.get(task.id);
+          if (blocking && blocking.size > 0) {
+            task._blockingCount = blocking.size;
+          }
+          const blockedBy = blockedByMap.get(task.id);
+          if (blockedBy && blockedBy.size > 0) {
+            task._blockedByOthers = true;
+          }
+        }
+      } catch (err) {
+        console.warn("[AICurated] Dependency scan failed:", err.message);
+      }
+
       // Step 3: Call Haiku for prioritization (on filtered tasks)
       if (user.claudeKey && filteredTasks.length > 0) {
         try {
@@ -497,6 +623,17 @@ export default function useAICuratedTasks() {
             dbSummaries[name].push(compressTask(task));
           }
 
+          const userContext = identity?.display_name
+            ? `\nYou are prioritizing for user "${identity.display_name}". Per-user signals are included when available:
+- ownedByUser: this user owns the task
+- assignedToUser: this user is assigned to the task
+- hasUnreadComments: comments exist that this user hasn't seen
+- mentionedUser: this user was @mentioned in comments
+- lastViewedDaysAgo: days since this user last viewed the record
+- blockingCount: number of other tasks this task blocks
+- blockedByOthers: this task is blocked by other tasks\n`
+            : "";
+
           const prompt = `You are a smart task prioritizer and workspace advisor. Tasks have been pre-filtered to only include items approaching deadlines, overdue, or not recently updated.
 
 Each task includes:
@@ -504,26 +641,29 @@ Each task includes:
 - nearestDateField: which field it came from (e.g., "Design Deadline", "Timeline")
 - isOverdue: true if this date passed and the task wasn't updated since
 - isStale: true if the task hasn't been touched relative to how close its deadline is
-
+${userContext}
 Today is ${today}.
 
 Do TWO things:
 
 1. RANK these tasks from most to least urgent (priority_score 5 = most urgent, 1 = least).
 Priority rules:
+- Tasks owned by or assigned to this user with unread comments or @mentions — highest priority (score 5)
+- Tasks blocking others (blockingCount > 0) — boost score by +1
+- Tasks blocked by others — reduce score (not actionable)
 - Overdue + stale items — highest priority (score 5)
 - Due today or tomorrow (score 4-5)
 - Stale items approaching deadlines (score 3-4)
 - High priority or urgent status (score 3-4)
 - In-progress items approaching dates (score 2-3)
+- Tasks owned by or assigned to this user get a slight boost
 Exclude any items that are NOT actionable tasks (contacts, records, inventory, labels).
 
-2. Generate ONE short workspace insight (max 120 chars). This appears in a zen/mindfulness sidebar. It should feel illuminating — not a status report. Observe patterns, convergences, risks, or perspective across the whole workspace. Be specific to the actual data. Examples of tone:
-- "3 projects share the same delivery window. Consider staggering."
-- "Your busiest week this quarter starts Monday. Today is a good day to prepare."
-- "Everything shipping this week is already in production. Breathe."
+For each task, include a "reason" with a structured tag prefix from: [overdue], [due soon], [stale], [unread comment], [mentioned], [blocking N], [blocked], [assigned], [owned], [urgent], [high priority]. You can combine tags. Example: "[overdue] [mentioned] Due 3 days ago, user was mentioned in comments"
 
-Return valid JSON only, no markdown: { "tasks": [{ "title": "exact title", "priority_score": 1-5, "reason": "brief reason" }], "insight": "your insight here" }
+2. Generate ONE short workspace insight (max 120 chars) personalized for this user. This appears in a zen/mindfulness sidebar. It should feel illuminating — not a status report. Observe patterns, convergences, risks, or perspective. Be specific to the actual data.
+
+Return valid JSON only, no markdown: { "tasks": [{ "title": "exact title", "priority_score": 1-5, "reason": "tagged reason" }], "insight": "your insight here" }
 
 Items by database:
 ${JSON.stringify(dbSummaries, null, 0)}`;
