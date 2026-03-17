@@ -417,7 +417,9 @@ How to use:
 
 Available in the sandbox:
 - \`datasets\` — object with your named data arrays
-- Helper functions: sum(arr), avg(arr), min(arr), max(arr), groupBy(arr, key), sortBy(arr, key, dir), unique(arr, key), round(n, decimals), dateAdd(dateStr, days), dateDiff(dateStr1, dateStr2), weeksBetween(dateStr1, dateStr2)
+- Math/array helpers: sum(arr), avg(arr), min(arr), max(arr), groupBy(arr, key), sortBy(arr, key, dir), unique(arr, key), round(n, decimals)
+- Date helpers: dateAdd(dateStr, days), dateDiff(dateStr1, dateStr2), weeksBetween(dateStr1, dateStr2)
+- Smart matching: normalize(s), similarity(a, b), fuzzyMatch(a, b, threshold?), bestMatch(needle, haystack, key?), matchRows(sourceRows, targetRows, sourceKey, targetKey, threshold?) — use matchRows() to join datasets with different naming conventions
 
 Your code must return a value — use an IIFE: (function() { ... return result; })()`,
   input_schema: {
@@ -475,7 +477,7 @@ const SAVE_CUSTOM_FUNCTION = {
 3. Schema validation — checks output matches declared output shape
 4. Presents results for user approval before finalizing
 
-The code must define a function called 'execute' that receives a single object parameter with named datasets (matching input keys) and returns a result matching the declared output schema. Available sandbox helpers: sum, avg, min, max, groupBy, sortBy, unique, round, dateAdd, dateDiff, weeksBetween.
+The code must define a function called 'execute' that receives a single object parameter with named datasets (matching input keys) and returns a result matching the declared output schema. Available sandbox helpers: sum, avg, min, max, groupBy, sortBy, unique, round, dateAdd, dateDiff, weeksBetween, normalize, similarity, fuzzyMatch, bestMatch, matchRows. IMPORTANT: When joining data from different databases, ALWAYS use matchRows(sourceRows, targetRows, sourceKey, targetKey) instead of exact key lookups — records across databases often have slightly different names.
 
 Sheet data: When a dataset comes from a sheet, each row has column-letter keys (A, B, C...) or header names. For aggregating all values on a sheet, use datasets.mySheet._allCellValues which is a flat array of every numeric value in the sheet. Example: sum(datasets.mySheet._allCellValues).
 

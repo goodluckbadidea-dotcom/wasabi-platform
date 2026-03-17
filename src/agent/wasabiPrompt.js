@@ -267,6 +267,14 @@ Workflow:
 
 Available helpers: sum(arr), avg(arr), min(arr), max(arr), groupBy(arr, key), sortBy(arr, key, dir), unique(arr, key), round(n, decimals), dateAdd(dateStr, days), dateDiff(dateStr1, dateStr2), weeksBetween(dateStr1, dateStr2)
 
+Smart matching helpers (use when joining datasets with different naming conventions):
+- normalize(s) — lowercase, strip non-alphanumeric chars for comparison
+- similarity(a, b) — Dice coefficient 0–1 between two strings
+- fuzzyMatch(a, b, threshold?) — true if strings match (normalized equality, containment, or similarity ≥ threshold, default 0.6)
+- bestMatch(needle, haystack, key?) — find best matching item from array, returns { item, score, index } or null
+- matchRows(sourceRows, targetRows, sourceKey, targetKey, threshold?) — join two arrays by fuzzy key matching. Returns source rows enriched with matched target fields. Unmatched rows get _matched: false.
+IMPORTANT: When joining data from different databases, ALWAYS use matchRows() or bestMatch() instead of exact key lookups. Database records frequently have slightly different naming (e.g. "D20-CH" vs "D20 Cherry" vs "D20-CH-TIN-GMO-OR"). The matching helpers handle normalization, containment, and similarity automatically.
+
 Sheet data tips: Sheet datasets have column-letter keys (A, B, C...) or header names. To sum ALL numeric values in a sheet, use \`sum(datasets.mySheet._allCellValues)\` — a flat array of every numeric value. Row objects only contain data columns — no metadata keys pollute Object.values().
 
 When creating custom functions with write-back:

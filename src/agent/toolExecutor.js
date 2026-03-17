@@ -117,6 +117,99 @@ const _sbTemplate = (tmpl, data) => {
   return String(tmpl ?? "").replace(/\{\{(\w+)\}\}/g, (_, key) => data?.[key] ?? "");
 };
 
+// ─── Smart Matching Helpers (always available) ───
+
+/** Normalize a string for comparison: lowercase, strip non-alphanumeric, collapse whitespace */
+const _sbNormalize = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+
+/** Dice coefficient similarity between two strings (0–1). Good for fuzzy name matching. */
+const _sbSimilarity = (a, b) => {
+  const sa = String(a ?? "").toLowerCase(), sb = String(b ?? "").toLowerCase();
+  if (sa === sb) return 1;
+  if (sa.length < 2 || sb.length < 2) return 0;
+  const bigrams = (s) => { const b = new Map(); for (let i = 0; i < s.length - 1; i++) { const bi = s.slice(i, i + 2); b.set(bi, (b.get(bi) || 0) + 1); } return b; };
+  const bg1 = bigrams(sa), bg2 = bigrams(sb);
+  let intersection = 0;
+  for (const [bi, count] of bg1) { intersection += Math.min(count, bg2.get(bi) || 0); }
+  return (2 * intersection) / (sa.length - 1 + sb.length - 1);
+};
+
+/** Check if two strings are a fuzzy match (normalized equality OR similarity >= threshold) */
+const _sbFuzzyMatch = (a, b, threshold = 0.6) => {
+  if (_sbNormalize(a) === _sbNormalize(b)) return true;
+  // Also check if one contains the other (handles "D20-CH" matching "D20-CH-TIN-GMO-OR")
+  const na = _sbNormalize(a), nb = _sbNormalize(b);
+  if (na.includes(nb) || nb.includes(na)) return true;
+  return _sbSimilarity(a, b) >= threshold;
+};
+
+/** Find the best matching item from an array. Returns { item, score, index } or null. */
+const _sbBestMatch = (needle, haystack, key) => {
+  if (!needle || !Array.isArray(haystack) || haystack.length === 0) return null;
+  const needleNorm = _sbNormalize(needle);
+  let best = null, bestScore = 0, bestIdx = -1;
+  for (let i = 0; i < haystack.length; i++) {
+    const candidate = key ? haystack[i]?.[key] : haystack[i];
+    const candNorm = _sbNormalize(candidate);
+    // Exact normalized match is best
+    if (needleNorm === candNorm) return { item: haystack[i], score: 1, index: i };
+    // Containment check
+    let score = 0;
+    if (needleNorm.includes(candNorm) || candNorm.includes(needleNorm)) {
+      score = Math.min(needleNorm.length, candNorm.length) / Math.max(needleNorm.length, candNorm.length);
+      score = Math.max(score, 0.8); // containment is high confidence
+    } else {
+      score = _sbSimilarity(needle, candidate);
+    }
+    if (score > bestScore) { best = haystack[i]; bestScore = score; bestIdx = i; }
+  }
+  return bestScore >= 0.4 ? { item: best, score: bestScore, index: bestIdx } : null;
+};
+
+/**
+ * Join two arrays by fuzzy-matching a key field.
+ * Returns source rows enriched with matched target row fields.
+ * matchRows(inventory, sellThru, "Product", "SKU", 0.6)
+ */
+const _sbMatchRows = (sourceRows, targetRows, sourceKey, targetKey, threshold = 0.6) => {
+  if (!Array.isArray(sourceRows) || !Array.isArray(targetRows)) return sourceRows || [];
+  // Pre-build normalized lookup for targets
+  const targetMap = [];
+  for (const row of targetRows) {
+    const val = row?.[targetKey];
+    if (val != null) targetMap.push({ norm: _sbNormalize(val), raw: val, row });
+  }
+  return sourceRows.map((srcRow) => {
+    const srcVal = srcRow?.[sourceKey];
+    if (srcVal == null) return { ...srcRow, _matched: false };
+    const srcNorm = _sbNormalize(srcVal);
+    // Try exact normalized match first
+    let match = targetMap.find((t) => t.norm === srcNorm);
+    // Try containment
+    if (!match) match = targetMap.find((t) => srcNorm.includes(t.norm) || t.norm.includes(srcNorm));
+    // Try similarity
+    if (!match) {
+      let bestScore = 0, bestMatch = null;
+      for (const t of targetMap) {
+        const score = _sbSimilarity(srcVal, t.raw);
+        if (score > bestScore) { bestScore = score; bestMatch = t; }
+      }
+      if (bestScore >= threshold) match = bestMatch;
+    }
+    if (match) {
+      const merged = { ...srcRow };
+      for (const [k, v] of Object.entries(match.row)) {
+        if (k !== targetKey && merged[k] === undefined) merged[k] = v;
+        else if (k !== targetKey) merged[`_target_${k}`] = v;
+      }
+      merged._matched = true;
+      merged._matchedKey = match.raw;
+      return merged;
+    }
+    return { ...srcRow, _matched: false };
+  });
+};
+
 // Date processing helpers (gated by date_processing capability)
 const _sbNow = () => new Date().toISOString().split("T")[0];
 const _sbParseDate = (s) => { try { return new Date(s).toISOString().split("T")[0]; } catch { return ""; } };
@@ -183,12 +276,15 @@ export function executePluginSandbox(code, datasets, manifest, config = {}, desc
     // Standard helpers
     "sum", "avg", "min", "max", "groupBy", "sortBy", "unique", "round",
     "dateAdd", "dateDiff", "weeksBetween",
+    // Smart matching (always available)
+    "normalize", "similarity", "fuzzyMatch", "bestMatch", "matchRows",
     // Extended formatters + collection (always available for plugins)
     "currency", "percent", "compact", "flatten", "pick", "omit", "chunk", "zip",
   ];
   const helperValues = [
     _sbSum, _sbAvg, _sbMin, _sbMax, _sbGroupBy, _sbSortBy, _sbUnique, _sbRound,
     _sbDateAdd, _sbDateDiff, _sbWeeksBetween,
+    _sbNormalize, _sbSimilarity, _sbFuzzyMatch, _sbBestMatch, _sbMatchRows,
     _sbCurrency, _sbPercent, _sbCompact, _sbFlatten, _sbPick, _sbOmit, _sbChunk, _sbZip,
   ];
 
@@ -259,28 +355,25 @@ export function executeSandbox(code, datasets, description = "Calculation comple
   }
 
   let fn;
-  try {
-    fn = new Function(
-      "datasets", "sum", "avg", "min", "max",
-      "groupBy", "sortBy", "unique", "round",
-      "dateAdd", "dateDiff", "weeksBetween",
-      fnBody
-    );
-  } catch {
-    fn = new Function(
-      "datasets", "sum", "avg", "min", "max",
-      "groupBy", "sortBy", "unique", "round",
-      "dateAdd", "dateDiff", "weeksBetween",
-      `"use strict";\n${trimmed}`
-    );
-  }
-
-  const result = fn(
-    datasets || {},
+  const helperNames = [
+    "sum", "avg", "min", "max",
+    "groupBy", "sortBy", "unique", "round",
+    "dateAdd", "dateDiff", "weeksBetween",
+    "normalize", "similarity", "fuzzyMatch", "bestMatch", "matchRows",
+  ];
+  const helperVals = [
     _sbSum, _sbAvg, _sbMin, _sbMax,
     _sbGroupBy, _sbSortBy, _sbUnique, _sbRound,
-    _sbDateAdd, _sbDateDiff, _sbWeeksBetween
-  );
+    _sbDateAdd, _sbDateDiff, _sbWeeksBetween,
+    _sbNormalize, _sbSimilarity, _sbFuzzyMatch, _sbBestMatch, _sbMatchRows,
+  ];
+  try {
+    fn = new Function("datasets", ...helperNames, fnBody);
+  } catch {
+    fn = new Function("datasets", ...helperNames, `"use strict";\n${trimmed}`);
+  }
+
+  const result = fn(datasets || {}, ...helperVals);
 
   const serialized = JSON.stringify(result);
   const maxOutputBytes = 200000; // 200KB — generous for function outputs
