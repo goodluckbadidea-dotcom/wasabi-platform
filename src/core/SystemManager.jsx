@@ -1567,6 +1567,7 @@ function WorkspacesTab() {
 // ════════════════════════════════════════════════════════════════════════════
 
 function UsersTab({ identity }) {
+  const { register } = usePlatform();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [inviteRole, setInviteRole] = useState("editor");
@@ -1575,6 +1576,9 @@ function UsersTab({ identity }) {
   const [confirmHardDelete, setConfirmHardDelete] = useState(null);
   const [hardDeleteTransfer, setHardDeleteTransfer] = useState("unassigned");
   const [resetResult, setResetResult] = useState(null);
+  const [claimingUser, setClaimingUser] = useState(null); // user being claimed
+  const [claimPassword, setClaimPassword] = useState("");
+  const [claimError, setClaimError] = useState("");
 
   const refreshUsers = async () => {
     try {
@@ -1646,6 +1650,23 @@ function UsersTab({ identity }) {
       setResetResult({ userId, inviteCode: result.invite_code });
     } catch (err) {
       console.error("Failed to reset password:", err);
+    }
+  };
+
+  const handleClaim = async (user) => {
+    if (!claimPassword || claimPassword.length < 6) {
+      setClaimError("Password must be at least 6 characters.");
+      return;
+    }
+    try {
+      setClaimError("");
+      await register(user.invite_code, user.display_name, claimPassword);
+      // Success — identity is now set, page will re-render as authenticated
+      setClaimingUser(null);
+      setClaimPassword("");
+      await refreshUsers();
+    } catch (err) {
+      setClaimError(err.message || "Registration failed");
     }
   };
 
@@ -1742,8 +1763,8 @@ function UsersTab({ identity }) {
           const isSelf = u.id === identity?.id;
 
           return (
+            <React.Fragment key={u.id}>
             <div
-              key={u.id}
               style={{
                 background: C.darkSurf,
                 border: `1px solid ${C.darkBorder}`,
@@ -1859,6 +1880,16 @@ function UsersTab({ identity }) {
                         <option value="editor">Editor</option>
                         <option value="viewer">Viewer</option>
                       </select>
+                      {isPending && !identity && (
+                        <button
+                          onClick={() => { setClaimingUser(u); setClaimPassword(""); setClaimError(""); }}
+                          style={{ ...actionBtnStyle, border: `1px solid ${C.accent}44`, color: C.accent }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = C.accent + "15"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                        >
+                          Claim Account
+                        </button>
+                      )}
                       {!isPending && (
                         <button
                           onClick={() => handleResetPassword(u.id)}
@@ -1882,6 +1913,58 @@ function UsersTab({ identity }) {
                 </div>
               )}
             </div>
+
+            {/* Inline claim form */}
+            {claimingUser?.id === u.id && (
+              <div style={{
+                background: C.accent + "0C",
+                border: `1px solid ${C.accent}33`,
+                borderRadius: RADIUS.lg,
+                padding: 14,
+                marginTop: 6,
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+              }}>
+                <span style={{ fontSize: 12, color: C.darkText, fontWeight: 500, whiteSpace: "nowrap" }}>
+                  Set password:
+                </span>
+                <input
+                  type="password"
+                  value={claimPassword}
+                  onChange={(e) => setClaimPassword(e.target.value)}
+                  placeholder="Min 6 characters"
+                  onKeyDown={(e) => e.key === "Enter" && handleClaim(u)}
+                  style={{
+                    ...S.input,
+                    background: C.darkSurf,
+                    border: `1px solid ${C.darkBorder}`,
+                    color: C.darkText,
+                    padding: "6px 10px",
+                    fontSize: 12,
+                    borderRadius: RADIUS.sm,
+                    flex: 1,
+                  }}
+                  autoFocus
+                />
+                <button
+                  onClick={() => handleClaim(u)}
+                  style={{ ...S.btnPrimary, padding: "6px 14px", fontSize: 12 }}
+                >
+                  Register
+                </button>
+                <button
+                  onClick={() => { setClaimingUser(null); setClaimPassword(""); setClaimError(""); }}
+                  style={{ ...actionBtnStyle, border: `1px solid ${C.darkBorder}`, color: C.darkMuted }}
+                >
+                  Cancel
+                </button>
+                {claimError && (
+                  <span style={{ fontSize: 11, color: "#E05252" }}>{claimError}</span>
+                )}
+              </div>
+            )}
+          </React.Fragment>
           );
         };
 
