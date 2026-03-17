@@ -2,7 +2,7 @@
 // Configure optional Notion sync for standalone D1 tables.
 // Shows sync status, allows configure/push/pull/disconnect.
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import * as api from "../lib/api.js";
@@ -129,6 +129,8 @@ export default function SyncPanel({ tableId }) {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
   const [statusMsg, setStatusMsg] = useState("");
+  const [autoSync, setAutoSync] = useState(false);
+  const autoSyncRef = useRef(null);
 
   // Setup form state
   const [showSetup, setShowSetup] = useState(false);
@@ -150,6 +152,21 @@ export default function SyncPanel({ tableId }) {
       })
       .finally(() => setLoading(false));
   }, [tableId]);
+
+  // ── Auto-sync flush interval (3 seconds) ──
+  useEffect(() => {
+    if (autoSync && syncConfig?.configured) {
+      autoSyncRef.current = setInterval(() => {
+        api.syncFlush().catch((err) => console.warn("[AutoSync] Flush failed:", err));
+      }, 3000);
+    }
+    return () => {
+      if (autoSyncRef.current) {
+        clearInterval(autoSyncRef.current);
+        autoSyncRef.current = null;
+      }
+    };
+  }, [autoSync, syncConfig?.configured]);
 
   // ── Configure sync ──
   const handleConfigure = useCallback(async () => {
@@ -203,14 +220,17 @@ export default function SyncPanel({ tableId }) {
   }, [tableId]);
 
   // ── Pull ──
-  const handlePull = useCallback(async () => {
+  const handlePull = useCallback(async (fullResync = false) => {
     setSyncing(true);
     setError("");
     setStatusMsg("");
     try {
-      const result = await api.syncPull(tableId);
-      const { created, updated, errors } = result.pulled || {};
-      setStatusMsg(`Pull complete: ${created} created, ${updated} updated${errors ? `, ${errors} errors` : ""}`);
+      const result = await api.syncPull(tableId, fullResync);
+      const { created, updated, archived, errors } = result.pulled || {};
+      const parts = [`${created} created`, `${updated} updated`];
+      if (archived) parts.push(`${archived} archived`);
+      if (errors) parts.push(`${errors} errors`);
+      setStatusMsg(`Pull complete${result.incremental ? " (incremental)" : " (full)"}: ${parts.join(", ")}`);
       const status = await api.getSyncStatus(tableId);
       if (status.configured) setSyncConfig(status);
     } catch (err) {
@@ -271,6 +291,30 @@ export default function SyncPanel({ tableId }) {
           </div>
         )}
 
+        {/* Auto-sync toggle */}
+        <div style={{ ...styles.row, marginTop: 4, marginBottom: 12 }}>
+          <span style={styles.label}>Auto-sync</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              onClick={() => setAutoSync(!autoSync)}
+              style={{
+                width: 36, height: 20, borderRadius: 10, border: "none",
+                background: autoSync ? C.accent : C.darkBorder,
+                cursor: "pointer", position: "relative", transition: "background 0.2s",
+              }}
+            >
+              <div style={{
+                width: 16, height: 16, borderRadius: 8,
+                background: "#fff", position: "absolute", top: 2,
+                left: autoSync ? 18 : 2, transition: "left 0.2s",
+              }} />
+            </button>
+            <span style={{ fontSize: 10, color: autoSync ? C.accent : C.darkMuted }}>
+              {autoSync ? "On — flushing every 3s" : "Off — manual only"}
+            </span>
+          </div>
+        </div>
+
         <div style={styles.btnRow}>
           <button
             style={styles.btn(true)}
@@ -280,13 +324,22 @@ export default function SyncPanel({ tableId }) {
             {syncing ? "Syncing..." : "Push to Notion"}
           </button>
           {syncConfig.direction === "two_way" && (
-            <button
-              style={styles.btn(false)}
-              onClick={handlePull}
-              disabled={syncing}
-            >
-              Pull from Notion
-            </button>
+            <>
+              <button
+                style={styles.btn(false)}
+                onClick={() => handlePull(false)}
+                disabled={syncing}
+              >
+                Pull (incremental)
+              </button>
+              <button
+                style={styles.btn(false)}
+                onClick={() => handlePull(true)}
+                disabled={syncing}
+              >
+                Full Resync
+              </button>
+            </>
           )}
           <button
             style={styles.btnDanger}

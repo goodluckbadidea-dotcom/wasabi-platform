@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS table_rows (
   sort_order INTEGER DEFAULT 0,
   archived INTEGER DEFAULT 0,
   metadata TEXT DEFAULT '{}',
+  sync_dirty INTEGER DEFAULT 0,
+  sync_retry_count INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -142,6 +144,12 @@ CREATE TABLE IF NOT EXISTS sync_configs (
   last_synced_at TEXT,
   enabled INTEGER DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS data_summary_cache (
+  page_id TEXT PRIMARY KEY,
+  summary TEXT NOT NULL DEFAULT '',
+  updated_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS record_notes (
@@ -267,6 +275,7 @@ CREATE INDEX IF NOT EXISTS idx_custom_fn_status ON custom_functions(status);
 CREATE INDEX IF NOT EXISTS idx_fn_exec_fn ON function_executions(function_id, executed_at);
 CREATE INDEX IF NOT EXISTS idx_flow_exec_flow ON flow_executions(flow_id, started_at);
 CREATE INDEX IF NOT EXISTS idx_task_activity_lookup ON task_activity(task_id, source);
+CREATE INDEX IF NOT EXISTS idx_sync_dirty ON table_rows(sync_dirty) WHERE sync_dirty = 1;
 `;
 
 // ─── Auth Middleware ───
@@ -317,9 +326,10 @@ async function getMondayKey(env) {
 }
 
 export default {
-  // ─── Server-Side Automation Cron ───
+  // ─── Server-Side Cron (automations + sync flush) ───
   async scheduled(event, env, ctx) {
     ctx.waitUntil(runAutomationTick(env));
+    ctx.waitUntil(runSyncFlushTick(env));
   },
 
   async fetch(request, env, ctx) {
@@ -441,6 +451,16 @@ export default {
       }
 
       // ─── Page Config CRUD ───
+      // Summary cache route matched before single-page routes
+      const summaryMatch = path.match(/^\/pages\/([^/]+)\/summary$/);
+      if (summaryMatch && request.method === "GET") {
+        return await handleGetSummaryCache(env, summaryMatch[1]);
+      }
+      if (summaryMatch && request.method === "PUT") {
+        const body = await request.json();
+        return await handleSetSummaryCache(env, summaryMatch[1], body);
+      }
+
       // Schema routes matched before single-page routes to avoid ID collision
       const schemaMatch = path.match(/^\/pages\/([^/]+)\/schema$/);
       if (schemaMatch) {
@@ -947,13 +967,20 @@ export default {
       if (syncPullMatch && request.method === "POST") {
         const tableId = syncPullMatch[1];
         const notionKey = await getNotionKey(request, env);
-        return await handleSyncPull(env, tableId, notionKey);
+        const fullResync = url.searchParams.get("full") === "1";
+        return await handleSyncPull(env, tableId, notionKey, fullResync);
       }
 
       const syncStatusMatch = path.match(/^\/sync\/([^/]+)\/status$/);
       if (syncStatusMatch && request.method === "GET") {
         const tableId = syncStatusMatch[1];
         return await handleSyncStatus(env, tableId);
+      }
+
+      // Sync flush — process all dirty rows
+      if (path === "/sync/flush" && request.method === "POST") {
+        const notionKey = await getNotionKey(request, env);
+        return await handleSyncFlush(env, notionKey);
       }
 
       const syncDeleteMatch = path.match(/^\/sync\/([^/]+)$/);
@@ -1264,6 +1291,9 @@ async function handleInit(env) {
       "ALTER TABLE custom_functions ADD COLUMN meta TEXT DEFAULT '{}'",
       "CREATE TABLE IF NOT EXISTS task_activity (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, source TEXT NOT NULL, last_activity_at TEXT NOT NULL, UNIQUE(task_id, source))",
       "CREATE INDEX IF NOT EXISTS idx_task_activity_lookup ON task_activity(task_id, source)",
+      "ALTER TABLE table_rows ADD COLUMN sync_dirty INTEGER DEFAULT 0",
+      "ALTER TABLE table_rows ADD COLUMN sync_retry_count INTEGER DEFAULT 0",
+      "CREATE TABLE IF NOT EXISTS data_summary_cache (page_id TEXT PRIMARY KEY, summary TEXT NOT NULL DEFAULT '', updated_at TEXT DEFAULT (datetime('now')))",
     ];
     for (const sql of migrations) {
       try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }
@@ -2308,6 +2338,29 @@ async function handleCreatePage(env, body) {
   }
 }
 
+async function handleGetSummaryCache(env, pageId) {
+  try {
+    const row = await env.DB.prepare(
+      "SELECT summary, updated_at FROM data_summary_cache WHERE page_id = ?"
+    ).bind(pageId).first();
+    if (!row) return jsonResponse({ cached: false, summary: null });
+    return jsonResponse({ cached: true, summary: row.summary, updated_at: row.updated_at });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleSetSummaryCache(env, pageId, body) {
+  try {
+    await env.DB.prepare(
+      "INSERT OR REPLACE INTO data_summary_cache (page_id, summary, updated_at) VALUES (?, ?, datetime('now'))"
+    ).bind(pageId, body.summary || "").run();
+    return jsonResponse({ ok: true });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
 async function handleGetPage(env, id) {
   try {
     const row = await env.DB.prepare("SELECT * FROM page_configs WHERE id = ?").bind(id).first();
@@ -2452,8 +2505,8 @@ async function handleCreateRows(env, tableId, body) {
     for (const row of rows) {
       const id = row.id || crypto.randomUUID();
       await env.DB.prepare(
-        `INSERT INTO table_rows (id, table_id, cells, sort_order, metadata, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+        `INSERT INTO table_rows (id, table_id, cells, sort_order, metadata, sync_dirty, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))`
       ).bind(
         id,
         tableId,
@@ -2463,6 +2516,10 @@ async function handleCreateRows(env, tableId, body) {
       ).run();
       created.push(id);
     }
+
+    // Invalidate data summary cache for this table's pages
+    invalidateSummaryCache(env, tableId).catch(() => {});
+
     return jsonResponse({ ok: true, ids: created }, 201);
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
@@ -2474,17 +2531,20 @@ async function handleUpdateRow(env, tableId, rowId, body) {
   const binds = [];
 
   try {
+    // Read existing row for merge and automation trigger comparison
+    const existing = await env.DB.prepare(
+      "SELECT cells, metadata FROM table_rows WHERE id = ? AND table_id = ?"
+    ).bind(rowId, tableId).first();
+    const oldCells = existing ? JSON.parse(existing.cells || "{}") : {};
+
+    let newCells = oldCells;
     if (body.cells !== undefined) {
       if (body.merge_cells) {
-        // Merge mode: read existing cells, merge with new, write back
-        const existing = await env.DB.prepare(
-          "SELECT cells FROM table_rows WHERE id = ? AND table_id = ?"
-        ).bind(rowId, tableId).first();
-        const currentCells = existing ? JSON.parse(existing.cells || "{}") : {};
-        const merged = { ...currentCells, ...body.cells };
-        sets.push("cells = ?"); binds.push(JSON.stringify(merged));
+        newCells = { ...oldCells, ...body.cells };
+        sets.push("cells = ?"); binds.push(JSON.stringify(newCells));
       } else {
-        sets.push("cells = ?"); binds.push(JSON.stringify(body.cells));
+        newCells = body.cells;
+        sets.push("cells = ?"); binds.push(JSON.stringify(newCells));
       }
     }
     if (body.sort_order !== undefined) { sets.push("sort_order = ?"); binds.push(body.sort_order); }
@@ -2493,12 +2553,27 @@ async function handleUpdateRow(env, tableId, rowId, body) {
 
     if (sets.length === 0) return jsonResponse({ _error: "No fields to update" }, 400);
 
+    // Mark row dirty for Notion sync (skip if this is a sync-originated update)
+    if (!body._fromSync) {
+      sets.push("sync_dirty = 1");
+    }
     sets.push("updated_at = datetime('now')");
     binds.push(rowId, tableId);
 
     await env.DB.prepare(
       `UPDATE table_rows SET ${sets.join(", ")} WHERE id = ? AND table_id = ?`
     ).bind(...binds).run();
+
+    // Invalidate data summary cache
+    invalidateSummaryCache(env, tableId).catch(() => {});
+
+    // Event-driven automation triggers (non-blocking)
+    if (body.cells !== undefined && !body._fromSync) {
+      checkAutomationTriggers(env, tableId, rowId, oldCells, newCells).catch((err) =>
+        console.error("[AutoTrigger] Error:", err.message)
+      );
+    }
+
     return jsonResponse({ ok: true, id: rowId });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
@@ -2507,9 +2582,26 @@ async function handleUpdateRow(env, tableId, rowId, body) {
 
 async function handleDeleteRow(env, tableId, rowId) {
   try {
+    // Check if row has a linked Notion page — archive it too
+    const row = await env.DB.prepare(
+      "SELECT metadata FROM table_rows WHERE id = ? AND table_id = ?"
+    ).bind(rowId, tableId).first();
+    const metadata = row ? safeParseJSON(row.metadata) : {};
+
     await env.DB.prepare(
-      "UPDATE table_rows SET archived = 1, updated_at = datetime('now') WHERE id = ? AND table_id = ?"
+      "UPDATE table_rows SET archived = 1, sync_dirty = 0, updated_at = datetime('now') WHERE id = ? AND table_id = ?"
     ).bind(rowId, tableId).run();
+
+    // Archive corresponding Notion page (non-blocking)
+    if (metadata.notion_page_id) {
+      archiveNotionPage(env, metadata.notion_page_id).catch((err) =>
+        console.error("[SyncDelete] Failed to archive Notion page:", err.message)
+      );
+    }
+
+    // Invalidate data summary cache
+    invalidateSummaryCache(env, tableId).catch(() => {});
+
     return jsonResponse({ ok: true, id: rowId });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
@@ -5609,6 +5701,178 @@ function safeParseJSON(str) {
 // ─── Notion Sync Handlers ───
 
 /**
+ * Event-driven automation trigger check.
+ * Called inline from handleUpdateRow when cells change.
+ * Compares old vs new cells to detect field/status changes,
+ * then executes matching rules immediately (fast path inline, slow path async).
+ */
+async function checkAutomationTriggers(env, tableId, rowId, oldCells, newCells) {
+  // Find enabled rules that watch this table for field/status changes
+  const { results: rules } = await env.DB.prepare(
+    `SELECT * FROM automation_rules
+     WHERE scope_table_id = ? AND enabled = 1
+     AND trigger_type IN ('field_change', 'status_change')`
+  ).bind(tableId).all();
+
+  if (!rules || rules.length === 0) return;
+
+  // Detect which fields actually changed
+  const changedFields = {};
+  const allKeys = new Set([...Object.keys(oldCells), ...Object.keys(newCells)]);
+  for (const key of allKeys) {
+    const oldVal = oldCells[key] === undefined ? "" : String(oldCells[key]);
+    const newVal = newCells[key] === undefined ? "" : String(newCells[key]);
+    if (oldVal !== newVal) {
+      changedFields[key] = { old: oldCells[key], new: newCells[key] };
+    }
+  }
+
+  if (Object.keys(changedFields).length === 0) return;
+
+  // Get Claude key for slow-path rules
+  let claudeKey = null;
+  try {
+    const row = await env.DB.prepare("SELECT value FROM connections WHERE key = 'claude'").first();
+    claudeKey = row?.value || null;
+  } catch {}
+
+  for (const rawRule of rules) {
+    const triggerConfig = safeParseJSON(rawRule.trigger_config);
+    const actionConfig = safeParseJSON(rawRule.action_config);
+    const watchedField = triggerConfig?.field || null;
+
+    // Check if the watched field changed (or any field if no specific watch)
+    const relevantChange = watchedField
+      ? changedFields[watchedField]
+      : Object.keys(changedFields).length > 0;
+
+    if (!relevantChange) continue;
+
+    const changedRecords = [{
+      id: rowId,
+      cells: newCells,
+      changed_field: watchedField || Object.keys(changedFields)[0],
+      new_value: watchedField ? newCells[watchedField] : newCells[Object.keys(changedFields)[0]],
+    }];
+
+    const rule = {
+      id: rawRule.id,
+      name: rawRule.name,
+      description: rawRule.description || "",
+      trigger: rawRule.trigger_type,
+      triggerConfig,
+      actionConfig,
+      instruction: actionConfig.instruction || "",
+      databaseId: rawRule.scope_table_id || "",
+      enabled: true,
+      lastFired: rawRule.last_fired_at,
+      fireCount: rawRule.fire_count || 0,
+    };
+
+    try {
+      await executeRuleServer(rule, changedRecords, claudeKey, env);
+      await env.DB.prepare(
+        "UPDATE automation_rules SET last_fired_at = datetime('now'), fire_count = fire_count + 1, updated_at = datetime('now') WHERE id = ?"
+      ).bind(rule.id).run();
+
+      // Update snapshots so cron doesn't double-fire
+      for (const field of Object.keys(changedFields)) {
+        const hash = simpleHash(String(newCells[field] ?? ""));
+        await env.DB.prepare(
+          "INSERT OR REPLACE INTO rule_snapshots (rule_id, record_id, field_name, value_hash, updated_at) VALUES (?, ?, ?, ?, datetime('now'))"
+        ).bind(rule.id, rowId, field, hash).run();
+      }
+
+      console.log("[AutoTrigger]", `Rule "${rule.name}" fired for row ${rowId}`);
+    } catch (err) {
+      console.error("[AutoTrigger]", `Rule "${rule.name}" failed:`, err.message);
+    }
+  }
+}
+
+/**
+ * Cron-triggered sync flush — processes dirty rows to Notion.
+ * Runs alongside the automation tick on every cron invocation.
+ */
+async function runSyncFlushTick(env) {
+  const LOG = "[SyncCron]";
+  try {
+    const notionKey = await getNotionKeyFromDB(env);
+    if (!notionKey) return; // No Notion key configured
+
+    // Check if any dirty rows exist before doing full flush
+    const dirty = await env.DB.prepare(
+      "SELECT COUNT(*) as cnt FROM table_rows WHERE sync_dirty = 1 AND archived = 0"
+    ).first();
+    if (!dirty || dirty.cnt === 0) return;
+
+    console.log(LOG, `${dirty.cnt} dirty row(s) — flushing`);
+
+    // Reuse the flush logic (but we can't return an HTTP response, so call internal)
+    const result = await syncFlushInternal(env, notionKey);
+    console.log(LOG, `Done: ${result.created} created, ${result.updated} updated, ${result.errors} errors`);
+  } catch (err) {
+    console.error(LOG, "Flush tick failed:", err.message);
+  }
+}
+
+/**
+ * Internal sync flush logic (shared by cron and HTTP endpoint).
+ */
+async function syncFlushInternal(env, notionKey) {
+  const MAX_ROWS = 10;
+  const MAX_CONCURRENT = 3;
+  const MAX_RETRIES = 5;
+
+  const { results: dirtyRows } = await env.DB.prepare(
+    `SELECT id, table_id, cells, metadata, sync_retry_count
+     FROM table_rows
+     WHERE sync_dirty = 1 AND archived = 0 AND sync_retry_count < ?
+     ORDER BY updated_at ASC LIMIT ?`
+  ).bind(MAX_RETRIES, MAX_ROWS).all();
+
+  if (!dirtyRows || dirtyRows.length === 0) {
+    return { flushed: 0, created: 0, updated: 0, errors: 0 };
+  }
+
+  // Group by table_id to batch-load sync configs
+  const tableIds = [...new Set(dirtyRows.map((r) => r.table_id))];
+  const configMap = {};
+  const schemaMap = {};
+
+  for (const tid of tableIds) {
+    const config = await env.DB.prepare(
+      "SELECT * FROM sync_configs WHERE table_id = ? AND enabled = 1"
+    ).bind(tid).first();
+    if (config) {
+      configMap[tid] = config;
+      const schema = await env.DB.prepare("SELECT columns FROM table_schemas WHERE id = ?").bind(tid).first();
+      schemaMap[tid] = schema ? safeParseJSON(schema.columns) : [];
+    }
+  }
+
+  let created = 0, updated = 0, errors = 0;
+
+  for (let i = 0; i < dirtyRows.length; i += MAX_CONCURRENT) {
+    const batch = dirtyRows.slice(i, i + MAX_CONCURRENT);
+    const results = await Promise.allSettled(
+      batch.map((row) => flushSingleRow(env, row, configMap, schemaMap, notionKey))
+    );
+
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        if (result.value === "created") created++;
+        else if (result.value === "updated") updated++;
+      } else {
+        errors++;
+      }
+    }
+  }
+
+  return { flushed: dirtyRows.length, created, updated, errors };
+}
+
+/**
  * Configure sync between a D1 table and a Notion database.
  * Creates or updates a sync_configs row + auto-generates field mapping.
  */
@@ -5790,7 +6054,7 @@ async function handleSyncPush(env, tableId, notionKey) {
  * Pull Notion pages → D1 table rows.
  * Creates new rows or updates existing ones (matched by notion_page_id in metadata).
  */
-async function handleSyncPull(env, tableId, notionKey) {
+async function handleSyncPull(env, tableId, notionKey, fullResync = false) {
   if (!notionKey) return jsonResponse({ _error: "Notion API key not configured" }, 400);
 
   const config = await env.DB.prepare(
@@ -5800,6 +6064,7 @@ async function handleSyncPull(env, tableId, notionKey) {
 
   const fieldMapping = safeParseJSON(config.field_mapping);
   const notionDbId = config.notion_db_id;
+  const lastSyncedAt = config.last_synced_at;
 
   // Get table schema
   const schema = await env.DB.prepare("SELECT columns FROM table_schemas WHERE id = ?").bind(tableId).first();
@@ -5807,22 +6072,33 @@ async function handleSyncPull(env, tableId, notionKey) {
 
   // Get existing rows with notion_page_id
   const { results: existingRows } = await env.DB.prepare(
-    "SELECT id, metadata FROM table_rows WHERE table_id = ? AND archived = 0"
+    "SELECT id, cells, metadata FROM table_rows WHERE table_id = ? AND archived = 0"
   ).bind(tableId).all();
 
   const notionIdToRowId = {};
+  const notionIdToOldCells = {};
   for (const row of existingRows || []) {
     const meta = safeParseJSON(row.metadata);
     if (meta.notion_page_id) {
       notionIdToRowId[meta.notion_page_id] = row.id;
+      notionIdToOldCells[meta.notion_page_id] = safeParseJSON(row.cells);
     }
   }
 
-  // Query all pages from Notion database (with pagination)
+  // Build Notion query — use incremental filter if we have a last_synced_at and not full resync
+  const queryBody = { page_size: 100 };
+  if (lastSyncedAt && !fullResync) {
+    queryBody.filter = {
+      timestamp: "last_edited_time",
+      last_edited_time: { after: lastSyncedAt },
+    };
+  }
+
+  // Query pages from Notion database (with pagination)
   let notionPages = [];
   let cursor = undefined;
   do {
-    const body = { page_size: 100 };
+    const body = { ...queryBody };
     if (cursor) body.start_cursor = cursor;
     const res = await fetch(`${NOTION_API}/databases/${notionDbId}/query`, {
       method: "POST",
@@ -5838,7 +6114,7 @@ async function handleSyncPull(env, tableId, notionKey) {
     cursor = data.has_more ? data.next_cursor : null;
   } while (cursor);
 
-  let created = 0, updated = 0, errors = 0;
+  let created = 0, updated = 0, archived = 0, errors = 0;
 
   // Reverse field mapping: notion_property → col_id
   const reverseMapping = {};
@@ -5846,7 +6122,28 @@ async function handleSyncPull(env, tableId, notionKey) {
     reverseMapping[mapping.notion_property] = colId;
   }
 
+  const seenNotionIds = new Set();
+
   for (const page of notionPages) {
+    seenNotionIds.add(page.id);
+
+    // Handle archived/trashed Notion pages
+    if (page.archived) {
+      const existingRowId = notionIdToRowId[page.id];
+      if (existingRowId) {
+        try {
+          await env.DB.prepare(
+            "UPDATE table_rows SET archived = 1, sync_dirty = 0, updated_at = datetime('now') WHERE id = ?"
+          ).bind(existingRowId).run();
+          archived++;
+        } catch (err) {
+          console.error(`Sync pull archive error for page ${page.id}:`, err.message);
+          errors++;
+        }
+      }
+      continue;
+    }
+
     const cells = {};
     for (const [propName, propVal] of Object.entries(page.properties || {})) {
       const colId = reverseMapping[propName];
@@ -5855,26 +6152,33 @@ async function handleSyncPull(env, tableId, notionKey) {
     }
 
     const existingRowId = notionIdToRowId[page.id];
+    const oldCells = notionIdToOldCells[page.id] || {};
 
     try {
       if (existingRowId) {
-        // Update existing row
+        // Merge: preserve local-only fields, overwrite mapped fields from Notion
+        const mergedCells = { ...oldCells, ...cells };
         await env.DB.prepare(
-          "UPDATE table_rows SET cells = ?, metadata = ?, updated_at = datetime('now') WHERE id = ?"
+          "UPDATE table_rows SET cells = ?, metadata = ?, sync_dirty = 0, updated_at = datetime('now') WHERE id = ?"
         ).bind(
-          JSON.stringify(cells),
-          JSON.stringify({ notion_page_id: page.id, last_synced_at: new Date().toISOString() }),
+          JSON.stringify(mergedCells),
+          JSON.stringify({ notion_page_id: page.id, last_synced_at: new Date().toISOString(), notion_last_edited: page.last_edited_time }),
           existingRowId
         ).run();
         updated++;
+
+        // Fire automation triggers for sync-pulled changes
+        checkAutomationTriggers(env, tableId, existingRowId, oldCells, mergedCells).catch((err) =>
+          console.error("[AutoTrigger] Sync pull trigger error:", err.message)
+        );
       } else {
         // Create new row
         const rowId = crypto.randomUUID();
         await env.DB.prepare(
-          "INSERT INTO table_rows (id, table_id, cells, metadata) VALUES (?, ?, ?, ?)"
+          "INSERT INTO table_rows (id, table_id, cells, metadata, sync_dirty) VALUES (?, ?, ?, ?, 0)"
         ).bind(
           rowId, tableId, JSON.stringify(cells),
-          JSON.stringify({ notion_page_id: page.id, last_synced_at: new Date().toISOString() })
+          JSON.stringify({ notion_page_id: page.id, last_synced_at: new Date().toISOString(), notion_last_edited: page.last_edited_time })
         ).run();
         created++;
       }
@@ -5884,11 +6188,30 @@ async function handleSyncPull(env, tableId, notionKey) {
     }
   }
 
+  // Handle Notion deletions: on full resync, archive D1 rows whose Notion pages are gone
+  if (fullResync) {
+    for (const [notionId, rowId] of Object.entries(notionIdToRowId)) {
+      if (!seenNotionIds.has(notionId)) {
+        try {
+          await env.DB.prepare(
+            "UPDATE table_rows SET archived = 1, sync_dirty = 0, updated_at = datetime('now') WHERE id = ?"
+          ).bind(rowId).run();
+          archived++;
+        } catch (err) {
+          console.error(`Sync pull delete-detect error for row ${rowId}:`, err.message);
+        }
+      }
+    }
+  }
+
   await env.DB.prepare(
     "UPDATE sync_configs SET last_synced_at = datetime('now') WHERE table_id = ?"
   ).bind(tableId).run();
 
-  return jsonResponse({ pulled: { created, updated, errors }, total: notionPages.length });
+  // Invalidate data summary cache
+  invalidateSummaryCache(env, tableId).catch(() => {});
+
+  return jsonResponse({ pulled: { created, updated, archived, errors }, total: notionPages.length, incremental: !fullResync && !!lastSyncedAt });
 }
 
 /**
@@ -5919,6 +6242,142 @@ async function handleSyncStatus(env, tableId) {
 async function handleSyncDelete(env, tableId) {
   await env.DB.prepare("DELETE FROM sync_configs WHERE table_id = ?").bind(tableId).run();
   return jsonResponse({ success: true, table_id: tableId });
+}
+
+/**
+ * HTTP handler: flush dirty rows to Notion.
+ * POST /sync/flush
+ */
+async function handleSyncFlush(env, notionKey) {
+  if (!notionKey) return jsonResponse({ _error: "Notion API key not configured" }, 400);
+  const result = await syncFlushInternal(env, notionKey);
+  return jsonResponse(result);
+}
+
+/**
+ * Flush a single dirty row to Notion.
+ */
+async function flushSingleRow(env, row, configMap, schemaMap, notionKey) {
+  const config = configMap[row.table_id];
+  if (!config) {
+    // No sync config — clear dirty flag (nothing to sync to)
+    await env.DB.prepare("UPDATE table_rows SET sync_dirty = 0 WHERE id = ?").bind(row.id).run();
+    return "skipped";
+  }
+
+  const fieldMapping = safeParseJSON(config.field_mapping);
+  const notionDbId = config.notion_db_id;
+  const cells = safeParseJSON(row.cells);
+  const metadata = safeParseJSON(row.metadata);
+  const notionPageId = metadata.notion_page_id;
+
+  // Build Notion properties from field mapping
+  const properties = {};
+  for (const [colId, mapping] of Object.entries(fieldMapping)) {
+    const value = cells[colId];
+    if (value === undefined || value === null) continue;
+    properties[mapping.notion_property] = buildNotionPropValue(mapping.notion_type, value);
+  }
+
+  try {
+    if (notionPageId) {
+      // Update existing Notion page
+      const res = await fetch(`${NOTION_API}/pages/${notionPageId}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${notionKey}`,
+          "Notion-Version": NOTION_VERSION,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ properties }),
+      });
+      if (!res.ok) throw new Error(`Notion update failed: ${res.status}`);
+
+      // Clear dirty flag
+      await env.DB.prepare(
+        "UPDATE table_rows SET sync_dirty = 0, sync_retry_count = 0 WHERE id = ?"
+      ).bind(row.id).run();
+      return "updated";
+    } else {
+      // Create new Notion page
+      const res = await fetch(`${NOTION_API}/pages`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${notionKey}`,
+          "Notion-Version": NOTION_VERSION,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ parent: { database_id: notionDbId }, properties }),
+      });
+      const page = await res.json();
+      if (!page.id) throw new Error("Notion create returned no ID");
+
+      // Store Notion page ID and clear dirty flag
+      metadata.notion_page_id = page.id;
+      metadata.last_synced_at = new Date().toISOString();
+      await env.DB.prepare(
+        "UPDATE table_rows SET metadata = ?, sync_dirty = 0, sync_retry_count = 0 WHERE id = ?"
+      ).bind(JSON.stringify(metadata), row.id).run();
+      return "created";
+    }
+  } catch (err) {
+    console.error(`[SyncFlush] Row ${row.id} failed:`, err.message);
+    // Increment retry count
+    await env.DB.prepare(
+      "UPDATE table_rows SET sync_retry_count = sync_retry_count + 1 WHERE id = ?"
+    ).bind(row.id).run();
+    throw err;
+  }
+}
+
+/**
+ * Archive a Notion page (called when a D1 row is deleted).
+ */
+async function archiveNotionPage(env, notionPageId) {
+  const notionKey = await getNotionKeyFromDB(env);
+  if (!notionKey) return;
+
+  await fetch(`${NOTION_API}/pages/${notionPageId}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${notionKey}`,
+      "Notion-Version": NOTION_VERSION,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ archived: true }),
+  });
+}
+
+/**
+ * Get Notion key from DB connections table (for non-request contexts).
+ */
+async function getNotionKeyFromDB(env) {
+  try {
+    const row = await env.DB.prepare("SELECT value FROM connections WHERE key = 'notion'").first();
+    return row?.value || null;
+  } catch { return null; }
+}
+
+/**
+ * Invalidate data summary cache for all pages that use a given table.
+ */
+async function invalidateSummaryCache(env, tableId) {
+  // Find page configs that reference this table
+  const { results: pages } = await env.DB.prepare(
+    "SELECT id, config FROM page_configs"
+  ).all();
+
+  for (const page of (pages || [])) {
+    const config = safeParseJSON(page.config);
+    // Check if any data source in this page references the table
+    const sources = config.dataSources || config.data_sources || [];
+    const usesTable = sources.some((s) => s.tableId === tableId || s.table_id === tableId);
+    if (usesTable) {
+      await env.DB.prepare(
+        "DELETE FROM data_summary_cache WHERE page_id = ?"
+      ).bind(page.id).run();
+    }
+  }
 }
 
 /**

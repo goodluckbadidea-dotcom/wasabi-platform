@@ -409,8 +409,13 @@ export async function syncPush(tableId) {
   return apiFetch(`/sync/${tableId}/push`, { method: "POST" });
 }
 
-export async function syncPull(tableId) {
-  return apiFetch(`/sync/${tableId}/pull`, { method: "POST" });
+export async function syncPull(tableId, fullResync = false) {
+  const qs = fullResync ? "?full=1" : "";
+  return apiFetch(`/sync/${tableId}/pull${qs}`, { method: "POST" });
+}
+
+export async function syncFlush() {
+  return apiFetch("/sync/flush", { method: "POST" });
 }
 
 export async function getSyncStatus(tableId) {
@@ -419,6 +424,16 @@ export async function getSyncStatus(tableId) {
 
 export async function deleteSync(tableId) {
   return apiFetch(`/sync/${tableId}`, { method: "DELETE" });
+}
+
+// ─── Data Summary Cache ───
+
+export async function getSummaryCache(pageId) {
+  return apiFetch(`/pages/${pageId}/summary`, { method: "GET" });
+}
+
+export async function setSummaryCache(pageId, summary) {
+  return apiFetch(`/pages/${pageId}/summary`, { method: "PUT", body: { summary } });
 }
 
 // ─── Notion Proxy (backward compat) ───
