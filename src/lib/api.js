@@ -173,6 +173,13 @@ export async function updateRow(tableId, rowId, updates) {
   return apiFetch(`/tables/${tableId}/rows/${rowId}`, { method: "PATCH", body });
 }
 
+export async function updateRowOwner(tableId, rowId, ownerUserIds) {
+  return apiFetch(`/tables/${tableId}/rows/${rowId}`, {
+    method: "PATCH",
+    body: { owner_user_id: ownerUserIds },
+  });
+}
+
 export async function deleteRow(tableId, rowId) {
   return apiFetch(`/tables/${tableId}/rows/${rowId}`, { method: "DELETE" });
 }

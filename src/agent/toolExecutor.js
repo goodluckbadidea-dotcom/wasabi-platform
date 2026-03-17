@@ -283,10 +283,12 @@ export function executeSandbox(code, datasets, description = "Calculation comple
   );
 
   const serialized = JSON.stringify(result);
-  const isTruncated = serialized && serialized.length > 50000;
+  const maxOutputBytes = 200000; // 200KB — generous for function outputs
+  const maxOutputRows = 1000;
+  const isTruncated = serialized && serialized.length > maxOutputBytes;
 
   if (isTruncated && Array.isArray(result)) {
-    const subset = result.slice(0, Math.min(result.length, 200));
+    const subset = result.slice(0, Math.min(result.length, maxOutputRows));
     return {
       success: true, description, result: subset,
       totalRows: result.length, truncated: true,
@@ -586,15 +588,21 @@ export function createToolExecutor({
         const qCfg = await getFullPageConfig(toolInput.database_id);
         const pageType = qCfg?.page_type || null;
 
+        // Functions pass _maxRows to get full datasets (default: chat-friendly limits)
+        const maxRows = toolInput._maxRows || 0;
+        const chatLimit = maxRows > 0 ? maxRows : 200;
+        const notionChatLimit = maxRows > 0 ? maxRows : 5000; // Notion queries are already paginated; give functions the full dataset
+
         // D1 sheet path — grid cells converted to rows
         if (pageType === "sheet") {
           try {
             const sheet = await api.getSheet(toolInput.database_id);
             const rows = sheetCellsToRows(sheet.cells, sheet.col_count || 26);
+            const cap = maxRows > 0 ? maxRows : 200;
             return JSON.stringify({
               count: rows.length,
-              results: rows.slice(0, 200),
-              truncated: rows.length > 200,
+              results: rows.slice(0, cap),
+              truncated: rows.length > cap,
               storage: "sheet",
               _allCellValues: rows._allCellValues || [],
               _row1IsData: rows._row1IsData || false,
@@ -609,20 +617,20 @@ export function createToolExecutor({
           const queryBody = {};
           if (toolInput.filter) queryBody.filters = toolInput.filter;
           if (toolInput.sorts) queryBody.sorts = toolInput.sorts;
-          queryBody.limit = 200;
+          queryBody.limit = chatLimit;
 
           let rows;
           try {
             const res = await api.queryTable(toolInput.database_id, queryBody);
             rows = res?.rows || [];
           } catch {
-            const res = await api.listRows(toolInput.database_id, { limit: 200 });
+            const res = await api.listRows(toolInput.database_id, { limit: chatLimit });
             rows = res?.rows || [];
           }
           return JSON.stringify({
             count: rows.length,
-            results: rows.slice(0, 200),
-            truncated: rows.length > 200,
+            results: rows.slice(0, chatLimit),
+            truncated: rows.length > chatLimit,
             storage: "d1",
           });
         }
@@ -633,8 +641,8 @@ export function createToolExecutor({
             const rows = await fetchLinkedSheetRows(qCfg, workerUrl);
             return JSON.stringify({
               count: rows.length,
-              results: rows.slice(0, 200),
-              truncated: rows.length > 200,
+              results: rows.slice(0, chatLimit),
+              truncated: rows.length > chatLimit,
               storage: "linked_sheet",
               readOnly: true,
             });
@@ -649,8 +657,8 @@ export function createToolExecutor({
             const rows = await fetchLinkedMondayRows(qCfg, mondayKey);
             return JSON.stringify({
               count: rows.length,
-              results: rows.slice(0, 200),
-              truncated: rows.length > 200,
+              results: rows.slice(0, chatLimit),
+              truncated: rows.length > chatLimit,
               storage: "linked_monday",
             });
           } catch (err) {
@@ -672,8 +680,8 @@ export function createToolExecutor({
           }
           return JSON.stringify({
             count: allData.length,
-            results: allData.slice(0, 100),
-            truncated: allData.length > 100,
+            results: allData.slice(0, notionChatLimit),
+            truncated: allData.length > notionChatLimit,
             storage: "linked_notion",
           });
         }
@@ -689,10 +697,11 @@ export function createToolExecutor({
           const props = extractProperties(page);
           return { id: page.id, ...props };
         });
+        const directCap = maxRows > 0 ? maxRows : 200;
         return JSON.stringify({
           count: summary.length,
-          results: summary.slice(0, 50),
-          truncated: summary.length > 50,
+          results: summary.slice(0, directCap),
+          truncated: summary.length > directCap,
         });
       }
 
@@ -1338,7 +1347,7 @@ export function createToolExecutor({
           const datasets = {};
           for (const [key, inputDef] of Object.entries(inputs || {})) {
             if (inputDef.source === "query_database" && inputDef.database_id) {
-              const queryInput = { database_id: inputDef.database_id };
+              const queryInput = { database_id: inputDef.database_id, _maxRows: 5000 };
               if (inputDef.filter) queryInput.filter = inputDef.filter;
               if (inputDef.sorts) queryInput.sorts = inputDef.sorts;
               const raw = await executeTool("query_database", queryInput);
@@ -1453,12 +1462,12 @@ export function createToolExecutor({
           if (!fn || fn._error) return JSON.stringify({ error: `Function not found: ${function_id}` });
           if (fn.status === "disabled") return JSON.stringify({ error: `Function "${fn.name}" is disabled.` });
 
-          // Auto-gather inputs
+          // Auto-gather inputs — functions get full datasets (up to 5000 rows)
           const datasets = {};
           for (const [key, inputDef] of Object.entries(fn.inputs || {})) {
             if (overrides?.[key]) { datasets[key] = overrides[key]; continue; }
             if (inputDef.source === "query_database" && inputDef.database_id) {
-              const queryInput = { database_id: inputDef.database_id };
+              const queryInput = { database_id: inputDef.database_id, _maxRows: 5000 };
               if (inputDef.filter) queryInput.filter = inputDef.filter;
               if (inputDef.sorts) queryInput.sorts = inputDef.sorts;
               const raw = await executeTool("query_database", queryInput);

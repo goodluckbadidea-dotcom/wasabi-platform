@@ -400,6 +400,12 @@ function d1RowToPage(row, columns) {
     created_time: row.created_at,
   };
 
+  // Parse owner_user_id — stored as JSON array string or legacy "default"/"unassigned"
+  let ownerUserIds = [];
+  if (row.owner_user_id && row.owner_user_id !== "default" && row.owner_user_id !== "unassigned") {
+    try { ownerUserIds = JSON.parse(row.owner_user_id); } catch { ownerUserIds = [row.owner_user_id]; }
+  }
+
   return {
     id: row.id,
     object: "page",
@@ -409,6 +415,7 @@ function d1RowToPage(row, columns) {
     _source: "d1",
     _tableId: row.table_id,
     _sortOrder: row.sort_order,
+    _ownerUserIds: ownerUserIds,
   };
 }
 

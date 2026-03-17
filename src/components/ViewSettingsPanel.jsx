@@ -780,6 +780,21 @@ export default function ViewSettingsPanel({
           {/* ═══ Inline mode (Sushi Roll) ═══ */}
           {!isUnifiedMode && (
             <>
+              {/* Owner Column Toggle (table views only) */}
+              {isTable && (
+                <>
+                  <SectionLabel>Owner Column</SectionLabel>
+                  <FieldToggle
+                    label="Show Owner column"
+                    checked={!!config.showOwnerColumn}
+                    onChange={(checked) => onConfigChange?.({ showOwnerColumn: checked })}
+                  />
+                  <p style={{ fontSize: 10, color: C.darkMuted, margin: "2px 0 0" }}>
+                    Adds an assignable Owner field after the title column.
+                  </p>
+                </>
+              )}
+
               {/* Visible Properties */}
               {showVisibleProps && allFields.length > 0 && (
                 <>

@@ -16,11 +16,15 @@ import { useLinks } from "../context/LinksContext.jsx";
 import LinkPicker from "../core/LinkPicker.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
-import { updateTableSchema, getTableSchema } from "../lib/api.js";
+import { updateTableSchema, getTableSchema, listUsers, updateRowOwner } from "../lib/api.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { updateDatabase, searchDatabases } from "../notion/client.js";
 import SelectPicker from "../components/SelectPicker.jsx";
 import MultiSelectPicker from "../components/MultiSelectPicker.jsx";
+
+// ─── Owner Column Constants ───
+const OWNER_COL_NAME = "Owner";
+const OWNER_COL_WIDTH = 180;
 
 // D1 type → Notion property type mapping
 const D1_TO_NOTION_TYPE = {
@@ -825,6 +829,196 @@ function CellDisplay({ value, type, fieldName, schema, onClick, colorMapping }) 
 }
 
 
+// ─── Owner Column Components ───
+
+/** Display owner user pills for a row */
+function OwnerCellDisplay({ ownerIds, users, onClick }) {
+  if (!ownerIds || ownerIds.length === 0) {
+    return (
+      <span
+        onClick={onClick}
+        style={{ color: C.darkMuted, fontSize: 12, cursor: onClick ? "pointer" : "default", opacity: 0.6 }}
+      >
+        Unassigned
+      </span>
+    );
+  }
+
+  const userMap = {};
+  (users || []).forEach((u) => { userMap[u.id] = u; });
+
+  return (
+    <div onClick={onClick} style={{ display: "flex", gap: 4, flexWrap: "wrap", cursor: onClick ? "pointer" : "default", alignItems: "center" }}>
+      {ownerIds.map((uid) => {
+        const u = userMap[uid];
+        const name = u?.display_name || uid.slice(0, 8);
+        const initial = name.charAt(0).toUpperCase();
+        return (
+          <span
+            key={uid}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              background: C.accent + "18",
+              border: `1px solid ${C.accent}33`,
+              borderRadius: RADIUS.pill,
+              padding: "1px 8px 1px 3px",
+              fontSize: 11,
+              fontWeight: 500,
+              color: C.darkText,
+              lineHeight: "20px",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span style={{
+              width: 16, height: 16, borderRadius: "50%",
+              background: `linear-gradient(135deg, ${C.accent}, ${C.accent}88)`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 9, fontWeight: 700, color: "#fff", flexShrink: 0,
+            }}>
+              {initial}
+            </span>
+            {name}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Multi-select dropdown to pick owners */
+function OwnerPicker({ ownerIds, users, onCommit, onClose }) {
+  const [selected, setSelected] = useState(new Set(ownerIds || []));
+  const [filter, setFilter] = useState("");
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [onClose]);
+
+  const filtered = (users || []).filter((u) =>
+    u.display_name?.toLowerCase().includes(filter.toLowerCase())
+  );
+
+  const toggle = (uid) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(uid)) next.delete(uid); else next.add(uid);
+      return next;
+    });
+  };
+
+  const handleDone = () => {
+    onCommit(Array.from(selected));
+    onClose();
+  };
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        position: "absolute",
+        top: "100%",
+        left: 0,
+        zIndex: 200,
+        background: C.darkSurf,
+        border: `1px solid ${C.darkBorder}`,
+        borderRadius: RADIUS.lg,
+        boxShadow: SHADOW.dropdown,
+        width: 220,
+        maxHeight: 280,
+        display: "flex",
+        flexDirection: "column",
+        fontFamily: FONT,
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <input
+        autoFocus
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+        placeholder="Filter users..."
+        style={{
+          border: "none",
+          borderBottom: `1px solid ${C.darkBorder}`,
+          background: "transparent",
+          color: C.darkText,
+          padding: "8px 10px",
+          fontSize: 12,
+          outline: "none",
+          fontFamily: FONT,
+        }}
+      />
+      <div style={{ overflowY: "auto", flex: 1, padding: "4px 0" }}>
+        {filtered.length === 0 && (
+          <div style={{ padding: "8px 10px", fontSize: 11, color: C.darkMuted }}>No users found</div>
+        )}
+        {filtered.map((u) => {
+          const isActive = selected.has(u.id);
+          const initial = (u.display_name || "?").charAt(0).toUpperCase();
+          return (
+            <div
+              key={u.id}
+              onClick={() => toggle(u.id)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "6px 10px",
+                cursor: "pointer",
+                fontSize: 12,
+                color: C.darkText,
+                background: isActive ? C.accent + "14" : "transparent",
+                transition: "background 0.1s",
+              }}
+              onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
+            >
+              <span style={{
+                width: 20, height: 20, borderRadius: "50%",
+                background: `linear-gradient(135deg, ${C.accent}, ${C.accent}88)`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 10, fontWeight: 700, color: "#fff", flexShrink: 0,
+              }}>
+                {initial}
+              </span>
+              <span style={{ flex: 1 }}>{u.display_name}</span>
+              {isActive && <span style={{ color: C.accent, fontSize: 14, fontWeight: 700 }}>✓</span>}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{
+        borderTop: `1px solid ${C.darkBorder}`,
+        padding: "6px 10px",
+        display: "flex",
+        justifyContent: "flex-end",
+      }}>
+        <button
+          onClick={handleDone}
+          style={{
+            background: C.accent,
+            color: "#fff",
+            border: "none",
+            borderRadius: RADIUS.sm,
+            padding: "4px 12px",
+            fontSize: 11,
+            fontWeight: 600,
+            cursor: "pointer",
+            fontFamily: FONT,
+          }}
+        >
+          Done
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
 // ─── Main Table Component ───
 
 export default function Table({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onSaveFilters, onViewConfigChange }) {
@@ -896,6 +1090,18 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const canEditSchema = sourceType === "d1" || sourceType === "notion";
   const isD1Table = sourceType === "d1";
   const isNotionTable = sourceType === "notion";
+
+  // ── Owner Column ──
+  const showOwnerColumn = !!(config.showOwnerColumn || pageConfig?.config?.showOwnerColumn) && isD1Table;
+  const [teamUsers, setTeamUsers] = useState([]);
+  const [ownerPickerRow, setOwnerPickerRow] = useState(null); // pageId of row being edited
+  useEffect(() => {
+    if (!showOwnerColumn) return;
+    listUsers().then((res) => {
+      const active = (res.users || res || []).filter((u) => !u.deleted_at && !u.invite_code);
+      setTeamUsers(active);
+    }).catch(() => {});
+  }, [showOwnerColumn]);
 
   // ── Ghost Row (inline new record creation) ──
   const [ghostValues, setGhostValues] = useState({});
@@ -1230,10 +1436,15 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   // Visible columns (filtered by hiddenColumns)
   allColumnsRef.current = allColumns;
 
-  const columns = useMemo(
-    () => allColumns.filter((c) => !hiddenColumns.has(c)),
-    [allColumns, hiddenColumns]
-  );
+  const columns = useMemo(() => {
+    const visible = allColumns.filter((c) => !hiddenColumns.has(c));
+    if (showOwnerColumn && !visible.includes(OWNER_COL_NAME)) {
+      // Insert after first column (title)
+      const idx = Math.min(1, visible.length);
+      visible.splice(idx, 0, OWNER_COL_NAME);
+    }
+    return visible;
+  }, [allColumns, hiddenColumns, showOwnerColumn]);
 
   // Identify filterable fields (select / status)
   const filterableFields = useMemo(() => {
@@ -1397,6 +1608,20 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
       );
     }
   }, [schema, onUpdate, focusedCell, processedData.length]);
+
+  // Owner column update handler
+  const handleOwnerCommit = useCallback(async (pageId, ownerIds) => {
+    const tableId = pageConfig?.id;
+    if (!tableId) return;
+    try {
+      await updateRowOwner(tableId, pageId, ownerIds);
+      // Optimistically update local data
+      if (onRefresh) setTimeout(onRefresh, 300);
+    } catch (err) {
+      console.error("Owner update failed:", err);
+    }
+    setOwnerPickerRow(null);
+  }, [pageConfig?.id, onRefresh]);
 
   // Create option handler for SelectPicker/MultiSelectPicker (adds to D1 schema)
   const handleCreateOption = useCallback(async (fieldName, newOptionName) => {
@@ -2015,11 +2240,11 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
             </button>
           </div>
         ) : (
-          <table style={{ ...styles.table, width: 52 + columns.reduce((sum, col) => sum + (colWidths[col] || 120), 0) + (canEditSchema ? 44 : 0) }}>
+          <table style={{ ...styles.table, width: 52 + columns.reduce((sum, col) => sum + (colWidths[col] || (col === OWNER_COL_NAME ? OWNER_COL_WIDTH : 120)), 0) + (canEditSchema ? 44 : 0) }}>
             <colgroup>
               <col style={{ width: 52 }} />
               {columns.map((col) => (
-                <col key={col} style={{ width: colWidths[col] || 120 }} />
+                <col key={col} style={{ width: colWidths[col] || (col === OWNER_COL_NAME ? OWNER_COL_WIDTH : 120) }} />
               ))}
               {canEditSchema && <col style={{ width: 44 }} />}
             </colgroup>
@@ -2041,6 +2266,23 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                   </span>
                 </th>
                 {columns.map((col) => {
+                  // ── Owner virtual column header ──
+                  if (col === OWNER_COL_NAME && showOwnerColumn) {
+                    return (
+                      <th
+                        key={col}
+                        style={{
+                          ...styles.th,
+                          minWidth: OWNER_COL_WIDTH,
+                          width: colWidths[col] || OWNER_COL_WIDTH,
+                          position: "relative",
+                        }}
+                      >
+                        <span style={{ marginRight: 5, fontSize: 10, opacity: 0.55, verticalAlign: "middle" }} title="Owner">👤</span>
+                        Owner
+                      </th>
+                    );
+                  }
                   const isActive = sortField === col;
                   const isDragOver = colDrag?.overCol === col;
                   return (
@@ -2367,6 +2609,41 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                             </div>
                           </td>
                           {columns.map((col, colIdx) => {
+                            // ── Owner virtual column cell ──
+                            if (col === OWNER_COL_NAME && showOwnerColumn) {
+                              const ownerIds = page._ownerUserIds || [];
+                              const isPickerOpen = ownerPickerRow === pageId;
+                              return (
+                                <td
+                                  key={col}
+                                  style={{
+                                    ...styles.td,
+                                    height: ROW_HEIGHT,
+                                    padding: 0,
+                                    position: "relative",
+                                    width: colWidths[col] || OWNER_COL_WIDTH,
+                                    minWidth: colWidths[col] || OWNER_COL_WIDTH,
+                                  }}
+                                  onClick={() => setOwnerPickerRow(isPickerOpen ? null : pageId)}
+                                >
+                                  <div style={{ position: "absolute", inset: 0, overflow: "hidden", padding: "4px 8px", display: "flex", alignItems: "center" }}>
+                                    <OwnerCellDisplay
+                                      ownerIds={ownerIds}
+                                      users={teamUsers}
+                                      onClick={() => setOwnerPickerRow(isPickerOpen ? null : pageId)}
+                                    />
+                                  </div>
+                                  {isPickerOpen && (
+                                    <OwnerPicker
+                                      ownerIds={ownerIds}
+                                      users={teamUsers}
+                                      onCommit={(ids) => handleOwnerCommit(pageId, ids)}
+                                      onClose={() => setOwnerPickerRow(null)}
+                                    />
+                                  )}
+                                </td>
+                              );
+                            }
                             const type = getFieldType(schema, col);
                             const value = readField(page, col);
                             const isEditing = editCell?.pageId === pageId && editCell?.field === col;

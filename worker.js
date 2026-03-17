@@ -3060,6 +3060,17 @@ async function handleUpdateRow(env, tableId, rowId, body) {
     if (body.sort_order !== undefined) { sets.push("sort_order = ?"); binds.push(body.sort_order); }
     if (body.archived !== undefined) { sets.push("archived = ?"); binds.push(body.archived ? 1 : 0); }
     if (body.metadata !== undefined) { sets.push("metadata = ?"); binds.push(JSON.stringify(body.metadata)); }
+    if (body.owner_user_id !== undefined) {
+      // Accepts string, array, or null — stored as JSON array string
+      const ownerVal = body.owner_user_id;
+      if (ownerVal === null || ownerVal === "unassigned") {
+        sets.push("owner_user_id = ?"); binds.push("unassigned");
+      } else if (Array.isArray(ownerVal)) {
+        sets.push("owner_user_id = ?"); binds.push(JSON.stringify(ownerVal));
+      } else {
+        sets.push("owner_user_id = ?"); binds.push(JSON.stringify([ownerVal]));
+      }
+    }
 
     if (sets.length === 0) return jsonResponse({ _error: "No fields to update" }, 400);
 
