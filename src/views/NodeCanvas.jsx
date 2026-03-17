@@ -45,6 +45,9 @@ export default function NodeCanvas({
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.code === "Space" && !e.repeat) {
+        // Don't block space when user is typing in an input/textarea/contenteditable
+        const tag = e.target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || e.target.isContentEditable) return;
         e.preventDefault();
         setSpaceHeld(true);
       }
