@@ -6,7 +6,7 @@ import { C, FONT } from "../design/tokens.js";
 
 const NodeEditor = React.lazy(() => import("./NodeEditor.jsx"));
 
-export default function AutomationPage({ automationEngine }) {
+export default function AutomationPage({ automationEngine, onOpenChat }) {
   return (
     <React.Suspense
       fallback={
@@ -23,7 +23,7 @@ export default function AutomationPage({ automationEngine }) {
         </div>
       }
     >
-      <NodeEditor automationEngine={automationEngine} />
+      <NodeEditor automationEngine={automationEngine} onOpenChat={onOpenChat} />
     </React.Suspense>
   );
 }

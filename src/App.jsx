@@ -364,7 +364,7 @@ function AppContent() {
             Loading...
           </div>
         }>
-          <KnowledgeHub />
+          <KnowledgeHub onOpenChat={(msg) => { setPendingChatMessage(msg); setWasabiPanelOpen(true); }} />
         </React.Suspense>
       );
     }

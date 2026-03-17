@@ -24,7 +24,7 @@ const FALLBACK = (
   </div>
 );
 
-export default function KnowledgeHub() {
+export default function KnowledgeHub({ onOpenChat }) {
   const [activeTab, setActiveTab] = useState("kb");
 
   return (
@@ -65,9 +65,9 @@ export default function KnowledgeHub() {
         <ErrorBoundary fallbackLabel={TABS.find((t) => t.key === activeTab)?.label}>
           <React.Suspense fallback={FALLBACK}>
             {activeTab === "kb" && <KnowledgeBase />}
-            {activeTab === "automations" && <AutomationPage />}
-            {activeTab === "functions" && <FunctionsPanel />}
-            {activeTab === "build" && <BuildPage />}
+            {activeTab === "automations" && <AutomationPage onOpenChat={onOpenChat} />}
+            {activeTab === "functions" && <FunctionsPanel onOpenChat={onOpenChat} />}
+            {activeTab === "build" && <BuildPage onOpenChat={onOpenChat} />}
           </React.Suspense>
         </ErrorBoundary>
       </div>
