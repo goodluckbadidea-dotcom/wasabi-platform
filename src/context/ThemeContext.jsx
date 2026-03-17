@@ -1,7 +1,6 @@
 // ─── Theme Context ───
 // Provides theme name selection.
 // Mode is inherent to each theme (no dark/light toggle).
-// Theme persists independently. App is always in "zen" mode.
 
 import React, { createContext, useContext, useState, useCallback } from "react";
 import { getThemeName, getThemeMode, applyTheme, THEMES } from "../design/tokens.js";
@@ -10,10 +9,8 @@ import { rebuildStyles } from "../design/styles.js";
 const ThemeContext = createContext({
   themeName: "obsidian",
   themeMode: "dark",
-  appMode: "zen",
   setThemeName: () => {},
   toggleMode: () => {},
-  setAppMode: () => {},
   // Backward compat aliases
   theme: "dark",
   toggleTheme: () => {},
@@ -32,7 +29,7 @@ export function ThemeProvider({ children }) {
     if (theme) _setThemeMode(theme.mode);
   }, []);
 
-  // toggleMode is kept for backward compat but cycles to next theme instead
+  // toggleMode cycles to next theme
   const toggleMode = useCallback(() => {
     const keys = Object.keys(THEMES);
     const idx = keys.indexOf(themeName);
@@ -40,17 +37,12 @@ export function ThemeProvider({ children }) {
     setThemeName(next);
   }, [themeName, setThemeName]);
 
-  // setAppMode kept as no-op for any straggling callers
-  const setAppMode = useCallback(() => {}, []);
-
   return (
     <ThemeContext.Provider value={{
       themeName,
       themeMode,
-      appMode: "zen",
       setThemeName,
       toggleMode,
-      setAppMode,
       // Backward compat
       theme: themeMode,
       toggleTheme: toggleMode,

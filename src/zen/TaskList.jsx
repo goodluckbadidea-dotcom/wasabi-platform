@@ -4,7 +4,7 @@
 
 import React, { useState, useRef, useCallback } from "react";
 import { C, FONT, RADIUS, VIEW_PALETTE, getSolidPillColor, isLightColor, getThemeMode, resolveUnifiedColor } from "../design/tokens.js";
-import { formatDueDate, isOverdue, isToday, parseDate } from "./zenTaskHelpers.js";
+import { formatDueDate, isOverdue, isToday, parseDate } from "./taskHelpers.js";
 
 // ── Priority → palette index mapping ──
 const PRIORITY_IDX = { High: 9, Medium: 3, Normal: 4, Low: 6 };

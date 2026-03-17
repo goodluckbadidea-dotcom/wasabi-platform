@@ -11,11 +11,11 @@ import { getDocument, saveDocument } from "../lib/api.js";
 import { createStandaloneDocConfig, savePageConfig } from "../config/pageConfig.js";
 import DocumentEditor from "../views/DocumentEditor.jsx";
 
-const DOC_ID = "zen-scratchpad";
+const DOC_ID = "scratchpad";
 
 const PAGE_CONFIG = { id: DOC_ID, standalone: true };
 
-export default function ZenNotes() {
+export default function NotesView() {
   const { addPage, folders } = usePlatform();
 
   const [resetKey, setResetKey] = useState(0);

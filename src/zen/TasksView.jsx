@@ -7,17 +7,17 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { IconEdit } from "../design/icons.jsx";
-import useZenTasks from "./useZenTasks.js";
+import useTasksTable from "./useTasksTable.js";
 import useAICuratedTasks from "./useAICuratedTasks.js";
 import TaskList from "./TaskList.jsx";
-import ZenCalendar from "./ZenCalendar.jsx";
-import SashimiDrawer from "./SashimiDrawer.jsx";
-import { useSashimiDrawer } from "./SashimiDrawerContext.jsx";
+import CalendarView from "./CalendarView.jsx";
+import RecordDrawer from "./RecordDrawer.jsx";
+import { useRecordDrawer } from "./RecordDrawerContext.jsx";
 import { ErrorBoundary } from "../core/ErrorBoundary.jsx";
 import { useColorMapping } from "../context/ColorMappingContext.jsx";
 const ViewSettingsPanel = React.lazy(() => import("../components/ViewSettingsPanel.jsx"));
 
-export default function ZenTasksView() {
+export default function TasksView() {
   const {
     tasks: zenTasks,
     loading: zenLoading,
@@ -26,7 +26,7 @@ export default function ZenTasksView() {
     toggleTask: toggleZenTask,
     deleteTask,
     refresh: refreshZen,
-  } = useZenTasks();
+  } = useTasksTable();
 
   const {
     aiTasks,
@@ -36,7 +36,7 @@ export default function ZenTasksView() {
     error: aiError,
   } = useAICuratedTasks();
 
-  const { openDrawer, onSaved, onDeleted } = useSashimiDrawer();
+  const { openDrawer, onSaved, onDeleted } = useRecordDrawer();
   const calendarRefreshRef = useRef(null);
   const [showSettings, setShowSettings] = useState(false);
 
@@ -55,7 +55,7 @@ export default function ZenTasksView() {
   const { globalColorMapping, globalColorField, getViewColorConfig, updateViewColorConfig, resetViewColorConfig } = useColorMapping();
 
   // Build colorMapping object for TaskRow color resolution
-  const viewColorConfig = getViewColorConfig("zen-tasks");
+  const viewColorConfig = getViewColorConfig("tasks");
   const taskColorMapping = useMemo(() => ({
     viewColorMapping: viewColorConfig?.colorMapping || null,
     globalColorMapping,
@@ -257,12 +257,12 @@ export default function ZenTasksView() {
         overflow: "hidden",
       }}>
         <ErrorBoundary fallbackLabel="Calendar">
-          <ZenCalendar allTasks={allTasks} refreshRef={calendarRefreshRef} />
+          <CalendarView allTasks={allTasks} refreshRef={calendarRefreshRef} />
         </ErrorBoundary>
       </div>
 
       {/* Sashimi drawer for task/event editing */}
-      <SashimiDrawer
+      <RecordDrawer
         onTaskUpdated={handleTaskUpdated}
         onTaskDeleted={handleTaskDeleted}
         onEventUpdated={handleEventUpdated}
@@ -273,14 +273,14 @@ export default function ZenTasksView() {
       {showSettings && (
         <React.Suspense fallback={null}>
           <ViewSettingsPanel
-            viewKey="zen-tasks"
+            viewKey="tasks"
             viewConfig={{ type: "tasks", label: "Tasks" }}
             schema={taskSchema}
             globalColorMapping={globalColorMapping}
             globalColorField={globalColorField}
-            viewColorConfig={getViewColorConfig("zen-tasks")}
-            onSave={(updates) => updateViewColorConfig("zen-tasks", updates)}
-            onReset={() => resetViewColorConfig("zen-tasks")}
+            viewColorConfig={getViewColorConfig("tasks")}
+            onSave={(updates) => updateViewColorConfig("tasks", updates)}
+            onReset={() => resetViewColorConfig("tasks")}
             onClose={() => setShowSettings(false)}
           />
         </React.Suspense>

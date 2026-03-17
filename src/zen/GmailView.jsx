@@ -7,8 +7,8 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { ANIM, TRANSITION } from "../design/animations.js";
 import { searchEmails, getEmail, sendEmail, modifyEmail } from "../lib/api.js";
-import { useSashimiDrawer } from "./SashimiDrawerContext.jsx";
-import SashimiDrawer from "./SashimiDrawer.jsx";
+import { useRecordDrawer } from "./RecordDrawerContext.jsx";
+import RecordDrawer from "./RecordDrawer.jsx";
 
 // ── Label config ──
 const LABELS = [
@@ -202,7 +202,7 @@ function ComposeModal({ onClose, onSent, replyTo }) {
 }
 
 // ── Main Component ──
-export default function ZenGmail() {
+export default function GmailView() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
@@ -211,7 +211,7 @@ export default function ZenGmail() {
   const [error, setError] = useState(null);
   const [activeLabel, setActiveLabel] = useState("INBOX");
   const [searchQuery, setSearchQuery] = useState("");
-  const { openDrawer } = useSashimiDrawer();
+  const { openDrawer } = useRecordDrawer();
   const lastClickRef = useRef({ id: null, time: 0 });
   const singleClickTimerRef = useRef(null);
   const searchTimerRef = useRef(null);
@@ -859,7 +859,7 @@ export default function ZenGmail() {
       </div>
 
       {/* Drawer for email threads, compose, and reply */}
-      <SashimiDrawer />
+      <RecordDrawer />
     </div>
   );
 }

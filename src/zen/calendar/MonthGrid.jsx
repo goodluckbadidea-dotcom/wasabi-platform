@@ -5,7 +5,7 @@
 
 import React, { useMemo } from "react";
 import { C, FONT, RADIUS, isLightColor, VIEW_PALETTE, getSolidPillColor, mapCalendarColor } from "../../design/tokens.js";
-import { isSameDay, getMonthRange, parseDate } from "../zenTaskHelpers.js";
+import { isSameDay, getMonthRange, parseDate } from "../taskHelpers.js";
 
 // Priority → palette index
 const PRIORITY_IDX = { High: 9, Medium: 3, Normal: 4, Low: 6 };

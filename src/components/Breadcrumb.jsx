@@ -37,8 +37,9 @@ export default function Breadcrumb() {
       return [{ label: SPECIAL_PAGES[activePage], id: activePage, isCurrent: true }];
     }
 
-    // Zen-prefixed pages don't show breadcrumbs
-    if (typeof activePage === "string" && activePage.startsWith("zen-")) return [];
+    // Built-in pages don't show breadcrumbs
+    const BUILTIN_PAGES = new Set(["workspaces", "tasks", "notes", "gmail", "notifications", "knowledge", "dashboard"]);
+    if (BUILTIN_PAGES.has(activePage)) return [];
 
     // Find page config
     const pageConfig = pages.find((p) => p.id === activePage);
@@ -65,7 +66,7 @@ export default function Breadcrumb() {
 
     // Prepend "Workspaces" root for navigation back
     if (chain.length > 0) {
-      chain.unshift({ label: "Workspaces", id: "zen-workspaces", isCurrent: false, isFolder: false });
+      chain.unshift({ label: "Workspaces", id: "workspaces", isCurrent: false, isFolder: false });
     }
 
     return chain;
@@ -103,7 +104,7 @@ export default function Breadcrumb() {
                   cur = cur.parentId ? byId[cur.parentId] : null;
                 }
                 setTargetFolderPath(folderPath);
-                setActivePage("zen-workspaces");
+                setActivePage("workspaces");
               } else {
                 setActivePage(seg.id);
               }

@@ -7,9 +7,9 @@ import React, { useState, useCallback, useEffect } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import WidgetGrid from "../components/WidgetGrid.jsx";
-import SashimiDrawer from "./SashimiDrawer.jsx";
+import RecordDrawer from "./RecordDrawer.jsx";
 
-const STORAGE_KEY = "wasabi-zen-dashboard-widgets";
+const STORAGE_KEY = "wasabi-dashboard-widgets";
 
 function loadWidgets() {
   try {
@@ -24,7 +24,7 @@ function saveWidgets(widgets) {
   } catch {}
 }
 
-export default function ZenDashboard() {
+export default function DashboardView() {
   const [widgets, setWidgets] = useState(() => loadWidgets());
 
   // Persist on every change
@@ -68,7 +68,7 @@ export default function ZenDashboard() {
       </div>
 
       {/* Sashimi drawer for widget interactions */}
-      <SashimiDrawer />
+      <RecordDrawer />
     </div>
   );
 }

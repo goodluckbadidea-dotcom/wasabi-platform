@@ -5,13 +5,13 @@
 // importing the full task curation logic.
 
 import { useState, useEffect } from "react";
-import { getCached } from "./zenTaskHelpers.js";
+import { getCached } from "./taskHelpers.js";
 
-const INSIGHT_CACHE_KEY = "wasabi_zen_insight";
+const INSIGHT_CACHE_KEY = "wasabi_insight";
 const CACHE_TTL = 15 * 60 * 1000; // 15 min (matches task cache)
 const POLL_INTERVAL = 5000; // check for new insight every 5s
 
-export default function useZenInsight() {
+export default function useInsight() {
   const [insight, setInsight] = useState(() => getCached(INSIGHT_CACHE_KEY, CACHE_TTL));
 
   // Poll localStorage for updates (written by useAICuratedTasks)

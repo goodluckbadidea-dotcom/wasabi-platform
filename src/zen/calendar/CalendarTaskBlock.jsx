@@ -4,7 +4,7 @@
 
 import React from "react";
 import { C, FONT, RADIUS, VIEW_PALETTE, getSolidPillColor } from "../../design/tokens.js";
-import { parseDate } from "../zenTaskHelpers.js";
+import { parseDate } from "../taskHelpers.js";
 
 // Priority → palette index
 const PRIORITY_IDX = { High: 9, Medium: 3, Normal: 4, Low: 6 };

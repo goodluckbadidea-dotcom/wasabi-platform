@@ -9,8 +9,8 @@ import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { useNavigation } from "../context/NavigationContext.jsx";
 import { IconFolder, IconSearch, IconChevronRight, IconGlobe, IconGear } from "../design/icons.jsx";
-import { useSashimiDrawer } from "./SashimiDrawerContext.jsx";
-import SashimiDrawer from "./SashimiDrawer.jsx";
+import { useRecordDrawer } from "./RecordDrawerContext.jsx";
+import RecordDrawer from "./RecordDrawer.jsx";
 
 // ── Card hover helpers ──
 function applyHover(e) {
@@ -35,10 +35,10 @@ function PageIcon({ size = 16, color = C.accent }) {
   );
 }
 
-export default function ZenWorkspaces() {
+export default function WorkspaceBrowser() {
   const { pageTree, pages, setActivePage, setActiveFolder } = usePlatform();
   const { targetFolderPath, setTargetFolderPath } = useNavigation();
-  const { openDrawer } = useSashimiDrawer();
+  const { openDrawer } = useRecordDrawer();
 
   // Breadcrumb path: array of { id, name, node } — persisted to localStorage
   const [path, setPath] = useState(() => {
@@ -111,7 +111,7 @@ export default function ZenWorkspaces() {
     if (searchAll) {
       // Search all pages (flat)
       return pages
-        .filter((p) => !p._zenInternal && p.name?.toLowerCase().includes(q))
+        .filter((p) => !p._systemInternal && p.name?.toLowerCase().includes(q))
         .map((p) => ({
           ...p,
           itemType: p.type === "folder" ? "folder" : "page",
@@ -371,7 +371,7 @@ export default function ZenWorkspaces() {
       )}
 
       {/* Drawer for workspace settings */}
-      <SashimiDrawer />
+      <RecordDrawer />
     </div>
   );
 }

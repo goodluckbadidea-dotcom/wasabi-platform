@@ -1,6 +1,6 @@
 // ─── Wasabi Platform App Shell ───
 // Root component: auth gate → layout → routing.
-// Layout: TopHeader + [SashimiChatPanel | Sidebar | Content]
+// Layout: TopHeader + [ChatPanel | Sidebar | Content]
 // Top header: WASABI wordmark + page-level controls (right side).
 // Sidebar: Icon-bar navigation, expandable.
 
@@ -8,7 +8,7 @@ import React, { useState, useCallback, useEffect, useRef } from "react";
 import { PlatformProvider, usePlatform } from "./context/PlatformContext.jsx";
 import { LinksProvider } from "./context/LinksContext.jsx";
 import { NeuronsProvider } from "./neurons/NeuronsContext.jsx";
-import { SashimiDrawerProvider } from "./zen/SashimiDrawerContext.jsx";
+import { RecordDrawerProvider } from "./zen/RecordDrawerContext.jsx";
 import { ColorMappingProvider } from "./context/ColorMappingContext.jsx";
 import { ThemeProvider, useTheme } from "./context/ThemeContext.jsx";
 import { injectAnimations, ANIM, TRANSITION } from "./design/animations.js";
@@ -18,7 +18,7 @@ import { C } from "./design/tokens.js";
 import SetupWizard from "./core/SetupWizard.jsx";
 import TopHeader from "./core/TopHeader.jsx";
 import Navigation from "./core/Navigation.jsx";
-const SashimiChatPanel = React.lazy(() => import("./zen/SashimiChatPanel.jsx"));
+const ChatPanel = React.lazy(() => import("./zen/ChatPanel.jsx"));
 import Onboarding from "./core/Onboarding.jsx";
 import PageBuilder from "./core/PageBuilder.jsx";
 import PageShell from "./core/PageShell.jsx";
@@ -40,15 +40,41 @@ import NeuronLines from "./neurons/NeuronLines.jsx";
 import { useNeurons } from "./neurons/NeuronsContext.jsx";
 import { IconGear } from "./design/icons.jsx";
 
-const ZenTasksView = React.lazy(() => import("./zen/ZenTasksView.jsx"));
-const ZenNotes = React.lazy(() => import("./zen/ZenNotes.jsx"));
-const ZenDashboard = React.lazy(() => import("./zen/ZenDashboard.jsx"));
-const ZenGmail = React.lazy(() => import("./zen/ZenGmail.jsx"));
-const ZenWorkspaces = React.lazy(() => import("./zen/ZenWorkspaces.jsx"));
-const ZenKnowledgeHub = React.lazy(() => import("./zen/ZenKnowledgeHub.jsx"));
+const TasksView = React.lazy(() => import("./zen/TasksView.jsx"));
+const NotesView = React.lazy(() => import("./zen/NotesView.jsx"));
+const DashboardView = React.lazy(() => import("./zen/DashboardView.jsx"));
+const GmailView = React.lazy(() => import("./zen/GmailView.jsx"));
+const WorkspaceBrowser = React.lazy(() => import("./zen/WorkspaceBrowser.jsx"));
+const KnowledgeHub = React.lazy(() => import("./zen/KnowledgeHub.jsx"));
 
 // Inject CSS animations on app load
 injectAnimations();
+
+// ── One-time localStorage key migration (zen → functional names) ──
+(() => {
+  try {
+    if (localStorage.getItem("wasabi_ls_migrated_v1")) return;
+    const migrations = [
+      ["wasabi_zen_table_id", "wasabi_tasks_table_id"],
+      ["wasabi_zen_insight", "wasabi_insight"],
+      ["wasabi-zen-hidden-calendars", "wasabi-hidden-calendars"],
+      ["wasabi_zen_ai_tasks_v4", "wasabi_ai_tasks_v4"],
+      ["wasabi-zen-dashboard-widgets", "wasabi-dashboard-widgets"],
+    ];
+    for (const [oldKey, newKey] of migrations) {
+      const val = localStorage.getItem(oldKey);
+      if (val !== null && localStorage.getItem(newKey) === null) {
+        localStorage.setItem(newKey, val);
+      }
+      localStorage.removeItem(oldKey);
+    }
+    // Clean up old versioned cache keys
+    localStorage.removeItem("wasabi_zen_ai_tasks");
+    localStorage.removeItem("wasabi_zen_ai_tasks_v2");
+    localStorage.removeItem("wasabi_zen_ai_tasks_v3");
+    localStorage.setItem("wasabi_ls_migrated_v1", "1");
+  } catch {}
+})();
 
 function AppContent() {
   const {
@@ -271,31 +297,31 @@ function AppContent() {
       );
     }
     // Notes scratchpad
-    if (activePage === "zen-notes") {
+    if (activePage === "notes") {
       return (
         <React.Suspense fallback={
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 12 }}>
             Loading...
           </div>
         }>
-          <ZenNotes />
+          <NotesView />
         </React.Suspense>
       );
     }
     // Dashboard
-    if (activePage === "zen-dashboard") {
+    if (activePage === "dashboard") {
       return (
         <React.Suspense fallback={
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
             Loading...
           </div>
         }>
-          <ZenDashboard />
+          <DashboardView />
         </React.Suspense>
       );
     }
     // Gmail
-    if (activePage === "zen-gmail") {
+    if (activePage === "gmail") {
       return (
         <ErrorBoundary fallbackLabel="Gmail">
           <React.Suspense fallback={
@@ -303,37 +329,37 @@ function AppContent() {
               Loading...
             </div>
           }>
-            <ZenGmail />
+            <GmailView />
           </React.Suspense>
         </ErrorBoundary>
       );
     }
     // Workspaces browser
-    if (activePage === "zen-workspaces") {
+    if (activePage === "workspaces") {
       return (
         <React.Suspense fallback={
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
             Loading...
           </div>
         }>
-          <ZenWorkspaces />
+          <WorkspaceBrowser />
         </React.Suspense>
       );
     }
     // Knowledge Hub (KB, Automations, Functions, Build)
-    if (activePage === "zen-knowledge") {
+    if (activePage === "knowledge") {
       return (
         <React.Suspense fallback={
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
             Loading...
           </div>
         }>
-          <ZenKnowledgeHub />
+          <KnowledgeHub />
         </React.Suspense>
       );
     }
     // Notifications
-    if (activePage === "zen-notifications") {
+    if (activePage === "notifications") {
       return <NotificationFeed />;
     }
     // Workspace settings page
@@ -347,7 +373,7 @@ function AppContent() {
     }
     // Folders redirect to workspaces browser
     if (activePageConfig && activePageConfig.type === "folder") {
-      setActivePage("zen-workspaces");
+      setActivePage("workspaces");
       return null;
     }
     // Dashboard pages → render WidgetGrid directly
@@ -379,7 +405,7 @@ function AppContent() {
           Loading...
         </div>
       }>
-        <ZenTasksView />
+        <TasksView />
       </React.Suspense>
     );
   };
@@ -434,7 +460,7 @@ function AppContent() {
             borderRight: `1px solid ${C.edgeLine}`,
           }}>
             <React.Suspense fallback={null}>
-              <SashimiChatPanel
+              <ChatPanel
                 onClose={() => setWasabiPanelOpen(false)}
                 activePageConfig={activePageConfig}
                 activePageData={activePageData}
@@ -467,7 +493,7 @@ function AppContent() {
               animation: ANIM.drawerSlideLeft,
             }}>
               <React.Suspense fallback={null}>
-                <SashimiChatPanel
+                <ChatPanel
                   onClose={() => setWasabiPanelOpen(false)}
                   activePageConfig={activePageConfig}
                   activePageData={activePageData}
@@ -534,11 +560,11 @@ export default function App() {
         <ColorMappingProvider>
           <LinksProvider>
             <NeuronsProvider>
-              <SashimiDrawerProvider>
+              <RecordDrawerProvider>
                 <ErrorBoundary fallbackLabel="Wasabi Platform">
                   <AppContent />
                 </ErrorBoundary>
-              </SashimiDrawerProvider>
+              </RecordDrawerProvider>
             </NeuronsProvider>
           </LinksProvider>
         </ColorMappingProvider>

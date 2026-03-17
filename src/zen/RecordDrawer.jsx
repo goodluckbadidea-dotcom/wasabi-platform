@@ -1,11 +1,11 @@
-// ─── Sashimi Drawer ───
-// Right-side slide-out drawer for editing tasks, calendar events, and email threads in Sashimi mode.
+// ─── Record Drawer ───
+// Right-side slide-out drawer for editing tasks, calendar events, and email threads.
 // Wraps the generic Drawer component with TaskEditor, EventEditor, and EmailThreadDrawer sub-components.
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import Drawer from "../core/Drawer.jsx";
-import { useSashimiDrawer } from "./SashimiDrawerContext.jsx";
+import { useRecordDrawer } from "./RecordDrawerContext.jsx";
 import {
   updateRow, deleteRow, updateCalendarEvent, deleteCalendarEvent,
   listRecordComments, createRecordComment, deleteRecordComment,
@@ -69,7 +69,7 @@ function timeAgo(dateStr) {
 
 // ── Helper: format ISO date for datetime-local input ──
 // Uses parseDate to correctly handle date-only strings (YYYY-MM-DD → local, not UTC)
-import { parseDate } from "./zenTaskHelpers.js";
+import { parseDate } from "./taskHelpers.js";
 
 function toLocalInput(isoStr) {
   if (!isoStr) return "";
@@ -96,7 +96,7 @@ function toDateInput(isoStr) {
 // ════════════════════════════════════════════
 function TaskEditor({ task, onSaved, onDeleted, onClose }) {
   const { user, pages, setActivePage } = usePlatform();
-  const { notifySaved, notifyDeleted } = useSashimiDrawer();
+  const { notifySaved, notifyDeleted } = useRecordDrawer();
   const isNotion = task.source && task.source.startsWith("notion:");
   const isD1 = task.source === "manual" || (task.source && task.source.startsWith("d1:"));
   const isEditable = isD1 || isNotion;
@@ -189,7 +189,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
         onClose();
       }
     } catch (err) {
-      console.error("[SashimiDrawer] Save task failed:", err);
+      console.error("[RecordDrawer] Save task failed:", err);
       setError("Failed to save. Please try again.");
     } finally {
       setSaving(false);
@@ -207,7 +207,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
       notifyDeleted("task", task.id);
       onClose();
     } catch (err) {
-      console.error("[SashimiDrawer] Delete task failed:", err);
+      console.error("[RecordDrawer] Delete task failed:", err);
       setError("Failed to delete.");
     } finally {
       setDeleting(false);
@@ -224,7 +224,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
       onSaved?.({ ...task, _removedFromTodo: true });
       onClose();
     } catch (err) {
-      console.error("[SashimiDrawer] Remove from to do failed:", err);
+      console.error("[RecordDrawer] Remove from to do failed:", err);
       setError("Failed to remove.");
     } finally {
       setRemoving(false);
@@ -634,7 +634,7 @@ function TaskCommentsTab({ recordId, pageConfigId }) {
 // EventEditor
 // ════════════════════════════════════════════
 function EventEditor({ event, onSaved, onDeleted, onClose }) {
-  const { notifySaved, notifyDeleted } = useSashimiDrawer();
+  const { notifySaved, notifyDeleted } = useRecordDrawer();
   const [summary, setSummary] = useState(event.summary || "");
   const [startDT, setStartDT] = useState(toLocalInput(event.start?.dateTime || event.start?.date));
   const [endDT, setEndDT] = useState(toLocalInput(event.end?.dateTime || event.end?.date));
@@ -684,7 +684,7 @@ function EventEditor({ event, onSaved, onDeleted, onClose }) {
       notifySaved("event", updated);
       onClose();
     } catch (err) {
-      console.error("[SashimiDrawer] Save event failed:", err);
+      console.error("[RecordDrawer] Save event failed:", err);
       setError("Failed to save event.");
     } finally {
       setSaving(false);
@@ -703,7 +703,7 @@ function EventEditor({ event, onSaved, onDeleted, onClose }) {
       notifyDeleted("event", event.id);
       onClose();
     } catch (err) {
-      console.error("[SashimiDrawer] Delete event failed:", err);
+      console.error("[RecordDrawer] Delete event failed:", err);
       setError("Failed to delete event.");
     } finally {
       setDeleting(false);
@@ -879,7 +879,7 @@ function WorkspaceSettingsEditor({ workspace, onClose }) {
       updatePageConfig(pageConfig.id, { settings: newSettings });
       onClose();
     } catch (err) {
-      console.error("[SashimiDrawer] Save workspace settings failed:", err);
+      console.error("[RecordDrawer] Save workspace settings failed:", err);
       setError("Failed to save settings.");
     } finally {
       setSaving(false);
@@ -1014,10 +1014,10 @@ function WorkspaceSettingsEditor({ workspace, onClose }) {
 }
 
 // ════════════════════════════════════════════
-// SashimiDrawer (main export)
+// RecordDrawer (main export)
 // ════════════════════════════════════════════
-export default function SashimiDrawer({ onTaskUpdated, onTaskDeleted, onEventUpdated, onEventDeleted }) {
-  const { drawerItem, closeDrawer } = useSashimiDrawer();
+export default function RecordDrawer({ onTaskUpdated, onTaskDeleted, onEventUpdated, onEventDeleted }) {
+  const { drawerItem, closeDrawer } = useRecordDrawer();
 
   if (!drawerItem) return null;
 

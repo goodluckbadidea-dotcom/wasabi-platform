@@ -8,8 +8,8 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { C, FONT, RADIUS, VIEW_PALETTE } from "../design/tokens.js";
 import { IconEdit } from "../design/icons.jsx";
 import { getGoogleStatus, listCalendarEvents } from "../lib/api.js";
-import { isSameDay, getWeekRange, getMonthRange, getListViewRange, formatWeekDateHeader, formatMonthHeader } from "./zenTaskHelpers.js";
-import { useSashimiDrawer } from "./SashimiDrawerContext.jsx";
+import { isSameDay, getWeekRange, getMonthRange, getListViewRange, formatWeekDateHeader, formatMonthHeader } from "./taskHelpers.js";
+import { useRecordDrawer } from "./RecordDrawerContext.jsx";
 import { useColorMapping } from "../context/ColorMappingContext.jsx";
 import DayColumn from "./calendar/DayColumn.jsx";
 import WeekListView from "./calendar/WeekListView.jsx";
@@ -20,7 +20,7 @@ const ViewSettingsPanel = React.lazy(() => import("../components/ViewSettingsPan
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const HIDDEN_KEY = "wasabi-zen-hidden-calendars";
+const HIDDEN_KEY = "wasabi-hidden-calendars";
 
 function formatDayHeader(date) {
   return `${DAY_NAMES[date.getDay()]}, ${MONTH_NAMES[date.getMonth()]} ${date.getDate()}`;
@@ -39,8 +39,8 @@ function saveHiddenCalendars(set) {
   localStorage.setItem(HIDDEN_KEY, JSON.stringify([...set]));
 }
 
-export default function ZenCalendar({ allTasks, refreshRef }) {
-  const { openDrawer } = useSashimiDrawer();
+export default function CalendarView({ allTasks, refreshRef }) {
+  const { openDrawer } = useRecordDrawer();
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [viewMode, setViewMode] = useState("day"); // "day" | "week" | "month"
   const [googleConnected, setGoogleConnected] = useState(false);
@@ -73,7 +73,7 @@ export default function ZenCalendar({ allTasks, refreshRef }) {
 
   // Resolve calendar name → palette hex from color mapping context
   const calendarColorMap = useMemo(() => {
-    const viewConfig = getViewColorConfig("zen-calendar");
+    const viewConfig = getViewColorConfig("calendar");
     const viewMapping = viewConfig?.colorMapping || {};
     const map = {};
     for (const cal of calendars) {
@@ -451,14 +451,14 @@ export default function ZenCalendar({ allTasks, refreshRef }) {
       {showSettings && calendarSchema && (
         <React.Suspense fallback={null}>
           <ViewSettingsPanel
-            viewKey="zen-calendar"
+            viewKey="calendar"
             viewConfig={{ type: "calendar", label: "Calendar" }}
             schema={calendarSchema}
             globalColorMapping={globalColorMapping}
             globalColorField={globalColorField}
-            viewColorConfig={getViewColorConfig("zen-calendar")}
-            onSave={(updates) => updateViewColorConfig("zen-calendar", updates)}
-            onReset={() => resetViewColorConfig("zen-calendar")}
+            viewColorConfig={getViewColorConfig("calendar")}
+            onSave={(updates) => updateViewColorConfig("calendar", updates)}
+            onReset={() => resetViewColorConfig("calendar")}
             onClose={() => setShowSettings(false)}
           />
         </React.Suspense>

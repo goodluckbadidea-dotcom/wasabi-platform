@@ -5,7 +5,7 @@
 
 import React, { useEffect, useRef, useMemo } from "react";
 import { C, FONT, RADIUS, isLightColor, mapCalendarColor } from "../../design/tokens.js";
-import { isSameDay, formatHour } from "../zenTaskHelpers.js";
+import { isSameDay, formatHour } from "../taskHelpers.js";
 import CalendarEventBlock from "./CalendarEventBlock.jsx";
 import CalendarTaskBlock from "./CalendarTaskBlock.jsx";
 

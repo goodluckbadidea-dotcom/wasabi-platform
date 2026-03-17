@@ -4,7 +4,7 @@
 
 import React from "react";
 import { C, FONT, RADIUS, mapCalendarColor } from "../../design/tokens.js";
-import { formatTime } from "../zenTaskHelpers.js";
+import { formatTime } from "../taskHelpers.js";
 
 export default function CalendarEventBlock({ event, hourHeight, hourStart, onClick, calendarColorMap }) {
   const calName = event.calendarName || event.calendarId;

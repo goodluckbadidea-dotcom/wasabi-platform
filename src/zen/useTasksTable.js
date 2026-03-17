@@ -6,9 +6,9 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { createTableConfig, savePageConfig } from "../config/pageConfig.js";
 import { listRows, createRows, updateRow, deleteRow } from "../lib/api.js";
-import { normalizeD1Task } from "./zenTaskHelpers.js";
+import { normalizeD1Task } from "./taskHelpers.js";
 
-const ZEN_TABLE_LS_KEY = "wasabi_zen_table_id";
+const ZEN_TABLE_LS_KEY = "wasabi_tasks_table_id";
 
 // Column definitions for the Zen Tasks table
 const ZEN_COLUMNS = [
@@ -19,7 +19,7 @@ const ZEN_COLUMNS = [
   { name: "Notes", type: "text", id: "notes" },
 ];
 
-export default function useZenTasks() {
+export default function useTasksTable() {
   const { pages, addPage } = usePlatform();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -39,7 +39,7 @@ export default function useZenTasks() {
       }
 
       // 2. Search existing pages for a zen-internal page
-      const existing = pages.find((p) => p._zenInternal);
+      const existing = pages.find((p) => p._systemInternal);
       if (existing) {
         setTableId(existing.id);
         localStorage.setItem(ZEN_TABLE_LS_KEY, existing.id);
@@ -52,7 +52,7 @@ export default function useZenTasks() {
 
       try {
         const config = createTableConfig("Zen Tasks", "check", ZEN_COLUMNS);
-        config._zenInternal = true;
+        config._systemInternal = true;
         const id = await savePageConfig(config);
         if (!cancelled) {
           setTableId(id);

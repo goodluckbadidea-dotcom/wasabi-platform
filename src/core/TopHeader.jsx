@@ -78,7 +78,7 @@ export default function TopHeader() {
             // Clear all data caches
             try {
               for (const key of Object.keys(localStorage)) {
-                if (key.startsWith("wasabi_zen_") || key.startsWith("wasabi_cal_")) {
+                if (key.startsWith("wasabi_zen_") || key.startsWith("wasabi_ai_") || key.startsWith("wasabi_insight") || key.startsWith("wasabi_cal_") || key.startsWith("wasabi_tasks_") || key.startsWith("wasabi-dashboard-") || key.startsWith("wasabi-hidden-")) {
                   localStorage.removeItem(key);
                 }
               }

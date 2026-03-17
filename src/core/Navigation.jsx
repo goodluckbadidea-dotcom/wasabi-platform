@@ -19,7 +19,7 @@ import ConfirmDialog from "./ConfirmDialog.jsx";
 import CreateMenu from "./CreateMenu.jsx";
 import ContextMenu from "./ContextMenu.jsx";
 import { getCreateMenuItems } from "./CreateMenu.jsx";
-import useZenInsight from "../zen/useZenInsight.js";
+import useInsight from "../zen/useInsight.js";
 
 export default function Navigation({
   collapsed,
@@ -39,7 +39,7 @@ export default function Navigation({
   } = usePlatform();
   const { setTargetFolderPath } = useNavigation();
 
-  const zenInsight = useZenInsight();
+  const zenInsight = useInsight();
 
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
@@ -326,7 +326,7 @@ export default function Navigation({
             {!collapsed && searchQuery && (
               <div style={{ padding: "0 4px", overflowY: "auto", flex: 1 }}>
                 {pages
-                  .filter((p) => !p._zenInternal && p.name?.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .filter((p) => !p._systemInternal && p.name?.toLowerCase().includes(searchQuery.toLowerCase()))
                   .slice(0, 15)
                   .map((p) => (
                     <button
@@ -348,7 +348,7 @@ export default function Navigation({
                     </button>
                   ))
                 }
-                {pages.filter((p) => !p._zenInternal && p.name?.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
+                {pages.filter((p) => !p._systemInternal && p.name?.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
                   <div style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT, textAlign: "center", padding: "12px 0" }}>
                     No results
                   </div>
@@ -376,14 +376,14 @@ export default function Navigation({
 
             {/* Workspaces — also highlighted when viewing a real page opened from workspaces */}
             {(() => {
-              const SYSTEM_PAGES = new Set(["system", "wasabi", "inbox", "automations", "functions", "build", "knowledge-base", "dashboard"]);
-              const isWsActive = activePage === "zen-workspaces" ||
-                (activePage && !activePage.startsWith("zen-") && !SYSTEM_PAGES.has(activePage) && pages.some(p => p.id === activePage));
+              const SYSTEM_PAGES = new Set(["system", "wasabi", "inbox", "automations", "functions", "build", "knowledge-base", "dashboard", "workspaces", "tasks", "notes", "gmail", "notifications", "knowledge"]);
+              const isWsActive = activePage === "workspaces" ||
+                (activePage && !SYSTEM_PAGES.has(activePage) && pages.some(p => p.id === activePage));
               return (
                 <button
                   onClick={() => {
                     // If viewing a page, return to the folder containing it
-                    if (activePage && activePage !== "zen-workspaces" && !activePage.startsWith("zen-")) {
+                    if (activePage && activePage !== "workspaces" && !SYSTEM_PAGES.has(activePage)) {
                       const pageConfig = pages.find((p) => p.id === activePage);
                       if (pageConfig?.parentId) {
                         const byId = {};
@@ -400,7 +400,7 @@ export default function Navigation({
                         setTargetFolderPath(folderPath);
                       }
                     }
-                    setActivePage("zen-workspaces");
+                    setActivePage("workspaces");
                   }}
                   title="Workspaces"
                   style={bottomBtnStyle(isWsActive)}
@@ -415,61 +415,61 @@ export default function Navigation({
 
             {/* Dashboard */}
             <button
-              onClick={() => { setActivePage("zen-dashboard"); setActiveFolder(null); }}
+              onClick={() => { setActivePage("dashboard"); setActiveFolder(null); }}
               title="Dashboard"
-              style={bottomBtnStyle(activePage === "zen-dashboard")}
-              onMouseEnter={(e) => { if (activePage !== "zen-dashboard") e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activePage !== "zen-dashboard") e.currentTarget.style.background = "transparent"; }}
+              style={bottomBtnStyle(activePage === "dashboard")}
+              onMouseEnter={(e) => { if (activePage !== "dashboard") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activePage !== "dashboard") e.currentTarget.style.background = "transparent"; }}
             >
-              <svg width={iconSize(activePage === "zen-dashboard")} height={iconSize(activePage === "zen-dashboard")} viewBox="0 0 16 16" fill="none">
-                <rect x="1" y="1" width="6" height="6" rx="1.5" stroke={activePage === "zen-dashboard" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
-                <rect x="9" y="1" width="6" height="6" rx="1.5" stroke={activePage === "zen-dashboard" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
-                <rect x="1" y="9" width="6" height="6" rx="1.5" stroke={activePage === "zen-dashboard" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
-                <rect x="9" y="9" width="6" height="6" rx="1.5" stroke={activePage === "zen-dashboard" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
+              <svg width={iconSize(activePage === "dashboard")} height={iconSize(activePage === "dashboard")} viewBox="0 0 16 16" fill="none">
+                <rect x="1" y="1" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
+                <rect x="9" y="1" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
+                <rect x="1" y="9" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
+                <rect x="9" y="9" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
               </svg>
-              {!collapsed && <span style={bottomLabelStyle(activePage === "zen-dashboard")}>Dashboard</span>}
+              {!collapsed && <span style={bottomLabelStyle(activePage === "dashboard")}>Dashboard</span>}
             </button>
 
             {/* To-Do / Calendar (default landing) */}
             <button
-              onClick={() => { setActivePage("zen-tasks"); setActiveFolder(null); }}
+              onClick={() => { setActivePage("tasks"); setActiveFolder(null); }}
               title="To-Do & Calendar"
-              style={bottomBtnStyle(activePage === "zen-tasks" || activePage === null)}
-              onMouseEnter={(e) => { if (activePage !== "zen-tasks" && activePage !== null) e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activePage !== "zen-tasks" && activePage !== null) e.currentTarget.style.background = "transparent"; }}
+              style={bottomBtnStyle(activePage === "tasks" || activePage === null)}
+              onMouseEnter={(e) => { if (activePage !== "tasks" && activePage !== null) e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activePage !== "tasks" && activePage !== null) e.currentTarget.style.background = "transparent"; }}
             >
-              <IconCalendar size={iconSize(activePage === "zen-tasks" || activePage === null)} color={(activePage === "zen-tasks" || activePage === null) ? "#fff" : C.darkMuted} />
-              {!collapsed && <span style={bottomLabelStyle(activePage === "zen-tasks" || activePage === null)}>To-Do & Calendar</span>}
+              <IconCalendar size={iconSize(activePage === "tasks" || activePage === null)} color={(activePage === "tasks" || activePage === null) ? "#fff" : C.darkMuted} />
+              {!collapsed && <span style={bottomLabelStyle(activePage === "tasks" || activePage === null)}>To-Do & Calendar</span>}
             </button>
 
             {/* Notes */}
             <button
-              onClick={() => setActivePage("zen-notes")}
+              onClick={() => setActivePage("notes")}
               title="Notes"
-              style={bottomBtnStyle(activePage === "zen-notes")}
-              onMouseEnter={(e) => { if (activePage !== "zen-notes") e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activePage !== "zen-notes") e.currentTarget.style.background = "transparent"; }}
+              style={bottomBtnStyle(activePage === "notes")}
+              onMouseEnter={(e) => { if (activePage !== "notes") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activePage !== "notes") e.currentTarget.style.background = "transparent"; }}
             >
-              <svg width={iconSize(activePage === "zen-notes")} height={iconSize(activePage === "zen-notes")} viewBox="0 0 16 16" fill="none">
-                <rect x="3" y="2" width="10" height="12" rx="1.5" stroke={activePage === "zen-notes" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
-                <line x1="5.5" y1="5.5" x2="10.5" y2="5.5" stroke={activePage === "zen-notes" ? "#fff" : C.darkMuted} strokeWidth="1" />
-                <line x1="5.5" y1="8" x2="10.5" y2="8" stroke={activePage === "zen-notes" ? "#fff" : C.darkMuted} strokeWidth="1" />
-                <line x1="5.5" y1="10.5" x2="8.5" y2="10.5" stroke={activePage === "zen-notes" ? "#fff" : C.darkMuted} strokeWidth="1" />
+              <svg width={iconSize(activePage === "notes")} height={iconSize(activePage === "notes")} viewBox="0 0 16 16" fill="none">
+                <rect x="3" y="2" width="10" height="12" rx="1.5" stroke={activePage === "notes" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
+                <line x1="5.5" y1="5.5" x2="10.5" y2="5.5" stroke={activePage === "notes" ? "#fff" : C.darkMuted} strokeWidth="1" />
+                <line x1="5.5" y1="8" x2="10.5" y2="8" stroke={activePage === "notes" ? "#fff" : C.darkMuted} strokeWidth="1" />
+                <line x1="5.5" y1="10.5" x2="8.5" y2="10.5" stroke={activePage === "notes" ? "#fff" : C.darkMuted} strokeWidth="1" />
               </svg>
-              {!collapsed && <span style={bottomLabelStyle(activePage === "zen-notes")}>Notes</span>}
+              {!collapsed && <span style={bottomLabelStyle(activePage === "notes")}>Notes</span>}
             </button>
 
             {/* Gmail (only when Google connected) */}
             {googleConnected && (
               <button
-                onClick={() => setActivePage("zen-gmail")}
+                onClick={() => setActivePage("gmail")}
                 title="Gmail"
-                style={bottomBtnStyle(activePage === "zen-gmail")}
-                onMouseEnter={(e) => { if (activePage !== "zen-gmail") e.currentTarget.style.background = C.darkSurf2; }}
-                onMouseLeave={(e) => { if (activePage !== "zen-gmail") e.currentTarget.style.background = "transparent"; }}
+                style={bottomBtnStyle(activePage === "gmail")}
+                onMouseEnter={(e) => { if (activePage !== "gmail") e.currentTarget.style.background = C.darkSurf2; }}
+                onMouseLeave={(e) => { if (activePage !== "gmail") e.currentTarget.style.background = "transparent"; }}
               >
                 <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                  <IconMail size={iconSize(activePage === "zen-gmail")} color={activePage === "zen-gmail" ? "#fff" : C.darkMuted} />
+                  <IconMail size={iconSize(activePage === "gmail")} color={activePage === "gmail" ? "#fff" : C.darkMuted} />
                   {unreadCount > 0 && (
                     <span style={{
                       position: "absolute", top: -5, right: -8,
@@ -483,32 +483,32 @@ export default function Navigation({
                     </span>
                   )}
                 </div>
-                {!collapsed && <span style={bottomLabelStyle(activePage === "zen-gmail")}>Gmail</span>}
+                {!collapsed && <span style={bottomLabelStyle(activePage === "gmail")}>Gmail</span>}
               </button>
             )}
 
             {/* Notifications */}
             <button
-              onClick={() => setActivePage("zen-notifications")}
+              onClick={() => setActivePage("notifications")}
               title="Notifications"
-              style={bottomBtnStyle(activePage === "zen-notifications")}
-              onMouseEnter={(e) => { if (activePage !== "zen-notifications") e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activePage !== "zen-notifications") e.currentTarget.style.background = "transparent"; }}
+              style={bottomBtnStyle(activePage === "notifications")}
+              onMouseEnter={(e) => { if (activePage !== "notifications") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activePage !== "notifications") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconBell size={iconSize(activePage === "zen-notifications")} color={activePage === "zen-notifications" ? "#fff" : C.darkMuted} />
-              {!collapsed && <span style={bottomLabelStyle(activePage === "zen-notifications")}>Notifications</span>}
+              <IconBell size={iconSize(activePage === "notifications")} color={activePage === "notifications" ? "#fff" : C.darkMuted} />
+              {!collapsed && <span style={bottomLabelStyle(activePage === "notifications")}>Notifications</span>}
             </button>
 
             {/* Knowledge Base */}
             <button
-              onClick={() => { setActivePage("zen-knowledge"); setActiveFolder(null); }}
+              onClick={() => { setActivePage("knowledge"); setActiveFolder(null); }}
               title="Knowledge Base"
-              style={bottomBtnStyle(activePage === "zen-knowledge")}
-              onMouseEnter={(e) => { if (activePage !== "zen-knowledge") e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activePage !== "zen-knowledge") e.currentTarget.style.background = "transparent"; }}
+              style={bottomBtnStyle(activePage === "knowledge")}
+              onMouseEnter={(e) => { if (activePage !== "knowledge") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activePage !== "knowledge") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconBrain size={iconSize(activePage === "zen-knowledge")} color={activePage === "zen-knowledge" ? "#fff" : C.darkMuted} />
-              {!collapsed && <span style={bottomLabelStyle(activePage === "zen-knowledge")}>Knowledge Base</span>}
+              <IconBrain size={iconSize(activePage === "knowledge")} color={activePage === "knowledge" ? "#fff" : C.darkMuted} />
+              {!collapsed && <span style={bottomLabelStyle(activePage === "knowledge")}>Knowledge Base</span>}
             </button>
 
             {/* Settings */}

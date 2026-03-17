@@ -10,10 +10,10 @@ import { listRows, claudeProxy, getTableSchema, listTaskActivity, upsertTaskActi
 import {
   normalizeNotionTask, normalizeD1Task, getCached, setCache, parseDate,
   scoreTerminalStatuses, shouldIncludeTask, isSmartOverdue,
-} from "./zenTaskHelpers.js";
+} from "./taskHelpers.js";
 
-const CACHE_KEY = "wasabi_zen_ai_tasks_v4"; // v4: word-boundary name matching
-const INSIGHT_CACHE_KEY = "wasabi_zen_insight";
+const CACHE_KEY = "wasabi_ai_tasks_v4"; // v4: word-boundary name matching
+const INSIGHT_CACHE_KEY = "wasabi_insight";
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 const MAX_DATABASES = 5;
 const MAX_ITEMS_PER_DB = 30;
@@ -309,7 +309,7 @@ export default function useAICuratedTasks() {
       let schemaErrors = 0;
 
       for (const page of pages) {
-        if (page._zenInternal) continue;
+        if (page._systemInternal) continue;
         const pt = page.page_type || page.pageType;
 
         if (pt === "linked_notion" && page.databaseIds?.length > 0) {

@@ -24,7 +24,7 @@ const FALLBACK = (
   </div>
 );
 
-export default function ZenKnowledgeHub() {
+export default function KnowledgeHub() {
   const [activeTab, setActiveTab] = useState("kb");
 
   return (

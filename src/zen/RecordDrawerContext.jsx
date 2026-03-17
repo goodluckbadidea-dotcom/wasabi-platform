@@ -1,4 +1,4 @@
-// ─── Sashimi Drawer Context ───
+// ─── Record Drawer Context ───
 // Shared context for the right-side detail drawer.
 // Any component can call openDrawer("task", data) or openDrawer("event", data)
 // to open the drawer from anywhere in the view tree.
@@ -8,7 +8,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useRef } from "react";
 
-const SashimiDrawerContext = createContext({
+const RecordDrawerContext = createContext({
   drawerItem: null,
   openDrawer: () => {},
   closeDrawer: () => {},
@@ -19,7 +19,7 @@ const SashimiDrawerContext = createContext({
   onDeleted: () => () => {},
 });
 
-export function SashimiDrawerProvider({ children }) {
+export function RecordDrawerProvider({ children }) {
   const [drawerItem, setDrawerItem] = useState(null);
   const saveListeners = useRef(new Set());
   const deleteListeners = useRef(new Set());
@@ -59,15 +59,15 @@ export function SashimiDrawerProvider({ children }) {
   }, []);
 
   return (
-    <SashimiDrawerContext.Provider value={{
+    <RecordDrawerContext.Provider value={{
       drawerItem, openDrawer, closeDrawer, updateDrawerItem,
       notifySaved, notifyDeleted, onSaved, onDeleted,
     }}>
       {children}
-    </SashimiDrawerContext.Provider>
+    </RecordDrawerContext.Provider>
   );
 }
 
-export function useSashimiDrawer() {
-  return useContext(SashimiDrawerContext);
+export function useRecordDrawer() {
+  return useContext(RecordDrawerContext);
 }

@@ -1,7 +1,7 @@
-// ─── Sashimi Chat Panel ───
-// Dual-tab chat panel for Sashimi mode.
-// "Zen" tab: Enhanced Haiku chat with task/email/calendar context + 3 tools.
-// "Wasabi" tab: Full Wasabi agent with all tools.
+// ─── Chat Panel ───
+// Dual-tab chat panel.
+// "Assistant" tab: Enhanced Haiku chat with task/email/calendar context + 3 tools.
+// "Agent" tab: Full Wasabi agent with all tools.
 
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
@@ -21,7 +21,7 @@ const DEFAULT_WIDTH = 320;
 const MIN_WIDTH = 280;
 const MAX_WIDTH = 640;
 
-const TASK_CACHE_KEY = "wasabi_zen_ai_tasks_v4";
+const TASK_CACHE_KEY = "wasabi_ai_tasks_v4";
 const TASK_CACHE_TTL = 15 * 60 * 1000;
 
 // ── Build enhanced Zen system prompt with task + Google context ──
@@ -98,9 +98,9 @@ async function executeZenTool(name, input) {
 }
 
 // ════════════════════════════════════════════
-// SashimiChatPanel
+// ChatPanel
 // ════════════════════════════════════════════
-export default function SashimiChatPanel({
+export default function ChatPanel({
   onClose,
   activePageConfig,
   activePageData,
@@ -111,7 +111,7 @@ export default function SashimiChatPanel({
 
   // ── Tab state (persisted) ──
   const [activeTab, setActiveTab] = useState(() => {
-    try { return localStorage.getItem("wasabi_chat_tab") || "zen"; } catch { return "zen"; }
+    try { return localStorage.getItem("wasabi_chat_tab") || "assistant"; } catch { return "assistant"; }
   });
 
   // Persist chat tab
@@ -170,7 +170,7 @@ export default function SashimiChatPanel({
   // ── Auto-switch to Wasabi tab when pendingChatMessage arrives ──
   useEffect(() => {
     if (pendingChatMessage) {
-      setActiveTab("wasabi");
+      setActiveTab("agent");
     }
   }, [pendingChatMessage]);
 
@@ -221,7 +221,7 @@ export default function SashimiChatPanel({
 
       setZenMessages((prev) => [...prev, { role: "assistant", content: reply }]);
     } catch (err) {
-      console.error("[SashimiChat] Zen error:", err);
+      console.error("[ChatPanel] Assistant error:", err);
       setZenMessages((prev) => [
         ...prev,
         { role: "assistant", content: `Something went wrong: ${err.message}` },
@@ -307,17 +307,17 @@ export default function SashimiChatPanel({
           display: "flex", gap: 3, padding: "0 2px 10px",
           background: C.dark,
         }}>
-          <button style={tabBtn(activeTab === "zen")} onClick={() => setActiveTab("zen")}>
-            Zen
+          <button style={tabBtn(activeTab === "assistant")} onClick={() => setActiveTab("assistant")}>
+            Assistant
           </button>
-          <button style={tabBtn(activeTab === "wasabi")} onClick={() => setActiveTab("wasabi")}>
-            Wasabi
+          <button style={tabBtn(activeTab === "agent")} onClick={() => setActiveTab("agent")}>
+            Agent
           </button>
         </div>
       </div>
 
       {/* ── Zen Tab ── */}
-      {activeTab === "zen" && (
+      {activeTab === "assistant" && (
         <ChatUI
           messages={zenMessages}
           onSend={handleZenSend}
@@ -335,7 +335,7 @@ export default function SashimiChatPanel({
             }}>
               <WasabiFlame size={32} />
               <div style={{ fontSize: 13, fontWeight: 600, marginTop: 12, color: C.darkText }}>
-                Sashimi Chat
+                Wasabi Assistant
               </div>
               <div style={{ fontSize: 11, marginTop: 4, opacity: 0.6, lineHeight: 1.5 }}>
                 Ask questions, get summaries,<br />search emails, or schedule events.
@@ -347,7 +347,7 @@ export default function SashimiChatPanel({
 
       {/* ── Wasabi Tab (kept mounted for state preservation) ── */}
       <div style={{
-        display: activeTab === "wasabi" ? "flex" : "none",
+        display: activeTab === "agent" ? "flex" : "none",
         flex: 1, minHeight: 0, flexDirection: "column",
       }}>
         <WasabiPanel
