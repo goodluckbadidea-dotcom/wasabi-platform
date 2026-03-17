@@ -1518,10 +1518,20 @@ async function handleInit(env) {
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' ORDER BY name"
     ).all();
 
+    // Check if registered users exist (users with password_hash set)
+    let multiUserEnabled = false;
+    try {
+      const registered = await env.DB.prepare(
+        "SELECT COUNT(*) as count FROM users WHERE password_hash IS NOT NULL AND deleted_at IS NULL"
+      ).first();
+      multiUserEnabled = registered && registered.count > 0;
+    } catch {}
+
     return jsonResponse({
       ok: true,
       tables: tables.results.map((t) => t.name),
       message: "Database initialized successfully",
+      multi_user: multiUserEnabled,
       ...(adminBootstrap ? { admin_invite: adminBootstrap } : {}),
     });
   } catch (err) {

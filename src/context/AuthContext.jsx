@@ -51,6 +51,10 @@ export function AuthProvider({ children }) {
           setAdminInvite(result.admin_invite.invite_code);
           setMultiUserEnabled(true);
         }
+        // Backend tells us if registered users exist
+        if (result?.multi_user) {
+          setMultiUserEnabled(true);
+        }
       })
       .catch((err) => {
         console.warn("[Auth] D1 init check:", err.message || err);
