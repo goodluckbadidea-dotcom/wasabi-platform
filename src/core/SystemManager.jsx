@@ -584,7 +584,7 @@ export default function SystemManager() {
           >
             Settings
           </button>
-          {isAdmin(identity) && (
+          {(!identity || isAdmin(identity)) && (
             <button
               style={tabBtn(tab === "users")}
               onClick={() => setTab("users")}
@@ -1043,7 +1043,7 @@ export default function SystemManager() {
         {tab === "settings" && <SettingsTab />}
 
         {/* ═══ USERS TAB ═══ */}
-        {tab === "users" && isAdmin(identity) && <UsersTab identity={identity} />}
+        {tab === "users" && (!identity || isAdmin(identity)) && <UsersTab identity={identity} />}
       </div>
     </div>
   );
