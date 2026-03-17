@@ -998,9 +998,34 @@ export const SYSTEM_TOOLS = [
   UPDATE_KNOWLEDGE_BASE,
 ];
 
-// Lightweight tool set for Zen/Sashimi chat
-export const ZEN_TOOLS = [
+// ── Assistant tool sets by role ──
+// Viewer: read-only (query databases, search emails, view calendar)
+// Editor: read + lightweight writes (query, update records, email, calendar)
+// Admin: editor tools (full agent access is via Agent tab)
+
+export const ZEN_TOOLS_VIEWER = [
+  QUERY_DATABASE,
+  SEARCH_EMAILS,
+  LIST_CALENDAR_EVENTS,
+];
+
+export const ZEN_TOOLS_EDITOR = [
+  QUERY_DATABASE,
+  UPDATE_PAGE,
+  POST_NOTIFICATION,
   SEARCH_EMAILS,
   LIST_CALENDAR_EVENTS,
   CREATE_CALENDAR_EVENT,
 ];
+
+export const ZEN_TOOLS_ADMIN = [
+  QUERY_DATABASE,
+  UPDATE_PAGE,
+  POST_NOTIFICATION,
+  SEARCH_EMAILS,
+  LIST_CALENDAR_EVENTS,
+  CREATE_CALENDAR_EVENT,
+];
+
+// Legacy export — defaults to admin tool set
+export const ZEN_TOOLS = ZEN_TOOLS_ADMIN;

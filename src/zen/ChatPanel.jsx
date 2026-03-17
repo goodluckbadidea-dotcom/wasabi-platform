@@ -1,6 +1,6 @@
 // ─── Chat Panel ───
 // Dual-tab chat panel.
-// "Assistant" tab: Enhanced Haiku chat with task/email/calendar context + 3 tools.
+// "Assistant" tab: Enhanced Haiku chat with database query, email, calendar + role-based tools.
 // "Agent" tab: Full Wasabi agent with all tools.
 
 import React, { useState, useRef, useCallback, useEffect } from "react";
@@ -12,7 +12,7 @@ import WasabiFlame from "../core/WasabiFlame.jsx";
 import ChatUI from "../core/ChatUI.jsx";
 import WasabiPanel from "../core/WasabiPanel.jsx";
 import { HAIKU } from "../agent/aiRouter.js";
-import { ZEN_TOOLS } from "../agent/tools.js";
+import { ZEN_TOOLS_ADMIN, ZEN_TOOLS_EDITOR, ZEN_TOOLS_VIEWER } from "../agent/tools.js";
 import { runAgent } from "../agent/runAgent.js";
 import { fetchGoogleContext } from "../google/googleContext.js";
 import * as api from "../lib/api.js";
@@ -24,27 +24,61 @@ const MAX_WIDTH = 640;
 const TASK_CACHE_KEY = "wasabi_ai_tasks_v4";
 const TASK_CACHE_TTL = 15 * 60 * 1000;
 
-// ── Build enhanced Zen system prompt with task + Google context ──
-function buildZenSystemPrompt(googleContext) {
+// ── Get role-based tool set ──
+function getToolsForRole(role) {
+  if (role === "viewer") return ZEN_TOOLS_VIEWER;
+  if (role === "editor") return ZEN_TOOLS_EDITOR;
+  return ZEN_TOOLS_ADMIN; // admin or single-user
+}
+
+// ── Build workspace summary for Assistant context ──
+function buildWorkspaceSummary(pages) {
+  if (!pages || pages.length === 0) return "";
+  const lines = pages
+    .filter((p) => !p._systemInternal)
+    .map((p) => {
+      const pt = p.page_type || p.pageType || p.type || "page";
+      const dbIds = [...(p.databaseIds || [])];
+      const localTypes = ["database", "sheet", "linked_sheet", "linked_monday", "linked_notion"];
+      if (localTypes.includes(pt) && p.id && !dbIds.includes(p.id)) dbIds.push(p.id);
+      const dbStr = dbIds.length ? ` (database_id: ${dbIds.join(", ")})` : "";
+      return `- ${p.name || "Untitled"} [${pt}]${dbStr}`;
+    });
+  return lines.length > 0 ? `\n## Workspace Databases\nUse query_database with the database_id to look up data.\n${lines.join("\n")}` : "";
+}
+
+// ── Build enhanced system prompt with task + Google + workspace context ──
+function buildZenSystemPrompt(googleContext, role, pages) {
+  const roleCapabilities = role === "viewer"
+    ? "You can query databases (read-only), search emails, and view calendar events. You CANNOT create, update, or delete any data."
+    : role === "editor"
+      ? "You can query databases, update individual record fields, search emails, check and create calendar events. You CANNOT create new pages, databases, automations, or manage users."
+      : "You can query databases, update individual record fields, post notifications, search emails, check and create calendar events. For complex operations (creating pages, automations, bulk edits), suggest the user switch to the Agent tab.";
+
   const parts = [
-    `You are Wasabi — a calm, focused AI assistant in Sashimi mode.
+    `You are Wasabi — a calm, focused AI assistant.
 
 ## Your Role
-You help the user stay productive by answering questions, summarizing information, and providing quick insights. You are conversational, concise, and mindful.
+You help the user stay productive by answering questions, querying their databases, summarizing information, and providing quick insights. You are conversational, concise, and mindful.
 
 ## Guidelines
 - Keep responses short and focused (1-3 paragraphs max unless depth is requested)
 - Use bullet points for lists
 - Be direct — no filler phrases
 - If you don't know something, say so briefly
-- You can search emails, check calendar events, and create calendar events
-- For other data operations (editing databases, creating pages, etc.), suggest the user switch to the Wasabi tab
+- ${roleCapabilities}
+- When querying databases, use the database_id from the workspace summary below
+- NEVER fabricate data — only present numbers and values from tool call results
 - Markdown formatting is supported (bold, lists, headers, code blocks)
 
 ## Context
 Today's date: ${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-Mode: Sashimi (simplified, mindfulness-focused)`,
+User role: ${role || "admin"}`,
   ];
+
+  // Inject workspace summary so Assistant knows what databases exist
+  const wsSummary = buildWorkspaceSummary(pages);
+  if (wsSummary) parts.push(wsSummary);
 
   // Inject AI-curated tasks from cache
   try {
@@ -72,10 +106,65 @@ Mode: Sashimi (simplified, mindfulness-focused)`,
   return parts.join("\n");
 }
 
-// ── Lightweight tool executor for Zen's 3 tools ──
+// ── Lightweight tool executor for Assistant tools ──
 async function executeZenTool(name, input) {
   try {
     switch (name) {
+      case "query_database": {
+        const dbId = input.database_id;
+        if (!dbId) return JSON.stringify({ error: "database_id is required" });
+        // Determine storage type from page config
+        let pageType = null;
+        try {
+          const cfg = await api.getPageConfig(dbId);
+          pageType = cfg?.page_type || null;
+        } catch {}
+        const limit = 200;
+        if (pageType === "sheet") {
+          const sheet = await api.getSheet(dbId);
+          // Return raw cells for sheets (limited)
+          const cells = sheet.cells || [];
+          return JSON.stringify({ count: cells.length, results: cells.slice(0, limit), storage: "sheet" });
+        }
+        // D1 table (default path)
+        const queryBody = {};
+        if (input.filter) queryBody.filters = input.filter;
+        if (input.sorts) queryBody.sorts = input.sorts;
+        queryBody.limit = limit;
+        let rows;
+        try {
+          const res = await api.queryTable(dbId, queryBody);
+          rows = res?.rows || [];
+        } catch {
+          const res = await api.listRows(dbId, { limit });
+          rows = res?.rows || [];
+        }
+        return JSON.stringify({ count: rows.length, results: rows.slice(0, limit), truncated: rows.length >= limit, storage: "d1" });
+      }
+      case "update_page": {
+        const pageId = input.page_id;
+        const dbId = input.database_id;
+        if (!pageId || !input.properties) return JSON.stringify({ error: "page_id and properties are required" });
+        // D1 row update — flat key-value cells
+        if (dbId) {
+          await api.updateRow(dbId, pageId, { cells: input.properties });
+          return JSON.stringify({ success: true, page_id: pageId, storage: "d1" });
+        }
+        // If no database_id, try as D1 row with page_id containing ":"
+        if (pageId.includes(":")) {
+          const [tableId, rowId] = pageId.split(":");
+          await api.updateRow(tableId, rowId, { cells: input.properties });
+          return JSON.stringify({ success: true, page_id: pageId, storage: "d1" });
+        }
+        return JSON.stringify({ error: "database_id is required for D1 row updates" });
+      }
+      case "post_notification":
+        await api.createNotification({
+          message: input.message,
+          type: input.type || "notification",
+          source: input.source || "wasabi",
+        });
+        return JSON.stringify({ success: true });
       case "search_emails":
         return JSON.stringify(await api.searchEmails(input.query || "", input.max_results || 10, input.label));
       case "list_calendar_events":
@@ -107,7 +196,7 @@ export default function ChatPanel({
   pendingChatMessage,
   onClearPendingMessage,
 }) {
-  const { user, identity } = usePlatform();
+  const { user, identity, pages } = usePlatform();
   const canUseAgent = !identity || identity.role === "admin";
 
   // ── Tab state (persisted) ──
@@ -203,12 +292,13 @@ export default function ChatPanel({
         }
       } catch { /* best effort */ }
 
-      const systemPrompt = buildZenSystemPrompt(googleContextRef.current);
+      const role = identity?.role || "admin";
+      const systemPrompt = buildZenSystemPrompt(googleContextRef.current, role, pages);
 
       const result = await runAgent({
         messages: newHistory,
         systemPrompt,
-        tools: ZEN_TOOLS,
+        tools: getToolsForRole(role),
         model: HAIKU,
         workerUrl: user?.workerUrl || "",
         claudeKey: user?.claudeKey || "",
@@ -236,7 +326,7 @@ export default function ChatPanel({
       setZenLoading(false);
       setZenStatus("");
     }
-  }, [zenLoading, user]);
+  }, [zenLoading, user, identity, pages]);
 
   // ── Tab bar style ──
   const tabBtn = (active) => ({
