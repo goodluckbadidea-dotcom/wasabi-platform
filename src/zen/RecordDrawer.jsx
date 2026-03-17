@@ -495,6 +495,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
 // TaskCommentsTab — threaded comments per record
 // ════════════════════════════════════════════
 function TaskCommentsTab({ recordId, pageConfigId }) {
+  const { identity } = usePlatform();
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newComment, setNewComment] = useState("");
@@ -523,7 +524,7 @@ function TaskCommentsTab({ recordId, pageConfigId }) {
     setSending(true);
     setError(null);
     try {
-      await createRecordComment(recordId, pageConfigId, text);
+      await createRecordComment(recordId, pageConfigId, text, identity?.id, identity?.display_name);
       setNewComment("");
       await fetchComments();
       inputRef.current?.focus();
@@ -568,25 +569,34 @@ function TaskCommentsTab({ recordId, pageConfigId }) {
             padding: "8px 0", borderBottom: `1px solid ${C.darkBorder}`,
           }}>
             <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 2 }}>
+                {comment.user_name && (
+                  <span style={{ fontSize: 11, fontWeight: 600, fontFamily: FONT, color: C.accent }}>
+                    {comment.user_name}
+                  </span>
+                )}
+                <span style={{ fontSize: 10, fontFamily: FONT, color: C.darkMuted }}>
+                  {comment.created_at ? timeAgo(comment.created_at) : ""}
+                </span>
+              </div>
               <div style={{ fontSize: 13, fontFamily: FONT, color: C.darkText, wordBreak: "break-word" }}>
                 {comment.content}
               </div>
-              <div style={{ fontSize: 10, fontFamily: FONT, color: C.darkMuted, marginTop: 3 }}>
-                {comment.created_at ? timeAgo(comment.created_at) : ""}
-              </div>
             </div>
-            <button
-              onClick={() => handleDeleteComment(comment.id)}
-              style={{
-                background: "transparent", border: "none", color: C.darkMuted,
-                cursor: "pointer", fontSize: 16, padding: "6px 8px", borderRadius: RADIUS.sm,
-                outline: "none", flexShrink: 0, transition: "color 0.15s",
-                minWidth: 28, minHeight: 28, display: "flex", alignItems: "center", justifyContent: "center",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = "#E05252"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = C.darkMuted; }}
-              title="Delete comment"
-            >&times;</button>
+            {(!identity || comment.user_id === identity?.id || identity?.role === "admin") && (
+              <button
+                onClick={() => handleDeleteComment(comment.id)}
+                style={{
+                  background: "transparent", border: "none", color: C.darkMuted,
+                  cursor: "pointer", fontSize: 16, padding: "6px 8px", borderRadius: RADIUS.sm,
+                  outline: "none", flexShrink: 0, transition: "color 0.15s",
+                  minWidth: 28, minHeight: 28, display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = "#E05252"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = C.darkMuted; }}
+                title="Delete comment"
+              >&times;</button>
+            )}
           </div>
         ))}
       </div>

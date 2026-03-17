@@ -18,6 +18,7 @@ import { IconWarning, IconPlus, IconClose } from "../design/icons.jsx";
 import { ANIM } from "../design/animations.js";
 import SyncPanel from "../components/SyncPanel.jsx";
 import ViewSettingsPanel from "../components/ViewSettingsPanel.jsx";
+import PinLockOverlay from "../components/PinLockOverlay.jsx";
 import { useColorMapping } from "../context/ColorMappingContext.jsx";
 
 const DEFAULT_REFRESH_MS = 30000;
@@ -28,7 +29,7 @@ export default function PageShell({
   onSetActiveView,
   onPageDataReady,    // callback to lift page data/schema to App for WasabiPanel
 }) {
-  const { user, updatePageConfig } = usePlatform();
+  const { user, updatePageConfig, identity } = usePlatform();
   const { globalColorMapping, globalColorField } = useColorMapping();
 
   const [data, setData] = useState([]);
@@ -336,18 +337,35 @@ export default function PageShell({
 
       {/* Active view */}
       <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-        <ViewRenderer
-          views={viewsToRender}
-          data={data}
-          schema={schema}
-          schemas={schemas}
-          onUpdate={handleUpdate}
-          onRefresh={fetchData}
-          onCreate={handleCreate}
-          onDelete={handleDelete}
-          pageConfig={pageConfig}
-          onViewConfigChange={handleViewConfigChange}
-        />
+        {pageConfig.pin_protected && identity && identity.role !== "admin" ? (
+          <PinLockOverlay pageConfigId={pageConfig.id} userRole={identity.role}>
+            <ViewRenderer
+              views={viewsToRender}
+              data={data}
+              schema={schema}
+              schemas={schemas}
+              onUpdate={handleUpdate}
+              onRefresh={fetchData}
+              onCreate={handleCreate}
+              onDelete={handleDelete}
+              pageConfig={pageConfig}
+              onViewConfigChange={handleViewConfigChange}
+            />
+          </PinLockOverlay>
+        ) : (
+          <ViewRenderer
+            views={viewsToRender}
+            data={data}
+            schema={schema}
+            schemas={schemas}
+            onUpdate={handleUpdate}
+            onRefresh={fetchData}
+            onCreate={handleCreate}
+            onDelete={handleDelete}
+            pageConfig={pageConfig}
+            onViewConfigChange={handleViewConfigChange}
+          />
+        )}
 
         {/* View Settings slide-out */}
         {showViewSettings && activeView && (

@@ -1,8 +1,23 @@
 // ─── Wasabi API Client ───
-// Centralized fetch wrapper with X-Wasabi-Key auth.
+// Centralized fetch wrapper with X-Wasabi-Key + JWT auth.
 // All backend calls go through here.
 
 const STORAGE_KEY = "wasabi_connection";
+const JWT_STORAGE_KEY = "wasabi_jwt";
+
+// ─── JWT Token Helpers ───
+
+export function getJwt() {
+  try { return localStorage.getItem(JWT_STORAGE_KEY) || null; } catch { return null; }
+}
+
+export function saveJwt(token) {
+  try { localStorage.setItem(JWT_STORAGE_KEY, token); } catch {}
+}
+
+export function clearJwt() {
+  try { localStorage.removeItem(JWT_STORAGE_KEY); } catch {}
+}
 
 /**
  * Get saved connection info (worker URL + secret).
@@ -42,9 +57,11 @@ async function apiFetch(path, options = {}) {
   }
 
   const url = `${conn.workerUrl}${path}`;
+  const jwt = getJwt();
   const headers = {
     "Content-Type": "application/json",
     ...(conn.secret ? { "X-Wasabi-Key": conn.secret } : {}),
+    ...(jwt ? { "Authorization": `Bearer ${jwt}` } : {}),
     ...(options.headers || {}),
   };
 
@@ -472,10 +489,10 @@ export async function listRecordComments(recordId, pageConfigId) {
   return apiFetch(`/records/${recordId}/comments?page_config_id=${encodeURIComponent(pageConfigId)}`);
 }
 
-export async function createRecordComment(recordId, pageConfigId, content) {
+export async function createRecordComment(recordId, pageConfigId, content, userId, userName) {
   return apiFetch(`/records/${recordId}/comments`, {
     method: "POST",
-    body: { page_config_id: pageConfigId, content },
+    body: { page_config_id: pageConfigId, content, user_id: userId, user_name: userName },
   });
 }
 
@@ -561,9 +578,13 @@ export async function uploadFile(file, pageId = "") {
   formData.append("file", file);
   if (pageId) formData.append("page_id", pageId);
 
+  const jwt = getJwt();
   const res = await fetch(`${conn.workerUrl}/files`, {
     method: "POST",
-    headers: { ...(conn.secret ? { "X-Wasabi-Key": conn.secret } : {}) },
+    headers: {
+      ...(conn.secret ? { "X-Wasabi-Key": conn.secret } : {}),
+      ...(jwt ? { "Authorization": `Bearer ${jwt}` } : {}),
+    },
     body: formData,
   });
   const data = await res.json().catch(() => ({ _error: `HTTP ${res.status}` }));
@@ -703,4 +724,59 @@ export async function checkFreeBusy(timeMin, timeMax) {
     method: "POST",
     body: { timeMin, timeMax },
   });
+}
+
+// ─── Auth ───
+
+export async function authRegister(inviteCode, displayName) {
+  return apiFetch("/auth/register", {
+    method: "POST",
+    body: { invite_code: inviteCode, display_name: displayName },
+  });
+}
+
+export async function authLogin(userId) {
+  return apiFetch("/auth/login", {
+    method: "POST",
+    body: { user_id: userId },
+  });
+}
+
+export async function authMe() {
+  return apiFetch("/auth/me", { method: "GET" });
+}
+
+export async function authRefresh() {
+  return apiFetch("/auth/refresh", { method: "POST" });
+}
+
+// ─── User Management ───
+
+export async function createInvite(role = "viewer", displayName = "Invited User") {
+  return apiFetch("/users/invite", {
+    method: "POST",
+    body: { role, display_name: displayName },
+  });
+}
+
+export async function listUsers() {
+  return apiFetch("/users", { method: "GET" });
+}
+
+export async function updateUser(id, updates) {
+  return apiFetch(`/users/${id}`, { method: "PATCH", body: updates });
+}
+
+export async function deleteUser(id) {
+  return apiFetch(`/users/${id}`, { method: "DELETE" });
+}
+
+// ─── PIN Lock ───
+
+export async function setPin(pin) {
+  return apiFetch("/pin/set", { method: "POST", body: { pin } });
+}
+
+export async function verifyPin(pin) {
+  return apiFetch("/pin/verify", { method: "POST", body: { pin } });
 }

@@ -1,18 +1,45 @@
 // ─── Top Header Bar ───
-// Slim header: WASABI wordmark + breadcrumb left, theme toggle + neurons right.
+// Slim header: WASABI wordmark + breadcrumb left, theme toggle + neurons + user pill right.
 // Page-level controls (record count, refresh, sync) live in ViewToolbar/SubPageNav now.
 
-import React from "react";
-import { C, FONT, RADIUS } from "../design/tokens.js";
+import React, { useState, useEffect, useRef } from "react";
+import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { useTheme } from "../context/ThemeContext.jsx";
 import { useNeurons } from "../neurons/NeuronsContext.jsx";
 import { usePages } from "../context/PagesContext.jsx";
+import { usePlatform } from "../context/PlatformContext.jsx";
+import { isAdmin } from "../lib/roles.js";
 import Breadcrumb from "../components/Breadcrumb.jsx";
 
 export default function TopHeader() {
   const { themeName, toggleMode } = useTheme();
   const { overlayActive, toggleOverlay, selection } = useNeurons();
   const { saveStatus } = usePages();
+  const { identity, logout, setActivePage } = usePlatform();
+
+  // User dropdown
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  // Close on click outside
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    const handler = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [dropdownOpen]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    const handler = (e) => { if (e.key === "Escape") setDropdownOpen(false); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [dropdownOpen]);
 
   return (
     <header
@@ -70,7 +97,7 @@ export default function TopHeader() {
         </div>
       )}
 
-      {/* Right: Refresh + Neurons toggle + Theme cycle */}
+      {/* Right: Refresh + Neurons toggle + Theme cycle + User pill */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
         {/* Hard refresh */}
         <button
@@ -209,7 +236,142 @@ export default function TopHeader() {
           <span style={{ width: 12, height: 12, borderRadius: "50%", background: C.accent, flexShrink: 0 }} />
           {themeName.charAt(0).toUpperCase() + themeName.slice(1)}
         </button>
+
+        {/* User identity pill */}
+        {identity && (
+          <div ref={dropdownRef} style={{ position: "relative" }}>
+            <button
+              onClick={() => setDropdownOpen((p) => !p)}
+              style={{
+                background: dropdownOpen ? C.accent + "22" : "transparent",
+                border: `1px solid ${dropdownOpen ? C.accent : C.darkBorder}`,
+                borderRadius: RADIUS.pill,
+                padding: "5px 12px 5px 6px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                transition: "background 0.15s, border-color 0.15s",
+                color: C.darkMuted,
+                fontSize: 12,
+                fontFamily: FONT,
+                fontWeight: 500,
+                minHeight: 32,
+                outline: "none",
+              }}
+              onMouseEnter={(e) => {
+                if (!dropdownOpen) {
+                  e.currentTarget.style.borderColor = C.darkMuted;
+                  e.currentTarget.style.background = C.darkSurf2;
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!dropdownOpen) {
+                  e.currentTarget.style.borderColor = C.darkBorder;
+                  e.currentTarget.style.background = "transparent";
+                }
+              }}
+            >
+              {/* Avatar circle */}
+              <span style={{
+                width: 20,
+                height: 20,
+                borderRadius: "50%",
+                background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#fff",
+                fontSize: 10,
+                fontWeight: 700,
+                flexShrink: 0,
+              }}>
+                {(identity.display_name || "U").charAt(0).toUpperCase()}
+              </span>
+              <span style={{ color: C.darkText, fontWeight: 500 }}>
+                {identity.display_name}
+              </span>
+              <span style={{
+                fontSize: 9,
+                color: C.darkMuted,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                fontWeight: 600,
+              }}>
+                {identity.role}
+              </span>
+            </button>
+
+            {/* Dropdown */}
+            {dropdownOpen && (
+              <div style={{
+                position: "absolute",
+                top: "calc(100% + 6px)",
+                right: 0,
+                background: C.darkSurf,
+                border: `1px solid ${C.darkBorder}`,
+                borderRadius: RADIUS.lg,
+                boxShadow: SHADOW.dropdown,
+                minWidth: 170,
+                zIndex: 150,
+                padding: "4px 0",
+                fontFamily: FONT,
+              }}>
+                {/* Settings */}
+                <button
+                  onClick={() => { setActivePage("system"); setDropdownOpen(false); }}
+                  style={dropdownItemStyle}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  Settings
+                </button>
+
+                {/* User Management (admin only) */}
+                {isAdmin(identity) && (
+                  <button
+                    onClick={() => { setActivePage("system"); setDropdownOpen(false); }}
+                    style={dropdownItemStyle}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                  >
+                    User Management
+                  </button>
+                )}
+
+                {/* Divider */}
+                <div style={{ height: 1, background: C.edgeLine, margin: "4px 0" }} />
+
+                {/* Log Out */}
+                <button
+                  onClick={() => { logout(); setDropdownOpen(false); }}
+                  style={{ ...dropdownItemStyle, color: "#E05252" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "#E0525215"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  Log Out
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </header>
   );
 }
+
+const dropdownItemStyle = {
+  display: "block",
+  width: "100%",
+  padding: "8px 14px",
+  background: "transparent",
+  border: "none",
+  color: C.darkText,
+  fontSize: 13,
+  fontFamily: FONT,
+  fontWeight: 400,
+  textAlign: "left",
+  cursor: "pointer",
+  transition: "background 0.1s",
+  outline: "none",
+};

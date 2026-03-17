@@ -36,6 +36,7 @@ export default function Navigation({
     user, pages, activePage, setActivePage,
     updatePageConfig, removePage, addPage,
     activeFolder, setActiveFolder,
+    identity,
   } = usePlatform();
   const { setTargetFolderPath } = useNavigation();
 
@@ -511,17 +512,19 @@ export default function Navigation({
               {!collapsed && <span style={bottomLabelStyle(activePage === "knowledge")}>Knowledge Base</span>}
             </button>
 
-            {/* Settings */}
-            <button
-              onClick={() => setActivePage("system")}
-              title="Settings"
-              style={bottomBtnStyle(activePage === "system")}
-              onMouseEnter={(e) => { if (activePage !== "system") e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activePage !== "system") e.currentTarget.style.background = "transparent"; }}
-            >
-              <IconGear size={iconSize(activePage === "system")} color={activePage === "system" ? "#fff" : C.darkMuted} />
-              {!collapsed && <span style={bottomLabelStyle(activePage === "system")}>Settings</span>}
-            </button>
+            {/* Settings (admin only when multi-user is active) */}
+            {(!identity || identity.role === "admin") && (
+              <button
+                onClick={() => setActivePage("system")}
+                title="Settings"
+                style={bottomBtnStyle(activePage === "system")}
+                onMouseEnter={(e) => { if (activePage !== "system") e.currentTarget.style.background = C.darkSurf2; }}
+                onMouseLeave={(e) => { if (activePage !== "system") e.currentTarget.style.background = "transparent"; }}
+              >
+                <IconGear size={iconSize(activePage === "system")} color={activePage === "system" ? "#fff" : C.darkMuted} />
+                {!collapsed && <span style={bottomLabelStyle(activePage === "system")}>Settings</span>}
+              </button>
+            )}
 
             {/* Wasabi flame */}
             {!wasabiPanelOpen && (

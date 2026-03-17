@@ -64,6 +64,16 @@ export function usePlatform() {
     setupError: auth.setupError,
     setSetupError: auth.setSetupError,
 
+    // Multi-user identity
+    identity: auth.identity,
+    multiUserEnabled: auth.multiUserEnabled,
+    adminInvite: auth.adminInvite,
+    identityLoading: auth.identityLoading,
+    login: auth.login,
+    register: auth.register,
+    logout: auth.logout,
+    hasRole: auth.hasRole,
+
     // Pages (with cross-context wiring)
     pages: pagesCtx.pages,
     addPage,

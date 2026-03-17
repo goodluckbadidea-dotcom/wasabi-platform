@@ -260,6 +260,25 @@ CREATE TABLE IF NOT EXISTS task_activity (
   last_activity_at TEXT NOT NULL,
   UNIQUE(task_id, source)
 );
+
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  display_name TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'viewer',
+  invite_code TEXT UNIQUE,
+  password_hash TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  last_login_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS user_connections (
+  user_id TEXT NOT NULL,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  metadata TEXT DEFAULT '{}',
+  updated_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, key)
+);
 `;
 
 const D1_INDEXES = `
@@ -276,7 +295,83 @@ CREATE INDEX IF NOT EXISTS idx_fn_exec_fn ON function_executions(function_id, ex
 CREATE INDEX IF NOT EXISTS idx_flow_exec_flow ON flow_executions(flow_id, started_at);
 CREATE INDEX IF NOT EXISTS idx_task_activity_lookup ON task_activity(task_id, source);
 CREATE INDEX IF NOT EXISTS idx_sync_dirty ON table_rows(sync_dirty) WHERE sync_dirty = 1;
+CREATE INDEX IF NOT EXISTS idx_users_invite ON users(invite_code);
+CREATE INDEX IF NOT EXISTS idx_user_conn ON user_connections(user_id);
 `;
+
+// ─── JWT Utilities (HS256 via Web Crypto) ───
+const JWT_EXPIRY_DAYS = 7;
+
+function base64UrlEncode(buf) {
+  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function base64UrlDecode(str) {
+  str = str.replace(/-/g, "+").replace(/_/g, "/");
+  while (str.length % 4) str += "=";
+  const binary = atob(str);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function getJwtKey(env) {
+  // Use WASABI_SECRET as the HMAC key material; fall back to a default for dev
+  const secret = env.WASABI_SECRET || "wasabi-dev-secret";
+  return crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"]
+  );
+}
+
+async function signJwt(payload, env) {
+  const key = await getJwtKey(env);
+  const header = { alg: "HS256", typ: "JWT" };
+  const now = Math.floor(Date.now() / 1000);
+  const fullPayload = { ...payload, iat: now, exp: now + JWT_EXPIRY_DAYS * 86400 };
+  const segments = [
+    base64UrlEncode(new TextEncoder().encode(JSON.stringify(header))),
+    base64UrlEncode(new TextEncoder().encode(JSON.stringify(fullPayload))),
+  ];
+  const sigInput = new TextEncoder().encode(segments.join("."));
+  const sig = await crypto.subtle.sign("HMAC", key, sigInput);
+  segments.push(base64UrlEncode(sig));
+  return segments.join(".");
+}
+
+async function verifyJwt(token, env) {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const key = await getJwtKey(env);
+    const sigInput = new TextEncoder().encode(parts[0] + "." + parts[1]);
+    const sig = base64UrlDecode(parts[2]);
+    const valid = await crypto.subtle.verify("HMAC", key, sig, sigInput);
+    if (!valid) return null;
+    const payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[1])));
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+// Extract user from JWT in Authorization header (returns null if no JWT)
+async function extractUser(request, env) {
+  const authHeader = request.headers.get("Authorization") || "";
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (!match) return null;
+  const token = match[1];
+  // Skip if it looks like a Notion API key (ntn_ prefix)
+  if (token.startsWith("ntn_") || token.startsWith("secret_")) return null;
+  return verifyJwt(token, env);
+}
 
 // ─── Auth Middleware ───
 function authenticate(request, env) {
@@ -285,6 +380,21 @@ function authenticate(request, env) {
   if (!secret) return true;
   const provided = request.headers.get("X-Wasabi-Key");
   return provided === secret;
+}
+
+// Role permission levels
+const ROLE_LEVEL = { admin: 3, editor: 2, viewer: 1 };
+
+function requireRole(user, minRole) {
+  if (!user) return false;
+  return (ROLE_LEVEL[user.role] || 0) >= (ROLE_LEVEL[minRole] || 99);
+}
+
+// SHA-256 hash for PIN storage
+async function sha256(text) {
+  const data = new TextEncoder().encode(text);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return base64UrlEncode(hash);
 }
 
 // ─── Get Notion key: from D1 connections or request header ───
@@ -362,6 +472,64 @@ export default {
       // ─── D1 Bootstrap ───
       if (path === "/init" && request.method === "POST") {
         return await handleInit(env);
+      }
+
+      // ─── Auth Endpoints ───
+      if (path === "/auth/register" && request.method === "POST") {
+        const body = await request.json();
+        return await handleAuthRegister(env, body);
+      }
+      if (path === "/auth/login" && request.method === "POST") {
+        const body = await request.json();
+        return await handleAuthLogin(env, body);
+      }
+      if (path === "/auth/me" && request.method === "GET") {
+        const user = await extractUser(request, env);
+        if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
+        return await handleAuthMe(env, user);
+      }
+      if (path === "/auth/refresh" && request.method === "POST") {
+        const user = await extractUser(request, env);
+        if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
+        return await handleAuthRefresh(env, user);
+      }
+
+      // ─── User Management (admin only) ───
+      if (path === "/users/invite" && request.method === "POST") {
+        const user = await extractUser(request, env);
+        if (!requireRole(user, "admin")) return jsonResponse({ _error: "Admin required" }, 403);
+        const body = await request.json();
+        return await handleCreateInvite(env, body);
+      }
+      if (path === "/users" && request.method === "GET") {
+        const user = await extractUser(request, env);
+        if (!requireRole(user, "admin")) return jsonResponse({ _error: "Admin required" }, 403);
+        return await handleListUsers(env);
+      }
+      if (path.match(/^\/users\/[^/]+$/) && request.method === "DELETE") {
+        const user = await extractUser(request, env);
+        if (!requireRole(user, "admin")) return jsonResponse({ _error: "Admin required" }, 403);
+        const userId = path.split("/users/")[1];
+        return await handleDeleteUser(env, userId, user);
+      }
+      if (path.match(/^\/users\/[^/]+$/) && request.method === "PATCH") {
+        const user = await extractUser(request, env);
+        if (!requireRole(user, "admin")) return jsonResponse({ _error: "Admin required" }, 403);
+        const userId = path.split("/users/")[1];
+        const body = await request.json();
+        return await handleUpdateUser(env, userId, body);
+      }
+
+      // ─── PIN Lock ───
+      if (path === "/pin/set" && request.method === "POST") {
+        const user = await extractUser(request, env);
+        if (!requireRole(user, "admin")) return jsonResponse({ _error: "Admin required" }, 403);
+        const body = await request.json();
+        return await handleSetPin(env, body);
+      }
+      if (path === "/pin/verify" && request.method === "POST") {
+        const body = await request.json();
+        return await handleVerifyPin(env, body);
       }
 
       // ─── Connections CRUD ───
@@ -508,7 +676,8 @@ export default {
         if (request.method === "GET") return await handleListRows(env, tableId, url);
         if (request.method === "POST") {
           const body = await request.json();
-          return await handleCreateRows(env, tableId, body);
+          const user = await extractUser(request, env);
+          return await handleCreateRows(env, tableId, body, user);
         }
       }
 
@@ -679,7 +848,8 @@ export default {
       }
 
       if (path === "/d1/notifications" && request.method === "GET") {
-        return await handleListNotifications(env, url);
+        const user = await extractUser(request, env);
+        return await handleListNotifications(env, url, user);
       }
       if (path === "/d1/notifications" && request.method === "POST") {
         const body = await request.json();
@@ -1294,10 +1464,32 @@ async function handleInit(env) {
       "ALTER TABLE table_rows ADD COLUMN sync_dirty INTEGER DEFAULT 0",
       "ALTER TABLE table_rows ADD COLUMN sync_retry_count INTEGER DEFAULT 0",
       "CREATE TABLE IF NOT EXISTS data_summary_cache (page_id TEXT PRIMARY KEY, summary TEXT NOT NULL DEFAULT '', updated_at TEXT DEFAULT (datetime('now')))",
+      // Sprint 5: Multi-user foundation
+      "CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'viewer', invite_code TEXT UNIQUE, password_hash TEXT, created_at TEXT DEFAULT (datetime('now')), last_login_at TEXT)",
+      "CREATE TABLE IF NOT EXISTS user_connections (user_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, metadata TEXT DEFAULT '{}', updated_at TEXT DEFAULT (datetime('now')), PRIMARY KEY (user_id, key))",
+      "CREATE INDEX IF NOT EXISTS idx_users_invite ON users(invite_code)",
+      "CREATE INDEX IF NOT EXISTS idx_user_conn ON user_connections(user_id)",
+      "ALTER TABLE page_configs ADD COLUMN pin_protected INTEGER DEFAULT 0",
+      "ALTER TABLE notifications ADD COLUMN target_user_id TEXT DEFAULT 'all'",
+      "ALTER TABLE table_rows ADD COLUMN owner_user_id TEXT DEFAULT 'default'",
     ];
     for (const sql of migrations) {
       try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }
     }
+
+    // Bootstrap: if no users exist, create a default admin invite
+    let adminBootstrap = null;
+    try {
+      const userCount = await env.DB.prepare("SELECT COUNT(*) as count FROM users").first();
+      if (!userCount || userCount.count === 0) {
+        const adminId = crypto.randomUUID();
+        const adminCode = crypto.randomUUID().slice(0, 8).toUpperCase();
+        await env.DB.prepare(
+          "INSERT INTO users (id, display_name, role, invite_code) VALUES (?, 'Admin', 'admin', ?)"
+        ).bind(adminId, adminCode).run();
+        adminBootstrap = { id: adminId, invite_code: adminCode, role: "admin" };
+      }
+    } catch {}
 
     // Return table list
     const tables = await env.DB.prepare(
@@ -1308,6 +1500,7 @@ async function handleInit(env) {
       ok: true,
       tables: tables.results.map((t) => t.name),
       message: "Database initialized successfully",
+      ...(adminBootstrap ? { admin_invite: adminBootstrap } : {}),
     });
   } catch (err) {
     return jsonResponse({ _error: `Init failed: ${err.message}` }, 500);
@@ -1319,7 +1512,7 @@ async function handleFactoryReset(env) {
     "page_configs", "table_schemas", "table_rows", "sheet_data",
     "documents", "automation_rules", "notifications", "knowledge_base",
     "cell_links", "sync_configs", "record_notes", "record_comments",
-    "neurons", "neuron_nodes",
+    "neurons", "neuron_nodes", "users", "user_connections",
   ];
   try {
     for (const table of userTables) {
@@ -1341,6 +1534,189 @@ async function handleFactoryReset(env) {
     return jsonResponse({ _error: `Factory reset failed: ${err.message}` }, 500);
   }
 }
+
+// ─── Auth Handlers ───
+
+async function handleAuthRegister(env, body) {
+  const { invite_code, display_name } = body || {};
+  if (!invite_code || !display_name?.trim()) {
+    return jsonResponse({ _error: "invite_code and display_name required" }, 400);
+  }
+
+  try {
+    // Find the invite
+    const invite = await env.DB.prepare(
+      "SELECT id, role, display_name FROM users WHERE invite_code = ? AND last_login_at IS NULL"
+    ).bind(invite_code.trim()).first();
+
+    if (!invite) {
+      return jsonResponse({ _error: "Invalid or already used invite code" }, 400);
+    }
+
+    // Update the user record: set display name, mark as registered
+    const now = new Date().toISOString();
+    await env.DB.prepare(
+      "UPDATE users SET display_name = ?, last_login_at = ?, invite_code = NULL WHERE id = ?"
+    ).bind(display_name.trim(), now, invite.id).run();
+
+    // Generate JWT
+    const token = await signJwt({ sub: invite.id, role: invite.role, name: display_name.trim() }, env);
+    return jsonResponse({ ok: true, token, user: { id: invite.id, display_name: display_name.trim(), role: invite.role } });
+  } catch (err) {
+    return jsonResponse({ _error: `Registration failed: ${err.message}` }, 500);
+  }
+}
+
+async function handleAuthLogin(env, body) {
+  const { user_id, invite_code } = body || {};
+
+  try {
+    let user;
+    if (user_id) {
+      user = await env.DB.prepare("SELECT id, display_name, role FROM users WHERE id = ?").bind(user_id).first();
+    } else if (invite_code) {
+      // Allow login by invite code for users who haven't cleared it yet
+      user = await env.DB.prepare("SELECT id, display_name, role FROM users WHERE invite_code = ?").bind(invite_code.trim()).first();
+    }
+
+    if (!user) {
+      return jsonResponse({ _error: "User not found" }, 401);
+    }
+
+    // Update last login
+    await env.DB.prepare("UPDATE users SET last_login_at = ? WHERE id = ?")
+      .bind(new Date().toISOString(), user.id).run();
+
+    const token = await signJwt({ sub: user.id, role: user.role, name: user.display_name }, env);
+    return jsonResponse({ ok: true, token, user: { id: user.id, display_name: user.display_name, role: user.role } });
+  } catch (err) {
+    return jsonResponse({ _error: `Login failed: ${err.message}` }, 500);
+  }
+}
+
+async function handleAuthMe(env, jwtPayload) {
+  try {
+    const user = await env.DB.prepare(
+      "SELECT id, display_name, role, created_at, last_login_at FROM users WHERE id = ?"
+    ).bind(jwtPayload.sub).first();
+    if (!user) return jsonResponse({ _error: "User not found" }, 404);
+    return jsonResponse({ user });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleAuthRefresh(env, jwtPayload) {
+  try {
+    const user = await env.DB.prepare(
+      "SELECT id, display_name, role FROM users WHERE id = ?"
+    ).bind(jwtPayload.sub).first();
+    if (!user) return jsonResponse({ _error: "User not found" }, 404);
+
+    const token = await signJwt({ sub: user.id, role: user.role, name: user.display_name }, env);
+    return jsonResponse({ ok: true, token, user });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// ─── User Management Handlers (admin only) ───
+
+async function handleCreateInvite(env, body) {
+  const { role = "viewer", display_name = "Invited User" } = body || {};
+  if (!["admin", "editor", "viewer"].includes(role)) {
+    return jsonResponse({ _error: "Invalid role. Must be admin, editor, or viewer." }, 400);
+  }
+
+  try {
+    const id = crypto.randomUUID();
+    // Generate a short, readable invite code
+    const code = crypto.randomUUID().slice(0, 8).toUpperCase();
+
+    await env.DB.prepare(
+      "INSERT INTO users (id, display_name, role, invite_code) VALUES (?, ?, ?, ?)"
+    ).bind(id, display_name, role, code).run();
+
+    return jsonResponse({ ok: true, invite: { id, invite_code: code, role, display_name } });
+  } catch (err) {
+    return jsonResponse({ _error: `Failed to create invite: ${err.message}` }, 500);
+  }
+}
+
+async function handleListUsers(env) {
+  try {
+    const rows = await env.DB.prepare(
+      "SELECT id, display_name, role, invite_code, created_at, last_login_at FROM users ORDER BY created_at"
+    ).all();
+    return jsonResponse({ users: rows.results });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleDeleteUser(env, userId, requestingUser) {
+  if (userId === requestingUser.sub) {
+    return jsonResponse({ _error: "Cannot delete your own account" }, 400);
+  }
+  try {
+    await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(userId).run();
+    await env.DB.prepare("DELETE FROM user_connections WHERE user_id = ?").bind(userId).run();
+    return jsonResponse({ ok: true });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleUpdateUser(env, userId, body) {
+  const updates = [];
+  const params = [];
+  if (body.display_name) { updates.push("display_name = ?"); params.push(body.display_name); }
+  if (body.role && ["admin", "editor", "viewer"].includes(body.role)) { updates.push("role = ?"); params.push(body.role); }
+  if (updates.length === 0) return jsonResponse({ _error: "Nothing to update" }, 400);
+
+  try {
+    params.push(userId);
+    await env.DB.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`).bind(...params).run();
+    const user = await env.DB.prepare("SELECT id, display_name, role FROM users WHERE id = ?").bind(userId).first();
+    return jsonResponse({ ok: true, user });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// ─── PIN Lock Handlers ───
+
+async function handleSetPin(env, body) {
+  const { pin } = body || {};
+  if (!pin || pin.length < 4) {
+    return jsonResponse({ _error: "PIN must be at least 4 characters" }, 400);
+  }
+  try {
+    const hashed = await sha256(pin);
+    await env.DB.prepare(
+      "INSERT OR REPLACE INTO connections (key, value, updated_at) VALUES ('table_pin', ?, datetime('now'))"
+    ).bind(hashed).run();
+    return jsonResponse({ ok: true });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleVerifyPin(env, body) {
+  const { pin } = body || {};
+  if (!pin) return jsonResponse({ _error: "PIN required" }, 400);
+  try {
+    const row = await env.DB.prepare("SELECT value FROM connections WHERE key = 'table_pin'").first();
+    if (!row) return jsonResponse({ _error: "No PIN configured" }, 404);
+    const hashed = await sha256(pin);
+    if (hashed !== row.value) return jsonResponse({ _error: "Incorrect PIN" }, 403);
+    return jsonResponse({ ok: true, verified: true });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// ─── Connections CRUD ───
 
 async function handleGetConnections(env) {
   try {
@@ -1402,6 +1778,45 @@ const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/userinfo.email",
 ].join(" ");
+
+/**
+ * Get a valid Google access token for a specific user.
+ * Checks user_connections first, then falls back to global connections.
+ * Returns { access_token, email } or null if not connected.
+ */
+async function getGoogleAccessTokenForUser(env, userId) {
+  if (!userId) return getGoogleAccessToken(env);
+  try {
+    const row = await env.DB.prepare(
+      "SELECT value FROM user_connections WHERE user_id = ? AND key = 'google'"
+    ).bind(userId).first();
+    if (row?.value) {
+      const tokens = JSON.parse(row.value);
+      if (tokens.access_token && tokens.refresh_token) {
+        // Check expiry
+        if (tokens.expires_at && Date.now() < tokens.expires_at - 60000) return tokens;
+        // Refresh
+        const clientId = env.GOOGLE_CLIENT_ID;
+        const clientSecret = env.GOOGLE_CLIENT_SECRET;
+        if (!clientId || !clientSecret) return null;
+        const res = await fetch("https://oauth2.googleapis.com/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: tokens.refresh_token, grant_type: "refresh_token" }),
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        const updated = { ...tokens, access_token: data.access_token, expires_at: Date.now() + (data.expires_in || 3600) * 1000 };
+        await env.DB.prepare(
+          "INSERT OR REPLACE INTO user_connections (user_id, key, value, updated_at) VALUES (?, 'google', ?, datetime('now'))"
+        ).bind(userId, JSON.stringify(updated)).run();
+        return updated;
+      }
+    }
+  } catch {}
+  // Fall back to global connection
+  return getGoogleAccessToken(env);
+}
 
 /**
  * Get a valid Google access token, refreshing if expired.
@@ -2497,22 +2912,24 @@ async function handleListRows(env, tableId, url) {
   }
 }
 
-async function handleCreateRows(env, tableId, body) {
+async function handleCreateRows(env, tableId, body, user) {
   const rows = Array.isArray(body.rows) ? body.rows : [body];
   const created = [];
+  const ownerId = user?.sub || "default";
 
   try {
     for (const row of rows) {
       const id = row.id || crypto.randomUUID();
       await env.DB.prepare(
-        `INSERT INTO table_rows (id, table_id, cells, sort_order, metadata, sync_dirty, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))`
+        `INSERT INTO table_rows (id, table_id, cells, sort_order, metadata, sync_dirty, owner_user_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 1, ?, datetime('now'), datetime('now'))`
       ).bind(
         id,
         tableId,
         JSON.stringify(row.cells || {}),
         row.sort_order || 0,
-        JSON.stringify(row.metadata || {})
+        JSON.stringify(row.metadata || {}),
+        ownerId
       ).run();
       created.push(id);
     }
@@ -3917,26 +4334,40 @@ async function handleDeleteFlow(env, id) {
 
 // ─── D1 Notifications Handlers ───
 
-async function handleListNotifications(env, url) {
+async function handleListNotifications(env, url, user) {
   const status = url.searchParams.get("status");
   const limit = parseInt(url.searchParams.get("limit") || "50", 10);
   const offset = parseInt(url.searchParams.get("offset") || "0", 10);
 
-  let query = "SELECT * FROM notifications";
+  const conditions = [];
   const params = [];
+
   if (status) {
-    query += " WHERE status = ?";
+    conditions.push("status = ?");
     params.push(status);
   }
+
+  // Filter by user: admins see all, others see 'all' + their own
+  if (user && user.role !== "admin") {
+    conditions.push("(target_user_id = 'all' OR target_user_id = ?)");
+    params.push(user.sub);
+  }
+
+  let query = "SELECT * FROM notifications";
+  if (conditions.length) query += " WHERE " + conditions.join(" AND ");
   query += " ORDER BY created_at DESC LIMIT ? OFFSET ?";
   params.push(limit, offset);
 
   const { results } = await env.DB.prepare(query).bind(...params).all();
 
-  // Also get unread count
-  const countRow = await env.DB.prepare(
-    "SELECT COUNT(*) as count FROM notifications WHERE status = 'unread'"
-  ).first();
+  // Unread count (scoped to same user filter)
+  let countQuery = "SELECT COUNT(*) as count FROM notifications WHERE status = 'unread'";
+  const countParams = [];
+  if (user && user.role !== "admin") {
+    countQuery += " AND (target_user_id = 'all' OR target_user_id = ?)";
+    countParams.push(user.sub);
+  }
+  const countRow = await env.DB.prepare(countQuery).bind(...countParams).first();
 
   return jsonResponse({
     notifications: results || [],
@@ -3946,14 +4377,14 @@ async function handleListNotifications(env, url) {
 
 async function handleCreateNotification(env, body) {
   const id = crypto.randomUUID();
-  const { message, type = "notification", source = "", status = "unread" } = body;
+  const { message, type = "notification", source = "", status = "unread", target_user_id = "all" } = body;
 
   if (!message) return jsonResponse({ _error: "message required" }, 400);
 
   await env.DB.prepare(
-    `INSERT INTO notifications (id, message, type, status, source, created_at)
-     VALUES (?, ?, ?, ?, ?, datetime('now'))`
-  ).bind(id, message, type, status, source).run();
+    `INSERT INTO notifications (id, message, type, status, source, target_user_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`
+  ).bind(id, message, type, status, source, target_user_id).run();
 
   return jsonResponse({ id, success: true });
 }

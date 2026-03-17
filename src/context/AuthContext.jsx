@@ -1,14 +1,19 @@
 // ─── Auth Context ───
 // User credentials, worker connection, platform IDs, setup state.
+// JWT identity layer for multi-user support.
 // Split from PlatformContext for focused re-renders.
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { loadPlatformIds, savePlatformIds } from "../config/setup.js";
-import { getConnection, saveConnection, getConnections, initDatabase } from "../lib/api.js";
+import {
+  getConnection, saveConnection, getConnections, initDatabase,
+  getJwt, saveJwt, clearJwt, authMe, authLogin, authRegister as apiAuthRegister,
+} from "../lib/api.js";
 
 const AuthContext = createContext(null);
 
 const USER_KEYS_STORAGE = "wasabi_user_keys";
+const ROLE_LEVEL = { admin: 3, editor: 2, viewer: 1 };
 
 function loadUserKeys() {
   try {
@@ -28,14 +33,59 @@ export function AuthProvider({ children }) {
   const [isLoading, setIsLoading] = useState(false);
   const [setupError, setSetupError] = useState(null);
 
+  // ── Multi-user identity ──
+  const [identity, setIdentity] = useState(null); // { id, display_name, role }
+  const [multiUserEnabled, setMultiUserEnabled] = useState(false);
+  const [adminInvite, setAdminInvite] = useState(null); // first-boot invite code
+  const [identityLoading, setIdentityLoading] = useState(true);
+
   // ── D1 schema init ──
   const hasCalledInit = useRef(false);
   useEffect(() => {
     if (!workerConnection?.workerUrl || hasCalledInit.current) return;
     hasCalledInit.current = true;
-    initDatabase().catch((err) => {
-      console.warn("[Auth] D1 init check:", err.message || err);
-    });
+    initDatabase()
+      .then((result) => {
+        // If init returns an admin_invite, this is first boot
+        if (result?.admin_invite) {
+          setAdminInvite(result.admin_invite.invite_code);
+          setMultiUserEnabled(true);
+        }
+      })
+      .catch((err) => {
+        console.warn("[Auth] D1 init check:", err.message || err);
+      });
+  }, [workerConnection]);
+
+  // ── Validate existing JWT on mount ──
+  const hasCheckedJwt = useRef(false);
+  useEffect(() => {
+    if (!workerConnection?.workerUrl || hasCheckedJwt.current) return;
+    hasCheckedJwt.current = true;
+
+    const jwt = getJwt();
+    if (!jwt) {
+      setIdentityLoading(false);
+      return;
+    }
+
+    authMe()
+      .then(({ user: u }) => {
+        if (u) {
+          setIdentity({ id: u.id, display_name: u.display_name, role: u.role });
+          setMultiUserEnabled(true);
+        } else {
+          clearJwt();
+        }
+      })
+      .catch((err) => {
+        // 401/404 = expired/deleted user; 500 = no users table yet (single-user mode)
+        if (err.status === 401 || err.status === 404) {
+          clearJwt();
+        }
+        // On 500, assume single-user mode — don't clear JWT
+      })
+      .finally(() => setIdentityLoading(false));
   }, [workerConnection]);
 
   // ── Sync connection keys from D1 ──
@@ -99,6 +149,38 @@ export function AuthProvider({ children }) {
     });
   }, []);
 
+  // ── Multi-user actions ──
+  const login = useCallback(async (userId) => {
+    const result = await authLogin(userId);
+    if (result.token) {
+      saveJwt(result.token);
+      setIdentity({ id: result.user.id, display_name: result.user.display_name, role: result.user.role });
+      setMultiUserEnabled(true);
+    }
+    return result;
+  }, []);
+
+  const register = useCallback(async (inviteCode, displayName) => {
+    const result = await apiAuthRegister(inviteCode, displayName);
+    if (result.token) {
+      saveJwt(result.token);
+      setIdentity({ id: result.user.id, display_name: result.user.display_name, role: result.user.role });
+      setMultiUserEnabled(true);
+      setAdminInvite(null); // Clear first-boot invite
+    }
+    return result;
+  }, []);
+
+  const logout = useCallback(() => {
+    clearJwt();
+    setIdentity(null);
+  }, []);
+
+  const hasRole = useCallback((minRole) => {
+    if (!identity) return true; // Single-user mode: allow everything
+    return (ROLE_LEVEL[identity.role] || 0) >= (ROLE_LEVEL[minRole] || 99);
+  }, [identity]);
+
   // ── Derived ──
   const isWorkerConnected = !!(workerConnection?.workerUrl);
   const isLegacySetup = !!(platformIds?.rootPageId);
@@ -107,7 +189,7 @@ export function AuthProvider({ children }) {
   const value = {
     user,
     setUserKeys,
-    isAuthenticated: isWorkerConnected || isLegacyAuth,
+    isAuthenticated: isWorkerConnected && (!multiUserEnabled || !!identity) || isLegacyAuth,
     workerConnection,
     completeSetup,
     updateConnectionKey,
@@ -118,6 +200,15 @@ export function AuthProvider({ children }) {
     setIsLoading,
     setupError,
     setSetupError,
+    // Multi-user
+    identity,
+    multiUserEnabled,
+    adminInvite,
+    identityLoading,
+    login,
+    register,
+    logout,
+    hasRole,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

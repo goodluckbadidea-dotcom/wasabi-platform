@@ -107,12 +107,18 @@ export default function ChatPanel({
   pendingChatMessage,
   onClearPendingMessage,
 }) {
-  const { user } = usePlatform();
+  const { user, identity } = usePlatform();
+  const canUseAgent = !identity || identity.role === "admin";
 
   // ── Tab state (persisted) ──
   const [activeTab, setActiveTab] = useState(() => {
     try { return localStorage.getItem("wasabi_chat_tab") || "assistant"; } catch { return "assistant"; }
   });
+
+  // If user loses agent access, switch to assistant
+  useEffect(() => {
+    if (!canUseAgent && activeTab === "agent") setActiveTab("assistant");
+  }, [canUseAgent, activeTab]);
 
   // Persist chat tab
   useEffect(() => {
@@ -310,9 +316,11 @@ export default function ChatPanel({
           <button style={tabBtn(activeTab === "assistant")} onClick={() => setActiveTab("assistant")}>
             Assistant
           </button>
-          <button style={tabBtn(activeTab === "agent")} onClick={() => setActiveTab("agent")}>
-            Agent
-          </button>
+          {canUseAgent && (
+            <button style={tabBtn(activeTab === "agent")} onClick={() => setActiveTab("agent")}>
+              Agent
+            </button>
+          )}
         </div>
       </div>
 

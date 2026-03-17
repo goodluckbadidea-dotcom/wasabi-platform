@@ -14,7 +14,8 @@ import ConfirmDialog from "./ConfirmDialog.jsx";
 import { IconGear } from "../design/icons.jsx";
 import { getSessionUsage, getUsageHistory, formatCost, formatTokens, getTierBreakdown, getAggregateUsage } from "../utils/costTracker.js";
 import * as api from "../lib/api.js";
-import { getConnections, setConnection as apiSetConnection, deleteConnection as apiDeleteConnection, checkHealth, factoryReset as apiFactoryReset, clearConnection, getGoogleAuthUrl, getGoogleStatus, disconnectGoogle } from "../lib/api.js";
+import { getConnections, setConnection as apiSetConnection, deleteConnection as apiDeleteConnection, checkHealth, factoryReset as apiFactoryReset, clearConnection, getGoogleAuthUrl, getGoogleStatus, disconnectGoogle, createInvite, listUsers, updateUser, deleteUser as apiDeleteUser } from "../lib/api.js";
+import { isAdmin } from "../lib/roles.js";
 
 // ── Tab button style (matches WasabiPanel) ──
 const tabBtn = (active) => ({
@@ -337,7 +338,7 @@ function GoogleConnectionRow({ connected, email, onConnect, onDisconnect, loadin
 // ════════════════════════════════════════════════════════════════════════════
 
 export default function SystemManager() {
-  const { user, platformIds, pages, updatePageConfig, workerConnection, updateConnectionKey } = usePlatform();
+  const { user, platformIds, pages, updatePageConfig, workerConnection, updateConnectionKey, identity } = usePlatform();
 
   // ── Tab state ──
   const [tab, setTab] = useState("overview");
@@ -583,6 +584,14 @@ export default function SystemManager() {
           >
             Settings
           </button>
+          {isAdmin(identity) && (
+            <button
+              style={tabBtn(tab === "users")}
+              onClick={() => setTab("users")}
+            >
+              Users
+            </button>
+          )}
         </div>
       </div>
 
@@ -1032,6 +1041,9 @@ export default function SystemManager() {
 
         {/* ═══ SETTINGS TAB ═══ */}
         {tab === "settings" && <SettingsTab />}
+
+        {/* ═══ USERS TAB ═══ */}
+        {tab === "users" && isAdmin(identity) && <UsersTab identity={identity} />}
       </div>
     </div>
   );
@@ -1543,6 +1555,266 @@ function WorkspacesTab() {
         <WorkspaceSettings
           pageConfig={selected}
           onUpdate={handleUpdate}
+        />
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Users Tab (admin only)
+// ════════════════════════════════════════════════════════════════════════════
+
+function UsersTab({ identity }) {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [inviteRole, setInviteRole] = useState("editor");
+  const [lastInvite, setLastInvite] = useState(null);
+  const [confirmDeleteUser, setConfirmDeleteUser] = useState(null);
+
+  // Load users
+  useEffect(() => {
+    setLoading(true);
+    listUsers()
+      .then((res) => setUsers(res.users || []))
+      .catch((err) => console.warn("Failed to load users:", err))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleInvite = async () => {
+    try {
+      const result = await createInvite(inviteRole);
+      setLastInvite(result.invite);
+      // Refresh list
+      const res = await listUsers();
+      setUsers(res.users || []);
+    } catch (err) {
+      console.error("Failed to create invite:", err);
+    }
+  };
+
+  const handleRoleChange = async (userId, newRole) => {
+    try {
+      await updateUser(userId, { role: newRole });
+      setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, role: newRole } : u));
+    } catch (err) {
+      console.error("Failed to update role:", err);
+    }
+  };
+
+  const handleDelete = async (userId) => {
+    try {
+      await apiDeleteUser(userId);
+      setUsers((prev) => prev.filter((u) => u.id !== userId));
+      setConfirmDeleteUser(null);
+    } catch (err) {
+      console.error("Failed to delete user:", err);
+    }
+  };
+
+  const roleBadgeColor = (role) => {
+    if (role === "admin") return C.accent;
+    if (role === "editor") return "#5B9BD5";
+    return C.darkMuted;
+  };
+
+  return (
+    <div style={{ padding: "24px 32px", maxWidth: 640 }}>
+      {/* Invite section */}
+      <div style={{ marginBottom: 28 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 600, color: C.darkText, marginBottom: 12 }}>
+          Invite New User
+        </h3>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <select
+            value={inviteRole}
+            onChange={(e) => setInviteRole(e.target.value)}
+            style={{
+              ...S.input,
+              background: C.darkSurf,
+              border: `1px solid ${C.darkBorder}`,
+              color: C.darkText,
+              padding: "8px 12px",
+              fontSize: 13,
+              borderRadius: RADIUS.md,
+              cursor: "pointer",
+            }}
+          >
+            <option value="admin">Admin</option>
+            <option value="editor">Editor</option>
+            <option value="viewer">Viewer</option>
+          </select>
+          <button onClick={handleInvite} style={{ ...S.btnPrimary, padding: "8px 18px", fontSize: 13 }}>
+            Generate Invite
+          </button>
+        </div>
+
+        {lastInvite && (
+          <div style={{
+            marginTop: 12,
+            background: C.accent + "18",
+            border: `1px solid ${C.accent}44`,
+            borderRadius: RADIUS.md,
+            padding: "10px 14px",
+            fontSize: 13,
+            color: C.accent,
+          }}>
+            Invite code:{" "}
+            <span
+              onClick={() => { try { navigator.clipboard.writeText(lastInvite.invite_code); } catch {} }}
+              style={{
+                fontFamily: MONO,
+                fontWeight: 700,
+                fontSize: 15,
+                letterSpacing: "0.05em",
+                cursor: "pointer",
+              }}
+              title="Click to copy"
+            >
+              {lastInvite.invite_code}
+            </span>
+            <span style={{ fontSize: 11, marginLeft: 8, opacity: 0.7 }}>
+              ({lastInvite.role}) — click to copy
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Team list */}
+      <h3 style={{ fontSize: 14, fontWeight: 600, color: C.darkText, marginBottom: 12 }}>
+        Team Members
+      </h3>
+
+      {loading ? (
+        <div style={{ fontSize: 13, color: C.darkMuted, padding: 16 }}>Loading users...</div>
+      ) : users.length === 0 ? (
+        <div style={{ fontSize: 13, color: C.darkMuted, padding: 16 }}>No users yet.</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {users.map((u) => {
+            const isPending = !!u.invite_code;
+            const isSelf = u.id === identity?.id;
+
+            return (
+              <div
+                key={u.id}
+                style={{
+                  background: C.darkSurf,
+                  border: `1px solid ${C.darkBorder}`,
+                  borderRadius: RADIUS.lg,
+                  padding: 14,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                }}
+              >
+                {/* Avatar */}
+                <span style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "50%",
+                  background: `linear-gradient(135deg, ${roleBadgeColor(u.role)}, ${roleBadgeColor(u.role)}cc)`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#fff",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  flexShrink: 0,
+                }}>
+                  {(u.display_name || "U").charAt(0).toUpperCase()}
+                </span>
+
+                {/* Name + status */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 14, fontWeight: 500, color: C.darkText }}>
+                      {u.display_name}
+                    </span>
+                    <span style={{
+                      fontSize: 9,
+                      fontWeight: 600,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.04em",
+                      color: roleBadgeColor(u.role),
+                      background: roleBadgeColor(u.role) + "18",
+                      padding: "2px 6px",
+                      borderRadius: RADIUS.pill,
+                    }}>
+                      {u.role}
+                    </span>
+                    {isSelf && (
+                      <span style={{ fontSize: 10, color: C.darkMuted, fontStyle: "italic" }}>you</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: C.darkMuted, marginTop: 2 }}>
+                    {isPending ? (
+                      <>
+                        Pending invite:{" "}
+                        <span style={{ fontFamily: MONO, fontWeight: 600 }}>{u.invite_code}</span>
+                      </>
+                    ) : (
+                      <>Active — joined {u.created_at ? new Date(u.created_at).toLocaleDateString() : "unknown"}</>
+                    )}
+                  </div>
+                </div>
+
+                {/* Actions (not on self) */}
+                {!isSelf && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                    <select
+                      value={u.role}
+                      onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                      style={{
+                        background: C.dark,
+                        border: `1px solid ${C.darkBorder}`,
+                        color: C.darkText,
+                        padding: "4px 8px",
+                        fontSize: 11,
+                        borderRadius: RADIUS.sm,
+                        cursor: "pointer",
+                        fontFamily: FONT,
+                      }}
+                    >
+                      <option value="admin">Admin</option>
+                      <option value="editor">Editor</option>
+                      <option value="viewer">Viewer</option>
+                    </select>
+                    <button
+                      onClick={() => setConfirmDeleteUser(u)}
+                      style={{
+                        background: "transparent",
+                        border: `1px solid #E0525244`,
+                        color: "#E05252",
+                        padding: "4px 10px",
+                        fontSize: 11,
+                        borderRadius: RADIUS.sm,
+                        cursor: "pointer",
+                        fontFamily: FONT,
+                        fontWeight: 500,
+                        transition: "background 0.1s",
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "#E0525215"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Confirm delete */}
+      {confirmDeleteUser && (
+        <ConfirmDialog
+          title={`Remove ${confirmDeleteUser.display_name}?`}
+          message="This will permanently delete this user and their connections. This action cannot be undone."
+          onConfirm={() => handleDelete(confirmDeleteUser.id)}
+          onCancel={() => setConfirmDeleteUser(null)}
+          confirmLabel="Remove"
         />
       )}
     </div>

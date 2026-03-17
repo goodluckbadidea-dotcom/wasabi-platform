@@ -16,6 +16,7 @@ import { S } from "./design/styles.js";
 import { C } from "./design/tokens.js";
 
 import SetupWizard from "./core/SetupWizard.jsx";
+import LoginScreen from "./core/LoginScreen.jsx";
 import TopHeader from "./core/TopHeader.jsx";
 import Navigation from "./core/Navigation.jsx";
 const ChatPanel = React.lazy(() => import("./zen/ChatPanel.jsx"));
@@ -90,6 +91,9 @@ function AppContent() {
     getFolderPages,
     globalDashboard,
     updatePageConfig,
+    identity,
+    multiUserEnabled,
+    identityLoading,
   } = usePlatform();
 
   const { theme, themeName } = useTheme();
@@ -250,8 +254,14 @@ function AppContent() {
     },
   ], [handleAddPage, wasabiPanelOpen, activePage, pages, activeFolder, getFolderPages, toggleNeurons, setActivePage]);
 
-  // Auth gate: show setup wizard if not connected
-  if (!isAuthenticated || !isSetup) {
+  // Auth gate: 3-tier — setup → login → app
+  if (!isSetup) {
+    return <SetupWizard />;
+  }
+  if (multiUserEnabled && !identity && !identityLoading) {
+    return <LoginScreen />;
+  }
+  if (!isAuthenticated) {
     return <SetupWizard />;
   }
 
