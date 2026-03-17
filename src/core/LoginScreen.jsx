@@ -1,6 +1,6 @@
 // ─── Login Screen ───
 // Shown after worker connection when multi-user is enabled but no JWT identity.
-// Two modes: Register (invite code + display name) or Login (user ID).
+// Two modes: Register (invite code + display name + password) or Login (name + password).
 // Matches SetupWizard visual design: centered card, WasabiFlame, dark bg.
 
 import React, { useState, useCallback } from "react";
@@ -13,10 +13,10 @@ import WasabiFlame from "./WasabiFlame.jsx";
 export default function LoginScreen() {
   const { register, login, adminInvite } = usePlatform();
 
-  const [mode, setMode] = useState(adminInvite ? "register" : "register"); // "register" | "login"
+  const [mode, setMode] = useState(adminInvite ? "register" : "login"); // "register" | "login"
   const [inviteCode, setInviteCode] = useState(adminInvite || "");
   const [displayName, setDisplayName] = useState("");
-  const [userId, setUserId] = useState("");
+  const [password, setPassword] = useState("");
   const [step, setStep] = useState("idle"); // "idle" | "loading" | "error"
   const [error, setError] = useState("");
 
@@ -25,31 +25,33 @@ export default function LoginScreen() {
     const name = displayName.trim();
     if (!code) { setError("Invite code is required."); return; }
     if (!name) { setError("Display name is required."); return; }
+    if (!password || password.length < 6) { setError("Password must be at least 6 characters."); return; }
 
     setStep("loading");
     setError("");
     try {
-      await register(code, name);
+      await register(code, name, password);
       // Success — AuthContext sets identity, App unmounts this screen
     } catch (err) {
       setError(err.message || "Registration failed");
       setStep("idle");
     }
-  }, [inviteCode, displayName, register]);
+  }, [inviteCode, displayName, password, register]);
 
   const handleLogin = useCallback(async () => {
-    const id = userId.trim();
-    if (!id) { setError("User ID is required."); return; }
+    const name = displayName.trim();
+    if (!name) { setError("Display name is required."); return; }
+    if (!password) { setError("Password is required."); return; }
 
     setStep("loading");
     setError("");
     try {
-      await login(id);
+      await login(name, password);
     } catch (err) {
       setError(err.message || "Login failed");
       setStep("idle");
     }
-  }, [userId, login]);
+  }, [displayName, password, login]);
 
   const isLoading = step === "loading";
 
@@ -63,6 +65,12 @@ export default function LoginScreen() {
     borderRadius: RADIUS.lg,
     width: "100%",
     boxSizing: "border-box",
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") {
+      mode === "register" ? handleRegister() : handleLogin();
+    }
   };
 
   return (
@@ -114,53 +122,52 @@ export default function LoginScreen() {
 
         {/* Form */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {mode === "register" ? (
-            <>
-              <div>
-                <label style={{ ...S.label, color: C.darkMuted, display: "block", marginBottom: 6 }}>
-                  Invite Code
-                </label>
-                <input
-                  type="text"
-                  value={inviteCode}
-                  onChange={(e) => setInviteCode(e.target.value)}
-                  placeholder="Enter your invite code"
-                  style={inputStyle}
-                  disabled={isLoading}
-                  onKeyDown={(e) => e.key === "Enter" && handleRegister()}
-                />
-              </div>
-              <div>
-                <label style={{ ...S.label, color: C.darkMuted, display: "block", marginBottom: 6 }}>
-                  Display Name
-                </label>
-                <input
-                  type="text"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="Your name"
-                  style={inputStyle}
-                  disabled={isLoading}
-                  onKeyDown={(e) => e.key === "Enter" && handleRegister()}
-                />
-              </div>
-            </>
-          ) : (
+          {mode === "register" && (
             <div>
               <label style={{ ...S.label, color: C.darkMuted, display: "block", marginBottom: 6 }}>
-                User ID
+                Invite Code
               </label>
               <input
                 type="text"
-                value={userId}
-                onChange={(e) => setUserId(e.target.value)}
-                placeholder="Enter your user ID"
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value)}
+                placeholder="Enter your invite code"
                 style={inputStyle}
                 disabled={isLoading}
-                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                onKeyDown={handleKeyDown}
               />
             </div>
           )}
+
+          <div>
+            <label style={{ ...S.label, color: C.darkMuted, display: "block", marginBottom: 6 }}>
+              Display Name
+            </label>
+            <input
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Your name"
+              style={inputStyle}
+              disabled={isLoading}
+              onKeyDown={handleKeyDown}
+            />
+          </div>
+
+          <div>
+            <label style={{ ...S.label, color: C.darkMuted, display: "block", marginBottom: 6 }}>
+              Password
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder={mode === "register" ? "Min 6 characters" : "Enter your password"}
+              style={inputStyle}
+              disabled={isLoading}
+              onKeyDown={handleKeyDown}
+            />
+          </div>
 
           {error && (
             <div style={{
@@ -221,7 +228,7 @@ export default function LoginScreen() {
             <>
               Already registered?{" "}
               <span
-                onClick={() => { setMode("login"); setError(""); }}
+                onClick={() => { setMode("login"); setError(""); setPassword(""); }}
                 style={{ color: C.accent, cursor: "pointer" }}
               >
                 Sign in
@@ -231,7 +238,7 @@ export default function LoginScreen() {
             <>
               Have an invite code?{" "}
               <span
-                onClick={() => { setMode("register"); setError(""); }}
+                onClick={() => { setMode("register"); setError(""); setPassword(""); }}
                 style={{ color: C.accent, cursor: "pointer" }}
               >
                 Register

@@ -728,17 +728,17 @@ export async function checkFreeBusy(timeMin, timeMax) {
 
 // ─── Auth ───
 
-export async function authRegister(inviteCode, displayName) {
+export async function authRegister(inviteCode, displayName, password) {
   return apiFetch("/auth/register", {
     method: "POST",
-    body: { invite_code: inviteCode, display_name: displayName },
+    body: { invite_code: inviteCode, display_name: displayName, password },
   });
 }
 
-export async function authLogin(userId) {
+export async function authLogin(displayName, password) {
   return apiFetch("/auth/login", {
     method: "POST",
-    body: { user_id: userId },
+    body: { display_name: displayName, password },
   });
 }
 
@@ -769,6 +769,21 @@ export async function updateUser(id, updates) {
 
 export async function deleteUser(id) {
   return apiFetch(`/users/${id}`, { method: "DELETE" });
+}
+
+export async function restoreUser(id) {
+  return apiFetch(`/users/${id}/restore`, { method: "POST" });
+}
+
+export async function hardDeleteUser(id, transferTo = "unassigned") {
+  return apiFetch(`/users/${id}/hard-delete`, {
+    method: "POST",
+    body: { transfer_to: transferTo },
+  });
+}
+
+export async function resetUserPassword(id) {
+  return apiFetch(`/users/${id}/reset`, { method: "POST" });
 }
 
 // ─── PIN Lock ───

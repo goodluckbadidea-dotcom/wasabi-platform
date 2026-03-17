@@ -1572,23 +1572,30 @@ function UsersTab({ identity }) {
   const [inviteRole, setInviteRole] = useState("editor");
   const [lastInvite, setLastInvite] = useState(null);
   const [confirmDeleteUser, setConfirmDeleteUser] = useState(null);
+  const [confirmHardDelete, setConfirmHardDelete] = useState(null);
+  const [hardDeleteTransfer, setHardDeleteTransfer] = useState("unassigned");
+  const [resetResult, setResetResult] = useState(null);
+
+  const refreshUsers = async () => {
+    try {
+      const res = await listUsers();
+      setUsers(res.users || []);
+    } catch (err) {
+      console.warn("Failed to load users:", err);
+    }
+  };
 
   // Load users
   useEffect(() => {
     setLoading(true);
-    listUsers()
-      .then((res) => setUsers(res.users || []))
-      .catch((err) => console.warn("Failed to load users:", err))
-      .finally(() => setLoading(false));
+    refreshUsers().finally(() => setLoading(false));
   }, []);
 
   const handleInvite = async () => {
     try {
       const result = await createInvite(inviteRole);
       setLastInvite(result.invite);
-      // Refresh list
-      const res = await listUsers();
-      setUsers(res.users || []);
+      await refreshUsers();
     } catch (err) {
       console.error("Failed to create invite:", err);
     }
@@ -1603,13 +1610,42 @@ function UsersTab({ identity }) {
     }
   };
 
-  const handleDelete = async (userId) => {
+  const handleSoftDelete = async (userId) => {
     try {
       await apiDeleteUser(userId);
-      setUsers((prev) => prev.filter((u) => u.id !== userId));
       setConfirmDeleteUser(null);
+      await refreshUsers();
     } catch (err) {
-      console.error("Failed to delete user:", err);
+      console.error("Failed to deactivate user:", err);
+    }
+  };
+
+  const handleRestore = async (userId) => {
+    try {
+      await api.restoreUser(userId);
+      await refreshUsers();
+    } catch (err) {
+      console.error("Failed to restore user:", err);
+    }
+  };
+
+  const handleHardDelete = async (userId) => {
+    try {
+      await api.hardDeleteUser(userId, hardDeleteTransfer);
+      setConfirmHardDelete(null);
+      setHardDeleteTransfer("unassigned");
+      await refreshUsers();
+    } catch (err) {
+      console.error("Failed to permanently delete user:", err);
+    }
+  };
+
+  const handleResetPassword = async (userId) => {
+    try {
+      const result = await api.resetUserPassword(userId);
+      setResetResult({ userId, inviteCode: result.invite_code });
+    } catch (err) {
+      console.error("Failed to reset password:", err);
     }
   };
 
@@ -1686,136 +1722,236 @@ function UsersTab({ identity }) {
         Team Members
       </h3>
 
-      {loading ? (
-        <div style={{ fontSize: 13, color: C.darkMuted, padding: 16 }}>Loading users...</div>
-      ) : users.length === 0 ? (
-        <div style={{ fontSize: 13, color: C.darkMuted, padding: 16 }}>No users yet.</div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {users.map((u) => {
-            const isPending = !!u.invite_code;
-            const isSelf = u.id === identity?.id;
+      {(() => {
+        const activeUsers = users.filter((u) => !u.deleted_at);
+        const deactivatedUsers = users.filter((u) => !!u.deleted_at);
 
-            return (
-              <div
-                key={u.id}
-                style={{
-                  background: C.darkSurf,
-                  border: `1px solid ${C.darkBorder}`,
-                  borderRadius: RADIUS.lg,
-                  padding: 14,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                }}
-              >
-                {/* Avatar */}
-                <span style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: "50%",
-                  background: `linear-gradient(135deg, ${roleBadgeColor(u.role)}, ${roleBadgeColor(u.role)}cc)`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#fff",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  flexShrink: 0,
-                }}>
-                  {(u.display_name || "U").charAt(0).toUpperCase()}
-                </span>
+        const actionBtnStyle = {
+          background: "transparent",
+          padding: "4px 10px",
+          fontSize: 11,
+          borderRadius: RADIUS.sm,
+          cursor: "pointer",
+          fontFamily: FONT,
+          fontWeight: 500,
+          transition: "background 0.1s",
+        };
 
-                {/* Name + status */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 14, fontWeight: 500, color: C.darkText }}>
-                      {u.display_name}
-                    </span>
-                    <span style={{
-                      fontSize: 9,
-                      fontWeight: 600,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.04em",
-                      color: roleBadgeColor(u.role),
-                      background: roleBadgeColor(u.role) + "18",
-                      padding: "2px 6px",
-                      borderRadius: RADIUS.pill,
-                    }}>
-                      {u.role}
-                    </span>
-                    {isSelf && (
-                      <span style={{ fontSize: 10, color: C.darkMuted, fontStyle: "italic" }}>you</span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 11, color: C.darkMuted, marginTop: 2 }}>
-                    {isPending ? (
-                      <>
-                        Pending invite:{" "}
-                        <span style={{ fontFamily: MONO, fontWeight: 600 }}>{u.invite_code}</span>
-                      </>
-                    ) : (
-                      <>Active — joined {u.created_at ? new Date(u.created_at).toLocaleDateString() : "unknown"}</>
-                    )}
-                  </div>
+        const renderUserCard = (u, isDeactivated = false) => {
+          const isPending = !!u.invite_code;
+          const isSelf = u.id === identity?.id;
+
+          return (
+            <div
+              key={u.id}
+              style={{
+                background: C.darkSurf,
+                border: `1px solid ${C.darkBorder}`,
+                borderRadius: RADIUS.lg,
+                padding: 14,
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                opacity: isDeactivated ? 0.5 : 1,
+              }}
+            >
+              {/* Avatar */}
+              <span style={{
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                background: isDeactivated
+                  ? C.darkMuted + "44"
+                  : `linear-gradient(135deg, ${roleBadgeColor(u.role)}, ${roleBadgeColor(u.role)}cc)`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#fff",
+                fontSize: 12,
+                fontWeight: 700,
+                flexShrink: 0,
+              }}>
+                {(u.display_name || "U").charAt(0).toUpperCase()}
+              </span>
+
+              {/* Name + status */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 14, fontWeight: 500, color: C.darkText }}>
+                    {u.display_name}
+                  </span>
+                  <span style={{
+                    fontSize: 9,
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                    color: isDeactivated ? "#E05252" : roleBadgeColor(u.role),
+                    background: isDeactivated ? "#E0525218" : roleBadgeColor(u.role) + "18",
+                    padding: "2px 6px",
+                    borderRadius: RADIUS.pill,
+                  }}>
+                    {isDeactivated ? "deactivated" : u.role}
+                  </span>
+                  {isSelf && (
+                    <span style={{ fontSize: 10, color: C.darkMuted, fontStyle: "italic" }}>you</span>
+                  )}
                 </div>
+                <div style={{ fontSize: 11, color: C.darkMuted, marginTop: 2 }}>
+                  {isDeactivated ? (
+                    <>Deactivated {u.deleted_at ? new Date(u.deleted_at).toLocaleDateString() : ""}</>
+                  ) : isPending ? (
+                    <>
+                      Pending invite:{" "}
+                      <span style={{ fontFamily: MONO, fontWeight: 600 }}>{u.invite_code}</span>
+                    </>
+                  ) : (
+                    <>Active — joined {u.created_at ? new Date(u.created_at).toLocaleDateString() : "unknown"}</>
+                  )}
 
-                {/* Actions (not on self) */}
-                {!isSelf && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                    <select
-                      value={u.role}
-                      onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                      style={{
-                        background: C.dark,
-                        border: `1px solid ${C.darkBorder}`,
-                        color: C.darkText,
-                        padding: "4px 8px",
-                        fontSize: 11,
-                        borderRadius: RADIUS.sm,
-                        cursor: "pointer",
-                        fontFamily: FONT,
-                      }}
-                    >
-                      <option value="admin">Admin</option>
-                      <option value="editor">Editor</option>
-                      <option value="viewer">Viewer</option>
-                    </select>
-                    <button
-                      onClick={() => setConfirmDeleteUser(u)}
-                      style={{
-                        background: "transparent",
-                        border: `1px solid #E0525244`,
-                        color: "#E05252",
-                        padding: "4px 10px",
-                        fontSize: 11,
-                        borderRadius: RADIUS.sm,
-                        cursor: "pointer",
-                        fontFamily: FONT,
-                        fontWeight: 500,
-                        transition: "background 0.1s",
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = "#E0525215"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                )}
+                  {/* Reset result banner */}
+                  {resetResult?.userId === u.id && (
+                    <div style={{ marginTop: 4, color: C.accent, fontFamily: MONO, fontWeight: 600 }}>
+                      New invite code: {resetResult.inviteCode}
+                    </div>
+                  )}
+                </div>
               </div>
-            );
-          })}
-        </div>
-      )}
 
-      {/* Confirm delete */}
+              {/* Actions */}
+              {!isSelf && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                  {isDeactivated ? (
+                    <>
+                      <button
+                        onClick={() => handleRestore(u.id)}
+                        style={{ ...actionBtnStyle, border: `1px solid ${C.accent}44`, color: C.accent }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = C.accent + "15"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                      >
+                        Restore
+                      </button>
+                      <button
+                        onClick={() => setConfirmHardDelete(u)}
+                        style={{ ...actionBtnStyle, border: `1px solid #E0525244`, color: "#E05252" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "#E0525215"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                      >
+                        Delete Forever
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <select
+                        value={u.role}
+                        onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                        style={{
+                          background: C.dark,
+                          border: `1px solid ${C.darkBorder}`,
+                          color: C.darkText,
+                          padding: "4px 8px",
+                          fontSize: 11,
+                          borderRadius: RADIUS.sm,
+                          cursor: "pointer",
+                          fontFamily: FONT,
+                        }}
+                      >
+                        <option value="admin">Admin</option>
+                        <option value="editor">Editor</option>
+                        <option value="viewer">Viewer</option>
+                      </select>
+                      {!isPending && (
+                        <button
+                          onClick={() => handleResetPassword(u.id)}
+                          style={{ ...actionBtnStyle, border: `1px solid ${C.darkBorder}`, color: C.darkMuted }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = C.dark; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                        >
+                          Reset PW
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setConfirmDeleteUser(u)}
+                        style={{ ...actionBtnStyle, border: `1px solid #E0525244`, color: "#E05252" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "#E0525215"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                      >
+                        Deactivate
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        };
+
+        return loading ? (
+          <div style={{ fontSize: 13, color: C.darkMuted, padding: 16 }}>Loading users...</div>
+        ) : activeUsers.length === 0 && deactivatedUsers.length === 0 ? (
+          <div style={{ fontSize: 13, color: C.darkMuted, padding: 16 }}>No users yet.</div>
+        ) : (
+          <>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {activeUsers.map((u) => renderUserCard(u, false))}
+            </div>
+
+            {deactivatedUsers.length > 0 && (
+              <div style={{ marginTop: 24 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: C.darkMuted, marginBottom: 12 }}>
+                  Deactivated Users
+                </h3>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {deactivatedUsers.map((u) => renderUserCard(u, true))}
+                </div>
+              </div>
+            )}
+          </>
+        );
+      })()}
+
+      {/* Confirm soft delete */}
       {confirmDeleteUser && (
         <ConfirmDialog
-          title={`Remove ${confirmDeleteUser.display_name}?`}
-          message="This will permanently delete this user and their connections. This action cannot be undone."
-          onConfirm={() => handleDelete(confirmDeleteUser.id)}
+          title={`Deactivate ${confirmDeleteUser.display_name}?`}
+          message="This user will be deactivated and can be restored within 30 days. Their data will be preserved."
+          onConfirm={() => handleSoftDelete(confirmDeleteUser.id)}
           onCancel={() => setConfirmDeleteUser(null)}
-          confirmLabel="Remove"
+          confirmLabel="Deactivate"
+        />
+      )}
+
+      {/* Confirm hard delete */}
+      {confirmHardDelete && (
+        <ConfirmDialog
+          title={`Permanently delete ${confirmHardDelete.display_name}?`}
+          message={
+            <div>
+              <p style={{ marginBottom: 10 }}>This cannot be undone. What should happen to their owned records?</p>
+              <select
+                value={hardDeleteTransfer}
+                onChange={(e) => setHardDeleteTransfer(e.target.value)}
+                style={{
+                  background: C.dark,
+                  border: `1px solid ${C.darkBorder}`,
+                  color: C.darkText,
+                  padding: "6px 10px",
+                  fontSize: 12,
+                  borderRadius: RADIUS.sm,
+                  cursor: "pointer",
+                  fontFamily: FONT,
+                  width: "100%",
+                }}
+              >
+                <option value="unassigned">Mark as unassigned</option>
+                {users.filter((u) => !u.deleted_at && u.id !== confirmHardDelete.id).map((u) => (
+                  <option key={u.id} value={u.id}>Transfer to {u.display_name}</option>
+                ))}
+              </select>
+            </div>
+          }
+          onConfirm={() => handleHardDelete(confirmHardDelete.id)}
+          onCancel={() => { setConfirmHardDelete(null); setHardDeleteTransfer("unassigned"); }}
+          confirmLabel="Delete Forever"
         />
       )}
     </div>

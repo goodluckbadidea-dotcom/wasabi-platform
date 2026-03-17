@@ -150,8 +150,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   // ── Multi-user actions ──
-  const login = useCallback(async (userId) => {
-    const result = await authLogin(userId);
+  const login = useCallback(async (displayName, password) => {
+    const result = await authLogin(displayName, password);
     if (result.token) {
       saveJwt(result.token);
       setIdentity({ id: result.user.id, display_name: result.user.display_name, role: result.user.role });
@@ -160,8 +160,8 @@ export function AuthProvider({ children }) {
     return result;
   }, []);
 
-  const register = useCallback(async (inviteCode, displayName) => {
-    const result = await apiAuthRegister(inviteCode, displayName);
+  const register = useCallback(async (inviteCode, displayName, password) => {
+    const result = await apiAuthRegister(inviteCode, displayName, password);
     if (result.token) {
       saveJwt(result.token);
       setIdentity({ id: result.user.id, display_name: result.user.display_name, role: result.user.role });

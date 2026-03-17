@@ -386,7 +386,7 @@ function authenticate(request, env) {
 const ROLE_LEVEL = { admin: 3, editor: 2, viewer: 1 };
 
 function requireRole(user, minRole) {
-  if (!user) return false;
+  if (!user) return true; // single-user mode: no JWT = full access
   return (ROLE_LEVEL[user.role] || 0) >= (ROLE_LEVEL[minRole] || 99);
 }
 
@@ -518,6 +518,25 @@ export default {
         const userId = path.split("/users/")[1];
         const body = await request.json();
         return await handleUpdateUser(env, userId, body);
+      }
+      if (path.match(/^\/users\/[^/]+\/restore$/) && request.method === "POST") {
+        const user = await extractUser(request, env);
+        if (!requireRole(user, "admin")) return jsonResponse({ _error: "Admin required" }, 403);
+        const userId = path.split("/users/")[1].split("/restore")[0];
+        return await handleRestoreUser(env, userId);
+      }
+      if (path.match(/^\/users\/[^/]+\/hard-delete$/) && request.method === "POST") {
+        const user = await extractUser(request, env);
+        if (!requireRole(user, "admin")) return jsonResponse({ _error: "Admin required" }, 403);
+        const userId = path.split("/users/")[1].split("/hard-delete")[0];
+        const body = await request.json();
+        return await handleHardDeleteUser(env, userId, body);
+      }
+      if (path.match(/^\/users\/[^/]+\/reset$/) && request.method === "POST") {
+        const user = await extractUser(request, env);
+        if (!requireRole(user, "admin")) return jsonResponse({ _error: "Admin required" }, 403);
+        const userId = path.split("/users/")[1].split("/reset")[0];
+        return await handleResetUserPassword(env, userId);
       }
 
       // ─── PIN Lock ───
@@ -1448,12 +1467,8 @@ async function handleInit(env) {
     for (const sql of statements) {
       await env.DB.prepare(sql).run();
     }
-    // Create indexes
-    for (const sql of indexStatements) {
-      await env.DB.prepare(sql).run();
-    }
 
-    // Migrations for existing databases
+    // Migrations for existing databases (run BEFORE indexes, since indexes may reference new columns)
     const migrations = [
       "ALTER TABLE sheet_data ADD COLUMN row_heights TEXT DEFAULT '{}'",
       "ALTER TABLE sheet_data ADD COLUMN frozen TEXT DEFAULT '{}'",
@@ -1472,9 +1487,16 @@ async function handleInit(env) {
       "ALTER TABLE page_configs ADD COLUMN pin_protected INTEGER DEFAULT 0",
       "ALTER TABLE notifications ADD COLUMN target_user_id TEXT DEFAULT 'all'",
       "ALTER TABLE table_rows ADD COLUMN owner_user_id TEXT DEFAULT 'default'",
+      // Sprint 6: Account recovery
+      "ALTER TABLE users ADD COLUMN deleted_at TEXT DEFAULT NULL",
     ];
     for (const sql of migrations) {
       try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }
+    }
+
+    // Create indexes (after migrations so new columns exist)
+    for (const sql of indexStatements) {
+      await env.DB.prepare(sql).run();
     }
 
     // Bootstrap: if no users exist, create a default admin invite
@@ -1538,26 +1560,40 @@ async function handleFactoryReset(env) {
 // ─── Auth Handlers ───
 
 async function handleAuthRegister(env, body) {
-  const { invite_code, display_name } = body || {};
+  const { invite_code, display_name, password } = body || {};
   if (!invite_code || !display_name?.trim()) {
     return jsonResponse({ _error: "invite_code and display_name required" }, 400);
   }
+  if (!password || password.length < 6) {
+    return jsonResponse({ _error: "Password must be at least 6 characters" }, 400);
+  }
 
   try {
-    // Find the invite
+    // Find the invite (pending user with unused invite code, OR existing user with cleared password for re-registration)
     const invite = await env.DB.prepare(
-      "SELECT id, role, display_name FROM users WHERE invite_code = ? AND last_login_at IS NULL"
+      "SELECT id, role, display_name, password_hash FROM users WHERE invite_code = ? AND deleted_at IS NULL"
     ).bind(invite_code.trim()).first();
 
     if (!invite) {
       return jsonResponse({ _error: "Invalid or already used invite code" }, 400);
     }
 
-    // Update the user record: set display name, mark as registered
+    // Check display name uniqueness (exclude this user's own record)
+    const nameCheck = await env.DB.prepare(
+      "SELECT id FROM users WHERE display_name = ? AND id != ? AND deleted_at IS NULL"
+    ).bind(display_name.trim(), invite.id).first();
+    if (nameCheck) {
+      return jsonResponse({ _error: "Display name already taken" }, 400);
+    }
+
+    // Hash password
+    const passwordHash = await sha256(password);
+
+    // Update the user record: set display name, password, mark as registered
     const now = new Date().toISOString();
     await env.DB.prepare(
-      "UPDATE users SET display_name = ?, last_login_at = ?, invite_code = NULL WHERE id = ?"
-    ).bind(display_name.trim(), now, invite.id).run();
+      "UPDATE users SET display_name = ?, password_hash = ?, last_login_at = ?, invite_code = NULL WHERE id = ?"
+    ).bind(display_name.trim(), passwordHash, now, invite.id).run();
 
     // Generate JWT
     const token = await signJwt({ sub: invite.id, role: invite.role, name: display_name.trim() }, env);
@@ -1568,19 +1604,26 @@ async function handleAuthRegister(env, body) {
 }
 
 async function handleAuthLogin(env, body) {
-  const { user_id, invite_code } = body || {};
+  const { display_name, password } = body || {};
+
+  if (!display_name?.trim() || !password) {
+    return jsonResponse({ _error: "Invalid credentials" }, 401);
+  }
 
   try {
-    let user;
-    if (user_id) {
-      user = await env.DB.prepare("SELECT id, display_name, role FROM users WHERE id = ?").bind(user_id).first();
-    } else if (invite_code) {
-      // Allow login by invite code for users who haven't cleared it yet
-      user = await env.DB.prepare("SELECT id, display_name, role FROM users WHERE invite_code = ?").bind(invite_code.trim()).first();
-    }
+    // Look up by display name (active users only)
+    const user = await env.DB.prepare(
+      "SELECT id, display_name, role, password_hash FROM users WHERE display_name = ? AND deleted_at IS NULL AND password_hash IS NOT NULL"
+    ).bind(display_name.trim()).first();
 
     if (!user) {
-      return jsonResponse({ _error: "User not found" }, 401);
+      return jsonResponse({ _error: "Invalid credentials" }, 401);
+    }
+
+    // Verify password
+    const inputHash = await sha256(password);
+    if (inputHash !== user.password_hash) {
+      return jsonResponse({ _error: "Invalid credentials" }, 401);
     }
 
     // Update last login
@@ -1646,7 +1689,7 @@ async function handleCreateInvite(env, body) {
 async function handleListUsers(env) {
   try {
     const rows = await env.DB.prepare(
-      "SELECT id, display_name, role, invite_code, created_at, last_login_at FROM users ORDER BY created_at"
+      "SELECT id, display_name, role, invite_code, created_at, last_login_at, deleted_at FROM users ORDER BY deleted_at IS NOT NULL, created_at"
     ).all();
     return jsonResponse({ users: rows.results });
   } catch (err) {
@@ -1655,13 +1698,53 @@ async function handleListUsers(env) {
 }
 
 async function handleDeleteUser(env, userId, requestingUser) {
-  if (userId === requestingUser.sub) {
+  if (userId === requestingUser?.sub && requestingUser) {
     return jsonResponse({ _error: "Cannot delete your own account" }, 400);
   }
   try {
+    // Soft delete: set deleted_at timestamp (30-day grace period)
+    await env.DB.prepare("UPDATE users SET deleted_at = datetime('now') WHERE id = ?").bind(userId).run();
+    return jsonResponse({ ok: true });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleRestoreUser(env, userId) {
+  try {
+    await env.DB.prepare("UPDATE users SET deleted_at = NULL WHERE id = ?").bind(userId).run();
+    return jsonResponse({ ok: true });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleHardDeleteUser(env, userId, body) {
+  try {
+    const transferTo = body?.transfer_to; // user ID or 'unassigned'
+    if (transferTo && transferTo !== 'unassigned') {
+      // Transfer owned records to another user
+      await env.DB.prepare("UPDATE table_rows SET owner_user_id = ? WHERE owner_user_id = ?").bind(transferTo, userId).run();
+    } else {
+      // Mark as unassigned
+      await env.DB.prepare("UPDATE table_rows SET owner_user_id = 'unassigned' WHERE owner_user_id = ?").bind(userId).run();
+    }
+    // Hard delete user and connections
     await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(userId).run();
     await env.DB.prepare("DELETE FROM user_connections WHERE user_id = ?").bind(userId).run();
     return jsonResponse({ ok: true });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleResetUserPassword(env, userId) {
+  try {
+    const newCode = crypto.randomUUID().slice(0, 8).toUpperCase();
+    await env.DB.prepare(
+      "UPDATE users SET invite_code = ?, password_hash = NULL WHERE id = ?"
+    ).bind(newCode, userId).run();
+    return jsonResponse({ ok: true, invite_code: newCode });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
   }
