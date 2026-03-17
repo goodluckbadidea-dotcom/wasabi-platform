@@ -1,8 +1,66 @@
 // ─── Report Generator ───
 // Generates PDF reports from chat message content.
-// Extracts tables, charts, and text from markdown and renders a clean report.
+// Extracts tables, charts, and text from markdown and renders a themed report.
+// Reads live theme tokens from the app's design system.
 
 import { jsPDF } from "jspdf";
+import { C } from "../design/tokens.js";
+
+// ─── Helpers ───
+
+/** Convert hex color (#RRGGBB or #RGB) to [r, g, b] array */
+function hexToRgb(hex) {
+  if (!hex || typeof hex !== "string") return [180, 180, 185];
+  hex = hex.replace("#", "");
+  // Strip alpha suffix if present (e.g. "5CC63A44" → "5CC63A")
+  if (hex.length > 6) hex = hex.slice(0, 6);
+  if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+  const n = parseInt(hex, 16);
+  if (isNaN(n)) return [180, 180, 185];
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** Lighten an RGB array by a factor */
+function lightenRgb(rgb, factor) {
+  return rgb.map((c) => Math.round(c + (255 - c) * factor));
+}
+
+/** Darken an RGB array by a factor */
+function darkenRgb(rgb, factor) {
+  return rgb.map((c) => Math.round(c * (1 - factor)));
+}
+
+/**
+ * Strip ALL non-ASCII characters (emoji, special Unicode) that jsPDF can't render.
+ * Also strip markdown bold/italic/code/link formatting.
+ */
+function cleanText(text) {
+  if (!text) return "";
+  return text
+    // Strip markdown
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/__(.+?)__/g, "$1")
+    .replace(/_(.+?)_/g, "$1")
+    .replace(/`(.+?)`/g, "$1")
+    .replace(/\[(.+?)\]\(.+?\)/g, "$1")
+    // Strip emoji and non-Latin Unicode (keep basic ASCII + common Latin-1 supplement)
+    .replace(/[\u{1F000}-\u{1FFFF}]/gu, "")
+    .replace(/[\u{2600}-\u{27BF}]/gu, "")
+    .replace(/[\u{FE00}-\u{FE0F}]/gu, "")
+    .replace(/[\u{200B}-\u{200D}]/gu, "")
+    .replace(/[\u{E0000}-\u{E007F}]/gu, "")
+    // Replace common Unicode symbols with ASCII equivalents
+    .replace(/\u2014/g, " -- ")  // em dash
+    .replace(/\u2013/g, "-")     // en dash
+    .replace(/\u2018|\u2019/g, "'")  // smart quotes
+    .replace(/\u201C|\u201D/g, '"')  // smart double quotes
+    .replace(/\u2026/g, "...")   // ellipsis
+    .replace(/\u2022/g, "-")    // bullet
+    .replace(/[\u0100-\u024F]/g, (c) => c.normalize("NFD").replace(/[\u0300-\u036f]/g, "")) // accented → base
+    // Remove any remaining non-printable or unsupported chars
+    .replace(/[^\x20-\x7E\n\r\t]/g, "")
+    .trim();
+}
 
 // ─── Markdown Parser (extracts structured blocks) ───
 
@@ -57,7 +115,7 @@ function parseBlocks(text) {
     // Heading
     const headingMatch = line.match(/^(#{1,3})\s+(.+)/);
     if (headingMatch) {
-      blocks.push({ type: "heading", level: headingMatch[1].length, text: stripInline(headingMatch[2]) });
+      blocks.push({ type: "heading", level: headingMatch[1].length, text: cleanText(headingMatch[2]) });
       i++;
       continue;
     }
@@ -73,7 +131,7 @@ function parseBlocks(text) {
     if (line.match(/^[\s]*[-*]\s+/)) {
       const items = [];
       while (i < lines.length && lines[i].match(/^[\s]*[-*]\s+/)) {
-        items.push(stripInline(lines[i].replace(/^[\s]*[-*]\s+/, "")));
+        items.push(cleanText(lines[i].replace(/^[\s]*[-*]\s+/, "")));
         i++;
       }
       blocks.push({ type: "list", items });
@@ -84,7 +142,7 @@ function parseBlocks(text) {
     if (line.match(/^\d+\.\s+/)) {
       const items = [];
       while (i < lines.length && lines[i].match(/^\d+\.\s+/)) {
-        items.push(stripInline(lines[i].replace(/^\d+\.\s+/, "")));
+        items.push(cleanText(lines[i].replace(/^\d+\.\s+/, "")));
         i++;
       }
       blocks.push({ type: "olist", items });
@@ -98,445 +156,670 @@ function parseBlocks(text) {
     }
 
     // Paragraph
-    blocks.push({ type: "text", content: stripInline(line) });
+    blocks.push({ type: "text", content: cleanText(line) });
     i++;
   }
 
   return blocks;
 }
 
-/** Strip markdown inline formatting (bold, italic, code, links) to plain text */
-function stripInline(text) {
-  if (!text) return "";
-  return text
-    .replace(/\*\*(.+?)\*\*/g, "$1")     // bold
-    .replace(/_(.+?)_/g, "$1")             // italic
-    .replace(/`(.+?)`/g, "$1")             // inline code
-    .replace(/\[(.+?)\]\(.+?\)/g, "$1");   // links
+// ─── Auto-generate chart from table data ───
+
+/**
+ * Analyze a table and produce a chart config if the data is chartable.
+ * Looks for a numeric column paired with a label column.
+ */
+function autoChartFromTable(block) {
+  const { headers, rows } = block;
+  if (!headers || rows.length < 2 || rows.length > 20) return null;
+
+  // Find numeric columns (>50% of values are numbers)
+  const numericCols = [];
+  const labelCols = [];
+  for (let c = 0; c < headers.length; c++) {
+    let numCount = 0;
+    for (const row of rows) {
+      const val = (row[c] || "").replace(/[$,%]/g, "").replace(/,/g, "").trim();
+      if (val && !isNaN(Number(val))) numCount++;
+    }
+    if (numCount >= rows.length * 0.5) {
+      numericCols.push(c);
+    } else {
+      labelCols.push(c);
+    }
+  }
+
+  if (numericCols.length === 0 || labelCols.length === 0) return null;
+
+  // Use first label column and first numeric column
+  const labelCol = labelCols[0];
+  const valueCol = numericCols[0];
+
+  const data = rows.map((row) => ({
+    label: cleanText(row[labelCol] || ""),
+    value: Number((row[valueCol] || "0").replace(/[$,%]/g, "").replace(/,/g, "")) || 0,
+  })).filter((d) => d.label);
+
+  if (data.length < 2) return null;
+
+  return {
+    type: data.length <= 6 ? "bar" : "bar",
+    title: cleanText(headers[valueCol]) || "Data",
+    data,
+  };
 }
+
 
 // ─── PDF Generator ───
 
-// Colors
-const PDF_BG = [18, 18, 22];
-const PDF_SURF = [28, 28, 34];
-const PDF_TEXT = [230, 230, 235];
-const PDF_MUTED = [140, 140, 150];
-const PDF_ACCENT = [92, 198, 58]; // wasabi green
-const PDF_BORDER = [50, 50, 58];
-const PDF_TABLE_HEADER = [35, 35, 42];
-
-const CHART_COLORS = [
-  [92, 198, 58],   // green
-  [58, 142, 198],  // blue
-  [198, 142, 58],  // amber
-  [198, 58, 92],   // red
-  [142, 58, 198],  // purple
-  [58, 198, 162],  // teal
-  [198, 98, 58],   // orange
-  [158, 198, 58],  // lime
-];
-
 /**
  * Generate a PDF report from a chat message's markdown content.
+ * Uses the current app theme for colors.
  * @param {string} content - Markdown text from the assistant message
  * @param {string} [title] - Optional report title override
  * @returns {Blob} PDF blob for download
  */
 export function generateReport(content, title) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-  const pw = doc.internal.pageSize.getWidth();   // 210
-  const ph = doc.internal.pageSize.getHeight();  // 297
-  const margin = 15;
+  const pw = doc.internal.pageSize.getWidth();
+  const ph = doc.internal.pageSize.getHeight();
+  const margin = 16;
   const contentW = pw - margin * 2;
   let y = margin;
 
+  // Read theme colors
+  const colBg = hexToRgb(C.dark);
+  const colSurf = hexToRgb(C.darkSurf);
+  const colSurf2 = hexToRgb(C.darkSurf2);
+  const colText = hexToRgb(C.darkText);
+  const colMuted = hexToRgb(C.darkMuted);
+  const colAccent = hexToRgb(C.accent);
+  const colBorder = hexToRgb(C.darkBorder);
+  const colTableHead = darkenRgb(colSurf, 0.15);
+
+  const CHART_COLORS = [
+    colAccent,
+    [88, 166, 222],  // blue
+    [222, 166, 88],  // amber
+    [222, 88, 120],  // rose
+    [166, 88, 222],  // purple
+    [88, 222, 188],  // teal
+    [222, 128, 88],  // orange
+    lightenRgb(colAccent, 0.3), // light accent
+  ];
+
   const blocks = parseBlocks(content);
 
-  // Detect title from first heading or use override
-  let reportTitle = title || "Wasabi Report";
-  if (!title && blocks.length > 0 && blocks[0].type === "heading") {
-    reportTitle = blocks[0].text;
+  // Detect title from first heading, or first bold text, or fallback
+  let reportTitle = title || "";
+  if (!reportTitle) {
+    const firstHeading = blocks.find((b) => b.type === "heading");
+    if (firstHeading) reportTitle = firstHeading.text;
   }
+  if (!reportTitle) {
+    // Try to extract from first text line that looks like a title
+    const firstText = blocks.find((b) => b.type === "text");
+    if (firstText && firstText.content.length < 80) reportTitle = firstText.content;
+  }
+  if (!reportTitle) reportTitle = "Wasabi Report";
 
-  // ─── Page background ───
+  const dateStr = new Date().toLocaleDateString("en-US", {
+    year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+
+  // ─── Page utilities ───
+
   function drawPageBg() {
-    doc.setFillColor(...PDF_BG);
+    doc.setFillColor(...colBg);
     doc.rect(0, 0, pw, ph, "F");
   }
 
   function checkPage(needed = 20) {
-    if (y + needed > ph - margin) {
+    if (y + needed > ph - 18) {
       doc.addPage();
       drawPageBg();
-      drawFooter();
       y = margin;
+      return true;
     }
+    return false;
   }
 
-  function drawFooter() {
-    const pageNum = doc.getNumberOfPages();
-    doc.setFontSize(8);
-    doc.setTextColor(...PDF_MUTED);
-    doc.text(`Page ${pageNum}`, pw / 2, ph - 8, { align: "center" });
-    doc.text(new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }), pw - margin, ph - 8, { align: "right" });
-  }
-
+  // ─── Page 1 ───
   drawPageBg();
 
-  // ─── Header ───
-  doc.setFillColor(...PDF_SURF);
-  doc.roundedRect(margin, y, contentW, 22, 3, 3, "F");
+  // Header block
+  doc.setFillColor(...colSurf);
+  doc.roundedRect(margin, y, contentW, 24, 3, 3, "F");
+  doc.setFillColor(...colAccent);
+  doc.rect(margin, y, 3, 24, "F");
 
-  // Accent bar
-  doc.setFillColor(...PDF_ACCENT);
-  doc.rect(margin, y, 3, 22, "F");
-
-  doc.setFontSize(16);
-  doc.setTextColor(...PDF_TEXT);
+  doc.setFontSize(15);
+  doc.setTextColor(...colText);
   doc.setFont("helvetica", "bold");
-  doc.text(reportTitle, margin + 10, y + 10);
+  const titleClean = cleanText(reportTitle);
+  const titleLines = doc.splitTextToSize(titleClean, contentW - 16);
+  doc.text(titleLines[0] || "Report", margin + 10, y + 10.5);
 
-  doc.setFontSize(9);
-  doc.setTextColor(...PDF_MUTED);
+  doc.setFontSize(8.5);
+  doc.setTextColor(...colMuted);
   doc.setFont("helvetica", "normal");
-  const dateStr = new Date().toLocaleDateString("en-US", {
-    year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit",
-  });
-  doc.text(`Generated ${dateStr}`, margin + 10, y + 17);
+  doc.text("Generated " + dateStr, margin + 10, y + 18);
+  // Wasabi label on right
+  doc.setFontSize(8);
+  doc.setTextColor(...colAccent);
+  doc.setFont("helvetica", "bold");
+  doc.text("WASABI", margin + contentW - 5, y + 10.5, { align: "right" });
+  doc.setFont("helvetica", "normal");
 
-  y += 30;
+  y += 32;
 
-  // ─── Render blocks ───
-  for (const block of blocks) {
-    // Skip the first heading if it was used as title
+  // ─── Render all blocks ───
+  for (let bi = 0; bi < blocks.length; bi++) {
+    const block = blocks[bi];
+
+    // Skip first heading if used as title
     if (block === blocks[0] && block.type === "heading" && !title) continue;
 
     switch (block.type) {
       case "heading":
-        renderHeading(doc, block, margin, contentW);
+        _renderHeading(block);
         break;
       case "text":
-        renderText(doc, block.content, margin, contentW);
+        _renderText(block.content);
         break;
       case "list":
-        renderList(doc, block.items, margin, contentW, false);
+        _renderList(block.items, false);
         break;
       case "olist":
-        renderList(doc, block.items, margin, contentW, true);
+        _renderList(block.items, true);
         break;
       case "table":
-        renderTable(doc, block, margin, contentW);
+        _renderTable(block);
         break;
       case "chart":
-        renderChart(doc, block.config, margin, contentW);
+        _renderChart(block.config);
+        break;
+      case "code":
+        _renderCode(block.content);
         break;
       case "hr":
         checkPage(8);
-        doc.setDrawColor(...PDF_BORDER);
+        doc.setDrawColor(...colBorder);
         doc.setLineWidth(0.3);
-        doc.line(margin, y + 3, margin + contentW, y + 3);
+        doc.line(margin + 10, y + 3, margin + contentW - 10, y + 3);
         y += 8;
-        break;
-      default:
         break;
     }
   }
 
-  // Draw footer on all pages
+  // ─── Footers on all pages ───
   const totalPages = doc.getNumberOfPages();
   for (let p = 1; p <= totalPages; p++) {
     doc.setPage(p);
-    doc.setFontSize(8);
-    doc.setTextColor(...PDF_MUTED);
-    doc.text(`Page ${p} of ${totalPages}`, pw / 2, ph - 8, { align: "center" });
-    doc.text(dateStr.split(",")[0], pw - margin, ph - 8, { align: "right" });
+    // Subtle footer line
+    doc.setDrawColor(...colBorder);
+    doc.setLineWidth(0.2);
+    doc.line(margin, ph - 12, margin + contentW, ph - 12);
 
-    // Wasabi watermark
-    doc.setFontSize(7);
-    doc.setTextColor(...PDF_MUTED);
-    doc.text("Wasabi", margin, ph - 8);
+    doc.setFontSize(7.5);
+    doc.setTextColor(...colMuted);
+    doc.setFont("helvetica", "normal");
+    doc.text("Wasabi", margin, ph - 7);
+    doc.text(p + " / " + totalPages, pw / 2, ph - 7, { align: "center" });
+    doc.text(dateStr.split(",")[0], margin + contentW, ph - 7, { align: "right" });
   }
 
   return doc.output("blob");
 
-  // ─── Block renderers (closures over doc, y, margin, etc.) ───
+  // ─── Block renderers (closures) ───
 
-  function renderHeading(doc, block) {
-    const sizes = { 1: 14, 2: 12, 3: 10 };
-    const fontSize = sizes[block.level] || 10;
-    checkPage(fontSize + 8);
-    y += block.level === 1 ? 8 : 5;
+  function _renderHeading(block) {
+    const sizes = { 1: 13, 2: 11, 3: 9.5 };
+    const fontSize = sizes[block.level] || 9.5;
+    const spacing = block.level === 1 ? 10 : 7;
+    checkPage(fontSize + spacing + 4);
+
+    y += spacing;
+
+    // Accent underline for h1
+    if (block.level === 1) {
+      doc.setFillColor(...colAccent);
+      doc.rect(margin, y - 2, 20, 0.8, "F");
+    }
+
     doc.setFontSize(fontSize);
-    doc.setTextColor(...PDF_TEXT);
+    doc.setTextColor(...colText);
     doc.setFont("helvetica", "bold");
-    const wrappedLines = doc.splitTextToSize(block.text, contentW);
-    doc.text(wrappedLines, margin, y);
-    y += wrappedLines.length * (fontSize * 0.45) + 4;
+    const wrapped = doc.splitTextToSize(block.text, contentW);
+    doc.text(wrapped, margin, y + 2);
+    y += wrapped.length * (fontSize * 0.42) + 5;
     doc.setFont("helvetica", "normal");
   }
 
-  function renderText(doc, text) {
-    doc.setFontSize(10);
-    doc.setTextColor(...PDF_TEXT);
+  function _renderText(text) {
+    if (!text) return;
+    doc.setFontSize(9.5);
+    doc.setTextColor(...colText);
     doc.setFont("helvetica", "normal");
-    const wrappedLines = doc.splitTextToSize(text, contentW);
-    const lineH = 4.5;
-    checkPage(wrappedLines.length * lineH + 4);
-    doc.text(wrappedLines, margin, y);
-    y += wrappedLines.length * lineH + 3;
+    const wrapped = doc.splitTextToSize(text, contentW);
+    const lineH = 4.2;
+    checkPage(wrapped.length * lineH + 4);
+    doc.text(wrapped, margin, y);
+    y += wrapped.length * lineH + 3;
   }
 
-  function renderList(doc, items, marginL, w, ordered) {
-    doc.setFontSize(10);
-    doc.setTextColor(...PDF_TEXT);
+  function _renderList(items, ordered) {
+    doc.setFontSize(9.5);
+    doc.setTextColor(...colText);
     doc.setFont("helvetica", "normal");
-    const indent = 6;
-    const lineH = 4.5;
+    const indent = 5;
+    const lineH = 4.2;
 
     for (let idx = 0; idx < items.length; idx++) {
-      const prefix = ordered ? `${idx + 1}. ` : "• ";
-      const wrapped = doc.splitTextToSize(prefix + items[idx], w - indent);
+      const prefix = ordered ? `${idx + 1}. ` : "- ";
+      const fullText = prefix + items[idx];
+      const wrapped = doc.splitTextToSize(fullText, contentW - indent);
       checkPage(wrapped.length * lineH + 2);
-      doc.text(wrapped, marginL + indent, y);
+
+      // Accent bullet dot for unordered
+      if (!ordered) {
+        doc.setFillColor(...colAccent);
+        doc.circle(margin + 1.5, y - 1, 0.8, "F");
+        doc.setTextColor(...colText);
+      }
+
+      doc.text(wrapped, margin + indent, y);
       y += wrapped.length * lineH + 1.5;
     }
     y += 2;
   }
 
-  function renderTable(doc, block) {
+  function _renderCode(content) {
+    if (!content) return;
+    doc.setFontSize(8);
+    const cleaned = cleanText(content);
+    const wrapped = doc.splitTextToSize(cleaned, contentW - 12);
+    const lineH = 3.5;
+    const blockH = wrapped.length * lineH + 10;
+    checkPage(Math.min(blockH, 80));
+
+    doc.setFillColor(...darkenRgb(colBg, 0.2));
+    doc.roundedRect(margin, y, contentW, Math.min(blockH, 80), 2, 2, "F");
+    doc.setDrawColor(...colBorder);
+    doc.setLineWidth(0.2);
+    doc.roundedRect(margin, y, contentW, Math.min(blockH, 80), 2, 2, "S");
+
+    doc.setFont("courier", "normal");
+    doc.setTextColor(...colMuted);
+    const maxLines = Math.floor(70 / lineH);
+    const displayLines = wrapped.slice(0, maxLines);
+    doc.text(displayLines, margin + 6, y + 5);
+    doc.setFont("helvetica", "normal");
+
+    y += Math.min(blockH, 80) + 4;
+  }
+
+  function _renderTable(block) {
     const { headers, rows } = block;
     if (!headers || headers.length === 0) return;
 
     const numCols = headers.length;
-    const colW = contentW / numCols;
-    const cellPadX = 3;
-    const rowH = 7;
-    const headerH = 8;
 
-    // Estimate total height
-    const totalH = headerH + rows.length * rowH + 4;
-    checkPage(Math.min(totalH, 60));
+    // Smart column widths based on content
+    const colWidths = _calcColWidths(headers, rows, numCols);
+    const cellPadX = 2.5;
+    const headerH = 7.5;
 
-    y += 3;
+    checkPage(headerH + 10);
+    y += 4;
 
-    // Table border
-    doc.setDrawColor(...PDF_BORDER);
-    doc.setLineWidth(0.2);
+    const tableStartY = y;
 
     // Header row
-    doc.setFillColor(...PDF_TABLE_HEADER);
-    doc.rect(margin, y, contentW, headerH, "F");
-    doc.setFontSize(8);
-    doc.setTextColor(...PDF_MUTED);
+    doc.setFillColor(...colTableHead);
+    doc.roundedRect(margin, y, contentW, headerH, 1.5, 1.5, "F");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...colMuted);
     doc.setFont("helvetica", "bold");
+
+    let xOff = margin;
     for (let c = 0; c < numCols; c++) {
-      const text = headers[c] || "";
-      const cellX = margin + c * colW + cellPadX;
-      doc.text(text.toUpperCase(), cellX, y + 5.5, { maxWidth: colW - cellPadX * 2 });
+      const text = cleanText(headers[c] || "").toUpperCase();
+      doc.text(text, xOff + cellPadX, y + 5, { maxWidth: colWidths[c] - cellPadX * 2 });
+      xOff += colWidths[c];
     }
     y += headerH;
 
     // Data rows
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    for (let r = 0; r < rows.length; r++) {
-      checkPage(rowH + 2);
+    doc.setFontSize(8.5);
 
-      // Alternating row background
+    for (let r = 0; r < rows.length; r++) {
+      // Calculate row height based on content wrapping
+      let maxCellH = 6;
+      const cellTexts = [];
+      for (let c = 0; c < numCols; c++) {
+        const raw = cleanText(rows[r]?.[c] || "");
+        const wrapped = doc.splitTextToSize(raw, colWidths[c] - cellPadX * 2);
+        cellTexts.push(wrapped);
+        const cellH = wrapped.length * 3.8 + 3;
+        if (cellH > maxCellH) maxCellH = cellH;
+      }
+
+      // Cap row height
+      const rowH = Math.min(maxCellH, 18);
+
+      if (checkPage(rowH + 2)) {
+        // Redraw header on new page
+        doc.setFillColor(...colTableHead);
+        doc.roundedRect(margin, y, contentW, headerH, 1.5, 1.5, "F");
+        doc.setFontSize(7.5);
+        doc.setTextColor(...colMuted);
+        doc.setFont("helvetica", "bold");
+        let xh = margin;
+        for (let c = 0; c < numCols; c++) {
+          doc.text(cleanText(headers[c] || "").toUpperCase(), xh + cellPadX, y + 5, { maxWidth: colWidths[c] - cellPadX * 2 });
+          xh += colWidths[c];
+        }
+        y += headerH;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8.5);
+      }
+
+      // Alternating row bg
       if (r % 2 === 0) {
-        doc.setFillColor(22, 22, 28);
+        doc.setFillColor(...darkenRgb(colSurf, 0.08));
         doc.rect(margin, y, contentW, rowH, "F");
       }
 
-      doc.setTextColor(...PDF_TEXT);
+      // Cell text
+      doc.setTextColor(...colText);
+      xOff = margin;
       for (let c = 0; c < numCols; c++) {
-        const text = (rows[r]?.[c] || "").toString();
-        const cellX = margin + c * colW + cellPadX;
-        doc.text(text, cellX, y + 5, { maxWidth: colW - cellPadX * 2 });
+        const lines = cellTexts[c];
+        // Only show lines that fit
+        const maxLines = Math.floor((rowH - 1) / 3.8);
+        const display = lines.slice(0, Math.max(1, maxLines));
+        doc.text(display, xOff + cellPadX, y + 4);
+        xOff += colWidths[c];
       }
 
-      // Row border
-      doc.setDrawColor(...PDF_BORDER);
+      // Row bottom border
+      doc.setDrawColor(...colBorder);
+      doc.setLineWidth(0.15);
       doc.line(margin, y + rowH, margin + contentW, y + rowH);
       y += rowH;
     }
 
     // Table outer border
-    const tableTop = y - rows.length * rowH - headerH;
-    doc.setDrawColor(...PDF_BORDER);
-    doc.rect(margin, tableTop, contentW, y - tableTop);
+    doc.setDrawColor(...colBorder);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(margin, tableStartY, contentW, y - tableStartY, 1.5, 1.5, "S");
 
-    y += 5;
+    y += 4;
+
+    // Auto-generate visualization from table data
+    const autoChart = autoChartFromTable(block);
+    if (autoChart) {
+      _renderChart(autoChart);
+    }
   }
 
-  function renderChart(doc, config) {
+  function _calcColWidths(headers, rows, numCols) {
+    // Measure max content width per column
+    doc.setFontSize(8.5);
+    const widths = new Array(numCols).fill(0);
+
+    for (let c = 0; c < numCols; c++) {
+      // Header width
+      widths[c] = Math.max(widths[c], doc.getTextWidth(cleanText(headers[c] || "").toUpperCase()) + 6);
+      // Sample first 10 rows
+      for (let r = 0; r < Math.min(rows.length, 10); r++) {
+        const w = doc.getTextWidth(cleanText(rows[r]?.[c] || "")) + 6;
+        widths[c] = Math.max(widths[c], Math.min(w, 65)); // Cap individual col at 65mm
+      }
+    }
+
+    // Normalize to fit contentW
+    const totalW = widths.reduce((a, b) => a + b, 0);
+    if (totalW === 0) return new Array(numCols).fill(contentW / numCols);
+
+    // Ensure minimum col width of 18mm
+    const minW = 18;
+    return widths.map((w) => Math.max(minW, (w / totalW) * contentW));
+  }
+
+  function _renderChart(config) {
     if (!config || !config.data?.length) return;
 
-    const chartH = 50;
-    checkPage(chartH + 15);
+    const data = config.data;
+    const type = config.type || "bar";
 
+    // Dynamic height based on data
+    let chartH;
+    if (type === "metric") {
+      chartH = 30;
+    } else if (type === "bar") {
+      chartH = Math.min(80, 12 + data.length * 7);
+    } else {
+      chartH = 55;
+    }
+
+    const containerH = chartH + (config.title ? 14 : 6);
+    checkPage(containerH + 6);
     y += 3;
 
     // Chart container
-    doc.setFillColor(...PDF_SURF);
-    doc.roundedRect(margin, y, contentW, chartH + 10, 2, 2, "F");
+    doc.setFillColor(...colSurf);
+    doc.roundedRect(margin, y, contentW, containerH, 2.5, 2.5, "F");
+    doc.setDrawColor(...colBorder);
+    doc.setLineWidth(0.2);
+    doc.roundedRect(margin, y, contentW, containerH, 2.5, 2.5, "S");
 
     // Title
     if (config.title) {
-      doc.setFontSize(10);
-      doc.setTextColor(...PDF_TEXT);
+      doc.setFontSize(9);
+      doc.setTextColor(...colText);
       doc.setFont("helvetica", "bold");
-      doc.text(config.title, margin + 5, y + 7);
+      doc.text(cleanText(config.title), margin + 8, y + 8);
       doc.setFont("helvetica", "normal");
     }
 
-    const chartTop = y + (config.title ? 12 : 5);
-    const chartLeft = margin + 5;
-    const chartWidth = contentW - 10;
+    const chartTop = y + (config.title ? 14 : 4);
+    const chartLeft = margin + 6;
+    const chartWidth = contentW - 12;
 
-    if (config.type === "bar") {
-      renderBarChart(doc, config.data, chartLeft, chartTop, chartWidth, chartH - 5);
-    } else if (config.type === "pie") {
-      renderPieChart(doc, config.data, chartLeft, chartTop, chartWidth, chartH - 5);
-    } else if (config.type === "metric") {
-      renderMetricChart(doc, config.data, chartLeft, chartTop, chartWidth, chartH - 5);
-    } else if (config.type === "line") {
-      renderLineChart(doc, config.data, chartLeft, chartTop, chartWidth, chartH - 5);
+    if (type === "bar") {
+      _drawBarChart(data, chartLeft, chartTop, chartWidth, chartH);
+    } else if (type === "pie") {
+      _drawPieChart(data, chartLeft, chartTop, chartWidth, chartH);
+    } else if (type === "metric") {
+      _drawMetrics(data, chartLeft, chartTop, chartWidth, chartH);
+    } else if (type === "line") {
+      _drawLineChart(data, chartLeft, chartTop, chartWidth, chartH);
     }
 
-    y += chartH + 15;
+    y += containerH + 6;
   }
 
-  function renderBarChart(doc, data, x, top, w, h) {
+  function _drawBarChart(data, x, top, w, h) {
     const maxVal = Math.max(...data.map((d) => Number(d.value) || 0), 1);
-    const barH = Math.min(6, (h - 4) / data.length);
-    const labelW = 30;
-    const barAreaW = w - labelW - 20;
+    const gap = 1.5;
+    const barH = Math.min(7, Math.max(3.5, (h - gap * data.length) / data.length));
+    const labelW = Math.min(40, w * 0.25);
+    const valueW = 22;
+    const barAreaW = w - labelW - valueW - 4;
 
     for (let i = 0; i < data.length; i++) {
       const val = Number(data[i].value) || 0;
-      const barW = Math.max(1, (val / maxVal) * barAreaW);
-      const barY = top + i * (barH + 2);
+      const barW = Math.max(1.5, (val / maxVal) * barAreaW);
+      const barY = top + i * (barH + gap);
       const color = CHART_COLORS[i % CHART_COLORS.length];
 
       // Label
       doc.setFontSize(7);
-      doc.setTextColor(...PDF_MUTED);
-      const label = (data[i].label || "").slice(0, 15);
-      doc.text(label, x + labelW - 2, barY + barH * 0.7, { align: "right" });
+      doc.setTextColor(...colMuted);
+      const label = cleanText(data[i].label || "").slice(0, 20);
+      doc.text(label, x + labelW - 2, barY + barH * 0.65, { align: "right", maxWidth: labelW - 4 });
 
-      // Bar
+      // Bar background track
+      doc.setFillColor(...darkenRgb(colBg, 0.1));
+      doc.roundedRect(x + labelW, barY + 0.5, barAreaW, barH - 1, 1.5, 1.5, "F");
+
+      // Bar fill
       doc.setFillColor(...color);
-      doc.roundedRect(x + labelW, barY, barW, barH, 1, 1, "F");
+      doc.roundedRect(x + labelW, barY + 0.5, barW, barH - 1, 1.5, 1.5, "F");
 
       // Value
-      doc.setFontSize(7);
-      doc.setTextColor(...PDF_TEXT);
+      doc.setFontSize(7.5);
+      doc.setTextColor(...colText);
+      doc.setFont("helvetica", "bold");
       const valStr = Number.isInteger(val) ? val.toLocaleString() : val.toFixed(1);
-      doc.text(valStr, x + labelW + barW + 3, barY + barH * 0.7);
+      doc.text(valStr, x + labelW + barAreaW + 3, barY + barH * 0.65);
+      doc.setFont("helvetica", "normal");
     }
   }
 
-  function renderPieChart(doc, data, x, top, w, h) {
-    // Render as legend-only in PDF (SVG arcs not supported in jsPDF natively)
+  function _drawPieChart(data, x, top, w, h) {
+    // jsPDF can't draw arcs easily, so render a proportional stacked bar + legend
     const total = data.reduce((s, d) => s + (Number(d.value) || 0), 0);
-    const legendX = x + 5;
-    let legendY = top + 3;
+    if (total === 0) return;
 
-    doc.setFontSize(9);
-    doc.setTextColor(...PDF_TEXT);
-    doc.setFont("helvetica", "bold");
-    doc.text(`Total: ${Number.isInteger(total) ? total.toLocaleString() : total.toFixed(1)}`, legendX, legendY);
-    legendY += 6;
-    doc.setFont("helvetica", "normal");
+    // Stacked horizontal bar
+    const barY = top + 2;
+    const barH = 8;
+    let barX = x;
 
     for (let i = 0; i < data.length; i++) {
       const val = Number(data[i].value) || 0;
-      const pct = total > 0 ? ((val / total) * 100).toFixed(0) : "0";
+      const segW = (val / total) * w;
+      const color = CHART_COLORS[i % CHART_COLORS.length];
+      doc.setFillColor(...color);
+      if (i === 0) {
+        doc.roundedRect(barX, barY, segW, barH, 2, 2, "F");
+      } else if (i === data.length - 1) {
+        doc.roundedRect(barX, barY, segW, barH, 2, 2, "F");
+      } else {
+        doc.rect(barX, barY, segW, barH, "F");
+      }
+      barX += segW;
+    }
+
+    // Legend
+    const legendTop = barY + barH + 5;
+    const legendColW = Math.min(60, w / Math.min(data.length, 3));
+    const cols = Math.min(3, data.length);
+
+    for (let i = 0; i < data.length; i++) {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const lx = x + col * legendColW;
+      const ly = legendTop + row * 6;
+      const val = Number(data[i].value) || 0;
+      const pct = ((val / total) * 100).toFixed(0);
       const color = CHART_COLORS[i % CHART_COLORS.length];
 
-      // Color dot
       doc.setFillColor(...color);
-      doc.circle(legendX + 2, legendY - 1.2, 1.5, "F");
+      doc.circle(lx + 1.5, ly - 1, 1.2, "F");
 
-      doc.setFontSize(8);
-      doc.setTextColor(...PDF_TEXT);
-      doc.text(`${data[i].label || "?"}: ${val.toLocaleString()} (${pct}%)`, legendX + 6, legendY);
-      legendY += 5;
+      doc.setFontSize(7);
+      doc.setTextColor(...colText);
+      doc.text(cleanText(data[i].label || "?").slice(0, 15) + " " + pct + "%", lx + 5, ly);
     }
   }
 
-  function renderMetricChart(doc, data, x, top, w, h) {
-    const metricW = Math.min(45, (w - 4) / data.length);
-    for (let i = 0; i < data.length; i++) {
-      const mx = x + i * (metricW + 4);
-      doc.setFillColor(22, 22, 28);
-      doc.roundedRect(mx, top, metricW, h, 2, 2, "F");
+  function _drawMetrics(data, x, top, w, h) {
+    const count = Math.min(data.length, 6);
+    const gap = 4;
+    const metricW = (w - gap * (count - 1)) / count;
+
+    for (let i = 0; i < count; i++) {
+      const mx = x + i * (metricW + gap);
+      const color = CHART_COLORS[i % CHART_COLORS.length];
+
+      // Metric card
+      doc.setFillColor(...darkenRgb(colBg, 0.05));
+      doc.roundedRect(mx, top, metricW, h - 4, 2, 2, "F");
+
+      // Top accent line
+      doc.setFillColor(...color);
+      doc.rect(mx + 3, top, metricW - 6, 0.8, "F");
 
       // Label
-      doc.setFontSize(7);
-      doc.setTextColor(...PDF_MUTED);
-      doc.text((data[i].label || "").slice(0, 12), mx + 3, top + 5);
+      doc.setFontSize(6.5);
+      doc.setTextColor(...colMuted);
+      doc.text(cleanText(data[i].label || "").slice(0, 14), mx + 3, top + 6);
 
       // Value
-      doc.setFontSize(14);
-      doc.setTextColor(...PDF_TEXT);
+      doc.setFontSize(12);
+      doc.setTextColor(...colText);
       doc.setFont("helvetica", "bold");
       const val = data[i].value;
       const valStr = typeof val === "number"
         ? (Number.isInteger(val) ? val.toLocaleString() : val.toFixed(1))
-        : String(val || "");
-      doc.text(valStr + (data[i].suffix || ""), mx + 3, top + 14);
+        : cleanText(String(val || ""));
+      doc.text(valStr + cleanText(data[i].suffix || ""), mx + 3, top + 15);
       doc.setFont("helvetica", "normal");
 
-      // Trend
+      // Trend arrow
       if (data[i].trend) {
-        const trendColor = data[i].trend === "up" ? [42, 107, 56] : [193, 57, 41];
-        doc.setFontSize(10);
-        doc.setTextColor(...trendColor);
-        doc.text(data[i].trend === "up" ? "↑" : "↓", mx + metricW - 8, top + 14);
+        const tc = data[i].trend === "up" ? [72, 187, 88] : [220, 80, 70];
+        doc.setFontSize(9);
+        doc.setTextColor(...tc);
+        doc.text(data[i].trend === "up" ? "^" : "v", mx + metricW - 6, top + 15);
       }
     }
   }
 
-  function renderLineChart(doc, data, x, top, w, h) {
+  function _drawLineChart(data, x, top, w, h) {
     if (data.length < 2) return;
     const maxVal = Math.max(...data.map((d) => Number(d.value) || 0), 1);
-    const padL = 15;
-    const chartW = w - padL - 5;
+    const padL = 14;
+    const padB = 8;
+    const chartW = w - padL - 4;
+    const chartH = h - padB;
 
-    // Grid lines
-    doc.setDrawColor(...PDF_BORDER);
+    // Grid
+    doc.setDrawColor(...lightenRgb(colBorder, 0.1));
     doc.setLineWidth(0.1);
-    for (let g = 0; g <= 3; g++) {
-      const gy = top + (g / 3) * h;
+    for (let g = 0; g <= 4; g++) {
+      const gy = top + (g / 4) * chartH;
       doc.line(x + padL, gy, x + padL + chartW, gy);
-      const gVal = maxVal * (1 - g / 3);
       doc.setFontSize(6);
-      doc.setTextColor(...PDF_MUTED);
+      doc.setTextColor(...colMuted);
+      const gVal = maxVal * (1 - g / 4);
       doc.text(gVal.toFixed(0), x + padL - 2, gy + 1, { align: "right" });
     }
 
-    // Line
-    doc.setDrawColor(...PDF_ACCENT);
-    doc.setLineWidth(0.6);
+    // Area fill
     const points = data.map((d, i) => ({
-      x: x + padL + (i / (data.length - 1)) * chartW,
-      y: top + h - ((Number(d.value) || 0) / maxVal) * h,
+      px: x + padL + (i / (data.length - 1)) * chartW,
+      py: top + chartH - ((Number(d.value) || 0) / maxVal) * chartH,
     }));
+
+    // jsPDF doesn't have polygon fill easily, so just draw the line
+    doc.setDrawColor(...colAccent);
+    doc.setLineWidth(0.7);
     for (let i = 0; i < points.length - 1; i++) {
-      doc.line(points[i].x, points[i].y, points[i + 1].x, points[i + 1].y);
+      doc.line(points[i].px, points[i].py, points[i + 1].px, points[i + 1].py);
     }
 
-    // Dots + labels
+    // Dots
     for (let i = 0; i < points.length; i++) {
-      doc.setFillColor(...PDF_ACCENT);
-      doc.circle(points[i].x, points[i].y, 0.8, "F");
-      if (data.length <= 12) {
-        doc.setFontSize(5);
-        doc.setTextColor(...PDF_MUTED);
-        doc.text((data[i].label || "").slice(0, 8), points[i].x, top + h + 4, { align: "center" });
+      doc.setFillColor(...colAccent);
+      doc.circle(points[i].px, points[i].py, 1, "F");
+      // White inner dot
+      doc.setFillColor(...colSurf);
+      doc.circle(points[i].px, points[i].py, 0.4, "F");
+    }
+
+    // X-axis labels
+    if (data.length <= 15) {
+      doc.setFontSize(5.5);
+      doc.setTextColor(...colMuted);
+      for (let i = 0; i < points.length; i++) {
+        const label = cleanText(data[i].label || "").slice(0, 10);
+        doc.text(label, points[i].px, top + chartH + 5, { align: "center" });
       }
     }
   }
