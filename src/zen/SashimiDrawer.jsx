@@ -14,7 +14,6 @@ import {
 import { updatePage } from "../notion/client.js";
 import { buildProp } from "../notion/properties.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { useTheme } from "../context/ThemeContext.jsx";
 import EmailThreadDrawer from "./EmailThreadDrawer.jsx";
 
 // ── Priority colors (aligned to INFO_PALETTE) ──
@@ -97,7 +96,6 @@ function toDateInput(isoStr) {
 // ════════════════════════════════════════════
 function TaskEditor({ task, onSaved, onDeleted, onClose }) {
   const { user, pages, setActivePage } = usePlatform();
-  const { setAppMode } = useTheme();
   const isNotion = task.source && task.source.startsWith("notion:");
   const isD1 = task.source === "manual" || (task.source && task.source.startsWith("d1:"));
   const isEditable = isD1 || isNotion;
@@ -224,7 +222,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
     }
   }, [task, onSaved, onClose]);
 
-  // ── "Go To Task" — switch to Sushi Roll and navigate to source DB ──
+  // ── "Go To Task" — navigate to source DB page inline ──
   const handleGoToTask = useCallback(() => {
     const dbId = task.source?.split(":")[1];
     if (!dbId) return;
@@ -232,11 +230,10 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
       p.databaseIds?.includes(dbId)
     );
     if (matchedPage) {
-      setAppMode("samurai");
       setActivePage(matchedPage.id);
       onClose();
     }
-  }, [task, pages, setAppMode, setActivePage, onClose]);
+  }, [task, pages, setActivePage, onClose]);
 
   // Can we navigate to this task's source?
   const canGoToTask = (() => {

@@ -1,5 +1,5 @@
 // ─── SystemManager ───
-// Four-tab system management interface: Overview, Connections, Workspaces, Settings.
+// Three-tab system management interface: Overview, Connections, Settings.
 // Chat tab removed — use WasabiPanel chat instead.
 // No emojis. Dark theme. Inline CSS-in-JS.
 
@@ -338,7 +338,6 @@ function GoogleConnectionRow({ connected, email, onConnect, onDisconnect, loadin
 
 export default function SystemManager() {
   const { user, platformIds, pages, updatePageConfig, workerConnection, updateConnectionKey } = usePlatform();
-  const { appMode } = useTheme();
 
   // ── Tab state ──
   const [tab, setTab] = useState("overview");
@@ -578,14 +577,6 @@ export default function SystemManager() {
           >
             Connections
           </button>
-          {appMode !== "zen" && (
-            <button
-              style={tabBtn(tab === "workspaces")}
-              onClick={() => setTab("workspaces")}
-            >
-              Workspaces
-            </button>
-          )}
           <button
             style={tabBtn(tab === "settings")}
             onClick={() => setTab("settings")}
@@ -1038,9 +1029,6 @@ export default function SystemManager() {
             )}
           </div>
         )}
-
-        {/* ═══ WORKSPACES TAB ═══ */}
-        {tab === "workspaces" && appMode !== "zen" && <WorkspacesTab />}
 
         {/* ═══ SETTINGS TAB ═══ */}
         {tab === "settings" && <SettingsTab />}

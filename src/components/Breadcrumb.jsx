@@ -5,8 +5,6 @@
 import React, { useMemo } from "react";
 import { C, FONT } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { useTheme } from "../context/ThemeContext.jsx";
-
 // Special page labels
 const SPECIAL_PAGES = {
   system: "System",
@@ -28,8 +26,6 @@ function Chevron() {
 
 export default function Breadcrumb() {
   const { activePage, pages, setActivePage } = usePlatform();
-  const { appMode } = useTheme();
-
   const segments = useMemo(() => {
     // No active page → Home
     if (!activePage) return [];
@@ -65,13 +61,13 @@ export default function Breadcrumb() {
       current = current.parentId ? byId[current.parentId] : null;
     }
 
-    // In zen/sashimi mode, prepend "Workspaces" root for navigation back
-    if (appMode === "zen" && chain.length > 0) {
+    // Prepend "Workspaces" root for navigation back
+    if (chain.length > 0) {
       chain.unshift({ label: "Workspaces", id: "zen-workspaces", isCurrent: false, isFolder: false });
     }
 
     return chain;
-  }, [activePage, pages, appMode]);
+  }, [activePage, pages]);
 
   if (segments.length === 0) return null;
 
@@ -91,8 +87,8 @@ export default function Breadcrumb() {
           <button
             onClick={() => {
               if (seg.isCurrent) return;
-              // In zen mode, clicking a folder goes back to workspaces browser
-              if (appMode === "zen" && seg.isFolder) {
+              // Clicking a folder goes back to workspaces browser
+              if (seg.isFolder) {
                 setActivePage("zen-workspaces");
               } else {
                 setActivePage(seg.id);

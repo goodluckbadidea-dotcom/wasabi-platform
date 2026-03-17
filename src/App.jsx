@@ -1,8 +1,8 @@
 // ─── Wasabi Platform App Shell ───
 // Root component: auth gate → layout → routing.
-// Layout: TopHeader + [WasabiPanel | Sidebar | Content]
+// Layout: TopHeader + [SashimiChatPanel | Sidebar | Content]
 // Top header: WASABI wordmark + page-level controls (right side).
-// Sidebar: FolderDropdown at top, page list, bottom actions.
+// Sidebar: Icon-bar navigation, expandable.
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { PlatformProvider, usePlatform } from "./context/PlatformContext.jsx";
@@ -18,7 +18,6 @@ import { C } from "./design/tokens.js";
 import SetupWizard from "./core/SetupWizard.jsx";
 import TopHeader from "./core/TopHeader.jsx";
 import Navigation from "./core/Navigation.jsx";
-import WasabiPanel from "./core/WasabiPanel.jsx";
 const SashimiChatPanel = React.lazy(() => import("./zen/SashimiChatPanel.jsx"));
 import Onboarding from "./core/Onboarding.jsx";
 import PageBuilder from "./core/PageBuilder.jsx";
@@ -26,13 +25,9 @@ import PageShell from "./core/PageShell.jsx";
 import WasabiFlame from "./core/WasabiFlame.jsx";
 import WasabiOrb from "./core/WasabiOrb.jsx";
 import SystemManager from "./core/SystemManager.jsx";
-import KnowledgeBase from "./core/KnowledgeBase.jsx";
-import AutomationPage from "./core/AutomationPage.jsx";
 import NotificationFeed from "./views/NotificationFeed.jsx";
-// GmailView removed — Gmail is only available in Sashimi mode (ZenGmail)
-import HomePage from "./core/HomePage.jsx";
-import Dashboard from "./core/Dashboard.jsx";
 import WorkspaceSettings from "./views/WorkspaceSettings.jsx";
+import WidgetGrid from "./components/WidgetGrid.jsx";
 import { ErrorBoundary } from "./core/ErrorBoundary.jsx";
 import { createAutomationEngine } from "./agent/automations.js";
 import { getGoogleStatus } from "./lib/api.js";
@@ -45,8 +40,6 @@ import NeuronLines from "./neurons/NeuronLines.jsx";
 import { useNeurons } from "./neurons/NeuronsContext.jsx";
 import { IconGear } from "./design/icons.jsx";
 
-const FunctionsPanel = React.lazy(() => import("./core/FunctionsPanel.jsx"));
-const BuildPage = React.lazy(() => import("./core/BuildPage.jsx"));
 const ZenTasksView = React.lazy(() => import("./zen/ZenTasksView.jsx"));
 const ZenNotes = React.lazy(() => import("./zen/ZenNotes.jsx"));
 const ZenDashboard = React.lazy(() => import("./zen/ZenDashboard.jsx"));
@@ -73,11 +66,11 @@ function AppContent() {
     updatePageConfig,
   } = usePlatform();
 
-  const { theme, appMode, themeName } = useTheme();
+  const { theme, themeName } = useTheme();
   const { toggleOverlay: toggleNeurons } = useNeurons();
 
   // ── UI State ──
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(appMode === "zen");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [wasabiPanelOpen, setWasabiPanelOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [viewStates, setViewStates] = useState({}); // { [pageId]: activeViewIndex }
@@ -96,19 +89,6 @@ function AppContent() {
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, []);
-
-  // ── Mode transition fade ──
-  const [modeTransitioning, setModeTransitioning] = useState(false);
-  const prevAppMode = useRef(appMode);
-  useEffect(() => {
-    if (prevAppMode.current !== appMode) {
-      setModeTransitioning(true);
-      if (appMode === "zen") setSidebarCollapsed(true);
-      const timer = setTimeout(() => setModeTransitioning(false), 200);
-      prevAppMode.current = appMode;
-      return () => clearTimeout(timer);
-    }
-  }, [appMode]);
 
   // ── Clear page controls when navigating away ──
   const prevActivePage = useRef(activePage);
@@ -163,30 +143,10 @@ function AppContent() {
     return () => { cancelled = true; };
   }, [isAuthenticated, isSetup]);
 
-  // Template selection handler — hooks MUST be called before any early returns
-  const handleStartTemplate = useCallback(
-    (template) => {
-      setBuilderTemplate(template);
-      setActivePage("wasabi");
-    },
-    [setActivePage]
-  );
-
-  const handleStartBlank = useCallback(() => {
-    setBuilderTemplate(null);
-    setActivePage("wasabi");
-  }, [setActivePage]);
-
   const handleAddPage = useCallback(() => {
     setBuilderTemplate(null);
     setActivePage("wasabi");
   }, [setActivePage]);
-
-  // Chat handoff from FunctionsPanel / FunctionBuilder
-  const handleFunctionChat = useCallback((message) => {
-    setPendingChatMessage(message);
-    setWasabiPanelOpen(true);
-  }, []);
 
   // ── Keyboard Shortcuts ──
   useKeyboardShortcuts([
@@ -285,190 +245,88 @@ function AppContent() {
 
   // Determine main content
   const renderContent = () => {
-    // ── Zen mode routing ──
-    if (appMode === "zen") {
-      // System settings is shared between modes
-      if (activePage === "system") {
-        return <SystemManager />;
-      }
-      // Page builder (create new page)
-      if (activePage === "wasabi") {
-        return (
-          <PageBuilder
-            initialTemplate={builderTemplate}
-            WasabiFlameIcon={WasabiFlameIcon}
-          />
-        );
-      }
-      // Zen Notes scratchpad
-      if (activePage === "zen-notes") {
-        return (
-          <React.Suspense fallback={
-            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 12 }}>
-              Loading...
-            </div>
-          }>
-            <ZenNotes />
-          </React.Suspense>
-        );
-      }
-      // Zen Dashboard
-      if (activePage === "zen-dashboard") {
-        return (
-          <React.Suspense fallback={
-            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
-              Loading...
-            </div>
-          }>
-            <ZenDashboard />
-          </React.Suspense>
-        );
-      }
-      // Zen Gmail
-      if (activePage === "zen-gmail") {
-        return (
-          <ErrorBoundary fallbackLabel="Gmail">
-            <React.Suspense fallback={
-              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
-                Loading...
-              </div>
-            }>
-              <ZenGmail />
-            </React.Suspense>
-          </ErrorBoundary>
-        );
-      }
-      // Zen Workspaces browser
-      if (activePage === "zen-workspaces") {
-        return (
-          <React.Suspense fallback={
-            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
-              Loading...
-            </div>
-          }>
-            <ZenWorkspaces />
-          </React.Suspense>
-        );
-      }
-      // Zen Knowledge Hub (KB, Automations, Functions, Build)
-      if (activePage === "zen-knowledge") {
-        return (
-          <React.Suspense fallback={
-            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
-              Loading...
-            </div>
-          }>
-            <ZenKnowledgeHub />
-          </React.Suspense>
-        );
-      }
-      // Zen Notifications
-      if (activePage === "zen-notifications") {
-        return <NotificationFeed />;
-      }
-      // Real page opened from Workspaces — render inline with full functionality
-      if (activePageConfig && (activePageConfig.pageType === "workspace" || activePageConfig.page_type === "workspace")) {
-        return (
-          <WorkspaceSettings
-            pageConfig={activePageConfig}
-            onUpdate={(updates) => updatePageConfig(activePageConfig.id, updates)}
-          />
-        );
-      }
-      if (activePageConfig && activePageConfig.type === "folder") {
-        setActivePage("zen-workspaces");
-        return null;
-      }
-      if (activePageConfig) {
-        return (
-          <PageShell
-            pageConfig={activePageConfig}
-            activeViewIndex={activeViewIndex}
-            onSetActiveView={setActiveView}
-            onPageDataReady={setActivePageData}
-          />
-        );
-      }
-      // Default: Tasks split view (To-Do + Calendar)
+    // System settings
+    if (activePage === "system") {
+      return <SystemManager />;
+    }
+    // Page builder (create new page)
+    if (activePage === "wasabi") {
+      return (
+        <PageBuilder
+          initialTemplate={builderTemplate}
+          WasabiFlameIcon={WasabiFlameIcon}
+          defaultParentId={activeFolder}
+        />
+      );
+    }
+    // Notes scratchpad
+    if (activePage === "zen-notes") {
+      return (
+        <React.Suspense fallback={
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 12 }}>
+            Loading...
+          </div>
+        }>
+          <ZenNotes />
+        </React.Suspense>
+      );
+    }
+    // Dashboard
+    if (activePage === "zen-dashboard") {
       return (
         <React.Suspense fallback={
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
             Loading...
           </div>
         }>
-          <ZenTasksView />
+          <ZenDashboard />
         </React.Suspense>
       );
     }
-
-    // ── Samurai mode routing (existing) ──
-
-    // Wasabi page builder
-    if (activePage === "wasabi") {
+    // Gmail
+    if (activePage === "zen-gmail") {
       return (
-        <PageBuilder
-          initialTemplate={builderTemplate}
-          WasabiFlameIcon={WasabiFlameIcon}
-        />
+        <ErrorBoundary fallbackLabel="Gmail">
+          <React.Suspense fallback={
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
+              Loading...
+            </div>
+          }>
+            <ZenGmail />
+          </React.Suspense>
+        </ErrorBoundary>
       );
     }
-
-    // Global dashboard → redirect to home (widget grid is now in HomePage)
-    if (activePage === "dashboard") {
-      setActivePage(null);
-      return null;
-    }
-
-    // Dashboard page type (folder-level dashboards)
-    if (activePageConfig && (activePageConfig.page_type === "dashboard" || activePageConfig.pageType === "dashboard")) {
+    // Workspaces browser
+    if (activePage === "zen-workspaces") {
       return (
-        <Dashboard
-          dashboardConfig={activePageConfig}
-          isGlobal={!!activePageConfig.isGlobal}
-        />
-      );
-    }
-
-    // Automations (sub-view tabs: Node Editor, Simple Rules, Upload)
-    if (activePage === "automations") {
-      return <AutomationPage automationEngine={engineRef.current} activeTab={activeViewIndex} />;
-    }
-
-    // Functions (custom data transforms)
-    if (activePage === "functions") {
-      return (
-        <React.Suspense fallback={<div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>Loading Functions...</div>}>
-          <FunctionsPanel onOpenChat={handleFunctionChat} />
+        <React.Suspense fallback={
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
+            Loading...
+          </div>
+        }>
+          <ZenWorkspaces />
         </React.Suspense>
       );
     }
-
-    // Inbox (Notification Feed)
-    if (activePage === "inbox") {
+    // Knowledge Hub (KB, Automations, Functions, Build)
+    if (activePage === "zen-knowledge") {
+      return (
+        <React.Suspense fallback={
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
+            Loading...
+          </div>
+        }>
+          <ZenKnowledgeHub />
+        </React.Suspense>
+      );
+    }
+    // Notifications
+    if (activePage === "zen-notifications") {
       return <NotificationFeed />;
     }
-
-    // Knowledge Base
-    if (activePage === "knowledge-base") {
-      return <KnowledgeBase automationEngine={engineRef.current} />;
-    }
-
-    // Build (Custom Views + Plugins)
-    if (activePage === "build") {
-      return (
-        <React.Suspense fallback={<div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>Loading Build...</div>}>
-          <BuildPage onOpenChat={handleFunctionChat} />
-        </React.Suspense>
-      );
-    }
-
-    // System manager
-    if (activePage === "system") {
-      return <SystemManager />;
-    }
-
-    // Workspace pages render settings view
-    if (activePageConfig && (activePageConfig.page_type === "workspace" || activePageConfig.pageType === "workspace")) {
+    // Workspace settings page
+    if (activePageConfig && (activePageConfig.pageType === "workspace" || activePageConfig.page_type === "workspace")) {
       return (
         <WorkspaceSettings
           pageConfig={activePageConfig}
@@ -476,15 +334,23 @@ function AppContent() {
         />
       );
     }
-
-    // Folders are not pages — redirect to home
+    // Folders redirect to workspaces browser
     if (activePageConfig && activePageConfig.type === "folder") {
-      setActivePage(null);
-      setActiveFolder(activePageConfig.id);
+      setActivePage("zen-workspaces");
       return null;
     }
-
-    // User page
+    // Dashboard pages → render WidgetGrid directly
+    if (activePageConfig && (activePageConfig.page_type === "dashboard" || activePageConfig.pageType === "dashboard")) {
+      return (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: C.dark }}>
+          <WidgetGrid
+            widgets={activePageConfig.widgets || []}
+            onUpdateWidgets={(widgets) => updatePageConfig(activePageConfig.id, { widgets })}
+          />
+        </div>
+      );
+    }
+    // User page (full PageShell with views, CRUD, etc.)
     if (activePageConfig) {
       return (
         <PageShell
@@ -495,16 +361,15 @@ function AppContent() {
         />
       );
     }
-
-    // Home page (default for all other cases, including null/home)
-    // Shows onboarding-style quick start when no pages exist,
-    // and full dashboard when pages are present.
+    // Default: Tasks split view (To-Do + Calendar)
     return (
-      <HomePage
-        onStartBlank={handleStartBlank}
-        onStartTemplate={handleStartTemplate}
-        onNavigate={setActivePage}
-      />
+      <React.Suspense fallback={
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
+          Loading...
+        </div>
+      }>
+        <ZenTasksView />
+      </React.Suspense>
     );
   };
 
@@ -557,26 +422,15 @@ function AppContent() {
             flexShrink: 0,
             borderRight: `1px solid ${C.edgeLine}`,
           }}>
-            {appMode === "zen" ? (
-              <React.Suspense fallback={null}>
-                <SashimiChatPanel
-                  onClose={() => setWasabiPanelOpen(false)}
-                  activePageConfig={activePageConfig}
-                  activePageData={activePageData}
-                  pendingChatMessage={pendingChatMessage}
-                  onClearPendingMessage={() => setPendingChatMessage(null)}
-                />
-              </React.Suspense>
-            ) : (
-              <WasabiPanel
+            <React.Suspense fallback={null}>
+              <SashimiChatPanel
                 onClose={() => setWasabiPanelOpen(false)}
-                isThinking={false}
                 activePageConfig={activePageConfig}
                 activePageData={activePageData}
                 pendingChatMessage={pendingChatMessage}
                 onClearPendingMessage={() => setPendingChatMessage(null)}
               />
-            )}
+            </React.Suspense>
           </div>
         )}
         {wasabiPanelOpen && isNarrow && (
@@ -601,26 +455,15 @@ function AppContent() {
               paddingBottom: "env(safe-area-inset-bottom, 0px)",
               animation: ANIM.drawerSlideLeft,
             }}>
-              {appMode === "zen" ? (
-                <React.Suspense fallback={null}>
-                  <SashimiChatPanel
-                    onClose={() => setWasabiPanelOpen(false)}
-                    activePageConfig={activePageConfig}
-                    activePageData={activePageData}
-                    pendingChatMessage={pendingChatMessage}
-                    onClearPendingMessage={() => setPendingChatMessage(null)}
-                  />
-                </React.Suspense>
-              ) : (
-                <WasabiPanel
+              <React.Suspense fallback={null}>
+                <SashimiChatPanel
                   onClose={() => setWasabiPanelOpen(false)}
-                  isThinking={false}
                   activePageConfig={activePageConfig}
                   activePageData={activePageData}
                   pendingChatMessage={pendingChatMessage}
                   onClearPendingMessage={() => setPendingChatMessage(null)}
                 />
-              )}
+              </React.Suspense>
             </div>
           </>
         )}
@@ -663,8 +506,7 @@ function AppContent() {
             overflow: "hidden",
             minWidth: 0,
             animation: ANIM.contentSwap(),
-            opacity: modeTransitioning ? 0 : 1,
-            transition: "opacity 0.2s ease",
+            opacity: 1,
           }}
         >
           {renderContent()}

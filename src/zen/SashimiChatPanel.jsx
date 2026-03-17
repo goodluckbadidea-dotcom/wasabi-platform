@@ -1,7 +1,7 @@
 // ─── Sashimi Chat Panel ───
 // Dual-tab chat panel for Sashimi mode.
 // "Zen" tab: Enhanced Haiku chat with task/email/calendar context + 3 tools.
-// "Wasabi" tab: Full Wasabi agent (identical to Sushi Roll mode).
+// "Wasabi" tab: Full Wasabi agent with all tools.
 
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";

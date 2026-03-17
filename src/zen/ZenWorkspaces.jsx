@@ -1,7 +1,7 @@
 // ─── Zen Workspaces Browser ───
 // Drill-down card browser for Sashimi mode.
 // Levels: Workspaces → Folders → Pages
-// Clicking a page switches to Sushi Roll mode.
+// Clicking a page opens it inline with full PageShell rendering.
 
 import React, { useState, useMemo, useCallback } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";

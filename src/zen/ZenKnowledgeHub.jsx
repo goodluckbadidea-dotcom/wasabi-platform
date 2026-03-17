@@ -1,6 +1,6 @@
 // ─── Zen Knowledge Hub ───
 // Tabbed container for Knowledge Base, Automations, Functions, and Build
-// in Sashimi mode. Reuses the exact same components from Sushi Roll.
+// Reuses the exact same components with tabbed navigation.
 
 import React, { useState } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";

@@ -9,7 +9,7 @@ import { useNeurons } from "../neurons/NeuronsContext.jsx";
 import Breadcrumb from "../components/Breadcrumb.jsx";
 
 export default function TopHeader() {
-  const { themeName, toggleMode, appMode, toggleAppMode } = useTheme();
+  const { themeName, toggleMode } = useTheme();
   const { overlayActive, toggleOverlay, selection } = useNeurons();
 
   return (
@@ -159,49 +159,6 @@ export default function TopHeader() {
               {selection.length}
             </span>
           )}
-        </button>
-
-        {/* Sashimi / Sushi Roll mode toggle */}
-        <button
-          onClick={toggleAppMode}
-          title={appMode === "samurai" ? "Switch to Sashimi mode" : "Switch to Sushi Roll mode"}
-          style={{
-            background: "transparent",
-            border: `1px solid ${C.darkBorder}`,
-            borderRadius: RADIUS.pill,
-            padding: "7px 12px",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            transition: "background 0.15s, border-color 0.15s",
-            color: C.darkMuted,
-            fontSize: 12,
-            minHeight: 32,
-            fontFamily: FONT,
-            fontWeight: 500,
-            outline: "none",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = C.darkMuted;
-            e.currentTarget.style.background = C.darkSurf2;
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = C.darkBorder;
-            e.currentTarget.style.background = "transparent";
-          }}
-        >
-          {appMode === "zen" ? (
-            <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
-              <circle cx="8" cy="8" r="6" stroke={C.darkMuted} strokeWidth="1.5" fill="none" />
-              <circle cx="8" cy="8" r="2" fill={C.darkMuted} />
-            </svg>
-          ) : (
-            <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
-              <path d="M8 1L10 6H14L11 9L12.5 14L8 11L3.5 14L5 9L2 6H6L8 1Z" fill={C.darkMuted} />
-            </svg>
-          )}
-          {appMode === "zen" ? "Sashimi" : "Sushi Roll"}
         </button>
 
         {/* Theme cycle */}

@@ -1,7 +1,7 @@
 // ─── Zen Notes ───
 // Full block editor scratchpad for Zen mode.
 // Uses DocumentEditor in standalone mode with R2 storage.
-// "Save to" copies the scratchpad into a new Samurai page.
+// "Save to" copies the scratchpad into a new page.
 
 import React, { useState, useCallback, useMemo } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
@@ -35,7 +35,7 @@ export default function ZenNotes() {
     setResetKey((k) => k + 1);
   }, []);
 
-  // ── Save to Samurai page tree ──
+  // ── Save to page tree ──
   const handleSaveTo = useCallback(async () => {
     const name = saveToName.trim();
     if (!name || saveToStatus === "saving") return;
@@ -56,7 +56,7 @@ export default function ZenNotes() {
         await saveDocument(id, doc.content);
       }
 
-      // Add to Samurai page tree
+      // Add to page tree
       addPage(config);
 
       setSaveToStatus("done");
@@ -115,7 +115,7 @@ export default function ZenNotes() {
               setSaveToFolder("");
               setSaveToStatus(null);
             }}
-            title="Save note to Sushi Roll workspace"
+            title="Save note to workspace"
             style={{
               background: saveToOpen ? C.accent + "22" : "transparent",
               border: `1px solid ${saveToOpen ? C.accent + "44" : C.darkBorder}`,

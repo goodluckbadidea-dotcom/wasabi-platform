@@ -31,8 +31,12 @@ const tabStyle = (active) => ({
   top: 1,
 });
 
-export default function PageBuilder({ initialTemplate = null, WasabiFlameIcon = null }) {
-  const { user, platformIds, addPage } = usePlatform();
+export default function PageBuilder({ initialTemplate = null, WasabiFlameIcon = null, defaultParentId = null }) {
+  const { user, platformIds, addPage, pages } = usePlatform();
+  const [selectedParent, setSelectedParent] = useState(defaultParentId);
+  const folderOptions = pages.filter(p =>
+    p.type === "folder" || p.page_type === "workspace" || p.pageType === "workspace"
+  );
   const [mode, setMode] = useState(initialTemplate ? "chat" : "visual"); // "chat" | "visual"
   const [displayMessages, setDisplayMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -54,10 +58,14 @@ export default function PageBuilder({ initialTemplate = null, WasabiFlameIcon = 
   }, [initialTemplate]);
 
   const executeTool = useCallback((toolName, toolInput) => {
+    // Inject selected parent folder into page creation if not explicitly set
+    if (toolName === "create_page_config" && selectedParent && !toolInput.parent_id) {
+      toolInput = { ...toolInput, parent_id: selectedParent };
+    }
     const executor = createToolExecutor({
       workerUrl: user.workerUrl,
       notionKey: user.notionKey,
-      parentPageId: platformIds.rootPageId,
+      parentPageId: selectedParent || platformIds.rootPageId,
       kbDbId: platformIds.kbDbId,
       notifDbId: platformIds.notifDbId,
       configDbId: platformIds.configDbId,
@@ -68,7 +76,7 @@ export default function PageBuilder({ initialTemplate = null, WasabiFlameIcon = 
       claudeKey: user?.claudeKey || "",
     });
     return executor(toolName, toolInput);
-  }, [user, platformIds, addPage]);
+  }, [user, platformIds, addPage, selectedParent]);
 
   const handleSend = useCallback(async ({ text, files }) => {
     if (isLoading) return;
@@ -145,20 +153,42 @@ export default function PageBuilder({ initialTemplate = null, WasabiFlameIcon = 
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      {/* Mode tabs */}
+      {/* Location picker + Mode tabs */}
       <div style={{
-        display: "flex",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
         padding: "0 20px",
         borderBottom: `1px solid ${C.darkBorder}`,
         background: C.dark,
         gap: 0,
       }}>
+      <div style={{ display: "flex", gap: 0 }}>
         <span style={tabStyle(mode === "visual")} onClick={() => setMode("visual")}>
           Visual Builder
         </span>
         <span style={tabStyle(mode === "chat")} onClick={() => setMode("chat")}>
           Chat Builder
         </span>
+      </div>
+      {/* Folder picker */}
+      {folderOptions.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, paddingBottom: 1 }}>
+          <span style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>Location:</span>
+          <select
+            value={selectedParent || ""}
+            onChange={(e) => setSelectedParent(e.target.value || null)}
+            style={{
+              background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
+              borderRadius: RADIUS.md, padding: "5px 8px",
+              fontSize: 11, fontFamily: FONT, color: C.darkText, outline: "none",
+            }}
+          >
+            <option value="">Root</option>
+            {folderOptions.map(f => (
+              <option key={f.id} value={f.id}>{f.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
       </div>
 
       {/* Content */}

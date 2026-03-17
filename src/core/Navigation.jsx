@@ -1,24 +1,20 @@
 // --- Sidebar Navigation ---
-// Expandable tree navigation with search bar at top.
-// Hierarchy: Workspace > Folder > Dashboard/Page > View
-// Bottom nav: Home, Knowledge Base, Automations, System, Wasabi
+// Icon-bar sidebar with search, create menu, and nav items.
+// Expandable (hamburger toggle). Bottom nav: Workspaces, Dashboard, To-Do, Notes, Gmail, etc.
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
-import { C, FONT, RADIUS, VIEW_PALETTE } from "../design/tokens.js";
+import { C, FONT, RADIUS } from "../design/tokens.js";
 import { ANIM, TRANSITION } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { savePageConfig, archivePageConfig, createFolderConfig, createWorkspaceConfig, createDashboardConfig } from "../config/pageConfig.js";
 import { archivePage } from "../notion/client.js";
 import {
-  IconBolt, IconGear, IconStar, IconSearch, IconBrain, IconBell, IconPlus,
-  IconChevronLeft, IconChevronRight, IconMail, IconCalendar, IconFunction,
-  IconGrid, IconGlobe,
+  IconGear, IconSearch, IconBrain, IconBell,
+  IconMail, IconCalendar, IconGlobe,
 } from "../design/icons.jsx";
-import { useTheme } from "../context/ThemeContext.jsx";
 import { getGoogleStatus, getGmailSummary, getCalendarSummary } from "../lib/api.js";
 import WasabiFlame from "./WasabiFlame.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
-import SidebarTree from "./SidebarTree.jsx";
 import CreateMenu from "./CreateMenu.jsx";
 import ContextMenu from "./ContextMenu.jsx";
 import { getCreateMenuItems } from "./CreateMenu.jsx";
@@ -41,7 +37,6 @@ export default function Navigation({
     activeFolder, setActiveFolder,
   } = usePlatform();
 
-  const { appMode } = useTheme();
   const zenInsight = useZenInsight();
 
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -236,10 +231,7 @@ export default function Navigation({
         position: "relative",
       }}
     >
-      {/* ── Zen mode: simplified sidebar ── */}
-      {appMode === "zen" ? (
-        <>
-          {/* Top: expand/collapse toggle + search */}
+      {/* Top: expand/collapse toggle + search */}
           <div style={{
             flexShrink: 0,
             padding: collapsed ? "8px 4px" : "8px 10px",
@@ -539,242 +531,6 @@ export default function Navigation({
               </button>
             )}
           </div>
-        </>
-      ) : (
-        <>
-          {/* ── Samurai mode: full sidebar ── */}
-
-          {/* -- Search Bar (replaces FolderDropdown) -- */}
-          {!collapsed ? (
-            <div style={{
-              flexShrink: 0, borderBottom: `1px solid ${C.darkBorder}`,
-              padding: "8px 10px", display: "flex", alignItems: "center", gap: 8,
-            }}>
-              <IconSearch size={14} color={C.darkMuted} />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search this workspace..."
-                style={{
-                  flex: 1, background: "transparent", border: "none",
-                  outline: "none", fontFamily: FONT, fontSize: 12,
-                  color: C.darkText, padding: 0,
-                }}
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  style={{
-                    background: "none", border: "none", cursor: "pointer",
-                    padding: 4, display: "flex", alignItems: "center", justifyContent: "center",
-                    outline: "none", minWidth: 24, minHeight: 24, borderRadius: RADIUS.md,
-                  }}
-                >
-                  <span style={{ fontSize: 14, color: C.darkMuted, lineHeight: 1 }}>&times;</span>
-                </button>
-              )}
-            </div>
-          ) : (
-            <button
-              onClick={onExpandSidebar}
-              style={{
-                flexShrink: 0, borderBottom: `1px solid ${C.darkBorder}`,
-                padding: "12px 0", background: "transparent", border: "none",
-                cursor: "pointer", display: "flex", justifyContent: "center",
-                outline: "none",
-              }}
-            >
-              <IconSearch size={14} color={C.darkMuted} />
-            </button>
-          )}
-
-          {/* -- Sidebar Tree -- */}
-          <SidebarTree
-            activePage={activePage}
-            activeViewIndex={activeViewIndex}
-            onNavigate={navigateToPage}
-            onSetActiveView={(pageId, viewIdx) => onSetViewForPage?.(pageId, viewIdx)}
-            onRename={handleRename}
-            onDelete={(node) => setConfirmDelete({ node })}
-            onContextMenu={handleContextMenu}
-            collapsed={collapsed}
-            searchQuery={searchQuery}
-          />
-
-          {/* -- Create Menu (replaces "+ New Page") -- */}
-          <CreateMenu onCreateItem={handleCreateItem} collapsed={collapsed} />
-
-          {/* -- Bottom action buttons -- */}
-          <div
-            style={{
-              flexShrink: 0,
-              borderTop: `1px solid ${C.darkBorder}`,
-              borderImage: `linear-gradient(90deg, ${C.darkBorder}, ${C.accent}44, ${C.accent}44, ${C.darkBorder}) 1`,
-              padding: collapsed ? "6px 4px" : "8px 12px",
-              paddingBottom: collapsed ? "calc(6px + env(safe-area-inset-bottom, 0px))" : "calc(8px + env(safe-area-inset-bottom, 0px))",
-              display: "flex",
-              flexDirection: "column",
-              gap: 1,
-              overflowY: collapsed ? "hidden" : "auto",
-              overflowX: "hidden",
-              transition: "padding 0.25s",
-            }}
-          >
-            {/* Home */}
-            <button
-              onClick={() => { setActivePage(null); setActiveFolder(null); }}
-              title="Home"
-              style={bottomBtnStyle(activePage === null && !activeFolder)}
-              onMouseEnter={(e) => { if (activePage !== null || activeFolder) e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activePage !== null || activeFolder) e.currentTarget.style.background = "transparent"; }}
-            >
-              <IconStar size={iconSize(activePage === null && !activeFolder)} color={(activePage === null && !activeFolder) ? "#fff" : C.darkMuted} />
-              {!collapsed && <span style={bottomLabelStyle(activePage === null && !activeFolder)}>Home</span>}
-            </button>
-
-            {/* Inbox */}
-            <button
-              onClick={() => setActivePage("inbox")}
-              title="Inbox"
-              style={bottomBtnStyle(activePage === "inbox")}
-              onMouseEnter={(e) => { if (activePage !== "inbox") e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activePage !== "inbox") e.currentTarget.style.background = "transparent"; }}
-            >
-              <IconBell size={iconSize(activePage === "inbox")} color={activePage === "inbox" ? "#fff" : C.darkMuted} />
-              {!collapsed && <span style={bottomLabelStyle(activePage === "inbox")}>Inbox</span>}
-            </button>
-
-            {/* Knowledge Base */}
-            <button
-              onClick={() => setActivePage("knowledge-base")}
-              title="Knowledge Base"
-              style={bottomBtnStyle(activePage === "knowledge-base")}
-              onMouseEnter={(e) => { if (activePage !== "knowledge-base") e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activePage !== "knowledge-base") e.currentTarget.style.background = "transparent"; }}
-            >
-              <IconBrain size={iconSize(activePage === "knowledge-base")} color={activePage === "knowledge-base" ? "#fff" : C.darkMuted} />
-              {!collapsed && <span style={bottomLabelStyle(activePage === "knowledge-base")}>Knowledge Base</span>}
-            </button>
-
-            {/* Automations */}
-            <button
-              onClick={() => setActivePage("automations")}
-              title="Automations"
-              style={bottomBtnStyle(activePage === "automations")}
-              onMouseEnter={(e) => { if (activePage !== "automations") e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activePage !== "automations") e.currentTarget.style.background = "transparent"; }}
-            >
-              <IconBolt size={iconSize(activePage === "automations")} color={activePage === "automations" ? "#fff" : C.darkMuted} />
-              {!collapsed && <span style={bottomLabelStyle(activePage === "automations")}>Automations</span>}
-            </button>
-
-            {/* Functions */}
-            <button
-              onClick={() => setActivePage("functions")}
-              title="Functions"
-              style={bottomBtnStyle(activePage === "functions")}
-              onMouseEnter={(e) => { if (activePage !== "functions") e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activePage !== "functions") e.currentTarget.style.background = "transparent"; }}
-            >
-              <IconFunction size={iconSize(activePage === "functions")} color={activePage === "functions" ? "#fff" : C.darkMuted} />
-              {!collapsed && <span style={bottomLabelStyle(activePage === "functions")}>Functions</span>}
-            </button>
-
-            {/* Build (Custom Views + Plugins) */}
-            <button
-              onClick={() => setActivePage("build")}
-              title="Build"
-              style={bottomBtnStyle(activePage === "build")}
-              onMouseEnter={(e) => { if (activePage !== "build") e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activePage !== "build") e.currentTarget.style.background = "transparent"; }}
-            >
-              <IconGrid size={iconSize(activePage === "build")} color={activePage === "build" ? "#fff" : C.darkMuted} />
-              {!collapsed && <span style={bottomLabelStyle(activePage === "build")}>Build</span>}
-            </button>
-
-            {/* System */}
-            <button
-              onClick={() => setActivePage("system")}
-              title="System"
-              style={bottomBtnStyle(activePage === "system")}
-              onMouseEnter={(e) => { if (activePage !== "system") e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activePage !== "system") e.currentTarget.style.background = "transparent"; }}
-            >
-              <IconGear size={iconSize(activePage === "system")} color={activePage === "system" ? "#fff" : C.darkMuted} />
-              {!collapsed && <span style={bottomLabelStyle(activePage === "system")}>System</span>}
-            </button>
-
-            {/* Wasabi flame */}
-            {!wasabiPanelOpen && (
-              <button
-                onClick={onToggleWasabiPanel}
-                style={{
-                  background: "none", border: "none", cursor: "pointer",
-                  display: "flex", alignItems: "center",
-                  gap: collapsed ? 0 : 10,
-                  padding: collapsed ? "8px 6px" : "8px 12px",
-                  borderRadius: RADIUS.lg, transition: "background 0.15s",
-                  outline: "none", width: "100%",
-                  justifyContent: collapsed ? "center" : "flex-start",
-                  marginTop: 1,
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                title="Open Wasabi"
-              >
-                <WasabiFlame size={collapsed ? 28 : 34} isThinking={isThinking} />
-                {!collapsed && (
-                  <span style={{
-                    fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: 500,
-                    color: C.darkMuted, letterSpacing: "0.02em",
-                  }}>
-                    Wasabi
-                  </span>
-                )}
-              </button>
-            )}
-          </div>
-        </>
-      )}
-
-      {/* -- Collapse / Expand Chevron (Samurai mode only — Zen uses top toggle) -- */}
-      {appMode !== "zen" && (
-        <button
-          onClick={onToggleCollapse}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          style={{
-            position: "absolute", top: "50%", right: -12,
-            transform: "translateY(-50%)",
-            width: 20, height: 32,
-            background: C.dark,
-            border: `1px solid ${C.darkBorder}`,
-            borderLeft: "none",
-            borderRadius: "0 4px 4px 0",
-            cursor: "pointer",
-            outline: "none",
-            zIndex: 10,
-            transition: "background 0.15s, border-color 0.15s",
-            padding: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = C.darkSurf2;
-            e.currentTarget.style.borderColor = C.accent;
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = C.dark;
-            e.currentTarget.style.borderColor = C.darkBorder;
-          }}
-        >
-          {collapsed
-            ? <IconChevronRight size={12} color={C.darkMuted} />
-            : <IconChevronLeft size={12} color={C.darkMuted} />
-          }
-        </button>
-      )}
 
       {/* -- Context Menu -- */}
       {contextMenu && (
