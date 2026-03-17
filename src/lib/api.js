@@ -135,6 +135,9 @@ export async function updatePageConfig(id, updates) {
 export async function deletePageConfig(id) {
   return apiFetch(`/pages/${id}`, { method: "DELETE" });
 }
+export async function reorderPages(items) {
+  return apiFetch("/pages/reorder", { method: "POST", body: { items } });
+}
 
 // ─── Table Schema ───
 

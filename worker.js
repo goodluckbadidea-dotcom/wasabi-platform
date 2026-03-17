@@ -677,6 +677,12 @@ export default {
         if (request.method === "DELETE") return await handleDeletePage(env, id);
       }
 
+      // ─── Batch Reorder Pages ───
+      if (path === "/pages/reorder" && request.method === "POST") {
+        const body = await request.json();
+        return await handleReorderPages(env, body);
+      }
+
       // ─── Table Row CRUD ───
       // Single-row routes matched before collection routes
       const rowMatch = path.match(/^\/tables\/([^/]+)\/rows\/([^/]+)$/);
@@ -2900,6 +2906,30 @@ async function handleUpdatePage(env, id, body) {
       `UPDATE page_configs SET ${sets.join(", ")} WHERE id = ?`
     ).bind(...binds).run();
     return jsonResponse({ ok: true, id });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleReorderPages(env, body) {
+  // body.items: [{ id, sort_order, parent_id? }]
+  const items = body?.items;
+  if (!Array.isArray(items) || items.length === 0) {
+    return jsonResponse({ _error: "items array required" }, 400);
+  }
+  try {
+    const stmts = items.map((item) => {
+      if (item.parent_id !== undefined) {
+        return env.DB.prepare(
+          "UPDATE page_configs SET sort_order = ?, parent_id = ?, updated_at = datetime('now') WHERE id = ?"
+        ).bind(item.sort_order ?? 0, item.parent_id, item.id);
+      }
+      return env.DB.prepare(
+        "UPDATE page_configs SET sort_order = ?, updated_at = datetime('now') WHERE id = ?"
+      ).bind(item.sort_order ?? 0, item.id);
+    });
+    await env.DB.batch(stmts);
+    return jsonResponse({ ok: true, updated: items.length });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
   }

@@ -1,24 +1,27 @@
 // ─── Zen Workspaces Browser ───
 // Drill-down card browser for Sashimi mode.
 // Levels: Workspaces → Folders → Pages
-// Clicking a page opens it inline with full PageShell rendering.
+// Features: overflow menu (delete), drag & drop (reorder + cross-container move)
 
-import React, { useState, useMemo, useCallback, useEffect } from "react";
+import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { useNavigation } from "../context/NavigationContext.jsx";
-import { IconFolder, IconSearch, IconChevronRight, IconGlobe, IconGear } from "../design/icons.jsx";
+import { IconFolder, IconSearch, IconChevronRight, IconGlobe, IconGear, IconTrash } from "../design/icons.jsx";
 import { useRecordDrawer } from "./RecordDrawerContext.jsx";
 import RecordDrawer from "./RecordDrawer.jsx";
+import { deletePageConfig, reorderPages, updatePageConfig as apiUpdatePage } from "../lib/api.js";
 
 // ── Card hover helpers ──
 function applyHover(e) {
+  if (e.currentTarget.dataset.dragging === "true") return;
   e.currentTarget.style.borderColor = C.accent;
   e.currentTarget.style.background = C.darkSurf2;
   e.currentTarget.style.transform = "translateY(-1px)";
 }
 function removeHover(e) {
+  if (e.currentTarget.dataset.dragging === "true") return;
   e.currentTarget.style.borderColor = C.darkBorder;
   e.currentTarget.style.background = C.darkSurf;
   e.currentTarget.style.transform = "translateY(0)";
@@ -35,8 +38,117 @@ function PageIcon({ size = 16, color = C.accent }) {
   );
 }
 
+// ── Overflow "..." button ──
+function OverflowDots({ size = 16, color = C.darkMuted }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
+      <circle cx="4" cy="8" r="1.3" fill={color} />
+      <circle cx="8" cy="8" r="1.3" fill={color} />
+      <circle cx="12" cy="8" r="1.3" fill={color} />
+    </svg>
+  );
+}
+
+// ── Confirm Dialog ──
+function ConfirmDialog({ title, message, warning, onConfirm, onCancel }) {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 9999,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
+    }}
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    >
+      <div style={{
+        background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
+        borderRadius: RADIUS.xl, padding: "24px", width: 380,
+        fontFamily: FONT, animation: ANIM.settleIn(0),
+      }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: C.darkText, marginBottom: 8 }}>{title}</div>
+        <div style={{ fontSize: 13, color: C.darkMuted, lineHeight: 1.5, marginBottom: warning ? 12 : 20 }}>{message}</div>
+        {warning && (
+          <div style={{
+            fontSize: 12, color: "#e8845a", lineHeight: 1.5,
+            padding: "8px 12px", background: "rgba(232,132,90,0.1)",
+            borderRadius: RADIUS.md, marginBottom: 20,
+            border: "1px solid rgba(232,132,90,0.2)",
+          }}>
+            ⚠ {warning}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button
+            onClick={onCancel}
+            style={{
+              padding: "7px 16px", fontSize: 13, fontFamily: FONT,
+              background: "transparent", border: `1px solid ${C.darkBorder}`,
+              borderRadius: RADIUS.md, color: C.darkMuted, cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{
+              padding: "7px 16px", fontSize: 13, fontFamily: FONT, fontWeight: 600,
+              background: "#c0392b", border: "none",
+              borderRadius: RADIUS.md, color: "#fff", cursor: "pointer",
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Overflow Menu (positioned relative to trigger) ──
+function OverflowMenu({ item, onDelete, onClose, anchorRect }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) onClose();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+
+  const top = anchorRect ? anchorRect.bottom + 4 : 0;
+  const left = anchorRect ? anchorRect.right - 140 : 0;
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        position: "fixed", top, left, zIndex: 9998, minWidth: 140,
+        background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
+        borderRadius: RADIUS.lg, padding: "4px 0",
+        boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+        fontFamily: FONT, animation: ANIM.settleIn(0),
+      }}
+    >
+      <button
+        onClick={() => { onDelete(item); onClose(); }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(192,57,43,0.15)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+        style={{
+          display: "flex", alignItems: "center", gap: 8, width: "100%",
+          padding: "8px 14px", border: "none", background: "transparent",
+          fontSize: 13, fontFamily: FONT, color: "#e74c3c", cursor: "pointer",
+          textAlign: "left",
+        }}
+      >
+        <IconTrash size={14} color="#e74c3c" />
+        Delete
+      </button>
+    </div>
+  );
+}
+
 export default function WorkspaceBrowser() {
-  const { pageTree, pages, setActivePage, setActiveFolder } = usePlatform();
+  const { pageTree, pages, setActivePage, setActiveFolder, removePage, updatePageConfig } = usePlatform();
   const { targetFolderPath, setTargetFolderPath } = useNavigation();
   const { openDrawer } = useRecordDrawer();
 
@@ -46,6 +158,19 @@ export default function WorkspaceBrowser() {
   });
   const [searchQuery, setSearchQuery] = useState("");
   const [searchAll, setSearchAll] = useState(false);
+
+  // Overflow menu state
+  const [menuItem, setMenuItem] = useState(null);
+  const [menuAnchor, setMenuAnchor] = useState(null);
+
+  // Delete confirm state
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
+  // Drag & drop state
+  const [dragItem, setDragItem] = useState(null);
+  const [dropTarget, setDropTarget] = useState(null); // { id, position: "before"|"after"|"inside" }
+  const [dropBreadcrumb, setDropBreadcrumb] = useState(null); // breadcrumb index being hovered
+  const dragCounter = useRef({}); // per-element enter/leave counters
 
   // Persist path to localStorage
   useEffect(() => {
@@ -63,7 +188,6 @@ export default function WorkspaceBrowser() {
   // ── Resolve current level items ──
   const currentItems = useMemo(() => {
     if (path.length === 0) {
-      // Top level: show all workspace/folder root nodes
       return pageTree.map((node) => ({
         ...node,
         itemType: "folder",
@@ -73,7 +197,6 @@ export default function WorkspaceBrowser() {
       }));
     }
 
-    // Find the node at the current path
     let current = null;
     let nodes = pageTree;
     for (const segment of path) {
@@ -85,7 +208,6 @@ export default function WorkspaceBrowser() {
     if (!current) return [];
 
     const items = [];
-    // Child folders
     for (const folder of (current.childFolders || [])) {
       items.push({
         ...folder,
@@ -93,7 +215,6 @@ export default function WorkspaceBrowser() {
         pageCount: (folder.children?.length || 0),
       });
     }
-    // Child pages
     for (const page of (current.children || [])) {
       items.push({
         ...page,
@@ -109,7 +230,6 @@ export default function WorkspaceBrowser() {
     if (!q) return searchAll ? [] : currentItems;
 
     if (searchAll) {
-      // Search all pages (flat)
       return pages
         .filter((p) => !p._systemInternal && p.name?.toLowerCase().includes(q))
         .map((p) => ({
@@ -146,7 +266,6 @@ export default function WorkspaceBrowser() {
   }, [openDrawer]);
 
   const handleBreadcrumb = useCallback((index) => {
-    // index -1 = home (root)
     if (index < 0) {
       setPath([]);
     } else {
@@ -155,6 +274,251 @@ export default function WorkspaceBrowser() {
     setSearchQuery("");
     setSearchAll(false);
   }, []);
+
+  // ── Overflow menu ──
+  const handleOverflowClick = useCallback((e, item) => {
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    setMenuAnchor(rect);
+    setMenuItem(item);
+  }, []);
+
+  const closeMenu = useCallback(() => {
+    setMenuItem(null);
+    setMenuAnchor(null);
+  }, []);
+
+  // ── Delete flow ──
+  const handleDeleteRequest = useCallback((item) => {
+    setDeleteTarget(item);
+  }, []);
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteTarget) return;
+    const id = deleteTarget.id;
+    try {
+      await deletePageConfig(id);
+      removePage(id);
+    } catch (err) {
+      console.error("[WorkspaceBrowser] Delete failed:", err);
+    }
+    setDeleteTarget(null);
+  }, [deleteTarget, removePage]);
+
+  // ── Drag & Drop ──
+  const handleDragStart = useCallback((e, item) => {
+    setDragItem(item);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", item.id);
+    // Style the dragged card
+    requestAnimationFrame(() => {
+      e.target.dataset.dragging = "true";
+      e.target.style.opacity = "0.4";
+    });
+  }, []);
+
+  const handleDragEnd = useCallback((e) => {
+    e.target.dataset.dragging = "false";
+    e.target.style.opacity = "1";
+    setDragItem(null);
+    setDropTarget(null);
+    setDropBreadcrumb(null);
+    dragCounter.current = {};
+  }, []);
+
+  const getDropPosition = (e, element) => {
+    const rect = element.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const third = rect.height / 3;
+    if (y < third) return "before";
+    if (y > third * 2) return "after";
+    return "inside";
+  };
+
+  const handleDragOver = useCallback((e, item) => {
+    e.preventDefault();
+    if (!dragItem || dragItem.id === item.id) return;
+    e.dataTransfer.dropEffect = "move";
+    const pos = getDropPosition(e, e.currentTarget);
+    // Only allow "inside" drop on folders
+    const effectivePos = (pos === "inside" && item.itemType !== "folder") ? "after" : pos;
+    setDropTarget({ id: item.id, position: effectivePos });
+  }, [dragItem]);
+
+  const handleDragEnter = useCallback((e, item) => {
+    e.preventDefault();
+    const id = item.id;
+    dragCounter.current[id] = (dragCounter.current[id] || 0) + 1;
+  }, []);
+
+  const handleDragLeave = useCallback((e, item) => {
+    const id = item.id;
+    dragCounter.current[id] = (dragCounter.current[id] || 0) - 1;
+    if (dragCounter.current[id] <= 0) {
+      dragCounter.current[id] = 0;
+      if (dropTarget?.id === id) setDropTarget(null);
+    }
+  }, [dropTarget]);
+
+  const handleDrop = useCallback(async (e, targetItem) => {
+    e.preventDefault();
+    if (!dragItem || dragItem.id === targetItem.id) return;
+
+    const pos = dropTarget?.position || "after";
+    const currentParent = path.length > 0 ? path[path.length - 1].id : null;
+
+    if (pos === "inside" && targetItem.itemType === "folder") {
+      // Move into folder
+      const newParentId = targetItem.id;
+      // Get items inside target folder to determine sort_order
+      const targetChildren = pages.filter((p) => p.parentId === newParentId);
+      const newSortOrder = targetChildren.length > 0
+        ? Math.max(...targetChildren.map((c) => c.sort_order || 0)) + 1
+        : 0;
+      try {
+        await reorderPages([{ id: dragItem.id, sort_order: newSortOrder, parent_id: newParentId }]);
+        updatePageConfig(dragItem.id, { parentId: newParentId, sort_order: newSortOrder });
+      } catch (err) {
+        console.error("[DnD] Move into folder failed:", err);
+      }
+    } else {
+      // Reorder within current container
+      const reordered = [...displayItems.filter((it) => it.id !== dragItem.id)];
+      const targetIdx = reordered.findIndex((it) => it.id === targetItem.id);
+      const insertIdx = pos === "before" ? targetIdx : targetIdx + 1;
+      reordered.splice(insertIdx, 0, dragItem);
+
+      // Build batch update
+      const batch = reordered.map((it, i) => ({
+        id: it.id,
+        sort_order: i,
+        ...(it.id === dragItem.id && currentParent !== (dragItem.parentId || null)
+          ? { parent_id: currentParent }
+          : {}
+        ),
+      }));
+
+      // Optimistic UI update
+      for (const b of batch) {
+        updatePageConfig(b.id, { sort_order: b.sort_order, ...(b.parent_id !== undefined ? { parentId: b.parent_id } : {}) });
+      }
+
+      try {
+        await reorderPages(batch);
+      } catch (err) {
+        console.error("[DnD] Reorder failed:", err);
+      }
+    }
+
+    setDragItem(null);
+    setDropTarget(null);
+    dragCounter.current = {};
+  }, [dragItem, dropTarget, displayItems, path, pages, updatePageConfig]);
+
+  // ── Breadcrumb drop handlers ──
+  const handleBreadcrumbDragOver = useCallback((e, index) => {
+    e.preventDefault();
+    if (!dragItem) return;
+    e.dataTransfer.dropEffect = "move";
+    setDropBreadcrumb(index);
+  }, [dragItem]);
+
+  const handleBreadcrumbDragLeave = useCallback((e) => {
+    setDropBreadcrumb(null);
+  }, []);
+
+  const handleBreadcrumbDrop = useCallback(async (e, index) => {
+    e.preventDefault();
+    if (!dragItem) return;
+
+    // index -1 = root (no parent), otherwise path[index].id
+    const newParentId = index < 0 ? null : path[index].id;
+
+    // Don't drop onto current parent
+    const currentParent = dragItem.parentId || null;
+    if (newParentId === currentParent) {
+      setDropBreadcrumb(null);
+      return;
+    }
+
+    // Get siblings in target to find next sort_order
+    const siblings = pages.filter((p) => {
+      const pParent = p.parentId || null;
+      return pParent === newParentId && p.id !== dragItem.id;
+    });
+    const newSortOrder = siblings.length > 0
+      ? Math.max(...siblings.map((s) => s.sort_order || 0)) + 1
+      : 0;
+
+    try {
+      await reorderPages([{ id: dragItem.id, sort_order: newSortOrder, parent_id: newParentId }]);
+      updatePageConfig(dragItem.id, { parentId: newParentId, sort_order: newSortOrder });
+    } catch (err) {
+      console.error("[DnD] Breadcrumb move failed:", err);
+    }
+
+    setDragItem(null);
+    setDropBreadcrumb(null);
+    dragCounter.current = {};
+  }, [dragItem, path, pages, updatePageConfig]);
+
+  // ── Drop indicator rendering ──
+  const getDropIndicatorStyle = (itemId) => {
+    if (!dropTarget || dropTarget.id !== itemId || !dragItem) return {};
+    if (dropTarget.position === "inside") {
+      return { outline: `2px solid ${C.accent}`, outlineOffset: -2 };
+    }
+    return {};
+  };
+
+  const getInsertLineStyle = (itemId, position) => {
+    if (!dropTarget || dropTarget.id !== itemId || dropTarget.position !== position || !dragItem) {
+      return { display: "none" };
+    }
+    return {
+      position: "absolute",
+      left: 0, right: 0,
+      height: 2,
+      background: C.accent,
+      borderRadius: 1,
+      zIndex: 10,
+      ...(position === "before" ? { top: -7 } : { bottom: -7 }),
+    };
+  };
+
+  // ── Delete dialog content ──
+  const getDeleteInfo = () => {
+    if (!deleteTarget) return {};
+    const isFolder = deleteTarget.itemType === "folder";
+    const isWorkspace = isFolder && path.length === 0;
+    const childCount = isFolder
+      ? pages.filter((p) => p.parentId === deleteTarget.id).length
+      : 0;
+
+    if (isWorkspace) {
+      return {
+        title: `Delete "${deleteTarget.name}"?`,
+        message: `This will permanently delete the workspace and all its contents.`,
+        warning: childCount > 0
+          ? `This workspace contains ${childCount} item${childCount !== 1 ? "s" : ""} (folders, databases, documents). All will be permanently deleted.`
+          : null,
+      };
+    }
+    if (isFolder) {
+      return {
+        title: `Delete "${deleteTarget.name}"?`,
+        message: `This will permanently delete this folder and all its contents.`,
+        warning: childCount > 0
+          ? `This folder contains ${childCount} item${childCount !== 1 ? "s" : ""}. All will be permanently deleted.`
+          : null,
+      };
+    }
+    return {
+      title: `Delete "${deleteTarget.name}"?`,
+      message: `This will permanently delete this ${deleteTarget.page_type || deleteTarget.pageType || "page"} and all its data.`,
+      warning: null,
+    };
+  };
 
   // ── Styles ──
   const styles = {
@@ -169,12 +533,14 @@ export default function WorkspaceBrowser() {
       display: "flex", alignItems: "center", gap: 4,
       marginBottom: 16, flexWrap: "wrap",
     },
-    breadcrumbSegment: (isLast) => ({
+    breadcrumbSegment: (isLast, isDropTarget) => ({
       fontSize: 13, fontWeight: isLast ? 600 : 400, fontFamily: FONT,
-      color: isLast ? C.darkText : C.darkMuted,
-      cursor: isLast ? "default" : "pointer",
-      background: "none", border: "none", padding: "2px 4px",
-      borderRadius: RADIUS.sm, transition: "color 0.15s",
+      color: isDropTarget ? C.accent : (isLast ? C.darkText : C.darkMuted),
+      cursor: isLast && !dragItem ? "default" : "pointer",
+      background: isDropTarget ? "rgba(76,175,80,0.12)" : "none",
+      border: "none", padding: "2px 8px",
+      borderRadius: RADIUS.sm, transition: "all 0.15s",
+      outline: isDropTarget ? `2px solid ${C.accent}` : "none",
     }),
     backBtn: {
       background: "none", border: "none", cursor: "pointer",
@@ -209,9 +575,9 @@ export default function WorkspaceBrowser() {
     card: (delay = 0) => ({
       background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
       borderRadius: RADIUS.xl, padding: "18px 16px",
-      cursor: "pointer", transition: "all 0.15s", fontFamily: FONT,
+      cursor: "grab", transition: "all 0.15s", fontFamily: FONT,
       animation: ANIM.settleIn(delay), display: "flex",
-      flexDirection: "column", gap: 8,
+      flexDirection: "column", gap: 8, position: "relative",
     }),
     cardTitle: {
       fontSize: 14, fontWeight: 600, color: C.darkText,
@@ -224,12 +590,18 @@ export default function WorkspaceBrowser() {
       padding: "40px 28px", textAlign: "center",
       fontSize: 13, color: C.darkMuted, fontFamily: FONT,
     },
+    overflowBtn: {
+      background: "none", border: "none", cursor: "pointer",
+      padding: 4, borderRadius: RADIUS.sm, display: "flex",
+      alignItems: "center", justifyContent: "center",
+      opacity: 0, transition: "opacity 0.15s",
+    },
   };
 
   return (
     <div style={styles.wrapper}>
       <div style={styles.header}>
-        {/* ── Breadcrumb ── */}
+        {/* ── Breadcrumb (also drop targets) ── */}
         <div style={styles.breadcrumb}>
           {path.length > 0 && (
             <button
@@ -245,10 +617,13 @@ export default function WorkspaceBrowser() {
             </button>
           )}
           <button
-            style={styles.breadcrumbSegment(path.length === 0)}
+            style={styles.breadcrumbSegment(path.length === 0, dropBreadcrumb === -1)}
             onClick={() => handleBreadcrumb(-1)}
-            onMouseEnter={(e) => { if (path.length > 0) e.currentTarget.style.color = C.accent; }}
-            onMouseLeave={(e) => { if (path.length > 0) e.currentTarget.style.color = C.darkMuted; }}
+            onMouseEnter={(e) => { if (path.length > 0 && !dragItem) e.currentTarget.style.color = C.accent; }}
+            onMouseLeave={(e) => { if (path.length > 0 && !dragItem) e.currentTarget.style.color = C.darkMuted; }}
+            onDragOver={(e) => handleBreadcrumbDragOver(e, -1)}
+            onDragLeave={handleBreadcrumbDragLeave}
+            onDrop={(e) => handleBreadcrumbDrop(e, -1)}
           >
             Workspaces
           </button>
@@ -256,10 +631,13 @@ export default function WorkspaceBrowser() {
             <React.Fragment key={segment.id}>
               <IconChevronRight size={10} color={C.darkMuted} />
               <button
-                style={styles.breadcrumbSegment(i === path.length - 1)}
+                style={styles.breadcrumbSegment(i === path.length - 1, dropBreadcrumb === i)}
                 onClick={() => handleBreadcrumb(i)}
-                onMouseEnter={(e) => { if (i < path.length - 1) e.currentTarget.style.color = C.accent; }}
-                onMouseLeave={(e) => { if (i < path.length - 1) e.currentTarget.style.color = C.darkMuted; }}
+                onMouseEnter={(e) => { if (i < path.length - 1 && !dragItem) e.currentTarget.style.color = C.accent; }}
+                onMouseLeave={(e) => { if (i < path.length - 1 && !dragItem) e.currentTarget.style.color = C.darkMuted; }}
+                onDragOver={(e) => handleBreadcrumbDragOver(e, i)}
+                onDragLeave={handleBreadcrumbDragLeave}
+                onDrop={(e) => handleBreadcrumbDrop(e, i)}
               >
                 {segment.name}
               </button>
@@ -315,7 +693,17 @@ export default function WorkspaceBrowser() {
           {displayItems.map((item, i) => (
             <div
               key={item.id}
-              style={styles.card(i * 0.02)}
+              draggable
+              onDragStart={(e) => handleDragStart(e, item)}
+              onDragEnd={handleDragEnd}
+              onDragOver={(e) => handleDragOver(e, item)}
+              onDragEnter={(e) => handleDragEnter(e, item)}
+              onDragLeave={(e) => handleDragLeave(e, item)}
+              onDrop={(e) => handleDrop(e, item)}
+              style={{
+                ...styles.card(i * 0.02),
+                ...getDropIndicatorStyle(item.id),
+              }}
               onClick={() => {
                 if (item.itemType === "folder") {
                   handleDrillDown(item);
@@ -323,31 +711,57 @@ export default function WorkspaceBrowser() {
                   handleOpenPage(item);
                 }
               }}
-              onMouseEnter={applyHover}
-              onMouseLeave={removeHover}
+              onMouseEnter={(e) => {
+                applyHover(e);
+                // Show overflow buttons
+                const btns = e.currentTarget.querySelectorAll("[data-overflow]");
+                btns.forEach((b) => { b.style.opacity = "1"; });
+              }}
+              onMouseLeave={(e) => {
+                removeHover(e);
+                const btns = e.currentTarget.querySelectorAll("[data-overflow]");
+                btns.forEach((b) => { b.style.opacity = "0"; });
+              }}
             >
+              {/* Drop position indicators */}
+              <div style={getInsertLineStyle(item.id, "before")} />
+              <div style={getInsertLineStyle(item.id, "after")} />
+
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 {item.itemType === "folder" ? (
                   <IconFolder size={18} color={C.accent} />
                 ) : (
                   <PageIcon size={18} color={C.accent} />
                 )}
-                {path.length === 0 && item.itemType === "folder" && (
+                <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                  {path.length === 0 && item.itemType === "folder" && (
+                    <button
+                      onClick={(e) => handleOpenSettings(e, item)}
+                      style={{
+                        background: "none", border: "none", cursor: "pointer",
+                        padding: 4, borderRadius: RADIUS.sm, display: "flex",
+                        alignItems: "center", justifyContent: "center",
+                        opacity: 0, transition: "opacity 0.15s",
+                      }}
+                      data-overflow="true"
+                      onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                      title="Workspace settings"
+                    >
+                      <IconGear size={14} color={C.darkMuted} />
+                    </button>
+                  )}
                   <button
-                    onClick={(e) => handleOpenSettings(e, item)}
-                    style={{
-                      background: "none", border: "none", cursor: "pointer",
-                      padding: 4, borderRadius: RADIUS.sm, display: "flex",
-                      alignItems: "center", justifyContent: "center",
-                      opacity: 0.4, transition: "opacity 0.15s",
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.4"; }}
-                    title="Workspace settings"
+                    onClick={(e) => handleOverflowClick(e, item)}
+                    style={styles.overflowBtn}
+                    data-overflow="true"
+                    onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    title="More options"
                   >
-                    <IconGear size={14} color={C.darkMuted} />
+                    <OverflowDots size={16} color={C.darkMuted} />
                   </button>
-                )}
+                </div>
               </div>
               <div style={styles.cardTitle}>{item.name}</div>
               <div style={styles.cardMeta}>
@@ -372,6 +786,30 @@ export default function WorkspaceBrowser() {
 
       {/* Drawer for workspace settings */}
       <RecordDrawer />
+
+      {/* Overflow menu */}
+      {menuItem && (
+        <OverflowMenu
+          item={menuItem}
+          anchorRect={menuAnchor}
+          onDelete={handleDeleteRequest}
+          onClose={closeMenu}
+        />
+      )}
+
+      {/* Delete confirmation dialog */}
+      {deleteTarget && (() => {
+        const info = getDeleteInfo();
+        return (
+          <ConfirmDialog
+            title={info.title}
+            message={info.message}
+            warning={info.warning}
+            onConfirm={handleDeleteConfirm}
+            onCancel={() => setDeleteTarget(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
