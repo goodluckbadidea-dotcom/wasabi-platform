@@ -6,6 +6,7 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { C, FONT, MONO, RADIUS, THEME_LIST, THEMES, VIEW_PALETTE } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
+import { S } from "../design/styles.js";
 import { useTheme } from "../context/ThemeContext.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { useColorMapping } from "../context/ColorMappingContext.jsx";
