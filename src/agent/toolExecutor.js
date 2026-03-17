@@ -1067,11 +1067,14 @@ export function createToolExecutor({
 
       // ─── Page Config Creation ───
       case "create_page_config": {
-        const { name, icon, databaseIds, views, agentPrompt } = toolInput;
+        const { name, icon, databaseIds, views, agentPrompt, columns } = toolInput;
+        const pageType = toolInput.page_type || "database";
         const pageConfig = {
           name,
-          icon: icon || "page",
+          icon: icon || (pageType === "document" ? "page" : "table"),
           parentId: toolInput.parent_id || null,
+          page_type: pageType,
+          pageType: pageType,
           databaseIds: databaseIds || [],
           agentConfig: {
             model: "claude-haiku-4-5-20251001",
@@ -1081,11 +1084,22 @@ export function createToolExecutor({
           },
           views: (views || []).map((v) => ({
             type: v.type,
+            label: v.label || v.type,
             position: v.position || "main",
             config: v.config || {},
           })),
           createdAt: new Date().toISOString(),
         };
+
+        // For standalone D1 tables, include column definitions so the worker creates the schema
+        if (pageType === "database" && columns && columns.length > 0) {
+          pageConfig.columns = columns.map((c) => ({
+            name: c.name,
+            type: c.type || "text",
+            id: c.id || c.name.toLowerCase().replace(/\s+/g, "_"),
+            ...(c.options ? { options: c.options } : {}),
+          }));
+        }
 
         // Save to D1 (primary path — works without Notion)
         const pageId = await savePageConfig(pageConfig);

@@ -197,24 +197,44 @@ const DETECT_SCHEMA = {
 
 const CREATE_PAGE_CONFIG = {
   name: "create_page_config",
-  description: "Create a new page config in the Wasabi platform (saved to D1). Defines the page name, icon, connected databases, views layout, and agent configuration.",
+  description: "Create a new page with a standalone D1 database table and views. Use this to build custom pages — no Notion required. Define columns for the table schema and views for the layout.",
   input_schema: {
     type: "object",
     properties: {
       name: { type: "string", description: "Page display name." },
       icon: { type: "string", description: "Page icon emoji." },
+      page_type: {
+        type: "string",
+        enum: ["database", "document", "sheet"],
+        description: "Page type. 'database' = standalone table (default), 'document' = rich text doc, 'sheet' = spreadsheet grid.",
+      },
+      columns: {
+        type: "array",
+        description: "Column definitions for standalone database tables. Each column has: name (display name), type (text|number|select|multi_select|checkbox|date|url|email|phone), and optional id (auto-generated from name if omitted). For 'select' type, include options array.",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            type: { type: "string" },
+            id: { type: "string" },
+            options: { type: "array", items: { type: "string" } },
+          },
+          required: ["name", "type"],
+        },
+      },
       databaseIds: {
         type: "array",
         items: { type: "string" },
-        description: "Connected Notion database IDs.",
+        description: "Optional: external database IDs to connect (Notion). Leave empty for standalone D1 tables.",
       },
       views: {
         type: "array",
-        description: "Views to display. Each has: type (table|gantt|cardGrid|kanban|charts|form|summaryTiles|activityFeed|document|notificationFeed|chat), position (main|sidebar|bottom), and config (view-specific settings).",
+        description: "Views to display. Each has: type (table|gantt|cardGrid|kanban|charts|form|summaryTiles|activityFeed|document|notificationFeed|calendar|sheet), position (main|sidebar|bottom), label (display name), and config (view-specific settings like { editable: true }).",
         items: {
           type: "object",
           properties: {
             type: { type: "string" },
+            label: { type: "string" },
             position: { type: "string" },
             config: { type: "object" },
           },
@@ -230,7 +250,7 @@ const CREATE_PAGE_CONFIG = {
         description: "Parent workspace or folder ID for the new page.",
       },
     },
-    required: ["name", "databaseIds", "views"],
+    required: ["name", "views"],
   },
 };
 
