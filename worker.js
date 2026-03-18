@@ -1353,20 +1353,36 @@ export default {
           const batch = uniqueIds.slice(i, i + 10);
           const results = await Promise.allSettled(
             batch.map(async (id) => {
-              const res = await fetch(`${NOTION_API}/pages/${id}`, {
-                headers: { Authorization: `Bearer ${notionKey}`, "Notion-Version": "2022-06-28" },
-              });
-              if (!res.ok) return { id, title: null };
-              const page = await res.json();
-              // Extract title from properties
-              let title = null;
-              for (const [, prop] of Object.entries(page.properties || {})) {
-                if (prop.type === "title" && prop.title?.length > 0) {
-                  title = prop.title.map(t => t.plain_text).join("");
-                  break;
+              try {
+                const res = await fetch(`${NOTION_API}/pages/${id}`, {
+                  headers: { Authorization: `Bearer ${notionKey}`, "Notion-Version": "2022-06-28" },
+                });
+                if (!res.ok) return { id, title: "Untitled" };
+                const page = await res.json();
+                // Extract title — try type=title first, then check for rich_text arrays
+                let title = null;
+                for (const [propName, prop] of Object.entries(page.properties || {})) {
+                  if (prop.type === "title") {
+                    const arr = prop.title || [];
+                    if (arr.length > 0) {
+                      title = arr.map(t => t.plain_text || "").join("");
+                    }
+                    break;
+                  }
                 }
+                // Fallback: look for any property with a title array
+                if (!title) {
+                  for (const [propName, prop] of Object.entries(page.properties || {})) {
+                    if (prop.title && Array.isArray(prop.title) && prop.title.length > 0) {
+                      title = prop.title.map(t => t.plain_text || "").join("");
+                      break;
+                    }
+                  }
+                }
+                return { id, title: title || "Untitled" };
+              } catch {
+                return { id, title: "Untitled" };
               }
-              return { id, title: title || "Untitled" };
             })
           );
           for (const r of results) {

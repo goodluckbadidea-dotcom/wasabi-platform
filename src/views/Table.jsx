@@ -12,7 +12,7 @@ import { debounce, formatDate, truncate } from "../utils/helpers.js";
 import {
   IconTrash, IconExport, IconEyeOff, IconExpand, IconPlus, IconConnect,
   IconCalendar, IconCheck, IconCheckSquare, IconLink, IconMail, IconPhone,
-  IconStatusDot, IconArrowDown, IconChevronDown,
+  IconStatusDot, IconArrowDown, IconChevronDown, IconUser,
 } from "../design/icons.jsx";
 import FilterChips, { applyChipFilters } from "./FilterChips.jsx";
 import RecordDetail from "./RecordDetail.jsx";
@@ -20,7 +20,7 @@ import { useLinks } from "../context/LinksContext.jsx";
 import LinkPicker from "../core/LinkPicker.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
-import { updateTableSchema, getTableSchema, listUsers, updateRowOwner, resolvePageTitles } from "../lib/api.js";
+import { updateTableSchema, getTableSchema, listUsers, updateRowOwner, notionProxy } from "../lib/api.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { updateDatabase, searchDatabases } from "../notion/client.js";
 import SelectPicker from "../components/SelectPicker.jsx";
@@ -35,7 +35,7 @@ const D1_TO_NOTION_TYPE = {
   text: "rich_text", number: "number", select: "select",
   multi_select: "multi_select", date: "date", checkbox: "checkbox",
   url: "url", email: "email", phone: "phone_number", status: "status",
-  relation: "relation",
+  people: "people", relation: "relation",
 };
 
 // ─── Column Types ───
@@ -51,6 +51,7 @@ const COLUMN_TYPES = [
   { value: "email", label: "Email", text: null, Icon: IconMail },
   { value: "phone", label: "Phone", text: null, Icon: IconPhone },
   { value: "status", label: "Status", text: null, Icon: IconStatusDot },
+  { value: "people", label: "Person", text: null, Icon: IconUser },
   { value: "relation", label: "Relation", text: null, Icon: IconLink },
 ];
 
@@ -1155,24 +1156,46 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const targetDatabaseId = config.databaseId || pageConfig?.databaseIds?.[0] || pageConfig?.id;
 
   // ── Relation title resolution ──
+  // Query each related database to get page titles for relation fields
   const [relationTitles, setRelationTitles] = useState({});
+  const resolvedDbsRef = useRef(new Set());
   useEffect(() => {
     if (!data || data.length === 0 || !schema) return;
-    // Collect all relation field page IDs
-    const relationFields = (schema.allFields || []).filter(f => f.type === "relation").map(f => f.name);
+    const relationFields = (schema.allFields || []).filter(f => f.type === "relation" && f.relatedDbId);
     if (relationFields.length === 0) return;
-    const allIds = new Set();
-    for (const page of data) {
-      for (const field of relationFields) {
-        const val = readField(page, field);
-        if (Array.isArray(val)) val.forEach(id => { if (id && typeof id === "string") allIds.add(id); });
+    // Only query databases we haven't resolved yet
+    const dbsToQuery = relationFields.filter(f => !resolvedDbsRef.current.has(f.relatedDbId));
+    if (dbsToQuery.length === 0) return;
+    // Query each related database for its page titles
+    Promise.allSettled(
+      dbsToQuery.map(async (field) => {
+        resolvedDbsRef.current.add(field.relatedDbId);
+        const resp = await notionProxy("/query", "POST", {
+          database_id: field.relatedDbId,
+          page_size: 100,
+        });
+        const titles = {};
+        for (const page of resp?.results || []) {
+          let title = null;
+          for (const [, prop] of Object.entries(page.properties || {})) {
+            if (prop.type === "title" && prop.title?.length > 0) {
+              title = prop.title.map(t => t.plain_text || "").join("");
+              break;
+            }
+          }
+          if (title) titles[page.id] = title;
+        }
+        return titles;
+      })
+    ).then((results) => {
+      const merged = {};
+      for (const r of results) {
+        if (r.status === "fulfilled" && r.value) Object.assign(merged, r.value);
       }
-    }
-    const newIds = [...allIds].filter(id => !relationTitles[id]);
-    if (newIds.length === 0) return;
-    resolvePageTitles(newIds)
-      .then(titles => setRelationTitles(prev => ({ ...prev, ...titles })))
-      .catch(() => {});
+      if (Object.keys(merged).length > 0) {
+        setRelationTitles(prev => ({ ...prev, ...merged }));
+      }
+    });
   }, [data, schema]);
 
   // Inject animations on mount
