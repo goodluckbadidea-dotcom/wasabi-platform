@@ -9,6 +9,7 @@ import { useRecordDrawer } from "./RecordDrawerContext.jsx";
 import {
   updateRow, deleteRow, updateCalendarEvent, deleteCalendarEvent,
   listRecordComments, createRecordComment, deleteRecordComment,
+  getRecordNote, saveRecordNote,
   upsertTaskActivity, putRecordView,
 } from "../lib/api.js";
 import { updatePage } from "../notion/client.js";
@@ -124,6 +125,9 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
     || (task.source?.startsWith("notion:") ? task.source.split(":")[1] : null)
     || "sashimi";
 
+  // Whether notes must be stored in wasabi-internal (no mapped Notion field)
+  const notesAreLocal = isNotion && !fieldMap.notes;
+
   // Reset state when task changes
   useEffect(() => {
     setTitle(task.title || "");
@@ -135,7 +139,13 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
     setError(null);
     setConfirmDelete(false);
     setActiveTab("details");
-  }, [task.id]);
+    // Load wasabi-internal notes for Notion tasks without mapped notes field
+    if (isNotion && !fieldMap.notes && task.id && pageConfigId) {
+      getRecordNote(task.id, pageConfigId)
+        .then((res) => { if (res?.note?.content) setNotes(res.note.content); })
+        .catch(() => {});
+    }
+  }, [task.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync done state when status changes (for Notion tasks)
   useEffect(() => {
@@ -175,6 +185,12 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
         if (Object.keys(properties).length > 0) {
           await updatePage(user.workerUrl, user.notionKey, task.id, properties);
         }
+        // Save notes to wasabi-internal storage if no Notion field mapped
+        if (!fieldMap.notes && notes) {
+          await saveRecordNote(task.id, pageConfigId, notes).catch(() => {});
+        }
+        // Update activity so task gets removed from to-do list
+        upsertTaskActivity(task.id, task.source, new Date().toISOString()).catch(() => {});
         const updated = { ...task, title, done, status, priority, due, notes };
         onSaved?.(updated);
         notifySaved("task", updated);
@@ -301,7 +317,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
             <path d="M6 1v4l2.5 1.5" stroke={C.accent} strokeWidth="1" strokeLinecap="round" />
             <circle cx="6" cy="6" r="5" stroke={C.accent} strokeWidth="1" fill="none" />
           </svg>
-          Synced from {task.sourceName || "Notion"} — edits save to source
+          Synced from {task.sourceName || "Notion"} — status, priority, dates save to source
         </div>
       )}
 
@@ -424,7 +440,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
             <label style={labelStyle}>Notes</label>
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4}
               style={{ ...inputStyle, resize: "vertical", minHeight: 80 }}
-              placeholder={isNotion && !fieldMap.notes ? "Notes (stored locally — no Notion notes field detected)" : ""}
+              placeholder={notesAreLocal ? "Notes (saved in Wasabi — no Notion notes field detected)" : ""}
               onFocus={(e) => { e.target.style.borderColor = C.accent; }}
               onBlur={(e) => { e.target.style.borderColor = C.darkBorder; }}
             />
@@ -521,7 +537,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
 
       {/* ── Comments tab ── */}
       {activeTab === "comments" && (
-        <TaskCommentsTab recordId={task.id} pageConfigId={pageConfigId} />
+        <TaskCommentsTab recordId={task.id} pageConfigId={pageConfigId} taskSource={task.source} />
       )}
     </div>
   );
@@ -531,7 +547,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
 // ════════════════════════════════════════════
 // TaskCommentsTab — threaded comments per record
 // ════════════════════════════════════════════
-function TaskCommentsTab({ recordId, pageConfigId }) {
+function TaskCommentsTab({ recordId, pageConfigId, taskSource }) {
   const { identity } = usePlatform();
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -562,6 +578,8 @@ function TaskCommentsTab({ recordId, pageConfigId }) {
     setError(null);
     try {
       await createRecordComment(recordId, pageConfigId, text, identity?.id, identity?.display_name);
+      // Update activity so task gets recognized as worked-on (removes from to-do list)
+      if (taskSource) upsertTaskActivity(recordId, taskSource, new Date().toISOString()).catch(() => {});
       setNewComment("");
       await fetchComments();
       inputRef.current?.focus();
@@ -593,6 +611,13 @@ function TaskCommentsTab({ recordId, pageConfigId }) {
 
   return (
     <div>
+      {/* Wasabi-internal notice */}
+      <div style={{
+        fontSize: 10, fontFamily: FONT, color: C.darkMuted, opacity: 0.7,
+        padding: "4px 0 8px", textAlign: "center",
+      }}>
+        Comments are stored in Wasabi — not synced to source database
+      </div>
       {/* Comments list */}
       <div style={{ maxHeight: 300, overflowY: "auto", marginBottom: 12 }}>
         {comments.length === 0 && (
