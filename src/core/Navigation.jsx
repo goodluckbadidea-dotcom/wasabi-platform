@@ -276,11 +276,10 @@ export default function Navigation({
               onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
             >
               {collapsed ? (
-                /* Hamburger menu icon */
+                /* Search / magnifying glass icon */
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <line x1="2" y1="4" x2="14" y2="4" stroke={navInactiveColor} strokeWidth="1.4" strokeLinecap="round" />
-                  <line x1="2" y1="8" x2="14" y2="8" stroke={navInactiveColor} strokeWidth="1.4" strokeLinecap="round" />
-                  <line x1="2" y1="12" x2="14" y2="12" stroke={navInactiveColor} strokeWidth="1.4" strokeLinecap="round" />
+                  <circle cx="7" cy="7" r="4.5" stroke={navInactiveColor} strokeWidth="1.4" />
+                  <line x1="10.5" y1="10.5" x2="13.5" y2="13.5" stroke={navInactiveColor} strokeWidth="1.4" strokeLinecap="round" />
                 </svg>
               ) : (
                 /* Sidebar collapse icon (panel with arrow) */
