@@ -329,11 +329,11 @@ export default function ChatPanel({
   }, [zenLoading, user, identity, pages]);
 
   // ── Tab bar style ──
-  const tabBtn = (active) => ({
-    flex: 1, padding: "7px 0", border: "none",
-    background: active ? C.accent : C.darkSurf2,
+  const miniTabBtn = (active) => ({
+    padding: "3px 8px", border: "none",
+    background: active ? C.accent : "transparent",
     color: active ? "#fff" : C.darkMuted,
-    fontSize: 11, fontWeight: 600, fontFamily: FONT,
+    fontSize: 9, fontWeight: 600, fontFamily: FONT,
     borderRadius: RADIUS.pill, cursor: "pointer", outline: "none",
     transition: "all 0.15s", letterSpacing: "0.03em",
   });
@@ -369,6 +369,20 @@ export default function ChatPanel({
           }}>
             Wasabi
           </span>
+          {/* Compact Assistant/Agent toggle */}
+          <div style={{
+            display: "flex", gap: 2, background: C.darkSurf2,
+            borderRadius: RADIUS.pill, padding: 2, marginLeft: 6,
+          }}>
+            <button style={miniTabBtn(activeTab === "assistant")} onClick={() => setActiveTab("assistant")}>
+              Assistant
+            </button>
+            {canUseAgent && (
+              <button style={miniTabBtn(activeTab === "agent")} onClick={() => setActiveTab("agent")}>
+                Agent
+              </button>
+            )}
+          </div>
           <div style={{ marginLeft: "auto", display: "flex", gap: 2 }}>
             {isResized && (
               <button
@@ -398,20 +412,6 @@ export default function ChatPanel({
           </div>
         </div>
 
-        {/* Tab bar */}
-        <div style={{
-          display: "flex", gap: 3, padding: "0 2px 10px",
-          background: C.dark,
-        }}>
-          <button style={tabBtn(activeTab === "assistant")} onClick={() => setActiveTab("assistant")}>
-            Assistant
-          </button>
-          {canUseAgent && (
-            <button style={tabBtn(activeTab === "agent")} onClick={() => setActiveTab("agent")}>
-              Agent
-            </button>
-          )}
-        </div>
       </div>
 
       {/* ── Zen Tab ── */}
@@ -426,20 +426,6 @@ export default function ChatPanel({
           agentIcon={<WasabiFlame size={20} />}
           placeholder="Ask anything..."
           compact={true}
-          emptyState={
-            <div style={{
-              textAlign: "center", padding: "40px 20px",
-              color: C.darkMuted, fontFamily: FONT,
-            }}>
-              <WasabiFlame size={32} />
-              <div style={{ fontSize: 13, fontWeight: 600, marginTop: 12, color: C.darkText }}>
-                Wasabi Assistant
-              </div>
-              <div style={{ fontSize: 11, marginTop: 4, opacity: 0.6, lineHeight: 1.5 }}>
-                Ask questions, get summaries,<br />search emails, or schedule events.
-              </div>
-            </div>
-          }
         />
       )}
 
