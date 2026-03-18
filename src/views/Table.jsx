@@ -1025,6 +1025,222 @@ function OwnerPicker({ ownerIds, users, onCommit, onClose }) {
 }
 
 
+// ─── Saved Views Dropdown ───
+
+function SavedViewsDropdown({ savedViews = [], activeSavedViewId, onSelectView, onSaveView, onUpdateView, onRenameView, onDeleteView }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [menuOpenForId, setMenuOpenForId] = useState(null);
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameValue, setRenameValue] = useState("");
+  const ref = useRef(null);
+  const inputRef = useRef(null);
+  const renameRef = useRef(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) { setIsOpen(false); setMenuOpenForId(null); setIsCreating(false); setRenamingId(null); } };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [isOpen]);
+
+  // Auto-focus inputs
+  useEffect(() => { if (isCreating && inputRef.current) inputRef.current.focus(); }, [isCreating]);
+  useEffect(() => { if (renamingId && renameRef.current) renameRef.current.focus(); }, [renamingId]);
+
+  const activeView = savedViews.find((v) => v.id === activeSavedViewId);
+  const triggerLabel = activeView ? activeView.name : "Default";
+
+  const dropdownPanel = {
+    position: "absolute", top: "100%", left: 0, marginTop: 4,
+    background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
+    borderRadius: RADIUS.lg, boxShadow: SHADOW.dropdown,
+    padding: "6px 0", zIndex: 20, minWidth: 230, maxHeight: 340, overflowY: "auto",
+  };
+
+  const itemStyle = {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    gap: 8, padding: "7px 12px", cursor: "pointer", fontSize: 12,
+    fontFamily: FONT, color: C.darkText, transition: "background 0.12s",
+  };
+
+  const divider = { height: 1, background: C.darkBorder, margin: "4px 0" };
+
+  const dotBtn = {
+    background: "none", border: "none", cursor: "pointer", color: C.darkMuted,
+    fontSize: 14, padding: "2px 4px", borderRadius: RADIUS.sm, lineHeight: 1,
+  };
+
+  const subMenu = {
+    position: "absolute", right: 0, top: "100%", marginTop: 2,
+    background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
+    borderRadius: RADIUS.md, boxShadow: SHADOW.dropdown,
+    padding: "4px 0", zIndex: 30, minWidth: 120,
+  };
+
+  const subItem = {
+    padding: "6px 12px", fontSize: 12, fontFamily: FONT,
+    color: C.darkText, cursor: "pointer", transition: "background 0.12s",
+  };
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      {/* Trigger */}
+      <div
+        onClick={() => setIsOpen((o) => !o)}
+        style={{
+          display: "flex", alignItems: "center", gap: 6,
+          background: C.darkSurf2, border: `1px solid ${activeView ? C.accent : C.darkBorder}`,
+          borderRadius: RADIUS.md, padding: "6px 10px", fontSize: 12,
+          fontFamily: FONT, color: activeView ? C.accent : C.darkMuted,
+          cursor: "pointer", height: 34, minWidth: 100, maxWidth: 200,
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          transition: "border-color 0.15s",
+        }}
+      >
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>{triggerLabel}</span>
+        <span style={{ fontSize: 8, flexShrink: 0, marginLeft: 2 }}>&#x25BC;</span>
+      </div>
+
+      {/* Panel */}
+      {isOpen && (
+        <div style={dropdownPanel}>
+          {/* Default */}
+          <div
+            style={{ ...itemStyle, color: !activeSavedViewId ? C.accent : C.darkText }}
+            onClick={() => { onSelectView(null); setIsOpen(false); }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          >
+            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {!activeSavedViewId && <span style={{ color: C.accent, fontSize: 10 }}>&#x2713;</span>}
+              Default
+            </span>
+          </div>
+
+          {savedViews.length > 0 && <div style={divider} />}
+
+          {/* Saved views */}
+          {savedViews.map((sv) => (
+            <div key={sv.id} style={{ position: "relative" }}>
+              {renamingId === sv.id ? (
+                <div style={{ ...itemStyle, gap: 4 }}>
+                  <input
+                    ref={renameRef}
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && renameValue.trim()) { onRenameView(sv.id, renameValue.trim()); setRenamingId(null); }
+                      if (e.key === "Escape") setRenamingId(null);
+                    }}
+                    style={{
+                      flex: 1, background: C.darkSurf2, border: `1px solid ${C.accent}`,
+                      borderRadius: RADIUS.sm, padding: "3px 6px", fontSize: 12,
+                      fontFamily: FONT, color: C.darkText, outline: "none",
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <span
+                    style={{ ...dotBtn, color: C.accent, fontSize: 12 }}
+                    onClick={(e) => { e.stopPropagation(); if (renameValue.trim()) { onRenameView(sv.id, renameValue.trim()); setRenamingId(null); } }}
+                  >&#x2713;</span>
+                </div>
+              ) : (
+                <div
+                  style={{ ...itemStyle, color: activeSavedViewId === sv.id ? C.accent : C.darkText }}
+                  onClick={() => { onSelectView(sv.id); setIsOpen(false); setMenuOpenForId(null); }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 6, overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {activeSavedViewId === sv.id && <span style={{ color: C.accent, fontSize: 10, flexShrink: 0 }}>&#x2713;</span>}
+                    {sv.name}
+                  </span>
+                  <span
+                    style={dotBtn}
+                    onClick={(e) => { e.stopPropagation(); setMenuOpenForId(menuOpenForId === sv.id ? null : sv.id); }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                  >&#x22EF;</span>
+                </div>
+              )}
+
+              {/* Sub-menu for this view */}
+              {menuOpenForId === sv.id && renamingId !== sv.id && (
+                <div style={subMenu}>
+                  <div
+                    style={subItem}
+                    onClick={(e) => { e.stopPropagation(); setRenamingId(sv.id); setRenameValue(sv.name); setMenuOpenForId(null); }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                  >Rename</div>
+                  <div
+                    style={subItem}
+                    onClick={(e) => { e.stopPropagation(); onUpdateView(sv.id); setMenuOpenForId(null); }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                  >Update with current</div>
+                  <div
+                    style={{ ...subItem, color: "#e06060" }}
+                    onClick={(e) => { e.stopPropagation(); onDeleteView(sv.id); setMenuOpenForId(null); }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                  >Delete</div>
+                </div>
+              )}
+            </div>
+          ))}
+
+          <div style={divider} />
+
+          {/* Save new view */}
+          {isCreating ? (
+            <div style={{ ...itemStyle, gap: 4 }}>
+              <input
+                ref={inputRef}
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="View name..."
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newName.trim()) { onSaveView(newName.trim()); setNewName(""); setIsCreating(false); setIsOpen(false); }
+                  if (e.key === "Escape") { setIsCreating(false); setNewName(""); }
+                }}
+                style={{
+                  flex: 1, background: C.darkSurf2, border: `1px solid ${C.accent}`,
+                  borderRadius: RADIUS.sm, padding: "3px 6px", fontSize: 12,
+                  fontFamily: FONT, color: C.darkText, outline: "none",
+                }}
+              />
+              <span
+                style={{ ...dotBtn, color: C.accent, fontSize: 12 }}
+                onClick={() => { if (newName.trim()) { onSaveView(newName.trim()); setNewName(""); setIsCreating(false); setIsOpen(false); } }}
+              >&#x2713;</span>
+              <span
+                style={{ ...dotBtn, fontSize: 12 }}
+                onClick={() => { setIsCreating(false); setNewName(""); }}
+              >&#x2715;</span>
+            </div>
+          ) : (
+            <div
+              style={{ ...itemStyle, color: C.accent }}
+              onClick={() => setIsCreating(true)}
+              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 14 }}>+</span> Save current view
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // ─── Main Table Component ───
 
 export default function Table({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onSaveFilters, onViewConfigChange }) {
@@ -1054,6 +1270,9 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
 
   // ── Row Selection ──
   const [selectedRows, setSelectedRows] = useState(new Set());
+
+  // ── Saved Views ──
+  const [activeSavedViewId, setActiveSavedViewId] = useState(config.activeSavedViewId || null);
 
   // ── Column Visibility ──
   const [hiddenColumns, setHiddenColumns] = useState(new Set());
@@ -1516,8 +1735,9 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   // Chip filter change handler (persists via onViewConfigChange)
   const handleChipFilterChange = useCallback((newFilters) => {
     setChipFilters(newFilters);
+    setActiveSavedViewId(null);
     if (onSaveFilters) onSaveFilters(newFilters);
-    if (onViewConfigChange) onViewConfigChange({ activeFilters: newFilters });
+    if (onViewConfigChange) onViewConfigChange({ activeFilters: newFilters, activeSavedViewId: null });
   }, [onSaveFilters, onViewConfigChange]);
 
   // Filter + search + sort pipeline
@@ -1596,16 +1816,19 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
 
   // Column sort handler — cycles asc -> desc -> none
   const handleSort = useCallback((field) => {
+    let newField, newDir;
     if (sortField !== field) {
-      setSortField(field);
-      setSortDir("asc");
+      newField = field; newDir = "asc";
     } else if (sortDir === "asc") {
-      setSortDir("desc");
+      newField = field; newDir = "desc";
     } else {
-      setSortField(null);
-      setSortDir(null);
+      newField = null; newDir = null;
     }
-  }, [sortField, sortDir]);
+    setSortField(newField);
+    setSortDir(newDir);
+    setActiveSavedViewId(null);
+    if (onViewConfigChange) onViewConfigChange({ sort: { field: newField, direction: newDir }, activeSavedViewId: null });
+  }, [sortField, sortDir, onViewConfigChange]);
 
   // Inline edit commit — with saving indicator + error handling
   const handleEditCommit = useCallback(async (pageId, field, value) => {
@@ -1818,11 +2041,13 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
 
   // Filter change handler
   const handleFilterChange = useCallback((field, value) => {
-    setFilters((prev) => ({
-      ...prev,
-      [field]: value || undefined,
-    }));
-  }, []);
+    setFilters((prev) => {
+      const next = { ...prev, [field]: value || undefined };
+      if (onViewConfigChange) onViewConfigChange({ filters: next, activeSavedViewId: null });
+      return next;
+    });
+    setActiveSavedViewId(null);
+  }, [onViewConfigChange]);
 
   // ── Row Selection ──
   const toggleRow = useCallback((pageId) => {
@@ -1893,11 +2118,85 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
       // Persist visible fields
       if (onViewConfigChange && allColumns.length > 0) {
         const visibleFields = allColumns.filter((c) => !next.has(c));
-        onViewConfigChange({ visibleFields });
+        onViewConfigChange({ visibleFields, activeSavedViewId: null });
       }
       return next;
     });
+    setActiveSavedViewId(null);
   }, [allColumns, onViewConfigChange]);
+
+  // ── Saved View Handlers ──
+  const handleSelectSavedView = useCallback((viewId) => {
+    if (!viewId) {
+      // "Default" — clear all filters, show all columns, clear sort
+      setChipFilters({});
+      setFilters({});
+      setHiddenColumns(new Set());
+      setSortField(null);
+      setSortDir(null);
+      setActiveSavedViewId(null);
+      if (onViewConfigChange) {
+        onViewConfigChange({ activeFilters: {}, filters: {}, visibleFields: allColumns, sort: { field: null, direction: null }, activeSavedViewId: null });
+      }
+      return;
+    }
+    const sv = (config.savedViews || []).find((v) => v.id === viewId);
+    if (!sv) return;
+    setChipFilters(sv.activeFilters || {});
+    setFilters(sv.filters || {});
+    setSortField(sv.sort?.field || null);
+    setSortDir(sv.sort?.direction || null);
+    if (sv.visibleFields) {
+      const hidden = new Set(allColumns.filter((c) => !sv.visibleFields.includes(c)));
+      setHiddenColumns(hidden);
+    } else {
+      setHiddenColumns(new Set());
+    }
+    setActiveSavedViewId(viewId);
+    if (onViewConfigChange) {
+      onViewConfigChange({
+        activeFilters: sv.activeFilters || {},
+        filters: sv.filters || {},
+        visibleFields: sv.visibleFields || allColumns,
+        sort: sv.sort || { field: null, direction: null },
+        activeSavedViewId: viewId,
+      });
+    }
+  }, [config.savedViews, allColumns, onViewConfigChange]);
+
+  const handleSaveNewView = useCallback((name) => {
+    const newView = {
+      id: crypto.randomUUID(),
+      name,
+      activeFilters: { ...chipFilters },
+      visibleFields: allColumns.filter((c) => !hiddenColumns.has(c)),
+      sort: { field: sortField, direction: sortDir },
+      filters: { ...filters },
+    };
+    const updated = [...(config.savedViews || []), newView];
+    setActiveSavedViewId(newView.id);
+    if (onViewConfigChange) onViewConfigChange({ savedViews: updated, activeSavedViewId: newView.id });
+  }, [chipFilters, hiddenColumns, sortField, sortDir, filters, allColumns, config.savedViews, onViewConfigChange]);
+
+  const handleUpdateView = useCallback((viewId) => {
+    const updated = (config.savedViews || []).map((v) =>
+      v.id === viewId ? { ...v, activeFilters: { ...chipFilters }, visibleFields: allColumns.filter((c) => !hiddenColumns.has(c)), sort: { field: sortField, direction: sortDir }, filters: { ...filters } } : v
+    );
+    setActiveSavedViewId(viewId);
+    if (onViewConfigChange) onViewConfigChange({ savedViews: updated, activeSavedViewId: viewId });
+  }, [chipFilters, hiddenColumns, sortField, sortDir, filters, allColumns, config.savedViews, onViewConfigChange]);
+
+  const handleRenameView = useCallback((viewId, newName) => {
+    const updated = (config.savedViews || []).map((v) => v.id === viewId ? { ...v, name: newName } : v);
+    if (onViewConfigChange) onViewConfigChange({ savedViews: updated });
+  }, [config.savedViews, onViewConfigChange]);
+
+  const handleDeleteView = useCallback((viewId) => {
+    const updated = (config.savedViews || []).filter((v) => v.id !== viewId);
+    const newActiveId = activeSavedViewId === viewId ? null : activeSavedViewId;
+    if (activeSavedViewId === viewId) setActiveSavedViewId(null);
+    if (onViewConfigChange) onViewConfigChange({ savedViews: updated, activeSavedViewId: newActiveId });
+  }, [config.savedViews, activeSavedViewId, onViewConfigChange]);
 
   // ── Ghost Row Handler (create record from inline ghost row) ──
   const handleGhostCommit = useCallback(async () => {
@@ -2092,8 +2391,17 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
         </div>
       )}
 
-      {/* Toolbar: search, filters, refresh, count */}
+      {/* Toolbar: views, search, filters, refresh, count */}
       <div style={styles.toolbar}>
+        <SavedViewsDropdown
+          savedViews={config.savedViews || []}
+          activeSavedViewId={activeSavedViewId}
+          onSelectView={handleSelectSavedView}
+          onSaveView={handleSaveNewView}
+          onUpdateView={handleUpdateView}
+          onRenameView={handleRenameView}
+          onDeleteView={handleDeleteView}
+        />
         <div
           style={{
             ...styles.searchWrap,
