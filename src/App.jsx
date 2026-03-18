@@ -19,7 +19,24 @@ import SetupWizard from "./core/SetupWizard.jsx";
 import LoginScreen from "./core/LoginScreen.jsx";
 import TopHeader from "./core/TopHeader.jsx";
 import Navigation from "./core/Navigation.jsx";
-const ChatPanel = React.lazy(() => import("./zen/ChatPanel.jsx"));
+// Retry wrapper for dynamic imports — handles stale chunk errors after deploy
+function lazyWithRetry(importFn) {
+  return React.lazy(() =>
+    importFn().catch(() => {
+      // First retry after brief delay
+      return new Promise((resolve) => setTimeout(resolve, 200)).then(() =>
+        importFn().catch(() => {
+          // Final retry with cache-bust: reload the page
+          window.location.reload();
+          // Return a never-resolving promise so React doesn't crash before reload
+          return new Promise(() => {});
+        })
+      );
+    })
+  );
+}
+
+const ChatPanel = lazyWithRetry(() => import("./zen/ChatPanel.jsx"));
 import Onboarding from "./core/Onboarding.jsx";
 import PageBuilder from "./core/PageBuilder.jsx";
 import PageShell from "./core/PageShell.jsx";
@@ -41,12 +58,12 @@ import NeuronLines from "./neurons/NeuronLines.jsx";
 import { useNeurons } from "./neurons/NeuronsContext.jsx";
 import { IconGear } from "./design/icons.jsx";
 
-const TasksView = React.lazy(() => import("./zen/TasksView.jsx"));
-const NotesView = React.lazy(() => import("./zen/NotesView.jsx"));
-const DashboardView = React.lazy(() => import("./zen/DashboardView.jsx"));
-const GmailView = React.lazy(() => import("./zen/GmailView.jsx"));
-const WorkspaceBrowser = React.lazy(() => import("./zen/WorkspaceBrowser.jsx"));
-const KnowledgeHub = React.lazy(() => import("./zen/KnowledgeHub.jsx"));
+const TasksView = lazyWithRetry(() => import("./zen/TasksView.jsx"));
+const NotesView = lazyWithRetry(() => import("./zen/NotesView.jsx"));
+const DashboardView = lazyWithRetry(() => import("./zen/DashboardView.jsx"));
+const GmailView = lazyWithRetry(() => import("./zen/GmailView.jsx"));
+const WorkspaceBrowser = lazyWithRetry(() => import("./zen/WorkspaceBrowser.jsx"));
+const KnowledgeHub = lazyWithRetry(() => import("./zen/KnowledgeHub.jsx"));
 
 // Inject CSS animations on app load
 injectAnimations();
@@ -309,25 +326,29 @@ function AppContent() {
     // Notes scratchpad
     if (activePage === "notes") {
       return (
-        <React.Suspense fallback={
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 12 }}>
-            Loading...
-          </div>
-        }>
-          <NotesView />
-        </React.Suspense>
+        <ErrorBoundary fallbackLabel="Notes">
+          <React.Suspense fallback={
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 12 }}>
+              Loading...
+            </div>
+          }>
+            <NotesView />
+          </React.Suspense>
+        </ErrorBoundary>
       );
     }
     // Dashboard
     if (activePage === "dashboard") {
       return (
-        <React.Suspense fallback={
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
-            Loading...
-          </div>
-        }>
-          <DashboardView />
-        </React.Suspense>
+        <ErrorBoundary fallbackLabel="Dashboard">
+          <React.Suspense fallback={
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
+              Loading...
+            </div>
+          }>
+            <DashboardView />
+          </React.Suspense>
+        </ErrorBoundary>
       );
     }
     // Gmail
@@ -347,25 +368,29 @@ function AppContent() {
     // Workspaces browser
     if (activePage === "workspaces") {
       return (
-        <React.Suspense fallback={
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
-            Loading...
-          </div>
-        }>
-          <WorkspaceBrowser />
-        </React.Suspense>
+        <ErrorBoundary fallbackLabel="Workspaces">
+          <React.Suspense fallback={
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
+              Loading...
+            </div>
+          }>
+            <WorkspaceBrowser />
+          </React.Suspense>
+        </ErrorBoundary>
       );
     }
     // Knowledge Hub (KB, Automations, Functions, Build)
     if (activePage === "knowledge") {
       return (
-        <React.Suspense fallback={
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
-            Loading...
-          </div>
-        }>
-          <KnowledgeHub onOpenChat={(msg) => { setPendingChatMessage(msg); setWasabiPanelOpen(true); }} />
-        </React.Suspense>
+        <ErrorBoundary fallbackLabel="Knowledge Hub">
+          <React.Suspense fallback={
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
+              Loading...
+            </div>
+          }>
+            <KnowledgeHub onOpenChat={(msg) => { setPendingChatMessage(msg); setWasabiPanelOpen(true); }} />
+          </React.Suspense>
+        </ErrorBoundary>
       );
     }
     // Notifications
@@ -410,13 +435,15 @@ function AppContent() {
     }
     // Default: Tasks split view (To-Do + Calendar)
     return (
-      <React.Suspense fallback={
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
-          Loading...
-        </div>
-      }>
-        <TasksView />
-      </React.Suspense>
+      <ErrorBoundary fallbackLabel="Tasks">
+        <React.Suspense fallback={
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
+            Loading...
+          </div>
+        }>
+          <TasksView />
+        </React.Suspense>
+      </ErrorBoundary>
     );
   };
 

@@ -16,7 +16,9 @@ import WeekListView from "./calendar/WeekListView.jsx";
 import MonthGrid from "./calendar/MonthGrid.jsx";
 import QuickCreateBar from "./calendar/QuickCreateBar.jsx";
 import CalendarFilterDropdown from "./calendar/CalendarFilterDropdown.jsx";
-const ViewSettingsPanel = React.lazy(() => import("../components/ViewSettingsPanel.jsx"));
+const ViewSettingsPanel = React.lazy(() => import("../components/ViewSettingsPanel.jsx").catch(() =>
+  new Promise(r => setTimeout(r, 200)).then(() => import("../components/ViewSettingsPanel.jsx"))
+));
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

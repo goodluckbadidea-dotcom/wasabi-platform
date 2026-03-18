@@ -4,7 +4,9 @@
 import React from "react";
 import { C, FONT } from "../design/tokens.js";
 
-const NodeEditor = React.lazy(() => import("./NodeEditor.jsx"));
+const NodeEditor = React.lazy(() => import("./NodeEditor.jsx").catch(() =>
+  new Promise(r => setTimeout(r, 200)).then(() => import("./NodeEditor.jsx"))
+));
 
 export default function AutomationPage({ automationEngine, onOpenChat }) {
   return (

@@ -6,10 +6,15 @@ import React, { useState } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { ErrorBoundary } from "../core/ErrorBoundary.jsx";
 
-const KnowledgeBase = React.lazy(() => import("../core/KnowledgeBase.jsx"));
-const AutomationPage = React.lazy(() => import("../core/AutomationPage.jsx"));
-const FunctionsPanel = React.lazy(() => import("../core/FunctionsPanel.jsx"));
-const BuildPage = React.lazy(() => import("../core/BuildPage.jsx"));
+function lazyRetry(fn) {
+  return React.lazy(() => fn().catch(() =>
+    new Promise(r => setTimeout(r, 200)).then(() => fn().catch(() => { window.location.reload(); return new Promise(() => {}); }))
+  ));
+}
+const KnowledgeBase = lazyRetry(() => import("../core/KnowledgeBase.jsx"));
+const AutomationPage = lazyRetry(() => import("../core/AutomationPage.jsx"));
+const FunctionsPanel = lazyRetry(() => import("../core/FunctionsPanel.jsx"));
+const BuildPage = lazyRetry(() => import("../core/BuildPage.jsx"));
 
 const TABS = [
   { key: "kb", label: "Knowledge Base" },

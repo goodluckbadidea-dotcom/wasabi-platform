@@ -15,7 +15,9 @@ import RecordDrawer from "./RecordDrawer.jsx";
 import { useRecordDrawer } from "./RecordDrawerContext.jsx";
 import { ErrorBoundary } from "../core/ErrorBoundary.jsx";
 import { useColorMapping } from "../context/ColorMappingContext.jsx";
-const ViewSettingsPanel = React.lazy(() => import("../components/ViewSettingsPanel.jsx"));
+const ViewSettingsPanel = React.lazy(() => import("../components/ViewSettingsPanel.jsx").catch(() =>
+  new Promise(r => setTimeout(r, 200)).then(() => import("../components/ViewSettingsPanel.jsx"))
+));
 
 export default function TasksView() {
   const {
