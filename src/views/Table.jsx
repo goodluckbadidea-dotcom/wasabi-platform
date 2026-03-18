@@ -2532,23 +2532,6 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                           const isHovered = hoveredRow === pageId;
                           const isSelected = selectedRows.has(pageId);
 
-                          // Detect color bar from first status/select/priority field
-                          let rowBarColor = null;
-                          for (const col of columns) {
-                            const ftype = getFieldType(schema, col);
-                            if (ftype === "status" || ftype === "select") {
-                              const val = readField(page, col);
-                              if (val) {
-                                try {
-                                  const opts = getOptionNames(schema, col);
-                                  const schOpts = getFieldOptions(schema, col);
-                                  const { fill } = getSolidPillColor(val, opts, schOpts, config.colorMapping);
-                                  if (fill) { rowBarColor = fill; break; }
-                                } catch (_) {}
-                              }
-                            }
-                          }
-
                           const cardBg = isSelected ? C.accent + "10" : isHovered ? C.darkSurf2 : C.darkSurf;
 
                           return (
@@ -2576,11 +2559,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                               }}
                             >
                               {/* Checkbox cell */}
-                              <div style={{ ...styles.gridCell, justifyContent: "center", padding: 0, gap: 3, position: "relative" }}>
-                                {/* Subtle color bar */}
-                                {rowBarColor && (
-                                  <div style={{ position: "absolute", left: 0, top: 4, bottom: 4, width: 4, borderRadius: 2, background: rowBarColor, opacity: 0.7 }} />
-                                )}
+                              <div style={{ ...styles.gridCell, justifyContent: "center", padding: 0, gap: 3 }}>
                                 <span
                                   style={styles.toggle(isSelected)}
                                   onClick={(e) => { e.stopPropagation(); toggleRow(pageId); }}
