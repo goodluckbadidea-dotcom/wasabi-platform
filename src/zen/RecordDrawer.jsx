@@ -234,23 +234,34 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
   }, [task, onSaved, onClose]);
 
   // ── "Go To Task" — navigate to source DB page ──
-  const handleGoToTask = useCallback(() => {
+  const findSourcePage = useCallback(() => {
     const dbId = task.source?.split(":")[1];
-    if (!dbId) return;
-    const matchedPage = pages.find((p) =>
-      p.id === dbId || p.databaseIds?.includes(dbId)
-    );
+    if (dbId) {
+      const match = pages.find((p) => p.id === dbId || p.databaseIds?.includes(dbId));
+      if (match) return match;
+    }
+    // Fallback: match by tableId
+    if (task.tableId) {
+      const match = pages.find((p) => p.id === task.tableId || p.databaseIds?.includes(task.tableId));
+      if (match) return match;
+    }
+    // Fallback: match by sourceName against page name
+    if (task.sourceName) {
+      const match = pages.find((p) => p.name === task.sourceName);
+      if (match) return match;
+    }
+    return null;
+  }, [task, pages]);
+
+  const handleGoToTask = useCallback(() => {
+    const matchedPage = findSourcePage();
     if (matchedPage) {
       onClose();
       setActivePage(matchedPage.id);
     }
-  }, [task, pages, setActivePage, onClose]);
+  }, [findSourcePage, setActivePage, onClose]);
 
-  // Can we navigate to this task's source?
-  const canGoToTask = (() => {
-    const dbId = task.source?.split(":")[1];
-    return dbId && pages.some((p) => p.id === dbId || p.databaseIds?.includes(dbId));
-  })();
+  const canGoToTask = task.source !== "manual" && !!findSourcePage();
 
   // ── AI attention summary ──
   // Strip any leftover [tag] prefixes, show the clean natural-language reason
