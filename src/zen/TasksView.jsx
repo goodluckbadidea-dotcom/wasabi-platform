@@ -41,7 +41,7 @@ export default function TasksView() {
     refresh: refreshAI,
     debouncedRefresh,
     error: aiError,
-  } = useAICuratedTasks({ dismissedIds, completedCount });
+  } = useAICuratedTasks({ dismissedIds, completedCount, zenTableId: tableId });
 
   const { openDrawer, onSaved, onDeleted } = useRecordDrawer();
   const calendarRefreshRef = useRef(null);

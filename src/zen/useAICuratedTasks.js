@@ -267,7 +267,7 @@ function compressTask(task) {
 const BASE_TARGET = 12;
 const TARGET_MAX = 20;
 
-export default function useAICuratedTasks({ dismissedIds, completedCount } = {}) {
+export default function useAICuratedTasks({ dismissedIds, completedCount, zenTableId } = {}) {
   const { user, pages, identity } = usePlatform();
   const [aiTasks, setAiTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -347,6 +347,8 @@ export default function useAICuratedTasks({ dismissedIds, completedCount } = {})
           }
         }
         if (pt === "database" && page.id) {
+          // Skip the zen tasks table — it's the user's manual task list, not a source DB
+          if (zenTableId && page.id === zenTableId) continue;
           candidates.push({ type: "d1", tableId: page.id, pageName: page.name });
         }
       }
