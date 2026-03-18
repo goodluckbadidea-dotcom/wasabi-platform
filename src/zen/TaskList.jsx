@@ -2,7 +2,7 @@
 // Left panel of the Zen Tasks split view.
 // Quick-add input at top, manual tasks, AI-curated tasks, completed section.
 
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useMemo } from "react";
 import { C, FONT, RADIUS, VIEW_PALETTE, getSolidPillColor, isLightColor, getThemeMode, resolveUnifiedColor } from "../design/tokens.js";
 import { formatDueDate, isOverdue, isToday, parseDate } from "./taskHelpers.js";
 
@@ -167,10 +167,11 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping, dateChip
   );
 }
 
-export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, onToggleAI, onAddTask, onDeleteTask, onTaskClick, colorMapping, dateChipColors }) {
+export default function TaskList({ zenTasks, aiTasks, aiLoading, aiRefreshing, dismissedIds, onToggleZen, onToggleAI, onAddTask, onDeleteTask, onTaskClick, colorMapping, dateChipColors }) {
   const [inputValue, setInputValue] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
   const inputRef = useRef(null);
+  const prevAIIdsRef = useRef(new Set());
 
   const handleSubmit = useCallback((e) => {
     e.preventDefault();
@@ -181,10 +182,24 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, on
     inputRef.current?.focus();
   }, [inputValue, onAddTask]);
 
-  // Split tasks into active and completed
+  // Split tasks into active and completed, filtering out dismissed
   const activeZen = zenTasks.filter((t) => !t.done);
   const completedZen = zenTasks.filter((t) => t.done);
-  const activeAI = aiTasks.filter((t) => !t.done);
+  const _dismissed = dismissedIds || new Set();
+  const activeAI = aiTasks.filter((t) => !t.done && !_dismissed.has(t.id));
+
+  // Track which AI task IDs are new (for fade-in animation)
+  const newAIIds = useMemo(() => {
+    const currentIds = new Set(activeAI.map((t) => t.id));
+    const prev = prevAIIdsRef.current;
+    const newIds = new Set();
+    for (const id of currentIds) {
+      if (!prev.has(id)) newIds.add(id);
+    }
+    // Update ref for next render
+    prevAIIdsRef.current = currentIds;
+    return newIds;
+  }, [activeAI]);
   const completedAI = aiTasks.filter((t) => t.done);
   const allCompleted = [...completedZen, ...completedAI];
 
@@ -260,6 +275,13 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, on
                 <circle cx="5" cy="5" r="1.5" fill={C.darkMuted} />
               </svg>
               From your databases
+              {aiRefreshing && (
+                <span style={{
+                  width: 6, height: 6, borderRadius: "50%",
+                  background: C.accent, display: "inline-block",
+                  animation: "pulse 1.5s ease-in-out infinite",
+                }} />
+              )}
             </div>
 
             {aiLoading && activeAI.length === 0 ? (
@@ -276,15 +298,21 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, onToggleZen, on
               </div>
             ) : (
               activeAI.map((task) => (
-                <TaskRow
+                <div
                   key={task.id}
-                  task={task}
-                  onToggle={onToggleAI}
-                  onDelete={() => {}}
-                  onTaskClick={onTaskClick}
-                  colorMapping={colorMapping}
-                  dateChipColors={dateChipColors}
-                />
+                  style={newAIIds.has(task.id) ? {
+                    animation: "fadeSlideIn 0.3s ease both",
+                  } : undefined}
+                >
+                  <TaskRow
+                    task={task}
+                    onToggle={onToggleAI}
+                    onDelete={() => {}}
+                    onTaskClick={onTaskClick}
+                    colorMapping={colorMapping}
+                    dateChipColors={dateChipColors}
+                  />
+                </div>
               ))
             )}
           </div>

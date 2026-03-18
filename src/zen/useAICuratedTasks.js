@@ -264,14 +264,25 @@ function compressTask(task) {
   return obj;
 }
 
-export default function useAICuratedTasks() {
+const BASE_TARGET = 12;
+const TARGET_MAX = 20;
+
+export default function useAICuratedTasks({ dismissedIds, completedCount } = {}) {
   const { user, pages, identity } = usePlatform();
   const [aiTasks, setAiTasks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false); // background re-scan indicator
   const [lastUpdated, setLastUpdated] = useState(null);
   const [error, setError] = useState(null);
   const [insight, setInsight] = useState(null);
   const scanningRef = useRef(false);
+  const debounceTimerRef = useRef(null);
+  const dismissedIdsRef = useRef(dismissedIds || new Set());
+  const completedCountRef = useRef(completedCount || 0);
+
+  // Keep refs in sync with latest values
+  dismissedIdsRef.current = dismissedIds || new Set();
+  completedCountRef.current = completedCount || 0;
 
   // Load cached results immediately + clean up old cache keys
   useEffect(() => {
@@ -304,6 +315,9 @@ export default function useAICuratedTasks() {
     }
 
     scanningRef.current = true;
+    // Use refreshing (not loading) when we already have results
+    const isBackground = aiTasks.length > 0;
+    if (isBackground) setRefreshing(true);
 
     try {
       setError(null);
@@ -797,8 +811,12 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
             }
             // Sort by AI priority score (highest first)
             result.sort((a, b) => (b._aiScore || 0) - (a._aiScore || 0));
-            setAiTasks(result);
-            setCache(CACHE_KEY, result);
+            // Dynamic fill: show more tasks as user completes/dismisses items
+            const targetCount = Math.min(TARGET_MAX, BASE_TARGET + completedCountRef.current);
+            // Filter out dismissed tasks, then slice to target
+            const visible = result.filter((t) => !dismissedIdsRef.current.has(t.id));
+            setAiTasks(visible.slice(0, targetCount));
+            setCache(CACHE_KEY, result); // cache full ranked list (unfiltered)
           } else {
             // Fallback: show filtered tasks sorted by nearest date
             filteredTasks.sort((a, b) => {
@@ -809,8 +827,10 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
               if (aDate && bDate) return parseDate(aDate) - parseDate(bDate);
               return 0;
             });
-            setAiTasks(filteredTasks.slice(0, 15));
-            setCache(CACHE_KEY, filteredTasks.slice(0, 15));
+            const targetCount = Math.min(TARGET_MAX, BASE_TARGET + completedCountRef.current);
+            const visible = filteredTasks.filter((t) => !dismissedIdsRef.current.has(t.id));
+            setAiTasks(visible.slice(0, targetCount));
+            setCache(CACHE_KEY, filteredTasks); // cache full list
           }
         } catch (err) {
           console.warn("[AICurated] AI call failed, using fallback:", err.message);
@@ -822,8 +842,10 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
             if (aDate && bDate) return parseDate(aDate) - parseDate(bDate);
             return 0;
           });
-          setAiTasks(filteredTasks.slice(0, 15));
-          setCache(CACHE_KEY, filteredTasks.slice(0, 15));
+          const targetCount = Math.min(TARGET_MAX, BASE_TARGET + completedCountRef.current);
+          const visible = filteredTasks.filter((t) => !dismissedIdsRef.current.has(t.id));
+          setAiTasks(visible.slice(0, targetCount));
+          setCache(CACHE_KEY, filteredTasks); // cache full list
         }
       } else {
         // No Claude key or no filtered tasks — sort by nearest date
@@ -835,8 +857,10 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
           if (aDate && bDate) return parseDate(aDate) - parseDate(bDate);
           return 0;
         });
-        setAiTasks(filteredTasks.slice(0, 15));
-        setCache(CACHE_KEY, filteredTasks.slice(0, 15));
+        const targetCount = Math.min(TARGET_MAX, BASE_TARGET + completedCountRef.current);
+        const visible = filteredTasks.filter((t) => !dismissedIdsRef.current.has(t.id));
+        setAiTasks(visible.slice(0, targetCount));
+        setCache(CACHE_KEY, filteredTasks); // cache full list
       }
 
       setLastUpdated(new Date());
@@ -845,6 +869,7 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
       setError(err.message);
     } finally {
       setLoading(false);
+      setRefreshing(false);
       scanningRef.current = false;
     }
   }, [user, pages]);
@@ -866,11 +891,37 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
   // Force refresh clears cache and rescans
   const forceRefresh = useCallback(() => scan(true), [scan]);
 
+  // Debounced refresh: collapses rapid completion events into one scan (2.5s trailing edge)
+  const debouncedRefresh = useCallback(() => {
+    clearTimeout(debounceTimerRef.current);
+    // Invalidate cache immediately so stale data isn't served
+    try { localStorage.removeItem(CACHE_KEY); } catch {}
+    debounceTimerRef.current = setTimeout(() => scan(true), 2500);
+  }, [scan]);
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => () => clearTimeout(debounceTimerRef.current), []);
+
+  // Visibility-aware lazy polling: every 10 min, scan if visible + cache expired
+  useEffect(() => {
+    const POLL_INTERVAL = 10 * 60 * 1000; // 10 minutes
+    const interval = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      const cached = getCached(CACHE_KEY, CACHE_TTL);
+      if (!cached && !scanningRef.current) {
+        scan(); // background re-scan
+      }
+    }, POLL_INTERVAL);
+    return () => clearInterval(interval);
+  }, [scan]);
+
   return {
     aiTasks,
     loading,
+    refreshing,
     lastUpdated,
     refresh: forceRefresh,
+    debouncedRefresh,
     error,
     insight,
   };

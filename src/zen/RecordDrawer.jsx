@@ -223,7 +223,9 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
     setRemoving(true);
     try {
       await upsertTaskActivity(task.id, task.source, new Date().toISOString());
-      onSaved?.({ ...task, _removedFromTodo: true });
+      const removedTask = { ...task, _removedFromTodo: true };
+      onSaved?.(removedTask);
+      notifySaved("task", removedTask); // broadcast via event bus so TasksView can dismiss + refresh
       onClose();
     } catch (err) {
       console.error("[RecordDrawer] Remove from to do failed:", err);
@@ -231,7 +233,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
     } finally {
       setRemoving(false);
     }
-  }, [task, onSaved, onClose]);
+  }, [task, onSaved, notifySaved, onClose]);
 
   // ── "Go To Task" — navigate to source DB page ──
   const findSourcePage = useCallback(() => {

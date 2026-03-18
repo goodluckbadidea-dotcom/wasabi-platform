@@ -51,6 +51,11 @@ const KEYFRAMES = `
   50% { opacity: 0.6; transform: scale(0.85); }
 }
 
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 @keyframes coordMorph {
   0%   { border-radius: 42% 58% 52% 48% / 46% 54% 46% 54%; }
   25%  { border-radius: 52% 48% 42% 58% / 54% 46% 54% 46%; }

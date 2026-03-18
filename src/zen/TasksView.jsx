@@ -9,6 +9,7 @@ import { ANIM } from "../design/animations.js";
 import { IconEdit } from "../design/icons.jsx";
 import useTasksTable from "./useTasksTable.js";
 import useAICuratedTasks from "./useAICuratedTasks.js";
+import useDismissedTasks from "./useDismissedTasks.js";
 import TaskList from "./TaskList.jsx";
 import CalendarView from "./CalendarView.jsx";
 import RecordDrawer from "./RecordDrawer.jsx";
@@ -30,13 +31,17 @@ export default function TasksView() {
     refresh: refreshZen,
   } = useTasksTable();
 
+  const { dismissedIds, completedCount, dismiss, clear: clearDismissed } = useDismissedTasks();
+
   const {
     aiTasks,
     loading: aiLoading,
+    refreshing: aiRefreshing,
     lastUpdated,
     refresh: refreshAI,
+    debouncedRefresh,
     error: aiError,
-  } = useAICuratedTasks();
+  } = useAICuratedTasks({ dismissedIds, completedCount });
 
   const { openDrawer, onSaved, onDeleted } = useRecordDrawer();
   const calendarRefreshRef = useRef(null);
@@ -44,16 +49,25 @@ export default function TasksView() {
 
   // Subscribe to drawer save/delete events (works regardless of which view rendered the drawer)
   useEffect(() => {
-    const unsubSave = onSaved((type) => {
-      if (type === "task") { refreshZen(); refreshAI(); }
+    const unsubSave = onSaved((type, data) => {
+      if (type === "task") {
+        refreshZen();
+        // "Remove from To Do" → dismiss + debounced refresh (not immediate full refresh)
+        if (data?._removedFromTodo) {
+          dismiss(data.id);
+          debouncedRefresh();
+        } else {
+          refreshAI();
+        }
+      }
       if (type === "event") calendarRefreshRef.current?.();
     });
     const unsubDelete = onDeleted((type) => {
-      if (type === "task") refreshZen();
+      if (type === "task") { refreshZen(); refreshAI(); }
       if (type === "event") calendarRefreshRef.current?.();
     });
     return () => { unsubSave(); unsubDelete(); };
-  }, [onSaved, onDeleted, refreshZen, refreshAI]);
+  }, [onSaved, onDeleted, refreshZen, refreshAI, debouncedRefresh, dismiss]);
   const { globalColorMapping, globalColorField, getViewColorConfig, updateViewColorConfig, resetViewColorConfig } = useColorMapping();
 
   // Build colorMapping object for TaskRow color resolution
@@ -65,13 +79,23 @@ export default function TasksView() {
   const dateChipColors = viewColorConfig?.dateChipColors || null;
 
   // ── Toggle for AI-curated tasks ──
-  // For Notion tasks, we could update the source DB, but for now
-  // we remove them from the local AI task list (cache refresh will re-evaluate)
+  // AI tasks are read-only (no write-back to Notion), but we dismiss them
+  // locally and trigger a debounced re-scan to surface new tasks.
   const handleToggleAI = useCallback((taskId) => {
-    // AI tasks are read-only for toggle in this version.
-    // A future version could call updateRecord for Notion tasks.
-    // For now, the user can mark them done in their source database.
-  }, []);
+    dismiss(taskId);
+    debouncedRefresh();
+  }, [dismiss, debouncedRefresh]);
+
+  // ── Toggle for Zen (manual) tasks ──
+  // When toggling to done, also trigger debounced AI refresh to surface new tasks
+  const handleToggleZen = useCallback((taskId) => {
+    const task = zenTasks.find((t) => t.id === taskId);
+    toggleZenTask(taskId);
+    if (task && !task.done) {
+      // Toggling to done → trigger AI re-scan after debounce
+      debouncedRefresh();
+    }
+  }, [zenTasks, toggleZenTask, debouncedRefresh]);
 
   // ── Add task handler ──
   const handleAddTask = useCallback((title) => {
@@ -103,9 +127,10 @@ export default function TasksView() {
 
   // ── Combined refresh ──
   const handleRefresh = useCallback(() => {
+    clearDismissed(); // reset session dismissed state on manual refresh
     refreshZen();
     refreshAI();
-  }, [refreshZen, refreshAI]);
+  }, [refreshZen, refreshAI, clearDismissed]);
 
   // ── Collect tasks due today for the schedule panel ──
   const allTasks = useMemo(() => [...zenTasks, ...aiTasks], [zenTasks, aiTasks]);
@@ -210,7 +235,9 @@ export default function TasksView() {
             zenTasks={zenTasks}
             aiTasks={aiTasks}
             aiLoading={aiLoading}
-            onToggleZen={toggleZenTask}
+            aiRefreshing={aiRefreshing}
+            dismissedIds={dismissedIds}
+            onToggleZen={handleToggleZen}
             onToggleAI={handleToggleAI}
             onAddTask={handleAddTask}
             onDeleteTask={deleteTask}
@@ -230,8 +257,10 @@ export default function TasksView() {
             display: "flex", alignItems: "center", justifyContent: "space-between",
           }}>
             <span>
-              {lastUpdated ? `AI updated ${formatRelativeTime(lastUpdated)}` : ""}
-              {aiError && <span style={{ color: "#E05252", marginLeft: lastUpdated ? 6 : 0 }}>
+              {aiRefreshing
+                ? <span style={{ animation: "pulse 1.5s ease-in-out infinite" }}>Updating...</span>
+                : lastUpdated ? `AI updated ${formatRelativeTime(lastUpdated)}` : ""}
+              {aiError && !aiRefreshing && <span style={{ color: "#E05252", marginLeft: lastUpdated ? 6 : 0 }}>
                 {lastUpdated ? "· " : ""}{aiError}
               </span>}
             </span>
