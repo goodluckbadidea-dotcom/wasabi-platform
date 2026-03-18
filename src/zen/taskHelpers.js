@@ -207,7 +207,7 @@ export function normalizeD1Task(row, columns) {
 /**
  * Normalize a Notion page into a uniform task object.
  */
-export function normalizeNotionTask(page, schema, dbName, terminalStatuses) {
+export function normalizeNotionTask(page, schema, dbName, terminalStatuses, dbId) {
   const props = page.properties || {};
 
   // Find title
@@ -331,7 +331,7 @@ export function normalizeNotionTask(page, schema, dbName, terminalStatuses) {
     nearestDateField: nearest.fieldName,
     allDates: nearest.allDates,
     notes: notesValue,
-    source: `notion:${page._databaseId || "unknown"}`,
+    source: `notion:${dbId || page._databaseId || "unknown"}`,
     sourceName: dbName || "Database",
     lastEditedTime: page.last_edited_time || null,
     _raw: page,

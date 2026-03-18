@@ -423,7 +423,7 @@ export default function useAICuratedTasks({ dismissedIds, completedCount } = {})
             );
             const tasks = [];
             for (const page of (results || [])) {
-              const task = normalizeNotionTask(page, db.schema, db.pageName, terminalStatuses);
+              const task = normalizeNotionTask(page, db.schema, db.pageName, terminalStatuses, db.dbId);
               if (!task.done) tasks.push(task);
             }
             return { tasks, source: `notion:${db.dbId}` };
