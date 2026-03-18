@@ -104,8 +104,9 @@ function ConfirmDialog({ title, message, warning, onConfirm, onCancel }) {
 }
 
 // ── Overflow Menu (positioned relative to trigger) ──
-function OverflowMenu({ item, onDelete, onClose, anchorRect }) {
+function OverflowMenu({ item, onDelete, onMove, folders, onClose, anchorRect }) {
   const ref = useRef(null);
+  const [showMoveSub, setShowMoveSub] = useState(false);
 
   useEffect(() => {
     // Delay attaching so the opening click doesn't immediately close the menu
@@ -125,6 +126,18 @@ function OverflowMenu({ item, onDelete, onClose, anchorRect }) {
   const top = anchorRect ? anchorRect.bottom + 4 : 0;
   const left = anchorRect ? anchorRect.right - 140 : 0;
 
+  // Build move targets: Root + all folders/workspaces (excluding the item itself and its current parent)
+  const moveTargets = [
+    { id: null, name: "Root (Uncategorized)", color: C.darkMuted },
+    ...folders.filter((f) => f.id !== item.id),
+  ];
+
+  const btnStyle = {
+    display: "flex", alignItems: "center", gap: 8, width: "100%",
+    padding: "8px 14px", border: "none", background: "transparent",
+    fontSize: 13, fontFamily: FONT, cursor: "pointer", textAlign: "left",
+  };
+
   return (
     <div
       ref={ref}
@@ -136,16 +149,65 @@ function OverflowMenu({ item, onDelete, onClose, anchorRect }) {
         fontFamily: FONT, animation: ANIM.settleIn(0),
       }}
     >
+      {/* Move to */}
+      <button
+        onClick={() => setShowMoveSub((v) => !v)}
+        onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+        style={{ ...btnStyle, color: C.darkText }}
+      >
+        <IconFolder size={14} color={C.darkMuted} />
+        Move to…
+        <span style={{ marginLeft: "auto", fontSize: 10, color: C.darkMuted }}>{showMoveSub ? "▾" : "▸"}</span>
+      </button>
+
+      {showMoveSub && (
+        <div style={{
+          borderTop: `1px solid ${C.darkBorder}`,
+          borderBottom: `1px solid ${C.darkBorder}`,
+          maxHeight: 220, overflowY: "auto",
+          background: `${C.dark}40`,
+        }}>
+          <div style={{
+            padding: "5px 14px", fontSize: 10, fontWeight: 600,
+            color: C.darkMuted, letterSpacing: "0.06em", textTransform: "uppercase",
+          }}>
+            Select destination
+          </div>
+          {moveTargets.map((target) => {
+            const isCurrent = (item.parentId || null) === target.id;
+            return (
+              <button
+                key={target.id || "__root__"}
+                onClick={() => { if (!isCurrent) { onMove(item, target.id); onClose(); } }}
+                disabled={isCurrent}
+                onMouseEnter={(e) => { if (!isCurrent) e.currentTarget.style.background = C.darkSurf; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                style={{
+                  ...btnStyle, fontSize: 12,
+                  color: isCurrent ? C.darkBorder : C.darkText,
+                  opacity: isCurrent ? 0.5 : 1,
+                  cursor: isCurrent ? "default" : "pointer",
+                }}
+              >
+                {target.id ? <IconFolder size={12} color={target.page_type === "workspace" ? C.accent : C.darkMuted} /> : <IconGlobe size={12} color={C.darkMuted} />}
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{target.name}</span>
+                {isCurrent && <span style={{ marginLeft: "auto", fontSize: 10, color: C.darkMuted, flexShrink: 0 }}>Current</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Separator */}
+      <div style={{ height: 1, background: C.darkBorder, margin: "2px 8px" }} />
+
+      {/* Delete */}
       <button
         onClick={() => { onDelete(item); onClose(); }}
         onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(192,57,43,0.15)"; }}
         onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-        style={{
-          display: "flex", alignItems: "center", gap: 8, width: "100%",
-          padding: "8px 14px", border: "none", background: "transparent",
-          fontSize: 13, fontFamily: FONT, color: "#e74c3c", cursor: "pointer",
-          textAlign: "left",
-        }}
+        style={{ ...btnStyle, color: "#e74c3c" }}
       >
         <IconTrash size={14} color="#e74c3c" />
         Delete
@@ -315,6 +377,28 @@ export default function WorkspaceBrowser() {
     }
     setDeleteTarget(null);
   }, [deleteTarget, removePage]);
+
+  // ── Move to folder ──
+  const handleMove = useCallback(async (item, newParentId) => {
+    // Calculate sort_order for the new parent
+    const siblings = pages.filter((p) => (p.parentId || null) === newParentId);
+    const newSortOrder = siblings.length > 0
+      ? Math.max(...siblings.map((c) => c.sort_order || 0)) + 1
+      : 0;
+    // Optimistic update
+    updatePageConfig(item.id, { parentId: newParentId, sort_order: newSortOrder });
+    try {
+      await reorderPages([{ id: item.id, sort_order: newSortOrder, parent_id: newParentId }]);
+    } catch (err) {
+      console.error("[WorkspaceBrowser] Move failed:", err);
+    }
+  }, [pages, updatePageConfig]);
+
+  // All folders/workspaces for the "Move to" menu
+  const allFolders = useMemo(() =>
+    pages.filter((p) => p.type === "folder" && !p._systemInternal),
+    [pages]
+  );
 
   // ── Drag & Drop ──
   const handleDragStart = useCallback((e, item) => {
@@ -808,6 +892,8 @@ export default function WorkspaceBrowser() {
           item={menuItem}
           anchorRect={menuAnchor}
           onDelete={handleDeleteRequest}
+          onMove={handleMove}
+          folders={allFolders}
           onClose={closeMenu}
         />
       )}
