@@ -189,7 +189,8 @@ const styles = {
   },
 
   table: {
-    borderCollapse: "collapse",
+    borderCollapse: "separate",
+    borderSpacing: "0 4px",
     fontSize: 13,
     tableLayout: "fixed",
   },
@@ -211,7 +212,7 @@ const styles = {
     background: C.darkSurf,
     zIndex: 3,
     transition: "color 0.15s",
-    boxShadow: `0 2px 8px rgba(0,0,0,0.12)`,
+    boxShadow: `0 2px 8px rgba(0,0,0,0.15)`,
   },
 
   thActive: {
@@ -220,29 +221,24 @@ const styles = {
 
   td: {
     padding: "8px 12px",
-    borderBottom: "none",
+    border: "none",
     color: C.darkText,
     verticalAlign: "middle",
     fontSize: 13,
     lineHeight: 1.45,
     boxSizing: "border-box",
     overflow: "hidden",
+    background: C.darkSurf,
   },
 
   row: {
-    transition: "all 0.15s ease",
+    transition: "background 0.15s ease",
     cursor: "pointer",
     overflow: "hidden",
-    position: "relative",
-    borderRadius: RADIUS.lg,
-    background: C.darkSurf,
-    borderBottom: `3px solid transparent`,
   },
 
   rowHover: {
-    background: C.darkSurf2,
-    boxShadow: `0 2px 8px rgba(0,0,0,0.12)`,
-    transform: "translateY(-1px)",
+    // Applied to td elements on hover
   },
 
   // Inline editing
@@ -2589,6 +2585,9 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                         }
                       }
 
+                      // Per-td background for hover/selection
+                      const tdBg = isSelected ? C.accent + "10" : isHovered ? C.darkSurf2 : C.darkSurf;
+
                       return (
                         <tr
                           key={pageId}
@@ -2597,8 +2596,6 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                             ...styles.row,
                             height: ROW_HEIGHT,
                             animation: ANIM.scrollReveal(localIdx),
-                            ...(isHovered ? styles.rowHover : {}),
-                            ...(isSelected ? { background: C.accent + "10" } : {}),
                           }}
                           onMouseEnter={() => setHoveredRow(pageId)}
                           onMouseLeave={() => setHoveredRow(null)}
@@ -2609,16 +2606,16 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                               dispatchNeuronSelect({ node_type: "row", node_id: pageId, node_label: getPageTitle(page) || "Untitled" });
                               return;
                             }
-                            // Single click opens record detail
                             setDetailPage(page);
                           }}
                         >
-                          {/* Color bar */}
-                          {rowBarColor && (
-                            <td style={{ width: 4, minWidth: 4, padding: 0, border: "none", background: rowBarColor, borderRadius: `${RADIUS.lg}px 0 0 ${RADIUS.lg}px` }} />
-                          )}
-                          {/* Row checkbox */}
-                          <td style={{ ...styles.td, width: rowBarColor ? 48 : 52, minWidth: rowBarColor ? 48 : 52, padding: 0, textAlign: "center", position: "relative" }}>
+                          {/* Row checkbox — first cell gets left color bar + rounded left corners */}
+                          <td style={{
+                            ...styles.td, width: 52, minWidth: 52, padding: 0, textAlign: "center", position: "relative",
+                            background: tdBg,
+                            borderLeft: rowBarColor ? `5px solid ${rowBarColor}` : "none",
+                            borderRadius: `${RADIUS.lg}px 0 0 ${RADIUS.lg}px`,
+                          }}>
                             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", gap: 3, justifyContent: "center", overflow: "hidden" }}>
                               <span
                                 style={styles.toggle(isSelected)}
@@ -2639,13 +2636,14 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                   key={col}
                                   style={{
                                     ...styles.td,
+                                    background: tdBg,
                                     height: ROW_HEIGHT,
                                     padding: 0,
                                     position: "relative",
                                     width: colWidths[col] || OWNER_COL_WIDTH,
                                     minWidth: colWidths[col] || OWNER_COL_WIDTH,
                                   }}
-                                  onClick={() => setOwnerPickerRow(isPickerOpen ? null : pageId)}
+                                  onClick={(e) => { e.stopPropagation(); setOwnerPickerRow(isPickerOpen ? null : pageId); }}
                                 >
                                   <div style={{ position: "absolute", inset: 0, overflow: "hidden", padding: "4px 8px", display: "flex", alignItems: "center" }}>
                                     <OwnerCellDisplay
@@ -2670,15 +2668,20 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                             const cellKey = `${pageId}:${col}`;
                             const linkData = resolvedLinks.get(cellKey);
 
+                            // Last column gets rounded right corners
+                            const isLastCol = colIdx === columns.length - 1;
+
                             return (
                               <td
                                 key={col}
                                 style={{
                                   ...styles.td,
+                                  background: tdBg,
                                   height: ROW_HEIGHT,
                                   padding: 0,
                                   position: "relative",
                                   ...(colWidths[col] ? { width: colWidths[col], minWidth: colWidths[col] } : {}),
+                                  ...(isLastCol ? { borderRadius: `0 ${RADIUS.lg}px ${RADIUS.lg}px 0` } : {}),
                                 }}
                               >
                                 <div style={{ position: "absolute", inset: 0, overflow: "hidden", padding: "4px 8px", display: "flex", alignItems: "center" }}>
