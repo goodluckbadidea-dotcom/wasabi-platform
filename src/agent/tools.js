@@ -250,7 +250,7 @@ const CREATE_PAGE_CONFIG = {
         description: "Parent workspace or folder ID for the new page.",
       },
     },
-    required: ["name", "views"],
+    required: ["name", "views", "columns"],
   },
 };
 

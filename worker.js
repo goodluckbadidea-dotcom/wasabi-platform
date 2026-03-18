@@ -3063,6 +3063,21 @@ async function handleUpdatePage(env, id, body) {
     await env.DB.prepare(
       `UPDATE page_configs SET ${sets.join(", ")} WHERE id = ?`
     ).bind(...binds).run();
+
+    // If columns are provided, upsert the table schema (allows fixing pages that were created without columns)
+    if (body.columns && Array.isArray(body.columns)) {
+      const cols = body.columns;
+      const hasLastUpdated = cols.some((c) => c.type === "last_edited_time" || c.id === "_last_edited_time");
+      if (!hasLastUpdated) cols.push({ id: "_last_edited_time", name: "Last Updated", type: "last_edited_time", system: true });
+      const hasCreated = cols.some((c) => c.type === "created_time" || c.id === "_created_time");
+      if (!hasCreated) cols.push({ id: "_created_time", name: "Created", type: "created_time", system: true });
+      await env.DB.prepare(
+        `INSERT INTO table_schemas (id, columns, created_at, updated_at)
+         VALUES (?, ?, datetime('now'), datetime('now'))
+         ON CONFLICT(id) DO UPDATE SET columns = excluded.columns, updated_at = datetime('now')`
+      ).bind(id, JSON.stringify(cols)).run();
+    }
+
     return jsonResponse({ ok: true, id });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);

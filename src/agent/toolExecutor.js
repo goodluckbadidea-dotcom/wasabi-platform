@@ -1092,8 +1092,12 @@ export function createToolExecutor({
         };
 
         // For standalone D1 tables, include column definitions so the worker creates the schema
-        if (pageType === "database" && columns && columns.length > 0) {
-          pageConfig.columns = columns.map((c) => ({
+        // Default to a basic Name column if the LLM omits columns
+        const resolvedColumns = (columns && columns.length > 0)
+          ? columns
+          : (pageType === "database" ? [{ name: "Name", type: "text" }] : null);
+        if (pageType === "database" && resolvedColumns) {
+          pageConfig.columns = resolvedColumns.map((c) => ({
             name: c.name,
             type: c.type || "text",
             id: c.id || c.name.toLowerCase().replace(/\s+/g, "_"),
