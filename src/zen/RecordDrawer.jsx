@@ -233,23 +233,23 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
     }
   }, [task, onSaved, onClose]);
 
-  // ── "Go To Task" — navigate to source DB page inline ──
+  // ── "Go To Task" — navigate to source DB page ──
   const handleGoToTask = useCallback(() => {
     const dbId = task.source?.split(":")[1];
     if (!dbId) return;
     const matchedPage = pages.find((p) =>
-      p.databaseIds?.includes(dbId)
+      p.id === dbId || p.databaseIds?.includes(dbId)
     );
     if (matchedPage) {
-      setActivePage(matchedPage.id);
       onClose();
+      setActivePage(matchedPage.id);
     }
   }, [task, pages, setActivePage, onClose]);
 
   // Can we navigate to this task's source?
   const canGoToTask = (() => {
     const dbId = task.source?.split(":")[1];
-    return dbId && pages.some((p) => p.databaseIds?.includes(dbId));
+    return dbId && pages.some((p) => p.id === dbId || p.databaseIds?.includes(dbId));
   })();
 
   // ── AI attention summary ──
