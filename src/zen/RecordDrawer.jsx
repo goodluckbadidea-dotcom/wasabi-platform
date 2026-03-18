@@ -251,56 +251,14 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
     return dbId && pages.some((p) => p.databaseIds?.includes(dbId));
   })();
 
-  // ── Build attention summary from AI reason tags ──
+  // ── AI attention summary ──
+  // Strip any leftover [tag] prefixes, show the clean natural-language reason
   const attentionSummary = (() => {
     const reason = task._aiReason;
     if (!reason) return null;
-    const tagMatches = reason.match(/\[([^\]]+)\]/g);
-    if (!tagMatches || tagMatches.length === 0) return null;
-
-    const tags = tagMatches.map((t) => t.slice(1, -1).toLowerCase().replace(/\s*\d+$/, ""));
-    const parts = [];
-
-    // Build natural language summary
-    if (tags.includes("overdue")) parts.push("This task is **overdue**");
-    else if (tags.includes("due soon")) parts.push("This task is **due soon**");
-
-    if (tags.includes("mentioned")) parts.push("you were **@mentioned**");
-    if (tags.includes("unread comment")) parts.push("there are **unread comments**");
-    if (tags.includes("assigned")) parts.push("it's **assigned to you**");
-    if (tags.includes("owned")) parts.push("you **own** this task");
-    if (tags.includes("blocking")) parts.push("it's **blocking** other tasks");
-    if (tags.includes("blocked")) parts.push("it's **blocked** by another task");
-    if (tags.includes("stale")) parts.push("it hasn't been updated recently");
-    if (tags.includes("urgent") || tags.includes("high priority")) parts.push("it's marked **high priority**");
-
-    if (parts.length === 0) return null;
-
-    // Join naturally: "This task is overdue, you were @mentioned, and it's high priority"
-    let text;
-    if (parts.length === 1) {
-      text = parts[0] + ".";
-    } else if (parts.length === 2) {
-      text = parts[0] + " and " + parts[1] + ".";
-    } else {
-      text = parts.slice(0, -1).join(", ") + ", and " + parts[parts.length - 1] + ".";
-    }
-    // Capitalize first letter
-    text = text.charAt(0).toUpperCase() + text.slice(1);
-    return text;
+    const clean = reason.replace(/\[[^\]]+\]\s*/g, "").trim();
+    return clean || null;
   })();
-
-  // Render bold markdown fragments as <strong>
-  const renderSummary = (text) => {
-    if (!text) return null;
-    const parts = text.split(/(\*\*[^*]+\*\*)/g);
-    return parts.map((part, i) => {
-      if (part.startsWith("**") && part.endsWith("**")) {
-        return <strong key={i} style={{ color: C.darkText, fontWeight: 600 }}>{part.slice(2, -2)}</strong>;
-      }
-      return <span key={i}>{part}</span>;
-    });
-  };
 
   return (
     <div>
@@ -313,7 +271,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
           display: "flex", alignItems: "flex-start", gap: 8,
         }}>
           <span style={{ fontSize: 14, flexShrink: 0, marginTop: 1 }}>💡</span>
-          <span>{renderSummary(attentionSummary)}</span>
+          <span style={{ color: C.darkText }}>{attentionSummary}</span>
         </div>
       )}
 

@@ -659,7 +659,14 @@ Priority rules:
 - Tasks owned by or assigned to this user get a slight boost
 Exclude any items that are NOT actionable tasks (contacts, records, inventory, labels).
 
-For each task, include a "reason" with a structured tag prefix from: [overdue], [due soon], [stale], [unread comment], [mentioned], [blocking N], [blocked], [assigned], [owned], [urgent], [high priority]. You can combine tags. Example: "[overdue] [mentioned] Due 3 days ago, user was mentioned in comments"
+For each task, write a "reason" — a concise 1-2 sentence attention summary written for the user. It should feel like a helpful assistant briefing them. Be specific: reference actual dates, how many days overdue, the database name, blocking relationships, and why it matters NOW. Don't list tags — write natural language.
+Good examples:
+- "Due 3 days ago and you haven't viewed it since last week. It's blocking 2 other tasks in Projects."
+- "You were @mentioned in a comment and this is due tomorrow. Likely needs your input before the deadline."
+- "Marked high priority but hasn't been updated in 8 days. The design deadline is in 3 days."
+Bad examples (too generic, don't do this):
+- "This task is overdue and stale."
+- "High priority task that needs attention."
 
 2. Generate ONE short workspace insight (max 120 chars) personalized for this user. This appears in a zen/mindfulness sidebar. It should feel illuminating — not a status report. Observe patterns, convergences, risks, or perspective. Be specific to the actual data.
 
