@@ -184,7 +184,7 @@ const styles = {
     flex: 1,
     overflowY: "auto",
     overflowX: "auto",
-    background: C.darkSurf,
+    background: C.dark,
     WebkitOverflowScrolling: "touch",
   },
 
@@ -193,7 +193,7 @@ const styles = {
     position: "sticky",
     top: 0,
     zIndex: 10,
-    background: C.darkSurf,
+    background: C.dark,
     borderBottom: `2px solid ${C.accent}33`,
     boxShadow: `0 2px 8px rgba(0,0,0,0.08)`,
   },
@@ -246,7 +246,7 @@ const styles = {
     position: "sticky",
     bottom: 0,
     zIndex: 5,
-    background: C.darkSurf,
+    background: C.dark,
     borderTop: `2px solid ${C.darkBorder}`,
   },
 
