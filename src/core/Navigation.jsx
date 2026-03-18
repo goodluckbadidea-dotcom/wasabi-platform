@@ -316,7 +316,6 @@ export default function Navigation({
             display: "flex",
             flexDirection: "column",
             gap: 6,
-            borderBottom: `1px solid ${C.darkBorder}`,
           }}>
             {/* Expand / Collapse toggle — sidebar menu icon */}
             <button
