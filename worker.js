@@ -1341,6 +1341,41 @@ export default {
         });
       }
 
+      // Batch resolve page titles (for relation fields)
+      if (path === "/pages/titles" && request.method === "POST") {
+        const { ids } = await request.json();
+        if (!Array.isArray(ids) || ids.length === 0) return jsonResponse({});
+        // Limit to 50 to avoid excessive API calls
+        const uniqueIds = [...new Set(ids)].slice(0, 50);
+        const titles = {};
+        // Fetch in parallel, 10 at a time
+        for (let i = 0; i < uniqueIds.length; i += 10) {
+          const batch = uniqueIds.slice(i, i + 10);
+          const results = await Promise.allSettled(
+            batch.map(async (id) => {
+              const res = await fetch(`${NOTION_API}/pages/${id}`, {
+                headers: { Authorization: `Bearer ${notionKey}`, "Notion-Version": "2022-06-28" },
+              });
+              if (!res.ok) return { id, title: null };
+              const page = await res.json();
+              // Extract title from properties
+              let title = null;
+              for (const [, prop] of Object.entries(page.properties || {})) {
+                if (prop.type === "title" && prop.title?.length > 0) {
+                  title = prop.title.map(t => t.plain_text).join("");
+                  break;
+                }
+              }
+              return { id, title: title || "Untitled" };
+            })
+          );
+          for (const r of results) {
+            if (r.status === "fulfilled" && r.value) titles[r.value.id] = r.value.title;
+          }
+        }
+        return jsonResponse(titles);
+      }
+
       // Get page
       if (path.startsWith("/page/") && request.method === "GET") {
         const pageId = path.split("/page/")[1];

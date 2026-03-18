@@ -20,7 +20,7 @@ import { useLinks } from "../context/LinksContext.jsx";
 import LinkPicker from "../core/LinkPicker.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
-import { updateTableSchema, getTableSchema, listUsers, updateRowOwner } from "../lib/api.js";
+import { updateTableSchema, getTableSchema, listUsers, updateRowOwner, resolvePageTitles } from "../lib/api.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { updateDatabase, searchDatabases } from "../notion/client.js";
 import SelectPicker from "../components/SelectPicker.jsx";
@@ -696,7 +696,7 @@ function CellEditor({ value, type, options, schemaOptions, onCommit, onCancel, i
 
 // ─── Cell Display Component ───
 
-function CellDisplay({ value, type, fieldName, schema, onClick, colorMapping }) {
+function CellDisplay({ value, type, fieldName, schema, onClick, colorMapping, relationTitles }) {
   if (value === null || value === undefined || value === "") {
     return (
       <span
@@ -786,12 +786,24 @@ function CellDisplay({ value, type, fieldName, schema, onClick, colorMapping }) 
     );
   }
 
-  // Relation
+  // Relation — show resolved titles as pills
   if (type === "relation" && Array.isArray(value)) {
+    if (value.length === 0) return <span style={{ fontSize: 12, color: C.darkMuted }}>--</span>;
+    const titles = relationTitles || {};
+    const resolved = value.map(id => titles[id] || null).filter(Boolean);
+    if (resolved.length === 0) {
+      return <span style={{ fontSize: 12, color: C.darkMuted }}>{value.length} linked</span>;
+    }
     return (
-      <span style={{ fontSize: 12, color: C.darkMuted }}>
-        {value.length} linked
-      </span>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+        {resolved.map((name, i) => (
+          <span key={i} style={{
+            display: "inline-block", padding: "2px 8px", borderRadius: RADIUS.pill,
+            background: C.accent + "15", color: C.accent, fontSize: 11, fontWeight: 500,
+            whiteSpace: "nowrap", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis",
+          }}>{name}</span>
+        ))}
+      </div>
     );
   }
 
@@ -1141,6 +1153,27 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
       .catch(() => {});
   }, [pageConfig?.id, viewIdx, resolveLinksForView]);
   const targetDatabaseId = config.databaseId || pageConfig?.databaseIds?.[0] || pageConfig?.id;
+
+  // ── Relation title resolution ──
+  const [relationTitles, setRelationTitles] = useState({});
+  useEffect(() => {
+    if (!data || data.length === 0 || !schema) return;
+    // Collect all relation field page IDs
+    const relationFields = (schema.allFields || []).filter(f => f.type === "relation").map(f => f.name);
+    if (relationFields.length === 0) return;
+    const allIds = new Set();
+    for (const page of data) {
+      for (const field of relationFields) {
+        const val = readField(page, field);
+        if (Array.isArray(val)) val.forEach(id => { if (id && typeof id === "string") allIds.add(id); });
+      }
+    }
+    const newIds = [...allIds].filter(id => !relationTitles[id]);
+    if (newIds.length === 0) return;
+    resolvePageTitles(newIds)
+      .then(titles => setRelationTitles(prev => ({ ...prev, ...titles })))
+      .catch(() => {});
+  }, [data, schema]);
 
   // Inject animations on mount
   useEffect(() => {
@@ -2609,6 +2642,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                       fieldName={col}
                                       schema={schema}
                                       colorMapping={config.colorMapping}
+                                      relationTitles={relationTitles}
                                       linkInfo={linkData ? { sourceName: linkData.link?.name, stale: linkData.stale } : undefined}
                                       linkedValue={linkData?.value}
                                       onLinkClick={linkData ? () => removeLink(linkData.link.id) : undefined}

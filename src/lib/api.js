@@ -496,6 +496,13 @@ export async function claudeProxy(body, claudeKey) {
   return apiFetch("/claude", { method: "POST", body, headers });
 }
 
+// ─── Relation Title Resolution ───
+
+export async function resolvePageTitles(ids) {
+  if (!ids || ids.length === 0) return {};
+  return apiFetch("/pages/titles", { method: "POST", body: { ids } });
+}
+
 // ─── Record Notes ───
 
 export async function getRecordNote(recordId, pageConfigId) {
