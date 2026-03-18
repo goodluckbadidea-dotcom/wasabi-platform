@@ -7,7 +7,7 @@ import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { savePageConfig, createDocumentPageConfig, createFolderConfig, createTableConfig, createLinkedNotionConfig, createStandaloneDocConfig, createSheetConfig, createLinkedMondayConfig } from "../config/pageConfig.js";
+import { savePageConfig, createDocumentPageConfig, createFolderConfig, createWorkspaceConfig, createTableConfig, createLinkedNotionConfig, createStandaloneDocConfig, createSheetConfig, createLinkedMondayConfig } from "../config/pageConfig.js";
 import { autoDetectViews } from "../notion/schema.js";
 import { createSubpage, ensurePageActive } from "../notion/client.js";
 import DatabaseBrowser from "./DatabaseBrowser.jsx";
@@ -16,7 +16,7 @@ import {
   IconPage, IconTable, IconKanban, IconChart, IconForm,
   IconCalendar, IconFolder, IconStar, IconBolt, IconUsers,
   IconInbox, IconBell, IconGear, IconCards, IconTimeline,
-  IconDatabase, IconClose, IconChevronLeft, IconSheet,
+  IconDatabase, IconClose, IconChevronLeft, IconSheet, IconGlobe,
 } from "../design/icons.jsx";
 
 // ── Available view types ──
@@ -566,6 +566,7 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
     const typeCards = [];
 
     if (showFolderOption) {
+      typeCards.push({ key: "workspace", label: "Workspace", desc: "Top-level container for organizing pages and folders.", icon: IconGlobe, type: "workspace" });
       typeCards.push({ key: "folder", label: "Folder", desc: "Organize your pages into groups. No database required.", icon: IconFolder, type: "folder" });
     }
     typeCards.push({ key: "createTable", label: "Create Table", desc: "Build a standalone database with typed columns. No Notion required.", icon: IconTable, type: "createTable" });
@@ -620,6 +621,87 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
             <button style={S.btnGhost} onClick={onCancel}>Cancel</button>
           )}
           <div style={{ flex: 1 }} />
+        </div>
+      </div>
+    );
+  }
+
+  // ── Workspace Creation Flow ──
+  if (pageType === "workspace") {
+    return (
+      <div style={vs.container}>
+        <div style={vs.header}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span
+              style={{ cursor: "pointer", display: "flex", alignItems: "center" }}
+              onClick={() => setPageType(null)}
+              title="Back to type selection"
+            >
+              <IconChevronLeft size={16} color={C.darkMuted} />
+            </span>
+            <div>
+              <div style={vs.headerTitle}>New Workspace</div>
+              <div style={vs.headerSub}>Create a top-level container for pages and folders</div>
+            </div>
+          </div>
+        </div>
+        <div style={vs.body}>
+          <div style={vs.section}>
+            <div style={vs.sectionTitle}>Workspace Identity</div>
+            <div style={{ flex: 1 }}>
+              <label style={vs.label}>Workspace Name</label>
+              <input
+                style={vs.input}
+                value={pageName}
+                onChange={(e) => setPageName(e.target.value)}
+                placeholder="e.g. Product Team"
+                autoFocus
+              />
+            </div>
+          </div>
+
+          <div style={{
+            padding: "12px 16px", background: `${C.accent}10`,
+            border: `1px solid ${C.accent}30`, borderRadius: RADIUS.md,
+            fontSize: 13, color: C.darkMuted, lineHeight: 1.5,
+          }}>
+            Workspaces are top-level containers. Add folders and pages inside them after creation.
+          </div>
+
+          {error && <div style={vs.error}>{error}</div>}
+          {success && <div style={vs.success}>Workspace created successfully!</div>}
+        </div>
+        <div style={vs.footer}>
+          <button style={S.btnGhost} onClick={() => setPageType(null)}>Back</button>
+          <div style={{ flex: 1 }} />
+          <button
+            style={{
+              ...S.btnPrimary,
+              padding: "10px 28px",
+              fontSize: 14,
+              fontWeight: 600,
+              opacity: saving ? 0.6 : 1,
+              cursor: saving ? "not-allowed" : "pointer",
+            }}
+            onClick={async () => {
+              setError(null);
+              if (!pageName.trim()) { setError("Workspace name is required"); return; }
+              setSaving(true);
+              try {
+                const config = createWorkspaceConfig(pageName.trim());
+                const configId = await savePageConfig(config);
+                addPage({ ...config, id: configId });
+                setSuccess(true);
+              } catch (err) {
+                setError(err.message || "Failed to create workspace");
+              } finally {
+                setSaving(false);
+              }
+            }}
+            disabled={saving}
+          >
+            {saving ? "Creating..." : "Create Workspace"}
+          </button>
         </div>
       </div>
     );

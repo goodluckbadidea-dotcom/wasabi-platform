@@ -2,8 +2,8 @@
 // Dropdown with 4 create options: Workspace, Folder, Dashboard, Page.
 // Used in sidebar (+ button) and context menus.
 
-import React, { useState, useRef, useEffect } from "react";
-import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
+import React from "react";
+import { C, FONT } from "../design/tokens.js";
 import { IconPlus, IconGlobe, IconFolder, IconGrid, IconDiamond } from "../design/icons.jsx";
 
 const CREATE_OPTIONS = [
@@ -14,28 +14,11 @@ const CREATE_OPTIONS = [
 ];
 
 export default function CreateMenu({ onCreateItem, collapsed }) {
-  const [open, setOpen] = useState(false);
-  const menuRef = useRef(null);
-
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
-
-  const handleCreate = (type) => {
-    setOpen(false);
-    onCreateItem?.(type);
-  };
-
+  // Direct click → go straight to the full visual builder (no dropdown)
   return (
-    <div ref={menuRef} style={{ position: "relative", padding: collapsed ? "6px 0" : "6px 8px" }}>
+    <div style={{ position: "relative", padding: collapsed ? "6px 0" : "6px 8px" }}>
       <button
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => onCreateItem?.("page")}
         style={{
           width: "100%",
           border: collapsed ? "none" : `1px dashed ${C.darkBorder}`,
@@ -61,63 +44,6 @@ export default function CreateMenu({ onCreateItem, collapsed }) {
         <IconPlus size={12} color="currentColor" />
         {!collapsed && <span>Create New</span>}
       </button>
-
-      {open && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: "100%",
-            left: collapsed ? 0 : 8,
-            right: collapsed ? "auto" : 8,
-            minWidth: collapsed ? 200 : undefined,
-            background: C.darkSurf,
-            border: `1px solid ${C.darkBorder}`,
-            borderRadius: RADIUS.xl || 12,
-            boxShadow: SHADOW.dropdown,
-            overflow: "hidden",
-            zIndex: 300,
-            marginBottom: 4,
-          }}
-        >
-          <div style={{
-            height: 2,
-            background: `linear-gradient(90deg, ${C.dark}, ${C.accent}, ${C.dark})`,
-          }} />
-          <div style={{ padding: "4px 0" }}>
-            {CREATE_OPTIONS.map((opt) => {
-              const Icon = opt.icon;
-              return (
-                <button
-                  key={opt.id}
-                  onClick={() => handleCreate(opt.id)}
-                  style={{
-                    width: "100%",
-                    border: "none",
-                    cursor: "pointer",
-                    outline: "none",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "10px 14px",
-                    minHeight: 34,
-                    background: "transparent",
-                    fontFamily: FONT,
-                    transition: "background 0.1s",
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                >
-                  <Icon size={12} color={C.darkMuted} />
-                  <div style={{ display: "flex", flexDirection: "column", gap: 1, textAlign: "left" }}>
-                    <span style={{ fontSize: 12, fontWeight: 500, color: C.darkText }}>{opt.label}</span>
-                    <span style={{ fontSize: 11, color: C.darkMuted }}>{opt.description}</span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
