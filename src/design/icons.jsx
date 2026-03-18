@@ -723,3 +723,31 @@ export function IconUser({ size = 20, color = d, ...rest }) {
     </Icon>
   );
 }
+
+export function IconPhone({ size = 20, color = d, ...rest }) {
+  return (
+    <Icon size={size} {...rest}>
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" stroke={color} strokeWidth="1.5" fill="none" />
+    </Icon>
+  );
+}
+
+export function IconStatusDot({ size = 20, color = d, ...rest }) {
+  // Filled circle with ring — for status fields
+  return (
+    <Icon size={size} {...rest}>
+      <circle cx="12" cy="12" r="7" stroke={color} strokeWidth="1.5" fill="none" />
+      <circle cx="12" cy="12" r="3" fill={color} />
+    </Icon>
+  );
+}
+
+export function IconCheckSquare({ size = 20, color = d, ...rest }) {
+  // Checkbox — for checkbox column type
+  return (
+    <Icon size={size} {...rest}>
+      <rect x="3" y="3" width="18" height="18" rx="3" stroke={color} strokeWidth="1.5" fill="none" />
+      <path d="M9 12l2 2 4-4" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </Icon>
+  );
+}

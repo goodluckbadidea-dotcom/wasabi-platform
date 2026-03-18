@@ -9,7 +9,11 @@ import { S } from "../design/styles.js";
 import { ANIM, injectAnimations } from "../design/animations.js";
 import { readProp, buildProp, extractProperties, getPageTitle } from "../notion/properties.js";
 import { debounce, formatDate, truncate } from "../utils/helpers.js";
-import { IconTrash, IconExport, IconEyeOff, IconExpand, IconPlus, IconConnect } from "../design/icons.jsx";
+import {
+  IconTrash, IconExport, IconEyeOff, IconExpand, IconPlus, IconConnect,
+  IconCalendar, IconCheck, IconCheckSquare, IconLink, IconMail, IconPhone,
+  IconStatusDot, IconArrowDown, IconChevronDown,
+} from "../design/icons.jsx";
 import FilterChips, { applyChipFilters } from "./FilterChips.jsx";
 import RecordDetail from "./RecordDetail.jsx";
 import { useLinks } from "../context/LinksContext.jsx";
@@ -35,28 +39,29 @@ const D1_TO_NOTION_TYPE = {
 };
 
 // ─── Column Types ───
+// text/label: short text label for inline display, Icon: SVG component (optional)
 const COLUMN_TYPES = [
-  { value: "text", label: "Text", icon: "Aa" },
-  { value: "number", label: "Number", icon: "#" },
-  { value: "select", label: "Select", icon: "\u25BE" },
-  { value: "multi_select", label: "Multi Select", icon: "\u2630" },
-  { value: "date", label: "Date", icon: "\uD83D\uDCC5" },
-  { value: "checkbox", label: "Checkbox", icon: "\u2611" },
-  { value: "url", label: "URL", icon: "\uD83D\uDD17" },
-  { value: "email", label: "Email", icon: "\u2709" },
-  { value: "phone", label: "Phone", icon: "\uD83D\uDCDE" },
-  { value: "status", label: "Status", icon: "\u25C9" },
-  { value: "relation", label: "Relation", icon: "\uD83D\uDD17" },
+  { value: "text", label: "Text", text: "AA", Icon: null },
+  { value: "number", label: "Number", text: "#", Icon: null },
+  { value: "select", label: "Select", text: null, Icon: IconChevronDown },
+  { value: "multi_select", label: "Multi Select", text: null, Icon: IconArrowDown },
+  { value: "date", label: "Date", text: null, Icon: IconCalendar },
+  { value: "checkbox", label: "Checkbox", text: null, Icon: IconCheckSquare },
+  { value: "url", label: "URL", text: null, Icon: IconLink },
+  { value: "email", label: "Email", text: null, Icon: IconMail },
+  { value: "phone", label: "Phone", text: null, Icon: IconPhone },
+  { value: "status", label: "Status", text: null, Icon: IconStatusDot },
+  { value: "relation", label: "Relation", text: null, Icon: IconLink },
 ];
 
-// ─── Type Icon Lookup ───
+// ─── Type Icon Lookup (returns { text, Icon } or null) ───
 const TYPE_ICON_MAP = {};
-COLUMN_TYPES.forEach((t) => { TYPE_ICON_MAP[t.value] = t.icon; });
-TYPE_ICON_MAP["rich_text"] = "Aa";
-TYPE_ICON_MAP["title"] = "Aa";
-TYPE_ICON_MAP["phone_number"] = "\uD83D\uDCDE";
-TYPE_ICON_MAP["last_edited_time"] = "\uD83D\uDCC5";
-TYPE_ICON_MAP["created_time"] = "\uD83D\uDCC5";
+COLUMN_TYPES.forEach((t) => { TYPE_ICON_MAP[t.value] = { text: t.text, Icon: t.Icon }; });
+TYPE_ICON_MAP["rich_text"] = { text: "AA", Icon: null };
+TYPE_ICON_MAP["title"] = { text: "AA", Icon: null };
+TYPE_ICON_MAP["phone_number"] = { text: null, Icon: IconPhone };
+TYPE_ICON_MAP["last_edited_time"] = { text: null, Icon: IconCalendar };
+TYPE_ICON_MAP["created_time"] = { text: null, Icon: IconCalendar };
 
 function mapD1TypeForUI(d1Type) { return D1_TO_NOTION_TYPE[d1Type] || d1Type; }
 function getTypeIcon(schema, fieldName) { return TYPE_ICON_MAP[getFieldType(schema, fieldName)] || null; }
@@ -2330,9 +2335,12 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                       ) : (
                         <>
                           {(() => {
-                            const icon = getTypeIcon(schema, col);
-                            return icon ? (
-                              <span style={{ marginRight: 5, fontSize: 10, opacity: 0.55, verticalAlign: "middle" }} title={getFieldType(schema, col)}>{icon}</span>
+                            const ti = getTypeIcon(schema, col);
+                            if (!ti) return null;
+                            return ti.Icon ? (
+                              <span style={{ marginRight: 5, opacity: 0.55, verticalAlign: "middle", display: "inline-flex" }} title={getFieldType(schema, col)}><ti.Icon size={11} color="currentColor" /></span>
+                            ) : ti.text ? (
+                              <span style={{ marginRight: 5, fontSize: 10, opacity: 0.55, verticalAlign: "middle", fontWeight: 600 }} title={getFieldType(schema, col)}>{ti.text}</span>
                             ) : null;
                           })()}
                           {col}
@@ -2408,7 +2416,9 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                 onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = C.darkSurf2; }}
                                 onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = isSelected ? `${C.accent}15` : "transparent"; }}
                               >
-                                <span style={{ width: 16, textAlign: "center", fontSize: 12, flexShrink: 0 }}>{t.icon}</span>
+                                <span style={{ width: 16, textAlign: "center", fontSize: 12, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                  {t.Icon ? <t.Icon size={13} color={isSelected ? C.accent : C.darkMuted} /> : <span style={{ fontWeight: 600, color: isSelected ? C.accent : C.darkMuted }}>{t.text}</span>}
+                                </span>
                                 <span>{t.label}</span>
                               </div>
                             );
@@ -2966,7 +2976,9 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                       onMouseEnter={(e) => { e.currentTarget.style.background = isCurrentType ? `${C.accent}18` : C.darkSurf2; }}
                       onMouseLeave={(e) => { e.currentTarget.style.background = isCurrentType ? `${C.accent}10` : "transparent"; }}
                     >
-                      <span style={{ width: 20, textAlign: "center", fontSize: 13, flexShrink: 0 }}>{t.icon}</span>
+                      <span style={{ width: 20, textAlign: "center", fontSize: 13, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        {t.Icon ? <t.Icon size={14} color={isCurrentType ? C.accent : C.darkMuted} /> : <span style={{ fontWeight: 600, color: isCurrentType ? C.accent : C.darkMuted }}>{t.text}</span>}
+                      </span>
                       <span style={{ flex: 1 }}>{t.label}</span>
                       {isCurrentType && <span style={{ fontSize: 11, opacity: 0.7 }}>{"\u2713"}</span>}
                     </div>
