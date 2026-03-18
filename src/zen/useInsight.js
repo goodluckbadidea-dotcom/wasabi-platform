@@ -8,7 +8,7 @@ import { useState, useEffect } from "react";
 import { getCached } from "./taskHelpers.js";
 
 const INSIGHT_CACHE_KEY = "wasabi_insight";
-const CACHE_TTL = 15 * 60 * 1000; // 15 min (matches task cache)
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours — stale insight > no insight
 const POLL_INTERVAL = 5000; // check for new insight every 5s
 
 export default function useInsight() {
