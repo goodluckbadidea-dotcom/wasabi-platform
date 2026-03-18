@@ -188,14 +188,17 @@ const styles = {
     WebkitOverflowScrolling: "touch",
   },
 
-  table: {
-    borderCollapse: "separate",
-    borderSpacing: "0 4px",
-    fontSize: 13,
-    tableLayout: "fixed",
+  gridHeader: {
+    display: "grid",
+    position: "sticky",
+    top: 0,
+    zIndex: 10,
+    background: C.darkSurf,
+    borderBottom: `2px solid ${C.accent}33`,
+    boxShadow: `0 2px 8px rgba(0,0,0,0.08)`,
   },
 
-  th: {
+  gridHeaderCell: {
     textAlign: "left",
     padding: "10px 12px",
     fontSize: 11,
@@ -203,74 +206,56 @@ const styles = {
     textTransform: "uppercase",
     letterSpacing: "0.06em",
     color: C.darkMuted,
-    borderBottom: `2px solid ${C.accent}33`,
     whiteSpace: "nowrap",
     cursor: "pointer",
     userSelect: "none",
-    position: "sticky",
-    top: 0,
-    background: C.darkSurf,
-    zIndex: 3,
     transition: "color 0.15s",
-    boxShadow: `0 2px 8px rgba(0,0,0,0.15)`,
+    position: "relative",
+    overflow: "hidden",
   },
 
-  thActive: {
+  gridHeaderCellActive: {
     color: C.darkText,
   },
 
-  td: {
+  gridRow: {
+    display: "grid",
+    borderRadius: RADIUS.lg,
+    cursor: "pointer",
+    transition: "background 0.15s ease, box-shadow 0.15s ease",
+    background: C.darkSurf,
+    marginBottom: 4,
+    position: "relative",
+    overflow: "hidden",
+  },
+
+  gridCell: {
     padding: "8px 12px",
-    border: "none",
     color: C.darkText,
-    verticalAlign: "middle",
     fontSize: 13,
     lineHeight: 1.45,
     boxSizing: "border-box",
     overflow: "hidden",
+    display: "flex",
+    alignItems: "center",
+    minWidth: 0,
+  },
+
+  gridFooter: {
+    display: "grid",
+    position: "sticky",
+    bottom: 0,
+    zIndex: 5,
     background: C.darkSurf,
+    borderTop: `2px solid ${C.darkBorder}`,
   },
 
-  row: {
-    transition: "background 0.15s ease",
-    cursor: "pointer",
-    overflow: "hidden",
-  },
-
-  rowHover: {
-    // Applied to td elements on hover
-  },
-
-  // Inline editing
-  cellInput: {
-    width: "100%",
-    border: `1px solid ${C.accent}`,
-    borderRadius: RADIUS.sm,
-    padding: "4px 8px",
-    fontSize: 13,
-    fontFamily: FONT,
-    color: C.darkText,
-    background: C.darkSurf,
-    outline: "none",
-    boxShadow: `0 0 0 2px ${C.accent}33`,
-    boxSizing: "border-box",
-  },
-
-  cellSelect: {
-    width: "100%",
-    border: `1px solid ${C.accent}`,
-    borderRadius: RADIUS.sm,
-    padding: "4px 8px",
-    fontSize: 13,
-    fontFamily: FONT,
-    color: C.darkText,
-    background: C.darkSurf,
-    outline: "none",
-    cursor: "pointer",
-    appearance: "none",
-    boxShadow: `0 0 0 2px ${C.accent}33`,
-    boxSizing: "border-box",
-  },
+  // Legacy styles used by CellEditor (in RecordDetail drawer) and CSV import modal
+  table: { borderCollapse: "separate", borderSpacing: "0 4px", fontSize: 13, tableLayout: "fixed" },
+  th: { textAlign: "left", padding: "10px 12px", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: C.darkMuted, borderBottom: `1px solid ${C.darkBorder}`, whiteSpace: "nowrap", background: C.darkSurf },
+  td: { padding: "8px 12px", border: "none", color: C.darkText, fontSize: 13, lineHeight: 1.45, boxSizing: "border-box", overflow: "hidden", background: C.darkSurf },
+  cellInput: { width: "100%", border: `1px solid ${C.accent}`, borderRadius: RADIUS.sm, padding: "4px 8px", fontSize: 13, fontFamily: FONT, color: C.darkText, background: C.darkSurf, outline: "none", boxShadow: `0 0 0 2px ${C.accent}33`, boxSizing: "border-box" },
+  cellSelect: { width: "100%", border: `1px solid ${C.accent}`, borderRadius: RADIUS.sm, padding: "4px 8px", fontSize: 13, fontFamily: FONT, color: C.darkText, background: C.darkSurf, outline: "none", cursor: "pointer", appearance: "none", boxShadow: `0 0 0 2px ${C.accent}33`, boxSizing: "border-box" },
 
   // Checkbox toggle
   toggle: (checked) => ({
@@ -2248,590 +2233,528 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
             </button>
           </div>
         ) : (
-          <table style={{ ...styles.table, width: 52 + columns.reduce((sum, col) => sum + (colWidths[col] || (col === OWNER_COL_NAME ? OWNER_COL_WIDTH : 120)), 0) + (canEditSchema ? 44 : 0) }}>
-            <colgroup>
-              <col style={{ width: 52 }} />
-              {columns.map((col) => (
-                <col key={col} style={{ width: colWidths[col] || (col === OWNER_COL_NAME ? OWNER_COL_WIDTH : 120) }} />
-              ))}
-              {canEditSchema && <col style={{ width: 44 }} />}
-            </colgroup>
-            <thead>
-              <tr>
-                {/* Select-all checkbox */}
-                <th
-                  style={{
-                    ...styles.th,
-                    width: 52,
-                    minWidth: 52,
-                    padding: "10px 8px",
-                    textAlign: "center",
-                  }}
-                  onClick={toggleAllRows}
-                >
-                  <span style={styles.toggle(selectedRows.size === processedData.length && processedData.length > 0)}>
-                    {selectedRows.size === processedData.length && processedData.length > 0 ? "\u2713" : ""}
-                  </span>
-                </th>
-                {columns.map((col) => {
-                  // ── Owner virtual column header ──
-                  if (col === OWNER_COL_NAME && showOwnerColumn) {
-                    return (
-                      <th
-                        key={col}
-                        style={{
-                          ...styles.th,
-                          minWidth: OWNER_COL_WIDTH,
-                          width: colWidths[col] || OWNER_COL_WIDTH,
-                          position: "relative",
-                        }}
-                      >
-                        <span style={{ marginRight: 5, fontSize: 10, opacity: 0.55, verticalAlign: "middle" }} title="Owner">👤</span>
-                        Owner
-                      </th>
-                    );
-                  }
-                  const isActive = sortField === col;
-                  const isDragOver = colDrag?.overCol === col;
-                  return (
-                    <th
-                      key={col}
-                      data-col-header={col}
-                      style={{
-                        ...styles.th,
-                        ...(isActive ? styles.thActive : {}),
-                        minWidth: colWidths[col] || 120,
-                        ...(colWidths[col] ? { width: colWidths[col] } : {}),
-                        ...(isDragOver ? { borderLeft: `2px solid ${C.accent}` } : {}),
-                        position: "relative",
-                        cursor: colDrag ? "grabbing" : "pointer",
-                      }}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        const menuW = 180;
-                        const x = Math.min(rect.left, window.innerWidth - menuW);
-                        setColCtxMenu({ col, x, y: rect.bottom + 2 });
-                      }}
-                      onContextMenu={(e) => handleColRightClick(col, e)}
-                      onMouseDown={(e) => { if (e.button === 0 && !e.target.closest("[data-resize]")) handleColDragStart(col, e); }}
-                    >
-                      {renamingCol === col ? (
-                        <input
-                          autoFocus
-                          value={renameValue}
-                          onChange={(e) => setRenameValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") handleRenameCol(col, renameValue);
-                            if (e.key === "Escape") setRenamingCol(null);
-                            e.stopPropagation();
-                          }}
-                          onBlur={() => handleRenameCol(col, renameValue)}
-                          onClick={(e) => e.stopPropagation()}
-                          style={{
-                            width: "100%", border: `1px solid ${C.accent}`, borderRadius: RADIUS.sm,
-                            background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 11,
-                            padding: "2px 6px", outline: "none", fontWeight: 600, textTransform: "uppercase",
-                            letterSpacing: "0.06em",
-                          }}
-                        />
-                      ) : (
-                        <>
-                          {(() => {
-                            const ti = getTypeIcon(schema, col);
-                            if (!ti) return null;
-                            return ti.Icon ? (
-                              <span style={{ marginRight: 5, opacity: 0.55, verticalAlign: "middle", display: "inline-flex" }} title={getFieldType(schema, col)}><ti.Icon size={11} color="currentColor" /></span>
-                            ) : ti.text ? (
-                              <span style={{ marginRight: 5, fontSize: 10, opacity: 0.55, verticalAlign: "middle", fontWeight: 600 }} title={getFieldType(schema, col)}>{ti.text}</span>
-                            ) : null;
-                          })()}
-                          {col}
-                          {isActive && sortDir && (
-                            <span style={styles.sortArrow}>
-                              {sortDir === "asc" ? "\u25B2" : "\u25BC"}
-                            </span>
-                          )}
-                        </>
-                      )}
-                      {/* Resize handle */}
-                      <span
-                        data-resize="true"
-                        style={{
-                          position: "absolute", right: 0, top: 0, bottom: 0, width: 5,
-                          cursor: "col-resize", background: "transparent", zIndex: 3,
-                        }}
-                        onMouseDown={(e) => handleResizeStart(col, e)}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = C.accent + "44"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                      />
-                    </th>
-                  );
-                })}
-                {/* Add column button */}
-                {canEditSchema && (
-                  <th style={{ ...styles.th, width: 44, minWidth: 44, textAlign: "center", padding: "10px 8px", position: "sticky", right: 0, zIndex: 2, background: C.darkSurf }}>
-                    {addColOpen ? (
-                      <div
-                        style={{
-                          position: "absolute", top: "100%", right: 0, zIndex: 100,
-                          background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
-                          borderRadius: RADIUS.lg, padding: 14, width: 240,
-                          boxShadow: SHADOW.dropdown, display: "flex", flexDirection: "column", gap: 10,
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        onMouseDown={(e) => e.stopPropagation()}
-                      >
-                        <div style={{ fontSize: 11, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                          New Column
-                        </div>
-                        <input
-                          autoFocus
-                          placeholder="Column name..."
-                          value={addColName}
-                          onChange={(e) => setAddColName(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter") handleAddCol(); if (e.key === "Escape") setAddColOpen(false); }}
-                          style={{
-                            border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
-                            background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 13,
-                            padding: "7px 10px", outline: "none", width: "100%", boxSizing: "border-box",
-                          }}
-                        />
-                        <div style={{ fontSize: 10, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                          Column Type
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
-                          {COLUMN_TYPES.map((t) => {
-                            const isSelected = addColType === t.value;
-                            return (
-                              <div
-                                key={t.value}
-                                style={{
-                                  display: "flex", alignItems: "center", gap: 6,
-                                  padding: "5px 8px", borderRadius: RADIUS.sm,
-                                  cursor: "pointer", fontSize: 12, fontFamily: FONT,
-                                  transition: "background 0.1s",
-                                  color: isSelected ? C.accent : C.darkText,
-                                  background: isSelected ? `${C.accent}15` : "transparent",
-                                  fontWeight: isSelected ? 600 : 400,
-                                }}
-                                onClick={() => setAddColType(t.value)}
-                                onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = C.darkSurf2; }}
-                                onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = isSelected ? `${C.accent}15` : "transparent"; }}
-                              >
-                                <span style={{ width: 16, textAlign: "center", fontSize: 12, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                  {t.Icon ? <t.Icon size={13} color={isSelected ? C.accent : C.darkMuted} /> : <span style={{ fontWeight: 600, color: isSelected ? C.accent : C.darkMuted }}>{t.text}</span>}
-                                </span>
-                                <span>{t.label}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                        {/* Relation picker — shown when type is "relation" on a Notion table */}
-                        {addColType === "relation" && isNotionTable && (
-                          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 2 }}>
-                            <div style={{ fontSize: 10, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                              Target Database
-                            </div>
-                            <input
-                              placeholder="Search databases..."
-                              value={dbSearchQuery}
-                              onChange={(e) => {
-                                setDbSearchQuery(e.target.value);
-                                searchRelationDbs(e.target.value);
-                              }}
-                              onFocus={() => { if (!dbSearchResults.length) searchRelationDbs(""); }}
-                              style={{
-                                border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
-                                background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 12,
-                                padding: "6px 10px", outline: "none", width: "100%", boxSizing: "border-box",
-                              }}
-                            />
-                            <div style={{ maxHeight: 120, overflowY: "auto" }}>
-                              {dbSearchResults.map((db) => (
-                                <div
-                                  key={db.id}
-                                  onClick={() => setAddColRelationDb(db)}
-                                  style={{
-                                    padding: "5px 8px", fontSize: 12, cursor: "pointer",
-                                    borderRadius: RADIUS.sm, fontFamily: FONT,
-                                    color: addColRelationDb?.id === db.id ? C.accent : C.darkText,
-                                    background: addColRelationDb?.id === db.id ? `${C.accent}15` : "transparent",
-                                    transition: "background 0.1s",
-                                  }}
-                                  onMouseEnter={(e) => { if (addColRelationDb?.id !== db.id) e.currentTarget.style.background = C.darkSurf2; }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.background = addColRelationDb?.id === db.id ? `${C.accent}15` : "transparent"; }}
-                                >
-                                  {db.title}
-                                </div>
-                              ))}
-                              {dbSearching && <div style={{ padding: 6, fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>Searching...</div>}
-                              {!dbSearching && dbSearchResults.length === 0 && dbSearchQuery && (
-                                <div style={{ padding: 6, fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>No databases found</div>
-                              )}
-                            </div>
-                            {addColRelationDb && (
-                              <>
-                                <div style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>
-                                  Selected: <span style={{ color: C.accent }}>{addColRelationDb.title}</span>
-                                </div>
-                                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontFamily: FONT, color: C.darkText, cursor: "pointer" }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={addColSynced}
-                                    onChange={(e) => setAddColSynced(e.target.checked)}
-                                    style={{ accentColor: C.accent }}
-                                  />
-                                  Two-way relation
-                                </label>
-                                {addColSynced && (
-                                  <input
-                                    placeholder="Backlink column name..."
-                                    value={addColSyncedName}
-                                    onChange={(e) => setAddColSyncedName(e.target.value)}
-                                    style={{
-                                      border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
-                                      background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 12,
-                                      padding: "6px 10px", outline: "none", width: "100%", boxSizing: "border-box",
-                                    }}
-                                  />
-                                )}
-                              </>
-                            )}
-                          </div>
-                        )}
-                        {(() => {
-                          const canAdd = addColName.trim() && !(addColType === "relation" && (!addColRelationDb || (addColSynced && !addColSyncedName.trim())));
-                          return (
-                            <button
-                              onClick={handleAddCol}
-                              disabled={!canAdd}
-                              style={{
-                                background: C.accent, color: "#fff", border: "none", borderRadius: RADIUS.sm,
-                                padding: "7px 14px", fontSize: 12, fontFamily: FONT, fontWeight: 600,
-                                cursor: canAdd ? "pointer" : "default",
-                                opacity: canAdd ? 1 : 0.4, transition: "opacity 0.15s", marginTop: 2,
-                              }}
-                            >Add Column</button>
-                          );
-                        })()}
-                      </div>
-                    ) : (
-                      <div
-                        style={{
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          width: 26, height: 26, borderRadius: RADIUS.md,
-                          border: `1px dashed ${C.darkBorder}`,
-                          cursor: "pointer", transition: "all 0.15s",
-                          color: C.darkMuted, opacity: 0.65,
-                        }}
-                        onClick={(e) => { e.stopPropagation(); setAddColOpen(true); }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.opacity = "1";
-                          e.currentTarget.style.borderColor = C.accent;
-                          e.currentTarget.style.color = C.accent;
-                          e.currentTarget.style.background = `${C.accent}10`;
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.opacity = "0.65";
-                          e.currentTarget.style.borderColor = C.darkBorder;
-                          e.currentTarget.style.color = C.darkMuted;
-                          e.currentTarget.style.background = "transparent";
-                        }}
-                        title="Add column"
-                      >
-                        <IconPlus size={13} />
-                      </div>
-                    )}
-                  </th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {/* Virtualized rows */}
-              {(() => {
-                const totalRows = processedData.length;
-                const visibleStart = visibleRange.start;
-                const visibleEnd = Math.min(totalRows, visibleRange.end);
-                const visibleRows = processedData.slice(visibleStart, visibleEnd);
-                const colSpan = columns.length + (canEditSchema ? 2 : 1);
+          (() => {
+            const gtc = `52px ${columns.map(col => `${colWidths[col] || (col === OWNER_COL_NAME ? OWNER_COL_WIDTH : 120)}px`).join(" ")}${canEditSchema ? " 44px" : ""}`;
+            const totalTableWidth = 52 + columns.reduce((sum, col) => sum + (colWidths[col] || (col === OWNER_COL_NAME ? OWNER_COL_WIDTH : 120)), 0) + (canEditSchema ? 44 : 0);
 
-                return (
-                  <>
-                    {/* Top spacer — always rendered for stable scrollHeight */}
-                    <tr style={{ height: visibleStart * ROW_HEIGHT }}>
-                      <td colSpan={colSpan} style={{ padding: 0, border: "none" }} />
-                    </tr>
-                    {visibleRows.map((page, localIdx) => {
-                      const rowIdx = visibleStart + localIdx;
-                      const pageId = page.id;
-                      const isHovered = hoveredRow === pageId;
-                      const isSelected = selectedRows.has(pageId);
-
-                      // Detect color bar from first status/select/priority field
-                      let rowBarColor = null;
-                      for (const col of columns) {
-                        const ftype = getFieldType(schema, col);
-                        if (ftype === "status" || ftype === "select") {
-                          const val = readField(page, col);
-                          if (val) {
-                            try {
-                              const opts = getOptionNames(schema, col);
-                              const schOpts = getFieldOptions(schema, col);
-                              const { fill } = getSolidPillColor(val, opts, schOpts, config.colorMapping);
-                              if (fill) { rowBarColor = fill; break; }
-                            } catch (_) {}
-                          }
-                        }
-                      }
-
-                      // Per-td background for hover/selection
-                      const tdBg = isSelected ? C.accent + "10" : isHovered ? C.darkSurf2 : C.darkSurf;
-
-                      return (
-                        <tr
-                          key={pageId}
-                          data-neuron-node={`row:${pageId}`}
-                          style={{
-                            ...styles.row,
-                            height: ROW_HEIGHT,
-                            animation: ANIM.scrollReveal(localIdx),
-                          }}
-                          onMouseEnter={() => setHoveredRow(pageId)}
-                          onMouseLeave={() => setHoveredRow(null)}
-                          onClick={(e) => {
-                            if ((e.metaKey || e.ctrlKey) && isNeuronsMode()) {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              dispatchNeuronSelect({ node_type: "row", node_id: pageId, node_label: getPageTitle(page) || "Untitled" });
-                              return;
-                            }
-                            setDetailPage(page);
-                          }}
-                        >
-                          {/* Row checkbox — first cell gets left color bar + rounded left corners */}
-                          <td style={{
-                            ...styles.td, width: 52, minWidth: 52, padding: 0, textAlign: "center", position: "relative",
-                            background: tdBg,
-                            borderLeft: rowBarColor ? `5px solid ${rowBarColor}` : "none",
-                            borderRadius: `${RADIUS.lg}px 0 0 ${RADIUS.lg}px`,
-                          }}>
-                            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", gap: 3, justifyContent: "center", overflow: "hidden" }}>
-                              <span
-                                style={styles.toggle(isSelected)}
-                                onClick={() => toggleRow(pageId)}
-                              >
-                                {isSelected ? "\u2713" : ""}
-                              </span>
-                              <NeuronBadge nodeId={pageId} />
-                            </div>
-                          </td>
-                          {columns.map((col, colIdx) => {
-                            // ── Owner virtual column cell ──
-                            if (col === OWNER_COL_NAME && showOwnerColumn) {
-                              const ownerIds = page._ownerUserIds || [];
-                              const isPickerOpen = ownerPickerRow === pageId;
-                              return (
-                                <td
-                                  key={col}
-                                  style={{
-                                    ...styles.td,
-                                    background: tdBg,
-                                    height: ROW_HEIGHT,
-                                    padding: 0,
-                                    position: "relative",
-                                    width: colWidths[col] || OWNER_COL_WIDTH,
-                                    minWidth: colWidths[col] || OWNER_COL_WIDTH,
-                                  }}
-                                  onClick={(e) => { e.stopPropagation(); setOwnerPickerRow(isPickerOpen ? null : pageId); }}
-                                >
-                                  <div style={{ position: "absolute", inset: 0, overflow: "hidden", padding: "4px 8px", display: "flex", alignItems: "center" }}>
-                                    <OwnerCellDisplay
-                                      ownerIds={ownerIds}
-                                      users={teamUsers}
-                                      onClick={() => setOwnerPickerRow(isPickerOpen ? null : pageId)}
-                                    />
-                                  </div>
-                                  {isPickerOpen && (
-                                    <OwnerPicker
-                                      ownerIds={ownerIds}
-                                      users={teamUsers}
-                                      onCommit={(ids) => handleOwnerCommit(pageId, ids)}
-                                      onClose={() => setOwnerPickerRow(null)}
-                                    />
-                                  )}
-                                </td>
-                              );
-                            }
-                            const type = getFieldType(schema, col);
-                            const value = readField(page, col);
-                            const cellKey = `${pageId}:${col}`;
-                            const linkData = resolvedLinks.get(cellKey);
-
-                            // Last column gets rounded right corners
-                            const isLastCol = colIdx === columns.length - 1;
-
-                            return (
-                              <td
-                                key={col}
-                                style={{
-                                  ...styles.td,
-                                  background: tdBg,
-                                  height: ROW_HEIGHT,
-                                  padding: 0,
-                                  position: "relative",
-                                  ...(colWidths[col] ? { width: colWidths[col], minWidth: colWidths[col] } : {}),
-                                  ...(isLastCol ? { borderRadius: `0 ${RADIUS.lg}px ${RADIUS.lg}px 0` } : {}),
-                                }}
-                              >
-                                <div style={{ position: "absolute", inset: 0, overflow: "hidden", padding: "4px 8px", display: "flex", alignItems: "center" }}>
-                                  <CellDisplay
-                                    value={value}
-                                    type={type}
-                                    fieldName={col}
-                                    schema={schema}
-                                    colorMapping={config.colorMapping}
-                                    linkInfo={linkData ? { sourceName: linkData.link?.name, stale: linkData.stale } : undefined}
-                                    linkedValue={linkData?.value}
-                                    onLinkClick={linkData ? () => removeLink(linkData.link.id) : undefined}
-                                  />
-                                </div>
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                    {/* Bottom spacer — always rendered for stable scrollHeight */}
-                    <tr style={{ height: Math.max(0, (totalRows - visibleEnd) * ROW_HEIGHT) }}>
-                      <td colSpan={colSpan} style={{ padding: 0, border: "none" }} />
-                    </tr>
-                  </>
-                );
-              })()}
-
-              {/* Ghost row — always visible at bottom for inline record creation */}
-              {onCreate && targetDatabaseId && (
-                <tr
-                  style={{
-                    height: ROW_HEIGHT,
-                    opacity: ghostSaving ? 0.5 : 0.6,
-                    transition: "opacity 0.15s",
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-                  onMouseLeave={(e) => { if (!ghostActive.current) e.currentTarget.style.opacity = "0.6"; }}
-                >
-                  <td style={{ ...styles.td, textAlign: "center", padding: "4px 4px", color: C.darkMuted }}>
-                    <IconPlus size={10} color={C.darkMuted} />
-                  </td>
+            return (
+              <div style={{ minWidth: totalTableWidth }}>
+                {/* ── Sticky Header ── */}
+                <div style={{ ...styles.gridHeader, gridTemplateColumns: gtc }}>
+                  {/* Select-all checkbox */}
+                  <div
+                    style={{ ...styles.gridHeaderCell, padding: "10px 8px", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" }}
+                    onClick={toggleAllRows}
+                  >
+                    <span style={styles.toggle(selectedRows.size === processedData.length && processedData.length > 0)}>
+                      {selectedRows.size === processedData.length && processedData.length > 0 ? "\u2713" : ""}
+                    </span>
+                  </div>
                   {columns.map((col) => {
-                    const type = getFieldType(schema, col);
-                    const isEditable = EDITABLE_TYPES.has(type);
-                    const titleField = schema?.title?.name;
+                    if (col === OWNER_COL_NAME && showOwnerColumn) {
+                      return (
+                        <div key={col} style={{ ...styles.gridHeaderCell, position: "relative" }}>
+                          <svg width="11" height="11" viewBox="0 0 16 16" fill="none" style={{ marginRight: 5, opacity: 0.55, verticalAlign: "middle" }}>
+                            <circle cx="8" cy="5" r="3.5" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                            <path d="M2 14.5c0-3 2.7-5 6-5s6 2 6 5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+                          </svg>
+                          Owner
+                        </div>
+                      );
+                    }
+                    const isActive = sortField === col;
+                    const isDragOver = colDrag?.overCol === col;
                     return (
-                      <td key={col} style={{ ...styles.td, padding: "2px 6px", height: ROW_HEIGHT }}>
-                        {isEditable ? (
+                      <div
+                        key={col}
+                        data-col-header={col}
+                        style={{
+                          ...styles.gridHeaderCell,
+                          ...(isActive ? styles.gridHeaderCellActive : {}),
+                          ...(isDragOver ? { borderLeft: `2px solid ${C.accent}` } : {}),
+                          cursor: colDrag ? "grabbing" : "pointer",
+                        }}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const menuW = 180;
+                          const x = Math.min(rect.left, window.innerWidth - menuW);
+                          setColCtxMenu({ col, x, y: rect.bottom + 2 });
+                        }}
+                        onContextMenu={(e) => handleColRightClick(col, e)}
+                        onMouseDown={(e) => { if (e.button === 0 && !e.target.closest("[data-resize]")) handleColDragStart(col, e); }}
+                      >
+                        {renamingCol === col ? (
                           <input
-                            type={type === "number" ? "number" : type === "date" ? "date" : "text"}
-                            style={{
-                              width: "100%",
-                              border: "none",
-                              borderRadius: RADIUS.sm,
-                              background: "transparent",
-                              color: C.darkText,
-                              fontFamily: FONT,
-                              fontSize: 12,
-                              padding: "4px 6px",
-                              outline: "none",
-                              boxSizing: "border-box",
-                            }}
-                            value={ghostValues[col] ?? ""}
-                            placeholder={col === titleField ? "New row..." : ""}
-                            onChange={(e) => {
-                              ghostActive.current = true;
-                              const val = type === "number" ? (e.target.value ? Number(e.target.value) : "") : e.target.value;
-                              setGhostValues((p) => ({ ...p, [col]: val }));
-                            }}
+                            autoFocus
+                            value={renameValue}
+                            onChange={(e) => setRenameValue(e.target.value)}
                             onKeyDown={(e) => {
-                              if (e.key === "Enter" && !e.shiftKey) {
-                                e.preventDefault();
-                                handleGhostCommit();
-                              }
-                              if (e.key === "Escape") {
-                                setGhostValues({});
-                                ghostActive.current = false;
-                                e.target.blur();
-                              }
+                              if (e.key === "Enter") handleRenameCol(col, renameValue);
+                              if (e.key === "Escape") setRenamingCol(null);
+                              e.stopPropagation();
                             }}
-                            onFocus={(e) => {
-                              e.currentTarget.style.background = C.darkSurf2;
-                              e.currentTarget.parentElement.parentElement.style.opacity = "1";
-                            }}
-                            onBlur={(e) => {
-                              e.currentTarget.style.background = "transparent";
+                            onBlur={() => handleRenameCol(col, renameValue)}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              width: "100%", border: `1px solid ${C.accent}`, borderRadius: RADIUS.sm,
+                              background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 11,
+                              padding: "2px 6px", outline: "none", fontWeight: 600, textTransform: "uppercase",
+                              letterSpacing: "0.06em",
                             }}
                           />
                         ) : (
-                          <span style={{ color: C.darkMuted, fontSize: 11, fontStyle: "italic" }}>—</span>
+                          <>
+                            {(() => {
+                              const ti = getTypeIcon(schema, col);
+                              if (!ti) return null;
+                              return ti.Icon ? (
+                                <span style={{ marginRight: 5, opacity: 0.55, verticalAlign: "middle", display: "inline-flex" }} title={getFieldType(schema, col)}><ti.Icon size={11} color="currentColor" /></span>
+                              ) : ti.text ? (
+                                <span style={{ marginRight: 5, fontSize: 10, opacity: 0.55, verticalAlign: "middle", fontWeight: 600 }} title={getFieldType(schema, col)}>{ti.text}</span>
+                              ) : null;
+                            })()}
+                            {col}
+                            {isActive && sortDir && (
+                              <span style={styles.sortArrow}>
+                                {sortDir === "asc" ? "\u25B2" : "\u25BC"}
+                              </span>
+                            )}
+                          </>
                         )}
-                      </td>
+                        {/* Resize handle */}
+                        <span
+                          data-resize="true"
+                          style={{
+                            position: "absolute", right: 0, top: 0, bottom: 0, width: 5,
+                            cursor: "col-resize", background: "transparent", zIndex: 3,
+                          }}
+                          onMouseDown={(e) => handleResizeStart(col, e)}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = C.accent + "44"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                        />
+                      </div>
                     );
                   })}
-                </tr>
-              )}
-              {ghostError && (
-                <tr>
-                  <td colSpan={columns.length + 1} style={{ padding: "4px 12px", fontSize: 11, color: "#E05252" }}>
-                    {ghostError}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-            {/* Totals row */}
-            <tfoot>
-              <tr>
-                <td style={{
-                  ...styles.td,
-                  position: "sticky",
-                  bottom: 0,
-                  background: C.darkSurf,
-                  borderTop: `2px solid ${C.darkBorder}`,
-                  padding: "4px 8px",
-                }}></td>
-                {columns.map((col) => {
-                  const type = getFieldType(schema, col);
-                  let total = null;
+                  {/* Add column button */}
+                  {canEditSchema && (
+                    <div style={{ ...styles.gridHeaderCell, textAlign: "center", padding: "10px 8px", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+                      {addColOpen ? (
+                        <div
+                          style={{
+                            position: "absolute", top: "100%", right: 0, zIndex: 100,
+                            background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
+                            borderRadius: RADIUS.lg, padding: 14, width: 240,
+                            boxShadow: SHADOW.dropdown, display: "flex", flexDirection: "column", gap: 10,
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          onMouseDown={(e) => e.stopPropagation()}
+                        >
+                          <div style={{ fontSize: 11, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                            New Column
+                          </div>
+                          <input
+                            autoFocus
+                            placeholder="Column name..."
+                            value={addColName}
+                            onChange={(e) => setAddColName(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") handleAddCol(); if (e.key === "Escape") setAddColOpen(false); }}
+                            style={{
+                              border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
+                              background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 13,
+                              padding: "7px 10px", outline: "none", width: "100%", boxSizing: "border-box",
+                            }}
+                          />
+                          <div style={{ fontSize: 10, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                            Column Type
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
+                            {COLUMN_TYPES.map((t) => {
+                              const isSelected = addColType === t.value;
+                              return (
+                                <div
+                                  key={t.value}
+                                  style={{
+                                    display: "flex", alignItems: "center", gap: 6,
+                                    padding: "5px 8px", borderRadius: RADIUS.sm,
+                                    cursor: "pointer", fontSize: 12, fontFamily: FONT,
+                                    transition: "background 0.1s",
+                                    color: isSelected ? C.accent : C.darkText,
+                                    background: isSelected ? `${C.accent}15` : "transparent",
+                                    fontWeight: isSelected ? 600 : 400,
+                                  }}
+                                  onClick={() => setAddColType(t.value)}
+                                  onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = C.darkSurf2; }}
+                                  onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = isSelected ? `${C.accent}15` : "transparent"; }}
+                                >
+                                  <span style={{ width: 16, textAlign: "center", fontSize: 12, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                    {t.Icon ? <t.Icon size={13} color={isSelected ? C.accent : C.darkMuted} /> : <span style={{ fontWeight: 600, color: isSelected ? C.accent : C.darkMuted }}>{t.text}</span>}
+                                  </span>
+                                  <span>{t.label}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {addColType === "relation" && isNotionTable && (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 2 }}>
+                              <div style={{ fontSize: 10, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                                Target Database
+                              </div>
+                              <input
+                                placeholder="Search databases..."
+                                value={dbSearchQuery}
+                                onChange={(e) => {
+                                  setDbSearchQuery(e.target.value);
+                                  searchRelationDbs(e.target.value);
+                                }}
+                                onFocus={() => { if (!dbSearchResults.length) searchRelationDbs(""); }}
+                                style={{
+                                  border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
+                                  background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 12,
+                                  padding: "6px 10px", outline: "none", width: "100%", boxSizing: "border-box",
+                                }}
+                              />
+                              <div style={{ maxHeight: 120, overflowY: "auto" }}>
+                                {dbSearchResults.map((db) => (
+                                  <div
+                                    key={db.id}
+                                    onClick={() => setAddColRelationDb(db)}
+                                    style={{
+                                      padding: "5px 8px", fontSize: 12, cursor: "pointer",
+                                      borderRadius: RADIUS.sm, fontFamily: FONT,
+                                      color: addColRelationDb?.id === db.id ? C.accent : C.darkText,
+                                      background: addColRelationDb?.id === db.id ? `${C.accent}15` : "transparent",
+                                      transition: "background 0.1s",
+                                    }}
+                                    onMouseEnter={(e) => { if (addColRelationDb?.id !== db.id) e.currentTarget.style.background = C.darkSurf2; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.background = addColRelationDb?.id === db.id ? `${C.accent}15` : "transparent"; }}
+                                  >
+                                    {db.title}
+                                  </div>
+                                ))}
+                                {dbSearching && <div style={{ padding: 6, fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>Searching...</div>}
+                                {!dbSearching && dbSearchResults.length === 0 && dbSearchQuery && (
+                                  <div style={{ padding: 6, fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>No databases found</div>
+                                )}
+                              </div>
+                              {addColRelationDb && (
+                                <>
+                                  <div style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>
+                                    Selected: <span style={{ color: C.accent }}>{addColRelationDb.title}</span>
+                                  </div>
+                                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontFamily: FONT, color: C.darkText, cursor: "pointer" }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={addColSynced}
+                                      onChange={(e) => setAddColSynced(e.target.checked)}
+                                      style={{ accentColor: C.accent }}
+                                    />
+                                    Two-way relation
+                                  </label>
+                                  {addColSynced && (
+                                    <input
+                                      placeholder="Backlink column name..."
+                                      value={addColSyncedName}
+                                      onChange={(e) => setAddColSyncedName(e.target.value)}
+                                      style={{
+                                        border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
+                                        background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 12,
+                                        padding: "6px 10px", outline: "none", width: "100%", boxSizing: "border-box",
+                                      }}
+                                    />
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          )}
+                          {(() => {
+                            const canAdd = addColName.trim() && !(addColType === "relation" && (!addColRelationDb || (addColSynced && !addColSyncedName.trim())));
+                            return (
+                              <button
+                                onClick={handleAddCol}
+                                disabled={!canAdd}
+                                style={{
+                                  background: C.accent, color: "#fff", border: "none", borderRadius: RADIUS.sm,
+                                  padding: "7px 14px", fontSize: 12, fontFamily: FONT, fontWeight: 600,
+                                  cursor: canAdd ? "pointer" : "default",
+                                  opacity: canAdd ? 1 : 0.4, transition: "opacity 0.15s", marginTop: 2,
+                                }}
+                              >Add Column</button>
+                            );
+                          })()}
+                        </div>
+                      ) : (
+                        <div
+                          style={{
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            width: 26, height: 26, borderRadius: RADIUS.md,
+                            border: `1px dashed ${C.darkBorder}`,
+                            cursor: "pointer", transition: "all 0.15s",
+                            color: C.darkMuted, opacity: 0.65,
+                          }}
+                          onClick={(e) => { e.stopPropagation(); setAddColOpen(true); }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.opacity = "1";
+                            e.currentTarget.style.borderColor = C.accent;
+                            e.currentTarget.style.color = C.accent;
+                            e.currentTarget.style.background = `${C.accent}10`;
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.opacity = "0.65";
+                            e.currentTarget.style.borderColor = C.darkBorder;
+                            e.currentTarget.style.color = C.darkMuted;
+                            e.currentTarget.style.background = "transparent";
+                          }}
+                          title="Add column"
+                        >
+                          <IconPlus size={13} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
-                  if (type === "number") {
-                    total = 0;
-                    for (const page of processedData) {
-                      const v = readField(page, col);
-                      if (typeof v === "number") total += v;
-                    }
-                  }
+                {/* ── Virtualized Card Rows ── */}
+                <div style={{ padding: "4px 8px" }}>
+                  {(() => {
+                    const totalRows = processedData.length;
+                    const visibleStart = visibleRange.start;
+                    const visibleEnd = Math.min(totalRows, visibleRange.end);
+                    const visibleRows = processedData.slice(visibleStart, visibleEnd);
+                    const cardHeight = ROW_HEIGHT + 4; // row + marginBottom
 
-                  return (
-                    <td
-                      key={col}
+                    return (
+                      <>
+                        {/* Top spacer */}
+                        <div style={{ height: visibleStart * cardHeight }} />
+                        {visibleRows.map((page, localIdx) => {
+                          const pageId = page.id;
+                          const isHovered = hoveredRow === pageId;
+                          const isSelected = selectedRows.has(pageId);
+
+                          // Detect color bar from first status/select/priority field
+                          let rowBarColor = null;
+                          for (const col of columns) {
+                            const ftype = getFieldType(schema, col);
+                            if (ftype === "status" || ftype === "select") {
+                              const val = readField(page, col);
+                              if (val) {
+                                try {
+                                  const opts = getOptionNames(schema, col);
+                                  const schOpts = getFieldOptions(schema, col);
+                                  const { fill } = getSolidPillColor(val, opts, schOpts, config.colorMapping);
+                                  if (fill) { rowBarColor = fill; break; }
+                                } catch (_) {}
+                              }
+                            }
+                          }
+
+                          const cardBg = isSelected ? C.accent + "10" : isHovered ? C.darkSurf2 : C.darkSurf;
+
+                          return (
+                            <div
+                              key={pageId}
+                              data-neuron-node={`row:${pageId}`}
+                              style={{
+                                ...styles.gridRow,
+                                gridTemplateColumns: gtc,
+                                height: ROW_HEIGHT,
+                                background: cardBg,
+                                ...(isHovered ? { boxShadow: `0 1px 4px rgba(0,0,0,0.08)` } : {}),
+                                animation: ANIM.scrollReveal(localIdx),
+                              }}
+                              onMouseEnter={() => setHoveredRow(pageId)}
+                              onMouseLeave={() => setHoveredRow(null)}
+                              onClick={(e) => {
+                                if ((e.metaKey || e.ctrlKey) && isNeuronsMode()) {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  dispatchNeuronSelect({ node_type: "row", node_id: pageId, node_label: getPageTitle(page) || "Untitled" });
+                                  return;
+                                }
+                                setDetailPage(page);
+                              }}
+                            >
+                              {/* Checkbox cell */}
+                              <div style={{ ...styles.gridCell, justifyContent: "center", padding: 0, gap: 3, position: "relative" }}>
+                                {/* Subtle color bar */}
+                                {rowBarColor && (
+                                  <div style={{ position: "absolute", left: 0, top: 4, bottom: 4, width: 4, borderRadius: 2, background: rowBarColor, opacity: 0.7 }} />
+                                )}
+                                <span
+                                  style={styles.toggle(isSelected)}
+                                  onClick={(e) => { e.stopPropagation(); toggleRow(pageId); }}
+                                >
+                                  {isSelected ? "\u2713" : ""}
+                                </span>
+                                <NeuronBadge nodeId={pageId} />
+                              </div>
+                              {/* Data cells */}
+                              {columns.map((col) => {
+                                if (col === OWNER_COL_NAME && showOwnerColumn) {
+                                  const ownerIds = page._ownerUserIds || [];
+                                  const isPickerOpen = ownerPickerRow === pageId;
+                                  return (
+                                    <div
+                                      key={col}
+                                      style={{ ...styles.gridCell, padding: "4px 8px", position: "relative" }}
+                                      onClick={(e) => { e.stopPropagation(); setOwnerPickerRow(isPickerOpen ? null : pageId); }}
+                                    >
+                                      <OwnerCellDisplay
+                                        ownerIds={ownerIds}
+                                        users={teamUsers}
+                                        onClick={() => setOwnerPickerRow(isPickerOpen ? null : pageId)}
+                                      />
+                                      {isPickerOpen && (
+                                        <OwnerPicker
+                                          ownerIds={ownerIds}
+                                          users={teamUsers}
+                                          onCommit={(ids) => handleOwnerCommit(pageId, ids)}
+                                          onClose={() => setOwnerPickerRow(null)}
+                                        />
+                                      )}
+                                    </div>
+                                  );
+                                }
+                                const type = getFieldType(schema, col);
+                                const value = readField(page, col);
+                                const cellKey = `${pageId}:${col}`;
+                                const linkData = resolvedLinks.get(cellKey);
+
+                                return (
+                                  <div key={col} style={{ ...styles.gridCell, padding: "4px 8px" }}>
+                                    <CellDisplay
+                                      value={value}
+                                      type={type}
+                                      fieldName={col}
+                                      schema={schema}
+                                      colorMapping={config.colorMapping}
+                                      linkInfo={linkData ? { sourceName: linkData.link?.name, stale: linkData.stale } : undefined}
+                                      linkedValue={linkData?.value}
+                                      onLinkClick={linkData ? () => removeLink(linkData.link.id) : undefined}
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })}
+                        {/* Bottom spacer */}
+                        <div style={{ height: Math.max(0, (totalRows - visibleEnd) * cardHeight) }} />
+                      </>
+                    );
+                  })()}
+
+                  {/* Ghost row — new record creation */}
+                  {onCreate && targetDatabaseId && (
+                    <div
                       style={{
-                        ...styles.td,
-                        position: "sticky",
-                        bottom: 0,
-                        background: C.darkSurf,
-                        borderTop: `2px solid ${C.darkBorder}`,
-                        fontWeight: 600,
-                        fontSize: 12,
-                        fontVariantNumeric: "tabular-nums",
-                        color: total !== null ? C.darkText : "transparent",
+                        ...styles.gridRow,
+                        gridTemplateColumns: gtc,
+                        height: ROW_HEIGHT,
+                        opacity: ghostSaving ? 0.5 : 0.6,
+                        transition: "opacity 0.15s",
+                        cursor: "default",
                       }}
+                      onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+                      onMouseLeave={(e) => { if (!ghostActive.current) e.currentTarget.style.opacity = "0.6"; }}
                     >
-                      {total !== null ? total.toLocaleString() : ""}
-                    </td>
-                  );
-                })}
-              </tr>
-            </tfoot>
-          </table>
+                      <div style={{ ...styles.gridCell, justifyContent: "center", padding: "4px 4px" }}>
+                        <IconPlus size={10} color={C.darkMuted} />
+                      </div>
+                      {columns.map((col) => {
+                        const type = getFieldType(schema, col);
+                        const isEditable = EDITABLE_TYPES.has(type);
+                        const titleField = schema?.title?.name;
+                        return (
+                          <div key={col} style={{ ...styles.gridCell, padding: "2px 6px" }}>
+                            {isEditable ? (
+                              <input
+                                type={type === "number" ? "number" : type === "date" ? "date" : "text"}
+                                style={{
+                                  width: "100%",
+                                  border: "none",
+                                  borderRadius: RADIUS.sm,
+                                  background: "transparent",
+                                  color: C.darkText,
+                                  fontFamily: FONT,
+                                  fontSize: 12,
+                                  padding: "4px 6px",
+                                  outline: "none",
+                                  boxSizing: "border-box",
+                                }}
+                                value={ghostValues[col] ?? ""}
+                                placeholder={col === titleField ? "New row..." : ""}
+                                onChange={(e) => {
+                                  ghostActive.current = true;
+                                  const val = type === "number" ? (e.target.value ? Number(e.target.value) : "") : e.target.value;
+                                  setGhostValues((p) => ({ ...p, [col]: val }));
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && !e.shiftKey) {
+                                    e.preventDefault();
+                                    handleGhostCommit();
+                                  }
+                                  if (e.key === "Escape") {
+                                    setGhostValues({});
+                                    ghostActive.current = false;
+                                    e.target.blur();
+                                  }
+                                }}
+                                onFocus={(e) => {
+                                  e.currentTarget.style.background = C.darkSurf2;
+                                }}
+                                onBlur={(e) => {
+                                  e.currentTarget.style.background = "transparent";
+                                }}
+                              />
+                            ) : (
+                              <span style={{ color: C.darkMuted, fontSize: 11, fontStyle: "italic" }}>--</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {ghostError && (
+                    <div style={{ padding: "4px 12px", fontSize: 11, color: "#E05252" }}>
+                      {ghostError}
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Sticky Footer (Totals) ── */}
+                <div style={{ ...styles.gridFooter, gridTemplateColumns: gtc }}>
+                  <div style={{ padding: "4px 8px" }} />
+                  {columns.map((col) => {
+                    const type = getFieldType(schema, col);
+                    let total = null;
+                    if (type === "number") {
+                      total = 0;
+                      for (const page of processedData) {
+                        const v = readField(page, col);
+                        if (typeof v === "number") total += v;
+                      }
+                    }
+                    return (
+                      <div
+                        key={col}
+                        style={{
+                          padding: "4px 12px",
+                          fontWeight: 600,
+                          fontSize: 12,
+                          fontVariantNumeric: "tabular-nums",
+                          color: total !== null ? C.darkText : "transparent",
+                        }}
+                      >
+                        {total !== null ? total.toLocaleString() : ""}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()
         )}
       </div>
 
