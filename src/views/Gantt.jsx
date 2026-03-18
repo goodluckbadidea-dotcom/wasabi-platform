@@ -248,15 +248,29 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
       });
     }
 
-    // Sort by earliest bar start
-    result.sort((a, b) => {
-      const aMin = Math.min(...a.bars.map((b) => b.start.getTime()));
-      const bMin = Math.min(...b.bars.map((b) => b.start.getTime()));
-      return aMin - bMin;
-    });
+    // Sort by config.sortField if set, otherwise by earliest bar start
+    if (config.sortField) {
+      const dir = config.sortDir === "desc" ? -1 : 1;
+      result.sort((a, b) => {
+        const va = readField(a.page, config.sortField);
+        const vb = readField(b.page, config.sortField);
+        if (va == null && vb == null) return 0;
+        if (va == null) return 1;
+        if (vb == null) return -1;
+        if (va < vb) return -1 * dir;
+        if (va > vb) return 1 * dir;
+        return 0;
+      });
+    } else {
+      result.sort((a, b) => {
+        const aMin = Math.min(...a.bars.map((b) => b.start.getTime()));
+        const bMin = Math.min(...b.bars.map((b) => b.start.getTime()));
+        return aMin - bMin;
+      });
+    }
 
     return result;
-  }, [data, schema, dateFields, labelField, colorField, colorOptionNames, search, config.colorMode, config.colorMapping]);
+  }, [data, schema, dateFields, labelField, colorField, colorOptionNames, search, config.colorMode, config.colorMapping, config.sortField, config.sortDir]);
 
   // ─── Compute timeline origin + bounds ───
 

@@ -845,6 +845,22 @@ export default function ViewSettingsPanel({
                 </>
               )}
 
+              {/* Group By (Kanban only) */}
+              {isKanban && colorableFields.length > 0 && (
+                <>
+                  <SectionLabel>Group By</SectionLabel>
+                  <StyledSelect
+                    value={config.columnField || ""}
+                    onChange={(fieldName) => onConfigChange?.({ columnField: fieldName })}
+                    placeholder="Auto-detect"
+                  >
+                    {colorableFields.map((f) => (
+                      <option key={f.name} value={f.name}>{f.name}</option>
+                    ))}
+                  </StyledSelect>
+                </>
+              )}
+
               {/* Card Size */}
               {isCardGrid && (
                 <>
