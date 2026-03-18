@@ -8,7 +8,7 @@ import React, { useState, useRef, useCallback, useEffect, useMemo } from "react"
 import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
 import { TRANSITION } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { IconClose, IconLog, IconChat, IconSend, IconPaperclip } from "../design/icons.jsx";
+import { IconClose, IconChat, IconSend, IconPaperclip } from "../design/icons.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
 import WasabiOrb from "./WasabiOrb.jsx";
 import ChatUI from "./ChatUI.jsx";
@@ -21,48 +21,19 @@ import { classifyQuery, formatClassifierResponse } from "../agent/queryClassifie
 import { buildNeuronContextSummary } from "../neurons/neuronStorage.js";
 import { buildDataSummary, getTokenBudget, findWorkspaceAncestor } from "../agent/dataSummary.js";
 import { fetchGoogleContext } from "../google/googleContext.js";
-import BatchQueue from "./BatchQueue.jsx";
 import * as api from "../lib/api.js";
 // Legacy Notion imports removed — notifications now stored in D1
 import { timeAgo } from "../utils/helpers.js";
 import { downloadCSV, printPDF } from "../utils/reportExport.js";
 
-// ── Tab button style ──
-const tabBtn = (active) => ({
-  flex: 1,
-  padding: "7px 4px",
-  border: "none",
-  cursor: "pointer",
-  fontFamily: FONT,
-  fontSize: 10,
-  background: active ? C.accent : "transparent",
-  color: active ? "#fff" : C.darkMuted,
-  borderRadius: 999,
-  transition: "background 0.14s, color 0.14s",
-  outline: "none",
-});
-
-// ── Log entry status colors (function for theme support) ──
-function getStatusCol() {
-  return {
-    pending: { border: `1px solid ${C.darkBorder}`, bg: C.darkSurf2, dot: C.accent },
-    processing: {
-      border: "1px solid rgba(255,180,0,0.3)",
-      bg: "rgba(255,180,0,0.06)",
-      dot: "#C8960A",
-    },
-    actioned: { border: `1px solid ${C.darkBorder}`, bg: C.dark, dot: "#2A6B38" },
-  };
-}
 
 const DEFAULT_WIDTH = 320;
 const MIN_WIDTH = 280;
 const MAX_WIDTH = 640;
 
 export default function WasabiPanel({ onClose, isThinking, activePageConfig, activePageData, pendingChatMessage, onClearPendingMessage, embedded = false }) {
-  const { user, platformIds, pages, batchQueue, addToQueue, updateQueueItem, removeQueueItem, addPage } =
+  const { user, platformIds, pages, addPage } =
     usePlatform();
-  const [tab, setTab] = useState("log");
 
   // ── Resize state ──
   const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH);
@@ -109,17 +80,6 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
     setPanelWidth(DEFAULT_WIDTH);
   }, []);
 
-  // ── Log state ──
-  const [logInput, setLogInput] = useState("");
-  const [editingId, setEditingId] = useState(null);
-  const [editText, setEditText] = useState("");
-  const logTextRef = useRef(null);
-  const logEndRef = useRef(null);
-
-  // ── Batch processing state ──
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [processProgress, setProcessProgress] = useState(null);
-
   // ── Chat state ──
   const [chatMessages, setChatMessages] = useState([]);
   const [chatLoading, setChatLoading] = useState(false);
@@ -151,97 +111,6 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
     setPendingApproval(null);
   }, [pendingApproval]);
 
-  // Auto-resize log textarea
-  const autoResize = () => {
-    if (!logTextRef.current) return;
-    logTextRef.current.style.height = "auto";
-    logTextRef.current.style.height =
-      Math.min(logTextRef.current.scrollHeight, 140) + "px";
-  };
-
-  // Scroll log to bottom on new entries
-  useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [batchQueue]);
-
-  // ── Log: add entry ──
-  const addLogEntry = useCallback(() => {
-    const text = logInput.trim();
-    if (!text) return;
-    addToQueue({ text, status: "pending" });
-    setLogInput("");
-    if (logTextRef.current) logTextRef.current.style.height = "auto";
-  }, [logInput, addToQueue]);
-
-  // ── Batch processing ──
-  const handleProcessAll = useCallback(async () => {
-    const pending = batchQueue.filter((i) => i.status === "pending");
-    if (pending.length === 0 || isProcessing) return;
-
-    setIsProcessing(true);
-    setProcessProgress({ current: 0, total: pending.length });
-
-    for (let i = 0; i < pending.length; i++) {
-      const item = pending[i];
-      setProcessProgress({ current: i, total: pending.length });
-      updateQueueItem(item.id, { status: "processing" });
-
-      try {
-        const batchWorkspaceSummary = (pages || []).map((p) => {
-          const dbIds = [...(p.databaseIds || [])];
-          const pt = p.page_type || p.pageType;
-          const localTypes = ["database", "sheet", "linked_sheet", "linked_monday", "linked_notion"];
-          if (localTypes.includes(pt) && p.id && !dbIds.includes(p.id)) {
-            dbIds.push(p.id);
-          }
-          const dbStr = dbIds.length ? ` (databases: ${dbIds.join(", ")})` : "";
-          const extra = [];
-          if (pt === "linked_monday" && p.mondayBoardId) extra.push(`monday board: ${p.mondayBoardId}`);
-          if (pt === "linked_sheet") extra.push("read-only");
-          const extraStr = extra.length ? ` {${extra.join(", ")}}` : "";
-          return `- **${p.name || "Untitled"}** (${pt || p.type || "page"})${dbStr}${extraStr}`;
-        }).join("\n");
-
-        const systemPrompt = buildWasabiPrompt({
-          platformDbIds: platformIds
-            ? Object.entries(platformIds).map(([k, v]) => `${k}: ${v}`).join("\n")
-            : "",
-          workspaceSummary: batchWorkspaceSummary || undefined,
-        });
-
-        const bConn = api.getConnection();
-        const bUrl = user?.workerUrl || bConn?.workerUrl;
-        const executor = createToolExecutor({
-          workerUrl: bUrl, notionKey: user?.notionKey || "", mondayKey: user?.mondayKey || "",
-          parentPageId: platformIds?.rootPageId, kbDbId: platformIds?.kbDbId,
-          notifDbId: platformIds?.notifDbId, configDbId: platformIds?.configDbId,
-          rulesDbId: platformIds?.rulesDbId, onPageCreated: addPage,
-          claudeKey: user?.claudeKey || "",
-        });
-
-        const batchBudget = getTokenBudget(item.text, 0);
-        const { text: reply } = await runAgent({
-          messages: [{ role: "user", content: item.text }],
-          systemPrompt,
-          tools: WASABI_TOOLS,
-          model: "claude-sonnet-4-20250514",
-          workerUrl: bUrl,
-          claudeKey: user?.claudeKey || "",
-          executeTool: (name, input) => executor(name, input),
-          maxTokens: batchBudget.maxTokens,
-          maxIterations: batchBudget.maxIterations,
-        });
-
-        updateQueueItem(item.id, { status: "actioned", result: reply });
-      } catch (err) {
-        console.error("[BatchQueue] Processing failed:", err);
-        updateQueueItem(item.id, { status: "actioned", result: `Error: ${err.message}` });
-      }
-    }
-
-    setProcessProgress({ current: pending.length, total: pending.length });
-    setIsProcessing(false);
-  }, [batchQueue, isProcessing, user, platformIds, pages, addPage, updateQueueItem]);
 
   // ── Chat: send message to Wasabi ──
   const toolExecutor = useCallback(
@@ -563,8 +432,6 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
   // ── Pending chat message handoff (from FunctionBuilder) ──
   useEffect(() => {
     if (!pendingChatMessage) return;
-    // Switch to chat tab
-    if (tab !== "chat") setTab("chat");
     // Auto-send after UI settles
     const timer = setTimeout(() => {
       handleChatSend({ text: pendingChatMessage });
@@ -572,8 +439,6 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
     }, 400);
     return () => clearTimeout(timer);
   }, [pendingChatMessage]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const pendingCount = batchQueue.filter((e) => e.status === "pending").length;
 
   return (
     <div
@@ -677,132 +542,8 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
       </div>
       )}
 
-      {/* Tab bar (always visible, including when embedded) */}
-      <div
-        style={{
-          display: "flex",
-          gap: 3,
-          margin: embedded ? "0 10px 8px" : "0 14px 12px",
-          background: C.darkSurf,
-          borderRadius: 999,
-          padding: 3,
-          flexShrink: 0,
-          borderBottom: `1px solid ${C.darkBorder}`,
-        }}
-      >
-        <button style={tabBtn(tab === "log")} onClick={() => setTab("log")}>
-          Log{pendingCount > 0 ? ` (${pendingCount})` : ""}
-        </button>
-        <button style={tabBtn(tab === "chat")} onClick={() => setTab("chat")}>
-          Chat
-        </button>
-      </div>
-
-      {/* ═══ LOG TAB ═══ */}
-      {tab === "log" && (
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            minHeight: 0,
-            overflow: "hidden",
-          }}
-        >
-          {/* BatchQueue handles the item list + process button */}
-          <BatchQueue
-            items={batchQueue}
-            onProcess={handleProcessAll}
-            onUpdateItem={updateQueueItem}
-            onRemoveItem={removeQueueItem}
-            isProcessing={isProcessing}
-            processProgress={processProgress}
-          />
-
-          {/* Log input */}
-          <div style={{ padding: "10px 12px 14px", flexShrink: 0 }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "flex-end",
-                gap: 10,
-                background: C.dark,
-                border: "none",
-                borderRadius: 999,
-                padding: "10px 16px",
-                boxShadow: "0 4px 24px rgba(0,0,0,0.22)",
-              }}
-            >
-              <textarea
-                ref={logTextRef}
-                value={logInput}
-                onChange={(e) => {
-                  setLogInput(e.target.value);
-                  autoResize();
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    addLogEntry();
-                  }
-                }}
-                placeholder="Add to log..."
-                style={{
-                  flex: 1,
-                  background: "transparent",
-                  border: "none",
-                  outline: "none",
-                  color: C.darkText,
-                  fontFamily: FONT,
-                  fontSize: 13,
-                  lineHeight: 1.6,
-                  resize: "none",
-                  maxHeight: 140,
-                  minHeight: 24,
-                }}
-                rows={1}
-              />
-              <button
-                onClick={addLogEntry}
-                disabled={!logInput.trim()}
-                style={{
-                  width: 36,
-                  height: 36,
-                  border: "none",
-                  borderRadius: "50%",
-                  cursor: logInput.trim() ? "pointer" : "default",
-                  background: logInput.trim() ? C.accent : C.darkBorder,
-                  color: "#fff",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                  transition: "background 0.15s",
-                  outline: "none",
-                }}
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <line x1="12" y1="19" x2="12" y2="5" />
-                  <polyline points="5 12 12 5 19 12" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ═══ CHAT TAB ═══ */}
-      {tab === "chat" && (
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      {/* ═══ CHAT ═══ */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
           {/* Model toggle pill */}
           <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 10px 0" }}>
             <button
@@ -923,7 +664,6 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
             </div>
           )}
         </div>
-      )}
 
       {/* ── Drag handle (right edge, hidden when embedded) ── */}
       {!embedded && (
