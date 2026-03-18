@@ -13,7 +13,7 @@ import {
   IconGear, IconSearch, IconBrain, IconBell,
   IconMail, IconCalendar, IconGlobe,
 } from "../design/icons.jsx";
-import { getGoogleStatus, getGmailSummary, getCalendarSummary, getUnreadNotificationCount } from "../lib/api.js";
+import { getGoogleStatus, getGmailSummary, getCalendarSummary, getUnreadNotificationCount, listRows } from "../lib/api.js";
 import WasabiFlame from "./WasabiFlame.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
 import CreateMenu from "./CreateMenu.jsx";
@@ -45,6 +45,9 @@ export default function Navigation({
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [dbResults, setDbResults] = useState([]); // { pageId, pageName, rowId, title }[]
+  const [dbSearching, setDbSearching] = useState(false);
+  const dbSearchTimer = useRef(null);
 
   // ── Google status + sidebar widgets ──
   const [googleConnected, setGoogleConnected] = useState(false);
@@ -119,6 +122,60 @@ export default function Navigation({
   const activeViewIndex = viewStates?.[activePage] ?? 0;
 
   const SIDEBAR_W = collapsed ? 54 : 220;
+
+  // ── Debounced database entry search ──
+  useEffect(() => {
+    if (dbSearchTimer.current) clearTimeout(dbSearchTimer.current);
+    if (!searchQuery || searchQuery.length < 2) {
+      setDbResults([]);
+      setDbSearching(false);
+      return;
+    }
+    setDbSearching(true);
+    dbSearchTimer.current = setTimeout(async () => {
+      try {
+        const q = searchQuery.toLowerCase();
+        const dbPages = pages.filter((p) => {
+          const pt = p.page_type || p.pageType || p.type;
+          return !p._systemInternal && (p.databaseIds?.length > 0 ||
+            ["database", "linked_notion", "linked_monday", "linked_sheet", "sheet"].includes(pt));
+        });
+        const results = [];
+        const seen = new Set();
+        for (const page of dbPages) {
+          const tableIds = [...(page.databaseIds || [])];
+          const pt = page.page_type || page.pageType || page.type;
+          if (["database", "sheet", "linked_sheet", "linked_monday", "linked_notion"].includes(pt) && page.id && !tableIds.includes(page.id)) {
+            tableIds.push(page.id);
+          }
+          for (const tableId of tableIds) {
+            try {
+              const resp = await listRows(tableId, { limit: 500 });
+              const rows = resp?.rows || resp || [];
+              for (const row of rows) {
+                const title = row.title || row.cells?.Name || row.cells?.Title || row.cells?.name || row.cells?.title ||
+                  (row.cells ? Object.values(row.cells).find((v) => typeof v === "string" && v.length > 0) : null);
+                if (title && typeof title === "string" && title.toLowerCase().includes(q)) {
+                  const key = `${tableId}-${row.id}`;
+                  if (!seen.has(key)) {
+                    seen.add(key);
+                    results.push({ pageId: page.id, pageName: page.name || "Untitled", rowId: row.id, title, tableId });
+                  }
+                }
+              }
+            } catch (_) { /* skip inaccessible tables */ }
+          }
+          if (results.length >= 25) break;
+        }
+        setDbResults(results.slice(0, 25));
+      } catch (err) {
+        console.error("[Navigation] DB search error:", err);
+      } finally {
+        setDbSearching(false);
+      }
+    }, 350);
+    return () => { if (dbSearchTimer.current) clearTimeout(dbSearchTimer.current); };
+  }, [searchQuery, pages]);
 
   // -- Create item handler --
   const handleCreateItem = useCallback(async (type) => {
@@ -343,9 +400,10 @@ export default function Navigation({
             {/* Search results (expanded, when query active) */}
             {!collapsed && searchQuery && (
               <div style={{ padding: "0 4px", overflowY: "auto", flex: 1 }}>
+                {/* Page results */}
                 {pages
                   .filter((p) => !p._systemInternal && p.name?.toLowerCase().includes(searchQuery.toLowerCase()))
-                  .slice(0, 15)
+                  .slice(0, 10)
                   .map((p) => (
                     <button
                       key={p.id}
@@ -366,7 +424,49 @@ export default function Navigation({
                     </button>
                   ))
                 }
-                {pages.filter((p) => !p._systemInternal && p.name?.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
+
+                {/* Database entry results */}
+                {dbResults.length > 0 && (
+                  <>
+                    <div style={{
+                      fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em",
+                      color: navInactiveColor, padding: "10px 8px 4px", fontFamily: FONT,
+                    }}>
+                      Records
+                    </div>
+                    {dbResults.map((r) => (
+                      <button
+                        key={`${r.tableId}-${r.rowId}`}
+                        onClick={() => { setActivePage(r.pageId); setSearchQuery(""); }}
+                        style={{
+                          background: "none", border: "none", cursor: "pointer",
+                          display: "flex", flexDirection: "column", gap: 1,
+                          padding: "5px 8px", borderRadius: RADIUS.sm,
+                          width: "100%", textAlign: "left", transition: "background 0.12s",
+                          outline: "none",
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                      >
+                        <span style={{ fontSize: 12, color: C.darkText, fontFamily: FONT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {r.title}
+                        </span>
+                        <span style={{ fontSize: 9, color: navInactiveColor, fontFamily: FONT }}>
+                          {r.pageName}
+                        </span>
+                      </button>
+                    ))}
+                  </>
+                )}
+
+                {/* Loading / no results */}
+                {dbSearching && dbResults.length === 0 && pages.filter((p) => !p._systemInternal && p.name?.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
+                  <div style={{ fontSize: 11, color: navInactiveColor, fontFamily: FONT, textAlign: "center", padding: "12px 0" }}>
+                    Searching...
+                  </div>
+                )}
+                {!dbSearching && dbResults.length === 0 && searchQuery.length >= 2 &&
+                  pages.filter((p) => !p._systemInternal && p.name?.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
                   <div style={{ fontSize: 11, color: navInactiveColor, fontFamily: FONT, textAlign: "center", padding: "12px 0" }}>
                     No results
                   </div>
