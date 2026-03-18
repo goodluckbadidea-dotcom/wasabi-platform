@@ -127,8 +127,17 @@ function buildHeaders(origin, days, pxPerDay) {
 
 // ─── Main Component ───
 
-export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig }) {
-  const [zoomIndex, setZoomIndex] = useState(2); // Default 30-day
+const DEFAULT_ZOOM_INDEX = 3; // 90-day default
+
+export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onViewConfigChange }) {
+  const preferredZoomIndex = useMemo(() => {
+    if (config.preferredZoom) {
+      const idx = ZOOM_LEVELS.findIndex(z => z.key === config.preferredZoom);
+      if (idx !== -1) return idx;
+    }
+    return DEFAULT_ZOOM_INDEX;
+  }, []); // Only compute on mount
+  const [zoomIndex, setZoomIndex] = useState(preferredZoomIndex);
   const [search, setSearch] = useState("");
   const [scrollLeft, setScrollLeft] = useState(0);
   const [tooltip, setTooltip] = useState(null);
@@ -576,6 +585,30 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
             </button>
           ))}
         </div>
+
+        {/* Set as default zoom */}
+        {onViewConfigChange && (
+          <button
+            onClick={() => onViewConfigChange({ preferredZoom: zoom.key })}
+            title={config.preferredZoom === zoom.key ? "This is your default view" : `Set "${zoom.label}" as default`}
+            style={{
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              padding: "4px 6px",
+              fontSize: 14,
+              color: config.preferredZoom === zoom.key ? C.accent : C.darkMuted,
+              opacity: config.preferredZoom === zoom.key ? 1 : 0.5,
+              transition: "all 0.15s",
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill={config.preferredZoom === zoom.key ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            </svg>
+          </button>
+        )}
 
         {/* Keyboard hint */}
         <span style={{ fontSize: 10, color: C.darkMuted + "88", letterSpacing: "0.02em" }} title="Arrow keys navigate, +/- zoom, T = today, Esc = deselect">
