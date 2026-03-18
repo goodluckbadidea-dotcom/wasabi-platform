@@ -965,6 +965,24 @@ export default {
         const row = await env.DB.prepare(query).bind(...params).first();
         return jsonResponse({ unread_count: row?.count || 0 });
       }
+      // Notification preferences (get/put)
+      if (path === "/d1/notifications/preferences" && (request.method === "GET" || request.method === "PUT")) {
+        const user = await extractUser(request, env);
+        if (!user?.sub) return jsonResponse({ _error: "Auth required" }, 401);
+        if (request.method === "GET") {
+          const row = await env.DB.prepare(
+            "SELECT value FROM user_connections WHERE user_id = ? AND key = 'notification_prefs'"
+          ).bind(user.sub).first();
+          return jsonResponse(row?.value ? JSON.parse(row.value) : { muted_types: [] });
+        }
+        // PUT
+        const body = await request.json();
+        const prefs = JSON.stringify({ muted_types: body.muted_types || [] });
+        await env.DB.prepare(
+          "INSERT OR REPLACE INTO user_connections (user_id, key, value, updated_at) VALUES (?, 'notification_prefs', ?, datetime('now'))"
+        ).bind(user.sub, prefs).run();
+        return jsonResponse({ success: true });
+      }
 
       // ─── D1 Knowledge Base CRUD ───
       const kbMatch = path.match(/^\/d1\/kb\/([^/]+)$/);
@@ -3524,6 +3542,19 @@ async function createNotificationInternal(env, {
   record_id = "", record_name = "", page_config_id = "", page_name = "", actor_name = "",
 }) {
   try {
+    // Check user notification preferences (skip for broadcast 'all')
+    if (target_user_id !== "all") {
+      try {
+        const prefRow = await env.DB.prepare(
+          "SELECT value FROM user_connections WHERE user_id = ? AND key = 'notification_prefs'"
+        ).bind(target_user_id).first();
+        if (prefRow?.value) {
+          const prefs = JSON.parse(prefRow.value);
+          if (prefs.muted_types?.includes(type)) return; // User muted this type
+        }
+      } catch (_) {} // Proceed if prefs lookup fails
+    }
+
     const id = crypto.randomUUID();
     await env.DB.prepare(
       `INSERT INTO notifications (id, message, type, status, source, target_user_id, record_id, record_name, page_config_id, page_name, actor_name, created_at)

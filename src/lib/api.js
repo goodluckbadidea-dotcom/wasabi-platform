@@ -330,6 +330,14 @@ export async function getUnreadNotificationCount() {
   return apiFetch("/d1/notifications/unread-count", { method: "GET" });
 }
 
+export async function getNotificationPreferences() {
+  return apiFetch("/d1/notifications/preferences", { method: "GET" });
+}
+
+export async function putNotificationPreferences(prefs) {
+  return apiFetch("/d1/notifications/preferences", { method: "PUT", body: prefs });
+}
+
 // ─── Knowledge Base ───
 
 export async function listKB({ category } = {}) {
