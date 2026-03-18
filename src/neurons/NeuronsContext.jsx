@@ -189,11 +189,30 @@ export function NeuronsProvider({ children }) {
   const showNeuronLines = useCallback(async (neuronId) => {
     try {
       const full = await loadNeuron(neuronId);
-      setActiveNeuronView({ neuronId: full.id, name: full.name || "", nodes: full.nodes || [] });
+      setActiveNeuronView({ neuronId: full.id, name: full.name || "", nodes: full.nodes || [], allNeurons: null });
     } catch {
       setActiveNeuronView(null);
     }
   }, []);
+
+  // ── Show multi-neuron view (tabs) ──
+  const showNeuronLinesMulti = useCallback(async (neuronIds) => {
+    if (!neuronIds || neuronIds.length === 0) return;
+    if (neuronIds.length === 1) return showNeuronLines(neuronIds[0]);
+    try {
+      const results = await Promise.all(neuronIds.map((id) => loadNeuron(id)));
+      const allNeurons = results.map((full) => ({
+        neuronId: full.id, name: full.name || "", nodes: full.nodes || [],
+      }));
+      // Start with first tab active
+      setActiveNeuronView({
+        ...allNeurons[0],
+        allNeurons,
+      });
+    } catch {
+      setActiveNeuronView(null);
+    }
+  }, [showNeuronLines]);
 
   const hideNeuronLines = useCallback(() => {
     setActiveNeuronView(null);
@@ -227,7 +246,9 @@ export function NeuronsProvider({ children }) {
       // Lookups
       getNeuronsForNode,
       showNeuronLines,
+      showNeuronLinesMulti,
       hideNeuronLines,
+      setActiveNeuronView,
 
       // Refresh
       refreshNeurons: rebuildNodeMap,
@@ -237,7 +258,8 @@ export function NeuronsProvider({ children }) {
       toggleOverlay, toggleNodeSelection, clearSelection,
       handleCreateNeuron, handleDeleteNeuron, handleUpdateName,
       handleAddNode, handleRemoveNode,
-      getNeuronsForNode, showNeuronLines, hideNeuronLines, rebuildNodeMap,
+      getNeuronsForNode, showNeuronLines, showNeuronLinesMulti, hideNeuronLines,
+      setActiveNeuronView, rebuildNodeMap,
     ]
   );
 

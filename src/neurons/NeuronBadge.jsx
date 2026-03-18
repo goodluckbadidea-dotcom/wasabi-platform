@@ -8,7 +8,7 @@ import { C, RADIUS } from "../design/tokens.js";
 import { useNeurons } from "./NeuronsContext.jsx";
 
 export default function NeuronBadge({ nodeId, style }) {
-  const { getNeuronsForNode, showNeuronLines, activeNeuronView } = useNeurons();
+  const { getNeuronsForNode, showNeuronLines, showNeuronLinesMulti, activeNeuronView } = useNeurons();
   const connections = getNeuronsForNode(nodeId);
 
   const handleClick = useCallback(
@@ -18,11 +18,10 @@ export default function NeuronBadge({ nodeId, style }) {
       if (connections.length === 1) {
         showNeuronLines(connections[0].neuronId);
       } else if (connections.length > 1) {
-        // For multiple neurons, show the first one (future: picker popup)
-        showNeuronLines(connections[0].neuronId);
+        showNeuronLinesMulti(connections.map((c) => c.neuronId));
       }
     },
-    [connections, showNeuronLines]
+    [connections, showNeuronLines, showNeuronLinesMulti]
   );
 
   if (!connections || connections.length === 0) return null;
