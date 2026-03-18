@@ -561,8 +561,8 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
 
   // ── Page Type Selection Screen ──
   if (!pageType) {
-    // If creating a sub-page, skip folder option
-    const showFolderOption = !subPageParent && !folderId;
+    // If creating a sub-page inside a non-folder page, skip folder option
+    const showFolderOption = !subPageParent;
     const typeCards = [];
 
     if (showFolderOption) {

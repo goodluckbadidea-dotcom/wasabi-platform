@@ -33,7 +33,7 @@ const tabStyle = (active) => ({
 
 export default function PageBuilder({ initialTemplate = null, WasabiFlameIcon = null, defaultParentId = null }) {
   const { user, platformIds, addPage, pages } = usePlatform();
-  const [selectedParent, setSelectedParent] = useState(defaultParentId);
+  const [selectedParent, setSelectedParent] = useState(null);
   const folderOptions = pages.filter(p =>
     p.type === "folder" || p.page_type === "workspace" || p.pageType === "workspace"
   );
