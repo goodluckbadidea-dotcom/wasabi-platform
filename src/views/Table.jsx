@@ -2234,8 +2234,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           </div>
         ) : (
           (() => {
-            const gtc = `52px ${columns.map(col => `${colWidths[col] || (col === OWNER_COL_NAME ? OWNER_COL_WIDTH : 120)}px`).join(" ")}${canEditSchema ? " 44px" : ""}`;
-            const totalTableWidth = 52 + columns.reduce((sum, col) => sum + (colWidths[col] || (col === OWNER_COL_NAME ? OWNER_COL_WIDTH : 120)), 0) + (canEditSchema ? 44 : 0);
+            const gtc = `52px ${columns.map(col => `${colWidths[col] || (col === OWNER_COL_NAME ? OWNER_COL_WIDTH : 120)}px`).join(" ")} 40px${canEditSchema ? " 44px" : ""}`;
+            const totalTableWidth = 52 + columns.reduce((sum, col) => sum + (colWidths[col] || (col === OWNER_COL_NAME ? OWNER_COL_WIDTH : 120)), 0) + 40 + (canEditSchema ? 44 : 0);
 
             return (
               <div style={{ minWidth: totalTableWidth }}>
@@ -2336,6 +2336,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                       </div>
                     );
                   })}
+                  {/* Neuron column header */}
+                  <div style={{ ...styles.gridHeaderCell, padding: "10px 4px" }} />
                   {/* Add column button */}
                   {canEditSchema && (
                     <div style={{ ...styles.gridHeaderCell, textAlign: "center", padding: "10px 8px", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
@@ -2559,14 +2561,13 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                               }}
                             >
                               {/* Checkbox cell */}
-                              <div style={{ ...styles.gridCell, justifyContent: "center", padding: 0, gap: 3 }}>
+                              <div style={{ ...styles.gridCell, justifyContent: "center", padding: 0 }}>
                                 <span
                                   style={styles.toggle(isSelected)}
                                   onClick={(e) => { e.stopPropagation(); toggleRow(pageId); }}
                                 >
                                   {isSelected ? "\u2713" : ""}
                                 </span>
-                                <NeuronBadge nodeId={pageId} />
                               </div>
                               {/* Data cells */}
                               {columns.map((col) => {
@@ -2615,6 +2616,10 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                   </div>
                                 );
                               })}
+                              {/* Neuron badge cell — inline */}
+                              <div style={{ ...styles.gridCell, justifyContent: "center", padding: "4px 2px" }}>
+                                <NeuronBadge nodeId={pageId} />
+                              </div>
                             </div>
                           );
                         })}
@@ -2693,6 +2698,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                           </div>
                         );
                       })}
+                      <div style={{ ...styles.gridCell, padding: "4px 2px" }} />
                     </div>
                   )}
                   {ghostError && (
@@ -2730,6 +2736,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                       </div>
                     );
                   })}
+                  <div style={{ padding: "4px 2px" }} />
                 </div>
               </div>
             );

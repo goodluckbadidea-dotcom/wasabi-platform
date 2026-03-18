@@ -12,6 +12,7 @@ import {
   listRecordComments, createRecordComment, deleteRecordComment,
 } from "../lib/api.js";
 import { timeAgo } from "../utils/helpers.js";
+import NeuronBadge from "../neurons/NeuronBadge.jsx";
 
 // ── Property type labels ──
 const TYPE_LABELS = {
@@ -418,7 +419,10 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
       <div style={ds.drawer} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div style={ds.header}>
-          <div style={ds.title}>{title}</div>
+          <div style={{ ...ds.title, display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{title}</span>
+            <NeuronBadge nodeId={page.id} />
+          </div>
           {Object.keys(pendingChanges).length > 0 && (
             <span style={{ fontSize: 11, color: C.accent, fontWeight: 600 }}>
               {Object.keys(pendingChanges).length} unsaved
