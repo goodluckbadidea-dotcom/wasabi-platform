@@ -198,19 +198,20 @@ const styles = {
     textAlign: "left",
     padding: "10px 12px",
     fontSize: 11,
-    fontWeight: 600,
+    fontWeight: 700,
     textTransform: "uppercase",
     letterSpacing: "0.06em",
     color: C.darkMuted,
-    borderBottom: `2px solid ${C.darkBorder}`,
+    borderBottom: `2px solid ${C.accent}33`,
     whiteSpace: "nowrap",
     cursor: "pointer",
     userSelect: "none",
     position: "sticky",
     top: 0,
     background: C.darkSurf,
-    zIndex: 2,
+    zIndex: 3,
     transition: "color 0.15s",
+    boxShadow: `0 2px 8px rgba(0,0,0,0.12)`,
   },
 
   thActive: {
@@ -219,7 +220,7 @@ const styles = {
 
   td: {
     padding: "8px 12px",
-    borderBottom: `1px solid ${C.edgeLine}`,
+    borderBottom: "none",
     color: C.darkText,
     verticalAlign: "middle",
     fontSize: 13,
@@ -229,13 +230,19 @@ const styles = {
   },
 
   row: {
-    transition: "background 0.12s",
-    cursor: "default",
+    transition: "all 0.15s ease",
+    cursor: "pointer",
     overflow: "hidden",
+    position: "relative",
+    borderRadius: RADIUS.lg,
+    background: C.darkSurf,
+    borderBottom: `3px solid transparent`,
   },
 
   rowHover: {
-    background: `${C.darkSurf2}88`,
+    background: C.darkSurf2,
+    boxShadow: `0 2px 8px rgba(0,0,0,0.12)`,
+    transform: "translateY(-1px)",
   },
 
   // Inline editing
@@ -2565,6 +2572,23 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                       const isHovered = hoveredRow === pageId;
                       const isSelected = selectedRows.has(pageId);
 
+                      // Detect color bar from first status/select/priority field
+                      let rowBarColor = null;
+                      for (const col of columns) {
+                        const ftype = getFieldType(schema, col);
+                        if (ftype === "status" || ftype === "select") {
+                          const val = readField(page, col);
+                          if (val) {
+                            try {
+                              const opts = getOptionNames(schema, col);
+                              const schOpts = getFieldOptions(schema, col);
+                              const { fill } = getSolidPillColor(val, opts, schOpts, config.colorMapping);
+                              if (fill) { rowBarColor = fill; break; }
+                            } catch (_) {}
+                          }
+                        }
+                      }
+
                       return (
                         <tr
                           key={pageId}
@@ -2585,18 +2609,16 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                               dispatchNeuronSelect({ node_type: "row", node_id: pageId, node_label: getPageTitle(page) || "Untitled" });
                               return;
                             }
-                            const now = Date.now();
-                            const last = lastRowClickRef.current;
-                            if (last.id === pageId && now - last.time < 1000) {
-                              setDetailPage(page);
-                              lastRowClickRef.current = { id: null, time: 0 };
-                            } else {
-                              lastRowClickRef.current = { id: pageId, time: now };
-                            }
+                            // Single click opens record detail
+                            setDetailPage(page);
                           }}
                         >
-                          {/* Row number + checkbox + expand */}
-                          <td style={{ ...styles.td, width: 52, minWidth: 52, padding: 0, textAlign: "center", position: "relative" }}>
+                          {/* Color bar */}
+                          {rowBarColor && (
+                            <td style={{ width: 4, minWidth: 4, padding: 0, border: "none", background: rowBarColor, borderRadius: `${RADIUS.lg}px 0 0 ${RADIUS.lg}px` }} />
+                          )}
+                          {/* Row checkbox */}
+                          <td style={{ ...styles.td, width: rowBarColor ? 48 : 52, minWidth: rowBarColor ? 48 : 52, padding: 0, textAlign: "center", position: "relative" }}>
                             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", gap: 3, justifyContent: "center", overflow: "hidden" }}>
                               <span
                                 style={styles.toggle(isSelected)}
@@ -2605,17 +2627,6 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                 {isSelected ? "\u2713" : ""}
                               </span>
                               <NeuronBadge nodeId={pageId} />
-                              {isHovered && (
-                                <span
-                                  style={{ cursor: "pointer", opacity: 0.5, display: "flex", alignItems: "center", transition: "opacity 0.1s" }}
-                                  onClick={(e) => { e.stopPropagation(); setDetailPage(page); }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
-                                  title="Open record detail"
-                                >
-                                  <IconExpand size={11} color={C.darkMuted} />
-                                </span>
-                              )}
                             </div>
                           </td>
                           {columns.map((col, colIdx) => {
@@ -2656,14 +2667,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                             }
                             const type = getFieldType(schema, col);
                             const value = readField(page, col);
-                            const isEditing = editCell?.pageId === pageId && editCell?.field === col;
-                            const canEdit = EDITABLE_TYPES.has(type) && !!onUpdate;
                             const cellKey = `${pageId}:${col}`;
-                            const isSaving = !!savingCells[cellKey];
-                            const failMsg = failedCells[cellKey];
                             const linkData = resolvedLinks.get(cellKey);
-                            const isHoveredCell = hoveredCell?.pageId === pageId && hoveredCell?.field === col;
-                            const isFocused = focusedCell?.row === rowIdx && focusedCell?.col === colIdx;
 
                             return (
                               <td
@@ -2674,82 +2679,19 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                   padding: 0,
                                   position: "relative",
                                   ...(colWidths[col] ? { width: colWidths[col], minWidth: colWidths[col] } : {}),
-                                  ...(isSaving ? { opacity: 0.55 } : {}),
-                                  ...(failMsg ? { background: "#E0525210" } : {}),
-                                  ...(isFocused ? { outline: `2px solid ${C.accent}`, outlineOffset: -2, zIndex: 1 } : {}),
                                 }}
-                                onClick={() => {
-                                  setFocusedCell({ row: rowIdx, col: colIdx });
-                                  if (canEdit && type !== "checkbox") {
-                                    setEditCell({ pageId, field: col });
-                                    setInitialChar("");
-                                  }
-                                }}
-                                onMouseEnter={() => setHoveredCell({ pageId, field: col })}
-                                onMouseLeave={() => setHoveredCell(null)}
                               >
                                 <div style={{ position: "absolute", inset: 0, overflow: "hidden", padding: "4px 8px", display: "flex", alignItems: "center" }}>
-                                {isEditing ? (
-                                  <CellEditor
+                                  <CellDisplay
                                     value={value}
                                     type={type}
-                                    options={getOptionNames(schema, col)}
-                                    schemaOptions={getFieldOptions(schema, col)}
-                                    onCommit={(newVal) => handleEditCommit(pageId, col, newVal)}
-                                    onCancel={() => { setEditCell(null); setInitialChar(""); }}
-                                    initialChar={initialChar}
-                                    isD1Table={isD1Table}
-                                    onCreateOption={(optName) => handleCreateOption(col, optName)}
-                                    canEditSchema={canEditSchema}
+                                    fieldName={col}
+                                    schema={schema}
+                                    colorMapping={config.colorMapping}
+                                    linkInfo={linkData ? { sourceName: linkData.link?.name, stale: linkData.stale } : undefined}
+                                    linkedValue={linkData?.value}
+                                    onLinkClick={linkData ? () => removeLink(linkData.link.id) : undefined}
                                   />
-                                ) : (
-                                  <div style={{ position: "relative", width: "100%", minWidth: 0 }}>
-                                    <CellDisplay
-                                      value={value}
-                                      type={type}
-                                      fieldName={col}
-                                      schema={schema}
-                                      colorMapping={config.colorMapping}
-                                      linkInfo={linkData ? { sourceName: linkData.link?.name, stale: linkData.stale } : undefined}
-                                      linkedValue={linkData?.value}
-                                      onLinkClick={linkData ? () => removeLink(linkData.link.id) : undefined}
-                                      onClick={
-                                        type === "checkbox" && canEdit
-                                          ? () => handleCheckboxToggle(pageId, col, value)
-                                          : canEdit
-                                            ? () => { setEditCell({ pageId, field: col }); setInitialChar(""); }
-                                            : undefined
-                                      }
-                                    />
-                                    {/* Link icon on hover */}
-                                    {isHoveredCell && !isEditing && !linkData && (
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); setLinkPickerCell({ pageId, field: col }); }}
-                                        title="Link cell value"
-                                        style={{
-                                          position: "absolute", top: -2, right: -2,
-                                          background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-                                          borderRadius: 4, padding: 2, cursor: "pointer",
-                                          display: "flex", alignItems: "center", justifyContent: "center",
-                                          opacity: 0.6, transition: "opacity 0.12s", zIndex: 2,
-                                        }}
-                                        onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-                                        onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.6"; }}
-                                      >
-                                        <IconConnect size={10} color={C.accent} />
-                                      </button>
-                                    )}
-                                    {failMsg && (
-                                      <div style={{
-                                        fontSize: 10,
-                                        color: "#E05252",
-                                        marginTop: 2,
-                                      }}>
-                                        {failMsg}
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
                                 </div>
                               </td>
                             );
