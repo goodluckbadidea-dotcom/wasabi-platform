@@ -194,9 +194,6 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping, dateChip
         {task.title}
       </span>
 
-      {/* Reason tags (from AI scoring) */}
-      {task._aiReason && <ReasonPills reason={task._aiReason} />}
-
       {/* Badges */}
       <DueBadge due={task.due} dateChipColors={dateChipColors} />
       <SourceBadge sourceName={task.sourceName} />
