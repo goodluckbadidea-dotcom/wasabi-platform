@@ -73,7 +73,7 @@ const UPDATE_PAGE = {
 
 const POST_NOTIFICATION = {
   name: "post_notification",
-  description: "Post a notification to the user's notification feed. Use for alerts, summaries, or status updates.",
+  description: "Post a notification to the user's notification feed. Use for alerts, summaries, or status updates. Include record_id and page_config_id when the notification relates to a specific record so users can navigate to it.",
   input_schema: {
     type: "object",
     properties: {
@@ -84,6 +84,10 @@ const POST_NOTIFICATION = {
         description: "Notification type. 'alert' for urgent, 'summary' for reports.",
       },
       source: { type: "string", description: "Source label (e.g. page name or automation name)." },
+      record_id: { type: "string", description: "ID of the related record/task (enables 'Go to Task' navigation)." },
+      record_name: { type: "string", description: "Display name of the related record." },
+      page_config_id: { type: "string", description: "ID of the database/page containing the record." },
+      page_name: { type: "string", description: "Display name of the database/page." },
     },
     required: ["message"],
   },

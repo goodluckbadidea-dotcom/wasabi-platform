@@ -480,24 +480,39 @@ export default function NotificationFeed() {
 
   const handleClickThrough = useCallback((notif) => {
     if (notif.status === "unread") markAsRead(notif.id);
+
+    // Try to find the target page by page_config_id
+    let matchedPage = null;
     if (notif.page_config_id) {
-      const matchedPage = pages.find((p) => p.id === notif.page_config_id || p.databaseIds?.includes(notif.page_config_id));
-      if (matchedPage) {
-        setActivePage(matchedPage.id);
-        if (notif.record_id) {
-          setTimeout(() => {
-            openDrawer({ type: "task", id: notif.record_id, title: notif.record_name || "Record",
-              source: `d1:${notif.page_config_id}`, sourceName: notif.page_name || "", tableId: notif.page_config_id });
-          }, 300);
-        }
-        return;
+      matchedPage = pages.find((p) => p.id === notif.page_config_id || p.databaseIds?.includes(notif.page_config_id));
+    }
+
+    // Fallback: try matching by page_name
+    if (!matchedPage && notif.page_name) {
+      matchedPage = pages.find((p) => p.name === notif.page_name);
+    }
+
+    // Fallback: try matching record_id or source against databaseIds
+    if (!matchedPage) {
+      const recordId = notif.record_id || notif.source;
+      if (recordId) {
+        matchedPage = pages.find((p) => p.databaseIds?.some((dbId) => dbId === recordId));
       }
     }
-    const recordId = notif.record_id || notif.source;
-    if (recordId) {
-      const matchedPage = pages.find((p) => p.databaseIds?.some((dbId) => dbId === recordId));
-      if (matchedPage) setActivePage(matchedPage.id);
+
+    if (matchedPage) {
+      setActivePage(matchedPage.id);
+      if (notif.record_id) {
+        const tableId = notif.page_config_id || matchedPage.id;
+        setTimeout(() => {
+          openDrawer({ type: "task", id: notif.record_id, title: notif.record_name || "Record",
+            source: `d1:${tableId}`, sourceName: notif.page_name || matchedPage.name || "", tableId });
+        }, 300);
+      }
+      return;
     }
+
+    console.warn("[NotificationFeed] Could not find page for notification:", notif.id, { page_config_id: notif.page_config_id, page_name: notif.page_name, record_id: notif.record_id });
   }, [pages, setActivePage, openDrawer, markAsRead]);
 
   const handleReply = useCallback(async (notif, text) => {

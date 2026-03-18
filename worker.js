@@ -4972,14 +4972,17 @@ async function handleListNotifications(env, url, user) {
 
 async function handleCreateNotification(env, body) {
   const id = crypto.randomUUID();
-  const { message, type = "notification", source = "", status = "unread", target_user_id = "all" } = body;
+  const {
+    message, type = "notification", source = "", status = "unread", target_user_id = "all",
+    record_id = "", record_name = "", page_config_id = "", page_name = "", actor_name = "",
+  } = body;
 
   if (!message) return jsonResponse({ _error: "message required" }, 400);
 
   await env.DB.prepare(
-    `INSERT INTO notifications (id, message, type, status, source, target_user_id, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`
-  ).bind(id, message, type, status, source, target_user_id).run();
+    `INSERT INTO notifications (id, message, type, status, source, target_user_id, record_id, record_name, page_config_id, page_name, actor_name, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+  ).bind(id, message, type, status, source, target_user_id, record_id, record_name, page_config_id, page_name, actor_name).run();
 
   return jsonResponse({ id, success: true });
 }

@@ -307,10 +307,10 @@ export async function listNotifications({ status, limit, offset } = {}) {
   return apiFetch(`/d1/notifications${qs ? `?${qs}` : ""}`, { method: "GET" });
 }
 
-export async function createNotification({ message, type, source }) {
+export async function createNotification({ message, type, source, record_id, record_name, page_config_id, page_name, actor_name, target_user_id }) {
   return apiFetch("/d1/notifications", {
     method: "POST",
-    body: { message, type, source },
+    body: { message, type, source, record_id, record_name, page_config_id, page_name, actor_name, target_user_id },
   });
 }
 

@@ -1135,20 +1135,21 @@ export function createToolExecutor({
 
       // ─── Notifications ───
       case "post_notification": {
+        const notifPayload = {
+          message: toolInput.message,
+          type: toolInput.type || "notification",
+          source: toolInput.source || "wasabi",
+          record_id: toolInput.record_id || "",
+          record_name: toolInput.record_name || "",
+          page_config_id: toolInput.page_config_id || "",
+          page_name: toolInput.page_name || "",
+        };
         // D1 path (preferred) — no notifDbId needed
         if (!notifDbId || notifDbId === "d1") {
-          await api.createNotification({
-            message: toolInput.message,
-            type: toolInput.type || "notification",
-            source: toolInput.source || "wasabi",
-          });
+          await api.createNotification(notifPayload);
         } else {
           // Legacy Notion path
-          await client.postNotification(workerUrl, notionKey, notifDbId, {
-            message: toolInput.message,
-            type: toolInput.type || "notification",
-            source: toolInput.source || "wasabi",
-          });
+          await client.postNotification(workerUrl, notionKey, notifDbId, notifPayload);
         }
         return JSON.stringify({ success: true });
       }
