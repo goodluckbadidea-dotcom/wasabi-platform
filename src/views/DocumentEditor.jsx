@@ -909,8 +909,16 @@ export default function DocumentEditor({ pageId: legacyPageId, config, pageConfi
       let loaded;
 
       if (isStandalone) {
-        // ── Standalone: load from R2 ──
-        const doc = await getDocument(docId);
+        // ── Standalone: load from R2 (auto-create if missing) ──
+        let doc;
+        try {
+          doc = await getDocument(docId);
+        } catch (loadErr) {
+          // Document doesn't exist yet — create it with empty content
+          console.log("Document not found, auto-creating:", docId);
+          await saveDocument(docId, { version: 1, blocks: [] });
+          doc = { content: { blocks: [] } };
+        }
         let r2Blocks = doc?.content?.blocks || doc?.blocks || [];
 
         // Migrate plain-text content to blocks (one-time for legacy scratchpads)
