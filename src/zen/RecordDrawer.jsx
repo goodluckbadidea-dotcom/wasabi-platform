@@ -16,6 +16,7 @@ import { buildProp } from "../notion/properties.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import EmailThreadDrawer from "./EmailThreadDrawer.jsx";
 import MentionInput from "../components/MentionInput.jsx";
+import { IconLightbulb } from "../design/icons.jsx";
 
 // ── Priority colors (aligned to INFO_PALETTE) ──
 const PRIORITY_COLORS = {
@@ -270,7 +271,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
           fontSize: 12, fontFamily: FONT, color: C.darkMuted, lineHeight: 1.6,
           display: "flex", alignItems: "flex-start", gap: 8,
         }}>
-          <span style={{ fontSize: 14, flexShrink: 0, marginTop: 1 }}>💡</span>
+          <span style={{ flexShrink: 0, marginTop: 1 }}><IconLightbulb size={14} color={C.accent} /></span>
           <span style={{ color: C.darkText }}>{attentionSummary}</span>
         </div>
       )}

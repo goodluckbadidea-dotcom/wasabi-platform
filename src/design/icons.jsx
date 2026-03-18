@@ -112,7 +112,7 @@ export function IconPaperclip({ size = 20, color = d, ...rest }) {
   );
 }
 
-export function IconWarning({ size = 20, color = "#FF6B3D", ...rest }) {
+export function IconWarning({ size = 20, color = d, ...rest }) {
   return (
     <Icon size={size} {...rest}>
       <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke={color} strokeWidth="1.5" fill="none" />
@@ -635,6 +635,91 @@ export function IconFunction({ size = 20, color = d, ...rest }) {
       <path d="M8 3C6.34 3 5 4.34 5 6v4H4v4h1v4c0 1.66 1.34 3 3 3" stroke={color} strokeWidth="2" strokeLinecap="round" fill="none" />
       <path d="M16 3c1.66 0 3 1.34 3 3v4h1v4h-1v4c0 1.66-1.34 3-3 3" stroke={color} strokeWidth="2" strokeLinecap="round" fill="none" />
       <path d="M9 12h6" stroke={color} strokeWidth="2" strokeLinecap="round" />
+    </Icon>
+  );
+}
+
+// ─── Sprint 13: Notification & Status Icons ───
+
+export function IconMention({ size = 20, color = d, ...rest }) {
+  // @ symbol
+  return (
+    <Icon size={size} {...rest}>
+      <circle cx="12" cy="12" r="4" stroke={color} strokeWidth="1.5" fill="none" />
+      <path d="M16 12v1.5a2.5 2.5 0 0 0 5 0V12a9 9 0 1 0-3.5 7.13" stroke={color} strokeWidth="1.5" strokeLinecap="round" fill="none" />
+    </Icon>
+  );
+}
+
+export function IconLightbulb({ size = 20, color = d, ...rest }) {
+  // Lightbulb — for insights/attention
+  return (
+    <Icon size={size} {...rest}>
+      <path d="M9 21h6M10 17h4" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M9 14.5C7.2 13.3 6 11.3 6 9a6 6 0 1 1 12 0c0 2.3-1.2 4.3-3 5.5v2.5H9v-2.5z" stroke={color} strokeWidth="1.5" fill="none" />
+    </Icon>
+  );
+}
+
+export function IconHourglass({ size = 20, color = d, ...rest }) {
+  // Hourglass — for stale/waiting
+  return (
+    <Icon size={size} {...rest}>
+      <path d="M6 2h12v5l-4 5 4 5v5H6v-5l4-5-4-5V2z" stroke={color} strokeWidth="1.5" fill="none" />
+      <path d="M6 2h12" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M6 22h12" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+    </Icon>
+  );
+}
+
+export function IconBlocked({ size = 20, color = d, ...rest }) {
+  // Circle with line through — for blocked
+  return (
+    <Icon size={size} {...rest}>
+      <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.5" fill="none" />
+      <path d="M5.5 5.5l13 13" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+    </Icon>
+  );
+}
+
+export function IconAlarm({ size = 20, color = d, ...rest }) {
+  // Alarm clock — for overdue/due soon
+  return (
+    <Icon size={size} {...rest}>
+      <circle cx="12" cy="13" r="8" stroke={color} strokeWidth="1.5" fill="none" />
+      <path d="M12 9v4l3 2" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 3l-2 2M19 3l2 2" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+    </Icon>
+  );
+}
+
+export function IconClipboard({ size = 20, color = d, ...rest }) {
+  // Clipboard — for summary
+  return (
+    <Icon size={size} {...rest}>
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" stroke={color} strokeWidth="1.5" fill="none" />
+      <rect x="8" y="2" width="8" height="4" rx="1" stroke={color} strokeWidth="1.5" fill="none" />
+      <path d="M8 12h8M8 16h5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+    </Icon>
+  );
+}
+
+export function IconLink({ size = 20, color = d, ...rest }) {
+  // Chain link — for blocking/dependencies
+  return (
+    <Icon size={size} {...rest}>
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke={color} strokeWidth="1.5" strokeLinecap="round" fill="none" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke={color} strokeWidth="1.5" strokeLinecap="round" fill="none" />
+    </Icon>
+  );
+}
+
+export function IconUser({ size = 20, color = d, ...rest }) {
+  // Single person — for assignment
+  return (
+    <Icon size={size} {...rest}>
+      <circle cx="12" cy="8" r="4" stroke={color} strokeWidth="1.5" fill="none" />
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke={color} strokeWidth="1.5" strokeLinecap="round" fill="none" />
     </Icon>
   );
 }

@@ -10,20 +10,24 @@ import { usePlatform } from "../context/PlatformContext.jsx";
 import { useRecordDrawer } from "../zen/RecordDrawerContext.jsx";
 import * as api from "../lib/api.js";
 import { timeAgo } from "../utils/helpers.js";
-import { IconBell, IconGear } from "../design/icons.jsx";
+import {
+  IconBell, IconGear, IconChat, IconMention, IconUser,
+  IconWarning, IconRefresh, IconClipboard,
+} from "../design/icons.jsx";
 
 const TABS = ["Unread", "All"];
 
 // ── Type config with priority tiers ──
 // tier: "urgent" = needs action, "info" = FYI
+// Icon: React component reference, rendered with color prop
 const TYPE_CONFIG = {
-  mention:       { icon: "@",  label: "Mention",      color: "#9B7BEA", tier: "urgent" },
-  assignment:    { icon: "👤", label: "Assigned",     color: "#5BAF7C", tier: "urgent" },
-  comment:       { icon: "💬", label: "Comment",      color: "#5B8DEF", tier: "urgent" },
-  alert:         { icon: "⚠️", label: "Alert",        color: "#E05252", tier: "urgent" },
-  status_change: { icon: "🔄", label: "Status",       color: "#E0A052", tier: "info" },
-  summary:       { icon: "📋", label: "Summary",      color: "#7BA0C4", tier: "info" },
-  notification:  { icon: "🔔", label: "Notification", color: C.darkMuted, tier: "info" },
+  mention:       { Icon: IconMention,   label: "Mention",      color: "#9B7BEA", tier: "urgent" },
+  assignment:    { Icon: IconUser,      label: "Assigned",     color: "#5BAF7C", tier: "urgent" },
+  comment:       { Icon: IconChat,      label: "Comment",      color: "#5B8DEF", tier: "urgent" },
+  alert:         { Icon: IconWarning,   label: "Alert",        color: "#E05252", tier: "urgent" },
+  status_change: { Icon: IconRefresh,   label: "Status",       color: "#E0A052", tier: "info" },
+  summary:       { Icon: IconClipboard, label: "Summary",      color: "#7BA0C4", tier: "info" },
+  notification:  { Icon: IconBell,      label: "Notification", color: C.darkMuted, tier: "info" },
 };
 
 const PREF_LABELS = {
@@ -108,7 +112,7 @@ function NotificationCard({ notif, expanded, onToggle, onMarkRead, onDismiss, on
             flexShrink: 0, paddingTop: 1, width: 28, height: 28, borderRadius: RADIUS.md,
             background: `${cfg.color}15`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14,
           }}>
-            {cfg.icon}
+            <cfg.Icon size={14} color={cfg.color} />
           </div>
         )}
 
@@ -272,7 +276,7 @@ function NotificationGroup({ group, expandedId, onToggle, onMarkRead, onDismiss,
           background: `${cfg.color}15`, display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: 14, position: "relative",
         }}>
-          {cfg.icon}
+          <cfg.Icon size={14} color={cfg.color} />
           <span style={{
             position: "absolute", top: -4, right: -6,
             minWidth: 16, height: 16, borderRadius: 99,
@@ -390,7 +394,7 @@ function PreferencesPanel({ prefs, onUpdate, onClose }) {
               onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
             >
-              <span style={{ fontSize: 14, width: 24, textAlign: "center" }}>{cfg.icon}</span>
+              <span style={{ width: 24, textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" }}><cfg.Icon size={14} color={isMuted ? C.darkMuted : cfg.color} /></span>
               <span style={{
                 flex: 1, fontSize: 12, fontFamily: FONT,
                 color: isMuted ? C.darkMuted : C.darkText,
