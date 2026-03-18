@@ -13,7 +13,7 @@ import {
   IconGear, IconSearch, IconBrain, IconBell,
   IconMail, IconCalendar, IconGlobe,
 } from "../design/icons.jsx";
-import { getGoogleStatus, getGmailSummary, getCalendarSummary } from "../lib/api.js";
+import { getGoogleStatus, getGmailSummary, getCalendarSummary, getUnreadNotificationCount } from "../lib/api.js";
 import WasabiFlame from "./WasabiFlame.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
 import CreateMenu from "./CreateMenu.jsx";
@@ -51,6 +51,23 @@ export default function Navigation({
   const [unreadCount, setUnreadCount] = useState(0);
   const [nextEventLabel, setNextEventLabel] = useState("");
   const googlePollRef = useRef(null);
+
+  // ── Notification unread count polling (30s) ──
+  const [notifUnreadCount, setNotifUnreadCount] = useState(0);
+  const notifPollRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function pollNotifCount() {
+      try {
+        const res = await getUnreadNotificationCount();
+        if (!cancelled) setNotifUnreadCount(res?.unread_count || 0);
+      } catch (_) {}
+    }
+    pollNotifCount();
+    notifPollRef.current = setInterval(pollNotifCount, 30_000);
+    return () => { cancelled = true; clearInterval(notifPollRef.current); };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -490,13 +507,31 @@ export default function Navigation({
 
             {/* Notifications */}
             <button
-              onClick={() => setActivePage("notifications")}
+              onClick={() => { setActivePage("notifications"); setNotifUnreadCount(0); }}
               title="Notifications"
-              style={bottomBtnStyle(activePage === "notifications")}
+              style={{ ...bottomBtnStyle(activePage === "notifications"), position: "relative" }}
               onMouseEnter={(e) => { if (activePage !== "notifications") e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "notifications") e.currentTarget.style.background = "transparent"; }}
             >
               <IconBell size={iconSize(activePage === "notifications")} color={activePage === "notifications" ? "#fff" : C.darkMuted} />
+              {notifUnreadCount > 0 && (
+                <span style={{
+                  position: "absolute",
+                  top: collapsed ? 4 : 6,
+                  right: collapsed ? 10 : 8,
+                  minWidth: 16, height: 16,
+                  borderRadius: 99,
+                  background: C.accent,
+                  color: "#fff",
+                  fontSize: 9, fontWeight: 700, fontFamily: FONT,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  padding: "0 3px",
+                  lineHeight: 1,
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+                }}>
+                  {notifUnreadCount > 99 ? "99+" : notifUnreadCount}
+                </span>
+              )}
               {!collapsed && <span style={bottomLabelStyle(activePage === "notifications")}>Notifications</span>}
             </button>
 

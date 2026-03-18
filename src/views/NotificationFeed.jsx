@@ -1,18 +1,32 @@
 // ─── Notification Feed View ───
-// Notification list with read/unread states. Reads from D1 notification store.
+// Notification list with read/unread states, click-through navigation,
+// mark-all-read, and type-specific formatting.
 
 import React, { useState, useEffect, useCallback } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
+import { useRecordDrawer } from "../zen/RecordDrawerContext.jsx";
 import * as api from "../lib/api.js";
 import { timeAgo } from "../utils/helpers.js";
 import { IconBell, IconWarning, IconCheck } from "../design/icons.jsx";
 
 const TABS = ["Unread", "All"];
 
+// ── Type-specific config ──
+const TYPE_CONFIG = {
+  comment:       { icon: "💬", label: "Comment",      color: "#5B8DEF" },
+  mention:       { icon: "@",  label: "Mention",      color: "#9B7BEA" },
+  status_change: { icon: "🔄", label: "Status",       color: "#E0A052" },
+  assignment:    { icon: "👤", label: "Assigned",     color: "#5BAF7C" },
+  alert:         { icon: "⚠️", label: "Alert",        color: "#E05252" },
+  summary:       { icon: "📋", label: "Summary",      color: "#7BA0C4" },
+  notification:  { icon: "🔔", label: "Notification", color: C.darkMuted },
+};
+
 export default function NotificationFeed() {
-  const { user } = usePlatform();
+  const { user, pages, setActivePage } = usePlatform();
+  const { openDrawer } = useRecordDrawer();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("Unread");
@@ -32,6 +46,11 @@ export default function NotificationFeed() {
         type: row.type || "notification",
         status: row.status || "unread",
         source: row.source || "",
+        record_id: row.record_id || "",
+        record_name: row.record_name || "",
+        page_config_id: row.page_config_id || "",
+        page_name: row.page_name || "",
+        actor_name: row.actor_name || "",
         createdTime: row.created_at || row.createdAt || "",
       }));
 
@@ -54,19 +73,69 @@ export default function NotificationFeed() {
     fetchNotifications();
   }, [fetchNotifications]);
 
-  // Mark as read via D1
+  // Mark single as read
   const markAsRead = useCallback(async (notifId) => {
-    // Optimistic update
     setNotifications((prev) =>
       prev.map((n) => (n.id === notifId ? { ...n, status: "read" } : n))
     );
-
     try {
       await api.updateNotification(notifId, { status: "read" });
     } catch (err) {
       console.error("Failed to mark as read:", err);
     }
   }, []);
+
+  // Mark all as read
+  const markAllRead = useCallback(async () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, status: "read" })));
+    try {
+      await api.markAllNotificationsRead();
+    } catch (err) {
+      console.error("Failed to mark all as read:", err);
+    }
+  }, []);
+
+  // Click-through: navigate to the source page/record
+  const handleClickThrough = useCallback((notif) => {
+    // Mark as read on click
+    if (notif.status === "unread") markAsRead(notif.id);
+
+    // If we have a page_config_id, navigate to that page
+    if (notif.page_config_id) {
+      const matchedPage = pages.find((p) =>
+        p.id === notif.page_config_id || p.databaseIds?.includes(notif.page_config_id)
+      );
+      if (matchedPage) {
+        setActivePage(matchedPage.id);
+        // If we also have a record_id, open the drawer after a short delay
+        if (notif.record_id) {
+          setTimeout(() => {
+            openDrawer({
+              type: "task",
+              id: notif.record_id,
+              title: notif.record_name || "Record",
+              source: `d1:${notif.page_config_id}`,
+              sourceName: notif.page_name || "",
+              tableId: notif.page_config_id,
+            });
+          }, 300);
+        }
+        return;
+      }
+    }
+
+    // Fallback: try to find page by record_id in source
+    const recordId = notif.record_id || notif.source;
+    if (recordId) {
+      const matchedPage = pages.find((p) =>
+        p.databaseIds?.some((dbId) => dbId === recordId)
+      );
+      if (matchedPage) {
+        setActivePage(matchedPage.id);
+        return;
+      }
+    }
+  }, [pages, setActivePage, openDrawer, markAsRead]);
 
   // Filter by tab
   const filtered = activeTab === "Unread"
@@ -90,7 +159,29 @@ export default function NotificationFeed() {
             Inbox
           </span>
           <div style={{ flex: 1 }} />
-          {/* Refresh button */}
+          {/* Mark all read */}
+          {unreadCount > 0 && (
+            <button
+              onClick={markAllRead}
+              style={{
+                background: "transparent",
+                border: `1px solid ${C.darkBorder}`,
+                borderRadius: RADIUS.md,
+                padding: "4px 10px",
+                fontSize: 10,
+                fontFamily: FONT,
+                color: C.darkMuted,
+                cursor: "pointer",
+                transition: "border-color 0.15s",
+                marginRight: 4,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
+            >
+              Mark all read
+            </button>
+          )}
+          {/* Refresh */}
           <button
             onClick={() => { setLoading(true); fetchNotifications(); }}
             style={{
@@ -181,21 +272,26 @@ export default function NotificationFeed() {
         ) : (
           filtered.map((notif, idx) => {
             const isUnread = notif.status === "unread";
-            const NotifIcon = notif.type === "alert" ? IconWarning : notif.type === "summary" ? IconCheck : IconBell;
+            const cfg = TYPE_CONFIG[notif.type] || TYPE_CONFIG.notification;
+            const hasClickTarget = notif.page_config_id || notif.record_id || notif.source;
 
             return (
               <div
                 key={notif.id}
+                onClick={() => hasClickTarget && handleClickThrough(notif)}
                 style={{
                   display: "flex",
                   alignItems: "flex-start",
                   gap: 12,
                   padding: "14px 20px",
                   borderBottom: `1px solid ${C.edgeLine}`,
-                  background: isUnread ? C.darkSurf2 : "transparent",
+                  background: isUnread ? `${cfg.color}08` : "transparent",
                   transition: "background 0.15s",
+                  cursor: hasClickTarget ? "pointer" : "default",
                   animation: `fadeUp 0.2s ease ${idx * 0.03}s both`,
                 }}
+                onMouseEnter={(e) => { if (hasClickTarget) e.currentTarget.style.background = isUnread ? `${cfg.color}12` : C.darkSurf2; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = isUnread ? `${cfg.color}08` : "transparent"; }}
               >
                 {/* Unread dot */}
                 <div style={{ width: 8, flexShrink: 0, paddingTop: 5 }}>
@@ -204,18 +300,41 @@ export default function NotificationFeed() {
                       width: 8,
                       height: 8,
                       borderRadius: "50%",
-                      background: C.accent,
+                      background: cfg.color,
                     }} />
                   )}
                 </div>
 
-                {/* Icon */}
-                <div style={{ flexShrink: 0, paddingTop: 2 }}>
-                  <NotifIcon size={16} color={isUnread ? C.darkText : C.darkMuted} />
+                {/* Type icon */}
+                <div style={{
+                  flexShrink: 0, paddingTop: 1,
+                  width: 28, height: 28,
+                  borderRadius: RADIUS.md,
+                  background: `${cfg.color}15`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 14,
+                }}>
+                  {cfg.icon}
                 </div>
 
                 {/* Content */}
                 <div style={{ flex: 1, minWidth: 0 }}>
+                  {/* Actor + type label */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                    {notif.actor_name && (
+                      <span style={{ fontSize: 12, fontWeight: 600, color: isUnread ? C.darkText : C.darkMuted }}>
+                        {notif.actor_name}
+                      </span>
+                    )}
+                    <span style={{
+                      fontSize: 9, fontWeight: 600, textTransform: "uppercase",
+                      letterSpacing: "0.06em", color: cfg.color, opacity: 0.8,
+                    }}>
+                      {cfg.label}
+                    </span>
+                  </div>
+
+                  {/* Message */}
                   <div style={{
                     fontSize: 13,
                     color: isUnread ? C.darkText : C.darkMuted,
@@ -224,14 +343,15 @@ export default function NotificationFeed() {
                   }}>
                     {notif.message}
                   </div>
+
+                  {/* Meta: time + page name */}
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
                     <span style={{ fontSize: 11, color: C.darkMuted }}>
                       {notif.createdTime ? timeAgo(notif.createdTime) : ""}
                     </span>
-                    {notif.source && (
+                    {notif.page_name && (
                       <span style={{
-                        fontSize: 9,
-                        fontWeight: 600,
+                        fontSize: 9, fontWeight: 600,
                         textTransform: "uppercase",
                         letterSpacing: "0.06em",
                         color: C.darkMuted,
@@ -239,7 +359,7 @@ export default function NotificationFeed() {
                         borderRadius: RADIUS.pill,
                         padding: "2px 7px",
                       }}>
-                        {notif.source}
+                        {notif.page_name}
                       </span>
                     )}
                   </div>
@@ -248,7 +368,7 @@ export default function NotificationFeed() {
                 {/* Mark as read */}
                 {isUnread && (
                   <button
-                    onClick={() => markAsRead(notif.id)}
+                    onClick={(e) => { e.stopPropagation(); markAsRead(notif.id); }}
                     style={{
                       flexShrink: 0,
                       border: `1px solid ${C.darkBorder}`,

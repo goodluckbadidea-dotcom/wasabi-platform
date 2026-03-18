@@ -322,6 +322,14 @@ export async function deleteNotification(id) {
   return apiFetch(`/d1/notifications/${id}`, { method: "DELETE" });
 }
 
+export async function markAllNotificationsRead() {
+  return apiFetch("/d1/notifications/mark-all-read", { method: "POST" });
+}
+
+export async function getUnreadNotificationCount() {
+  return apiFetch("/d1/notifications/unread-count", { method: "GET" });
+}
+
 // ─── Knowledge Base ───
 
 export async function listKB({ category } = {}) {

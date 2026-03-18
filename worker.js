@@ -941,6 +941,30 @@ export default {
         const body = await request.json();
         return await handleCreateNotification(env, body);
       }
+      // Mark all notifications read for current user
+      if (path === "/d1/notifications/mark-all-read" && request.method === "POST") {
+        const user = await extractUser(request, env);
+        let query = "UPDATE notifications SET status = 'read' WHERE status = 'unread'";
+        const params = [];
+        if (user && user.role !== "admin") {
+          query += " AND (target_user_id = 'all' OR target_user_id = ?)";
+          params.push(user.sub);
+        }
+        await env.DB.prepare(query).bind(...params).run();
+        return jsonResponse({ success: true });
+      }
+      // Lightweight unread count only (for polling)
+      if (path === "/d1/notifications/unread-count" && request.method === "GET") {
+        const user = await extractUser(request, env);
+        let query = "SELECT COUNT(*) as count FROM notifications WHERE status = 'unread'";
+        const params = [];
+        if (user && user.role !== "admin") {
+          query += " AND (target_user_id = 'all' OR target_user_id = ?)";
+          params.push(user.sub);
+        }
+        const row = await env.DB.prepare(query).bind(...params).first();
+        return jsonResponse({ unread_count: row?.count || 0 });
+      }
 
       // ─── D1 Knowledge Base CRUD ───
       const kbMatch = path.match(/^\/d1\/kb\/([^/]+)$/);
@@ -1562,6 +1586,12 @@ async function handleInit(env) {
       // Sprint 8: Record read receipts
       "CREATE TABLE IF NOT EXISTS record_views (user_id TEXT NOT NULL, record_id TEXT NOT NULL, last_viewed_at TEXT NOT NULL, PRIMARY KEY (user_id, record_id))",
       "CREATE INDEX IF NOT EXISTS idx_record_views_user ON record_views(user_id)",
+      // Sprint 13: Enriched notifications
+      "ALTER TABLE notifications ADD COLUMN record_id TEXT DEFAULT ''",
+      "ALTER TABLE notifications ADD COLUMN record_name TEXT DEFAULT ''",
+      "ALTER TABLE notifications ADD COLUMN page_config_id TEXT DEFAULT ''",
+      "ALTER TABLE notifications ADD COLUMN page_name TEXT DEFAULT ''",
+      "ALTER TABLE notifications ADD COLUMN actor_name TEXT DEFAULT ''",
     ];
     for (const sql of migrations) {
       try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }
@@ -3298,16 +3328,24 @@ async function handleUpdateRow(env, tableId, rowId, body, user) {
       );
     }
 
+    // ── Resolve page name for enriched notifications (non-blocking) ──
+    let _notifPageName = "";
+    if ((body.cells !== undefined || body.owner_user_id !== undefined) && user) {
+      try {
+        const pc = await env.DB.prepare("SELECT name FROM page_configs WHERE id = ?").bind(tableId).first();
+        _notifPageName = pc?.name || "";
+      } catch (_) {}
+    }
+
     // ── Status change notifications (non-blocking) ──
     if (body.cells !== undefined && !body._fromSync && user) {
       (async () => {
         try {
-          // Detect status-like field changes
           const statusFields = ["status", "Status", "stage", "Stage", "state", "State", "phase", "Phase"];
           for (const field of statusFields) {
             if (newCells[field] !== undefined && oldCells[field] !== undefined && newCells[field] !== oldCells[field]) {
-              // Get record title for notification
               const title = newCells.task || newCells.title || newCells.name || newCells.Task || newCells.Title || newCells.Name || "Record";
+              const actorName = user.name || "Someone";
               const ownerUserIds = existing?.owner_user_id;
               if (ownerUserIds && ownerUserIds !== "default" && ownerUserIds !== "unassigned") {
                 let owners = [];
@@ -3315,15 +3353,20 @@ async function handleUpdateRow(env, tableId, rowId, body, user) {
                 for (const ownerId of owners) {
                   if (ownerId !== user.sub) {
                     await createNotificationInternal(env, {
-                      message: `${user.name || "Someone"} changed ${field} to "${newCells[field]}" on "${title}"`,
+                      message: `${actorName} changed ${field} to "${newCells[field]}" on "${title}"`,
                       type: "status_change",
                       source: rowId,
                       target_user_id: ownerId,
+                      record_id: rowId,
+                      record_name: title,
+                      page_config_id: tableId,
+                      page_name: _notifPageName,
+                      actor_name: actorName,
                     });
                   }
                 }
               }
-              break; // Only notify for the first status field change
+              break;
             }
           }
         } catch (_) {}
@@ -3344,18 +3387,23 @@ async function handleUpdateRow(env, tableId, rowId, body, user) {
             if (Array.isArray(ownerVal)) newOwners = ownerVal;
             else newOwners = [ownerVal];
           }
-          // Find newly assigned users
           const newlyAssigned = newOwners.filter((id) => !oldOwners.includes(id));
           if (newlyAssigned.length > 0) {
             const title = (body.cells ? (body.cells.task || body.cells.title || body.cells.name) : null)
               || oldCells.task || oldCells.title || oldCells.name || oldCells.Task || oldCells.Title || oldCells.Name || "Record";
+            const actorName = user.name || "Someone";
             for (const assigneeId of newlyAssigned) {
               if (assigneeId !== user.sub) {
                 await createNotificationInternal(env, {
-                  message: `${user.name || "Someone"} assigned you to "${title}"`,
+                  message: `${actorName} assigned you to "${title}"`,
                   type: "assignment",
                   source: rowId,
                   target_user_id: assigneeId,
+                  record_id: rowId,
+                  record_name: title,
+                  page_config_id: tableId,
+                  page_name: _notifPageName,
+                  actor_name: actorName,
                 });
               }
             }
@@ -3471,13 +3519,16 @@ async function handleListComments(env, recordId, pageConfigId) {
 }
 
 // ─── Internal Notification Helper ───
-async function createNotificationInternal(env, { message, type = "notification", source = "", target_user_id = "all" }) {
+async function createNotificationInternal(env, {
+  message, type = "notification", source = "", target_user_id = "all",
+  record_id = "", record_name = "", page_config_id = "", page_name = "", actor_name = "",
+}) {
   try {
     const id = crypto.randomUUID();
     await env.DB.prepare(
-      `INSERT INTO notifications (id, message, type, status, source, target_user_id, created_at)
-       VALUES (?, ?, ?, 'unread', ?, ?, datetime('now'))`
-    ).bind(id, message, type, source, target_user_id).run();
+      `INSERT INTO notifications (id, message, type, status, source, target_user_id, record_id, record_name, page_config_id, page_name, actor_name, created_at)
+       VALUES (?, ?, ?, 'unread', ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+    ).bind(id, message, type, source, target_user_id, record_id, record_name, page_config_id, page_name, actor_name).run();
   } catch (_) {}
 }
 
@@ -3503,6 +3554,21 @@ async function handleCreateComment(env, recordId, body) {
     const commenterName = user_name || "Someone";
     const preview = content.length > 60 ? content.slice(0, 60) + "..." : content;
 
+    // Resolve record title and page name for enriched notifications
+    let recordTitle = "";
+    let pageName = "";
+    try {
+      const rowData = await env.DB.prepare("SELECT cells, table_id FROM table_rows WHERE id = ?").bind(recordId).first();
+      if (rowData?.cells) {
+        const c = typeof rowData.cells === "string" ? JSON.parse(rowData.cells) : rowData.cells;
+        recordTitle = c.task || c.title || c.name || c.Task || c.Title || c.Name || "";
+      }
+      if (rowData?.table_id) {
+        const pc = await env.DB.prepare("SELECT name FROM page_configs WHERE id = ?").bind(rowData.table_id).first();
+        pageName = pc?.name || "";
+      }
+    } catch (_) {}
+
     // 1. Notify record owner(s) if commenter != owner
     try {
       const row = await env.DB.prepare("SELECT owner_user_id FROM table_rows WHERE id = ?").bind(recordId).first();
@@ -3512,10 +3578,15 @@ async function handleCreateComment(env, recordId, body) {
         for (const ownerId of ownerIds) {
           if (ownerId !== user_id) {
             await createNotificationInternal(env, {
-              message: `${commenterName} commented: "${preview}"`,
+              message: `${commenterName} commented on "${recordTitle || "a record"}": "${preview}"`,
               type: "comment",
               source: recordId,
               target_user_id: ownerId,
+              record_id: recordId,
+              record_name: recordTitle,
+              page_config_id: page_config_id,
+              page_name: pageName,
+              actor_name: commenterName,
             });
           }
         }
@@ -3533,10 +3604,15 @@ async function handleCreateComment(env, recordId, body) {
           const matched = userList.find((u) => u.display_name.toLowerCase() === mentionLower);
           if (matched && matched.id !== user_id) {
             await createNotificationInternal(env, {
-              message: `${commenterName} mentioned you: "${preview}"`,
+              message: `${commenterName} mentioned you on "${recordTitle || "a record"}": "${preview}"`,
               type: "mention",
               source: recordId,
               target_user_id: matched.id,
+              record_id: recordId,
+              record_name: recordTitle,
+              page_config_id: page_config_id,
+              page_name: pageName,
+              actor_name: commenterName,
             });
           }
         }
