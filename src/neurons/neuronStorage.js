@@ -106,5 +106,57 @@ export async function loadNeuronsByNode(nodeId) {
 /** Full graph dump (all neurons + all nodes). For Wasabi agent context. */
 export async function loadNeuronGraph() {
   const res = await getNeuronGraph();
-  return res.neurons || [];
+  const neurons = res.neurons || [];
+  // Cache the full graph for prompt injection
+  try {
+    localStorage.setItem(GRAPH_CACHE_KEY, JSON.stringify({ data: neurons, ts: Date.now() }));
+  } catch { /* quota */ }
+  return neurons;
+}
+
+// ─── Full Graph Cache (separate from list cache) ───
+const GRAPH_CACHE_KEY = "wasabi_neuron_graph";
+
+/** Load cached full graph synchronously. Returns neurons with nodes[] arrays. */
+export function loadCachedNeuronGraph() {
+  try {
+    const raw = localStorage.getItem(GRAPH_CACHE_KEY);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw);
+    if (Date.now() - ts > CACHE_TTL) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build a rich neuron summary for injection into AI prompts.
+ * Includes neuron names AND their connected node details.
+ * Falls back to list-only summary if graph isn't cached.
+ */
+export function buildNeuronContextSummary() {
+  // Try full graph first (has node details)
+  const graph = loadCachedNeuronGraph();
+  if (graph && graph.length > 0) {
+    return graph.slice(0, 30).map((n) => {
+      const name = n.name || "(unnamed)";
+      const nodeList = (n.nodes || []).map((nd) => {
+        const label = nd.node_label || nd.node_id;
+        const source = nd.page_config_id ? ` [${nd.node_type}]` : ` [${nd.node_type}]`;
+        return `  - ${label}${source}`;
+      }).join("\n");
+      return `### ${name} (id: ${n.id})\n${nodeList}`;
+    }).join("\n\n");
+  }
+
+  // Fallback: list-only cache (names + counts, no node details)
+  const list = loadCachedNeurons();
+  if (list.length > 0) {
+    return list.slice(0, 30).map((n) =>
+      `- ${n.name || "(unnamed)"} (${n.node_count || 0} nodes, id: ${n.id})`
+    ).join("\n");
+  }
+
+  return "";
 }

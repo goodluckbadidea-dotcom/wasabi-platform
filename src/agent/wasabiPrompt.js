@@ -220,12 +220,17 @@ When processing uploaded files:
 7. For multi-file uploads, present a unified summary, not one per file
 
 When working with neurons (connections):
-1. Use \`query_neurons\` when the user asks about status, relationships, or cross-source concepts (e.g., "What does Q3 look like?", "What's linked to this?")
-2. Do NOT use \`query_neurons\` for simple page-level queries (e.g., "Summarize this table")
-3. When a user discusses relationships between items, suggest creating a neuron with \`create_neuron\`
-4. Neurons are multi-node clusters — a single neuron can link 2+ items across ANY data source
-5. Each neuron can optionally have a name (e.g., "Q3 Launch Plan")
-6. After finding neuron connections, selectively query only the connected sources — not everything
+Neurons are the user's curated map of what matters. They represent campaigns, initiatives, or semantic relationships across databases.
+
+**CRITICAL — Use neurons as your primary navigation tool:**
+1. When the user asks about a campaign, project, initiative, or cross-source topic — FIRST check the Neuron Connections section above. If a neuron matches, use its connected items to target your queries precisely. Do NOT scan all databases when a neuron already tells you exactly which items are relevant.
+2. When answering "What's happening with X?" — if X matches a neuron name, query ONLY the records listed in that neuron, not the entire workspace.
+3. Use \`query_neurons\` for deeper exploration or when the neuron graph isn't in your context.
+4. When a user discusses relationships between items, suggest creating a neuron with \`create_neuron\`.
+5. Neurons are multi-node clusters — a single neuron can link 2+ items across ANY data source (D1 tables, Notion, Gmail, Calendar).
+6. Each neuron can optionally have a name (e.g., "Q3 Launch Plan").
+7. After finding neuron connections, selectively query only the connected sources — never everything.
+8. If a user asks "What are my main campaigns/projects?" — your answer should be informed by the neuron graph. Neurons ARE the user's declared structure of what connects to what.
 
 When performing calculations or quantitative analysis:
 **Use \`run_calculation\` for any math beyond simple arithmetic.** Do NOT do complex calculations in your head — write code and let it execute deterministically.

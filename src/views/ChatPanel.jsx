@@ -13,7 +13,7 @@ import { createToolExecutor } from "../agent/toolExecutor.js";
 import { getConnection, searchKB as apiSearchKB } from "../lib/api.js";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import WasabiOrb from "../core/WasabiOrb.jsx";
-import { loadCachedNeurons } from "../neurons/neuronStorage.js";
+import { buildNeuronContextSummary } from "../neurons/neuronStorage.js";
 import { routeWithClassification, shouldEscalate, SONNET } from "../agent/aiRouter.js";
 import { classifyQuery, formatClassifierResponse } from "../agent/queryClassifier.js";
 import { buildDataSummary, getTokenBudget, findWorkspaceAncestor } from "../agent/dataSummary.js";
@@ -90,13 +90,8 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
     const newHistory = [...trimHistory(historyRef.current, 3), userMsg];
 
     try {
-      // Build neuron summary from cached data
-      const cachedNeurons = loadCachedNeurons();
-      const neuronSummary = cachedNeurons.length > 0
-        ? cachedNeurons.slice(0, 20).map((n) =>
-            `- ${n.name || "(unnamed)"} (${n.node_count || 0} nodes, id: ${n.id})`
-          ).join("\n")
-        : "";
+      // Build rich neuron summary (includes node details when graph is cached)
+      const neuronSummary = buildNeuronContextSummary();
 
       // Fetch Google context (best effort, cached 5 min)
       let googleContext = "";

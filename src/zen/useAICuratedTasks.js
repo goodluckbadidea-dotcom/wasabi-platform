@@ -10,6 +10,7 @@ import {
   listRows, claudeProxy, getTableSchema, listTaskActivity, upsertTaskActivity,
   getRecordViews, listRecordComments,
 } from "../lib/api.js";
+import { loadCachedNeuronGraph } from "../neurons/neuronStorage.js";
 import {
   normalizeNotionTask, normalizeD1Task, getCached, setCache, parseDate,
   scoreTerminalStatuses, shouldIncludeTask, isSmartOverdue,
@@ -257,6 +258,9 @@ function compressTask(task) {
   if (task._lastViewedDaysAgo !== undefined) obj.lastViewedDaysAgo = task._lastViewedDaysAgo;
   if (task._blockingCount) obj.blockingCount = task._blockingCount;
   if (task._blockedByOthers) obj.blockedByOthers = true;
+  // Neuron sibling signals
+  if (task._neuronNames?.length) obj.neuronClusters = task._neuronNames;
+  if (task._neuronSiblingUrgent) obj.neuronSiblingUrgent = true;
   return obj;
 }
 
@@ -612,6 +616,65 @@ export default function useAICuratedTasks() {
         console.warn("[AICurated] Dependency scan failed:", err.message);
       }
 
+      // Step 2.9: Neuron sibling enrichment (zero API calls — uses cached graph)
+      let neuronClusterSummary = "";
+      try {
+        const neuronGraph = loadCachedNeuronGraph();
+        if (neuronGraph && neuronGraph.length > 0) {
+          // Build nodeId → task lookup
+          const taskById = new Map();
+          for (const task of filteredTasks) {
+            taskById.set(task.id, task);
+          }
+
+          // Build nodeId → neuron lookup and annotate tasks
+          for (const neuron of neuronGraph) {
+            const nodeIds = (neuron.nodes || []).map((nd) => nd.node_id);
+            // Find which filtered tasks are in this neuron
+            const tasksInNeuron = nodeIds
+              .map((nid) => taskById.get(nid))
+              .filter(Boolean);
+
+            if (tasksInNeuron.length === 0) continue;
+
+            // Check if any sibling in this neuron is urgent (overdue/high priority)
+            const hasUrgentSibling = tasksInNeuron.some((t) =>
+              t._isOverdue || t.priority === "High" || t.priority === "Urgent"
+            );
+
+            // Annotate each task with its neuron membership
+            for (const task of tasksInNeuron) {
+              if (!task._neuronNames) task._neuronNames = [];
+              task._neuronNames.push(neuron.name || "(unnamed)");
+              if (hasUrgentSibling) task._neuronSiblingUrgent = true;
+            }
+          }
+
+          // Build cluster health summary for the insight prompt
+          const clusterStats = [];
+          for (const neuron of neuronGraph) {
+            const nodeIds = (neuron.nodes || []).map((nd) => nd.node_id);
+            const tasksInNeuron = nodeIds.map((nid) => taskById.get(nid)).filter(Boolean);
+            if (tasksInNeuron.length === 0) continue;
+
+            const overdueCount = tasksInNeuron.filter((t) => t._isOverdue).length;
+            const staleCount = tasksInNeuron.filter((t) => t._isStale).length;
+            const totalInCluster = (neuron.nodes || []).length;
+
+            if (overdueCount > 0 || staleCount > 0) {
+              clusterStats.push(
+                `- "${neuron.name || "(unnamed)"}" (${totalInCluster} items): ${overdueCount} overdue, ${staleCount} stale`
+              );
+            }
+          }
+          if (clusterStats.length > 0) {
+            neuronClusterSummary = "\n\nNeuron cluster health:\n" + clusterStats.join("\n");
+          }
+        }
+      } catch (err) {
+        console.warn("[AICurated] Neuron enrichment failed:", err.message);
+      }
+
       // Step 3: Call Haiku for prioritization (on filtered tasks)
       if (user.claudeKey && filteredTasks.length > 0) {
         try {
@@ -631,7 +694,9 @@ export default function useAICuratedTasks() {
 - mentionedUser: this user was @mentioned in comments
 - lastViewedDaysAgo: days since this user last viewed the record
 - blockingCount: number of other tasks this task blocks
-- blockedByOthers: this task is blocked by other tasks\n`
+- blockedByOthers: this task is blocked by other tasks
+- neuronClusters: names of neuron clusters this task belongs to (campaigns, initiatives)
+- neuronSiblingUrgent: another task in the same neuron cluster is overdue/high-priority\n`
             : "";
 
           const prompt = `You are a smart task prioritizer and workspace advisor. Tasks have been pre-filtered to only include items approaching deadlines, overdue, or not recently updated.
@@ -657,6 +722,8 @@ Priority rules:
 - High priority or urgent status (score 3-4)
 - In-progress items approaching dates (score 2-3)
 - Tasks owned by or assigned to this user get a slight boost
+- Tasks with neuronSiblingUrgent=true belong to a campaign where another task is already overdue — boost score by +1 (cascading urgency)
+- When writing reasons, mention the neuron cluster name if present (e.g., "Part of the Q3 Launch campaign, which has 2 overdue items")
 Exclude any items that are NOT actionable tasks (contacts, records, inventory, labels).
 
 For each task, write a "reason" — a concise 1-2 sentence attention summary written for the user. It should feel like a helpful assistant briefing them. Be specific: reference actual dates, how many days overdue, the database name, blocking relationships, and why it matters NOW. Don't list tags — write natural language.
@@ -668,7 +735,7 @@ Bad examples (too generic, don't do this):
 - "This task is overdue and stale."
 - "High priority task that needs attention."
 
-2. Generate ONE short workspace insight (max 120 chars) personalized for this user. This appears in a zen/mindfulness sidebar. It should feel illuminating — not a status report. Observe patterns, convergences, risks, or perspective. Be specific to the actual data.
+2. Generate ONE short workspace insight (max 120 chars) personalized for this user. This appears in a zen/mindfulness sidebar. It should feel illuminating — not a status report. Observe patterns, convergences, risks, or perspective. Be specific to the actual data. If neuron clusters have overdue items, prioritize mentioning the campaign health.${neuronClusterSummary}
 
 Return valid JSON only, no markdown: { "tasks": [{ "title": "exact title", "priority_score": 1-5, "reason": "tagged reason" }], "insight": "your insight here" }
 

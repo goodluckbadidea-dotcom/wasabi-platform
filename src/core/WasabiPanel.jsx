@@ -18,7 +18,7 @@ import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createToolExecutor } from "../agent/toolExecutor.js";
 import { routeWithClassification, shouldEscalate, SONNET } from "../agent/aiRouter.js";
 import { classifyQuery, formatClassifierResponse } from "../agent/queryClassifier.js";
-import { loadCachedNeurons } from "../neurons/neuronStorage.js";
+import { buildNeuronContextSummary } from "../neurons/neuronStorage.js";
 import { buildDataSummary, getTokenBudget, findWorkspaceAncestor } from "../agent/dataSummary.js";
 import { fetchGoogleContext } from "../google/googleContext.js";
 import BatchQueue from "./BatchQueue.jsx";
@@ -350,28 +350,8 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
           }
         } catch (_) { /* KB search is best-effort */ }
 
-        // Build neuron summary from cached data + proactive query for relevant connections
-        const cachedNeurons = loadCachedNeurons();
-        let neuronSummary = cachedNeurons.length > 0
-          ? cachedNeurons.slice(0, 20).map((n) =>
-              `- ${n.name || "(unnamed)"} (${n.node_count || 0} nodes, id: ${n.id})`
-            ).join("\n")
-          : "";
-
-        // Proactive neuron query for non-trivial messages
-        if (agentText.length > 50) {
-          setChatStatus("Querying neurons...");
-          try {
-            const neuronResult = await toolExecutor("query_neurons", { query: agentText });
-            const parsed = typeof neuronResult === "string" ? JSON.parse(neuronResult) : neuronResult;
-            if (parsed?.neurons?.length > 0) {
-              const connections = parsed.neurons.slice(0, 5).map((n) =>
-                `- **${n.name || "Connection"}**: ${(n.nodes || []).map((nd) => nd.label || nd.source_title || "?").join(" ↔ ")}`
-              ).join("\n");
-              if (connections) neuronSummary += (neuronSummary ? "\n\n### Relevant Connections\n" : "") + connections;
-            }
-          } catch (_) { /* neuron query is best-effort */ }
-        }
+        // Build rich neuron summary (includes full node details when graph is cached)
+        let neuronSummary = buildNeuronContextSummary();
 
         // Fetch Google context (best effort, cached 5 min)
         let googleContext = "";
