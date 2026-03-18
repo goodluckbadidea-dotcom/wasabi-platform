@@ -292,6 +292,43 @@ function SendEmailConfig({ config, onChange }) {
   );
 }
 
+// ── Do Config (plain English action, AI-interpreted) ──
+
+function DoConfig({ config, onChange }) {
+  return (
+    <>
+      <PlainEnglishHint />
+
+      <ConfigField label="What should happen?">
+        <TextInput
+          value={config.description}
+          onChange={(v) => onChange({ ...config, description: v, resolved: false, resolvedConfig: null })}
+          placeholder={'e.g. "Create a summary of all campaigns and send as email to team@company.com"\n"Post a notification with today\'s overdue count"\n"Update all In Progress tasks to Review"\n"Query the Projects database for items due this week"'}
+          multiline
+        />
+      </ConfigField>
+
+      {/* Show resolved config if interpreted */}
+      {config.resolved && config.resolvedConfig && (
+        <div style={{
+          marginTop: 4, padding: "8px 10px",
+          background: C.accent + "10", border: `1px solid ${C.accent}30`,
+          borderRadius: RADIUS.sm,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
+            <span style={{ fontSize: 9, fontWeight: 600, color: C.accent, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: FONT }}>
+              Interpreted
+            </span>
+          </div>
+          <div style={{ fontSize: 10, color: C.darkText, fontFamily: MONO, lineHeight: 1.5, wordBreak: "break-all" }}>
+            {config.resolvedConfig.action_type}: {JSON.stringify(config.resolvedConfig.action_config || {})}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function ActionUpdateConfig({ config, onChange }) {
   return (
     <>
@@ -570,6 +607,8 @@ function ConfigForm({ node, onConfigChange, defaultDatabaseId, defaultDatabaseNa
       );
     case "field_check":
       return <ConditionConfig config={config} onChange={onChange} />;
+    case "do":
+      return <DoConfig config={config} onChange={onChange} />;
     case "update_page":
       return <ActionUpdateConfig config={config} onChange={onChange} />;
     case "create_page":

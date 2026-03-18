@@ -27,6 +27,7 @@ const NODE_PALETTE = [
   { type: "trigger",   subtype: "schedule",          label: "Schedule",     Icon: IconCalendar,  category: "Triggers" },
   { type: "trigger",   subtype: "manual",            label: "Manual",       Icon: IconBolt,      category: "Triggers" },
   { type: "condition", subtype: "field_check",        label: "Condition",    Icon: IconCondition, category: "Logic" },
+  { type: "action",    subtype: "do",                  label: "Do",           Icon: IconBolt,      category: "Actions" },
   { type: "action",    subtype: "update_page",        label: "Update",       Icon: IconEdit,      category: "Actions" },
   { type: "action",    subtype: "create_page",        label: "Create",       Icon: IconPlus,      category: "Actions" },
   { type: "action",    subtype: "post_notification",  label: "Notify",       Icon: IconBell,      category: "Actions" },
@@ -59,6 +60,8 @@ function getDefaultConfig(type, subtype) {
       return { databaseId: "", properties: "" };
     case "post_notification":
       return { message: "", type: "notification" };
+    case "do":
+      return { description: "", resolved: false, resolvedConfig: null };
     case "send_email":
       return { description: "", to: "", subject: "" };
     case "template":
@@ -985,6 +988,7 @@ export default function NodeEditor({ automationEngine }) {
     const plainEnglishNodes = nodes.filter((n) => {
       const c = n.config || {};
       if (n.subtype === "when" && c.description?.trim() && !c.resolved) return true;
+      if (n.subtype === "do" && c.description?.trim() && !c.resolved) return true;
       if (n.subtype === "send_email" && c.description?.trim()) return true;
       if ((n.subtype === "update_page" || n.subtype === "create_page" || n.subtype === "post_notification") && c.description?.trim()) return true;
       return false;
@@ -1034,6 +1038,9 @@ export default function NodeEditor({ automationEngine }) {
           lines.push(`  → Convert to: { message (with {{variables}} if needed), type }`);
         } else if (node.subtype === "send_email") {
           lines.push(`  → Convert to: { to, subject, body }`);
+        } else if (node.subtype === "do") {
+          lines.push(`  → Convert to: { action_type (send_email|create_page|update_page|post_notification|query_database|run_agent), action_config }`);
+          lines.push(`  Action types: send_email={to,subject,body}, create_page={databaseId,properties}, update_page={properties}, post_notification={message,type}, query_database={databaseId,query}, run_agent={prompt}`);
         }
         lines.push("");
       });
@@ -1082,7 +1089,21 @@ export default function NodeEditor({ automationEngine }) {
               };
             }
 
-            // For action nodes, merge the structured config
+            if (n.subtype === "do") {
+              return {
+                ...n,
+                config: {
+                  ...n.config,
+                  resolved: true,
+                  resolvedConfig: {
+                    action_type: interp.action_type || interp.config?.action_type,
+                    action_config: interp.action_config || interp.config?.action_config || {},
+                  },
+                },
+              };
+            }
+
+            // For other action nodes, merge the structured config
             return {
               ...n,
               config: { ...n.config, ...interp.config, resolved: true },

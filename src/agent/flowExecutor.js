@@ -317,6 +317,84 @@ async function executeAction(node, inputs, opts) {
       return { _action: "create_page", properties: expanded };
     }
 
+    case "do": {
+      // Flexible action node — uses resolved config from AI interpretation
+      const resolved = node.config?.resolvedConfig || {};
+      const actionType = resolved.action_type;
+      const actionCfg = resolved.action_config || {};
+
+      switch (actionType) {
+        case "send_email": {
+          const to = expandTemplate(actionCfg.to || "", templateData);
+          const subject = expandTemplate(actionCfg.subject || "", templateData);
+          const body = expandTemplate(actionCfg.body || "", templateData);
+          // Use the existing send_email flow via API
+          try {
+            await api.createNotification({
+              message: `Email to ${to}: ${subject}`,
+              type: "summary",
+              source: `flow:${node.label}`,
+            });
+          } catch (_) {}
+          return { _action: "email_composed", to, subject, body, ...inputs };
+        }
+        case "create_page": {
+          const properties = safeJSON(JSON.stringify(actionCfg.properties || {}), {});
+          const expanded = {};
+          for (const [key, val] of Object.entries(properties)) {
+            expanded[key] = typeof val === "string" ? expandTemplate(val, templateData) : val;
+          }
+          if (actionCfg.databaseId) {
+            const notionProps = {};
+            for (const [key, val] of Object.entries(expanded)) {
+              if (typeof val === "string") {
+                notionProps[key] = { rich_text: [{ type: "text", text: { content: val } }] };
+              }
+            }
+            try {
+              const page = await createPage(workerUrl, notionKey, actionCfg.databaseId, notionProps);
+              return { _action: "page_created", pageId: page.id, ...expanded, ...inputs };
+            } catch (err) {
+              return { _action: "create_page_failed", error: err.message, ...inputs };
+            }
+          }
+          return { _action: "create_page", properties: expanded, ...inputs };
+        }
+        case "update_page": {
+          const properties = safeJSON(JSON.stringify(actionCfg.properties || {}), {});
+          const expanded = {};
+          for (const [key, val] of Object.entries(properties)) {
+            expanded[key] = typeof val === "string" ? expandTemplate(val, templateData) : val;
+          }
+          return { _action: "update_page", properties: expanded, ...inputs };
+        }
+        case "post_notification": {
+          const message = expandTemplate(actionCfg.message || "", templateData);
+          await api.createNotification({
+            message,
+            type: actionCfg.type || "notification",
+            source: `flow:${node.label}`,
+          });
+          return { _action: "notification_sent", message, ...inputs };
+        }
+        case "query_database": {
+          // Query a database and pass results downstream
+          try {
+            const rows = await api.listRows(actionCfg.databaseId, { limit: 100 });
+            return { _action: "database_queried", rows: rows.rows || [], count: (rows.rows || []).length, ...inputs };
+          } catch (err) {
+            return { _action: "query_failed", error: err.message, ...inputs };
+          }
+        }
+        case "run_agent": {
+          // Placeholder — agent execution would need Claude proxy
+          return { _action: "agent_prompt", prompt: actionCfg.prompt || "", ...inputs };
+        }
+        default:
+          return { _action: "do_unknown", actionType, ...inputs };
+      }
+    }
+
     default:
       return { _action: node.subtype, ...inputs };
   }

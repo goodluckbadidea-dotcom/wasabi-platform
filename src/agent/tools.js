@@ -946,9 +946,18 @@ const INTERPRET_AUTOMATION_NODES = {
               type: "object",
               description: "For 'when' nodes only: trigger-specific config. schedule: {interval_minutes}. status_change: {database_id, field, from, to}. field_change: {database_id, field}. page_created: {database_id}.",
             },
+            action_type: {
+              type: "string",
+              enum: ["send_email", "create_page", "update_page", "post_notification", "query_database", "run_agent"],
+              description: "For 'do' nodes: the interpreted action type.",
+            },
+            action_config: {
+              type: "object",
+              description: "For 'do' nodes: action-specific config. send_email: {to, subject, body}. create_page: {databaseId, properties}. update_page: {properties}. post_notification: {message, type}. query_database: {databaseId, query}. run_agent: {prompt}.",
+            },
             config: {
               type: "object",
-              description: "For action nodes: structured config. update_page: {properties}. create_page: {databaseId, properties}. post_notification: {message, type}. send_email: {to, subject, body}.",
+              description: "For other action nodes: structured config. update_page: {properties}. create_page: {databaseId, properties}. post_notification: {message, type}. send_email: {to, subject, body}.",
             },
           },
           required: ["node_id"],
