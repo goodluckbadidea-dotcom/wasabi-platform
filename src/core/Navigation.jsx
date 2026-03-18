@@ -230,11 +230,12 @@ export default function Navigation({
 
   const iconSize = (isActive) => collapsed ? (isActive ? 22 : 18) : (isActive ? 18 : 16);
 
+  const navInactiveColor = C.darkText + "BB"; // higher contrast than darkMuted
   const bottomLabelStyle = (isActive) => ({
     fontFamily: "'Outfit',sans-serif",
     fontSize: 12,
-    fontWeight: isActive ? 600 : 400,
-    color: isActive ? "#fff" : C.darkMuted,
+    fontWeight: isActive ? 600 : 500,
+    color: isActive ? "#fff" : navInactiveColor,
     letterSpacing: "0.02em",
   });
 
@@ -277,16 +278,16 @@ export default function Navigation({
               {collapsed ? (
                 /* Hamburger menu icon */
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <line x1="2" y1="4" x2="14" y2="4" stroke={C.darkMuted} strokeWidth="1.4" strokeLinecap="round" />
-                  <line x1="2" y1="8" x2="14" y2="8" stroke={C.darkMuted} strokeWidth="1.4" strokeLinecap="round" />
-                  <line x1="2" y1="12" x2="14" y2="12" stroke={C.darkMuted} strokeWidth="1.4" strokeLinecap="round" />
+                  <line x1="2" y1="4" x2="14" y2="4" stroke={navInactiveColor} strokeWidth="1.4" strokeLinecap="round" />
+                  <line x1="2" y1="8" x2="14" y2="8" stroke={navInactiveColor} strokeWidth="1.4" strokeLinecap="round" />
+                  <line x1="2" y1="12" x2="14" y2="12" stroke={navInactiveColor} strokeWidth="1.4" strokeLinecap="round" />
                 </svg>
               ) : (
                 /* Sidebar collapse icon (panel with arrow) */
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <rect x="1.5" y="2" width="13" height="12" rx="1.5" stroke={C.darkMuted} strokeWidth="1.3" fill="none" />
-                  <line x1="6" y1="2" x2="6" y2="14" stroke={C.darkMuted} strokeWidth="1.3" />
-                  <path d="M11 6.5L9 8L11 9.5" stroke={C.darkMuted} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                  <rect x="1.5" y="2" width="13" height="12" rx="1.5" stroke={navInactiveColor} strokeWidth="1.3" fill="none" />
+                  <line x1="6" y1="2" x2="6" y2="14" stroke={navInactiveColor} strokeWidth="1.3" />
+                  <path d="M11 6.5L9 8L11 9.5" stroke={navInactiveColor} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               )}
             </button>
@@ -295,7 +296,7 @@ export default function Navigation({
             {!collapsed && (
               <div style={{ position: "relative" }}>
                 <div style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
-                  <IconSearch size={13} color={C.darkMuted} />
+                  <IconSearch size={13} color={navInactiveColor} />
                 </div>
                 <input
                   type="text"
@@ -318,7 +319,7 @@ export default function Navigation({
                     style={{
                       position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)",
                       background: "none", border: "none", cursor: "pointer",
-                      fontSize: 12, color: C.darkMuted, padding: "2px 4px",
+                      fontSize: 12, color: navInactiveColor, padding: "2px 4px",
                     }}
                   >
                     ×
@@ -333,7 +334,7 @@ export default function Navigation({
             {!collapsed && zenInsight && !searchQuery && (
               <div style={{
                 fontSize: 13, lineHeight: 1.6, fontFamily: FONT,
-                color: C.darkMuted, fontStyle: "italic",
+                color: navInactiveColor, fontStyle: "italic",
                 opacity: 0.85, transition: "opacity 0.4s ease",
                 textAlign: "center", padding: "0 2px",
               }}>
@@ -367,7 +368,7 @@ export default function Navigation({
                   ))
                 }
                 {pages.filter((p) => !p._systemInternal && p.name?.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
-                  <div style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT, textAlign: "center", padding: "12px 0" }}>
+                  <div style={{ fontSize: 11, color: navInactiveColor, fontFamily: FONT, textAlign: "center", padding: "12px 0" }}>
                     No results
                   </div>
                 )}
@@ -425,7 +426,7 @@ export default function Navigation({
                   onMouseEnter={(e) => { if (!isWsActive) e.currentTarget.style.background = C.darkSurf2; }}
                   onMouseLeave={(e) => { if (!isWsActive) e.currentTarget.style.background = "transparent"; }}
                 >
-                  <IconGlobe size={iconSize(isWsActive)} color={isWsActive ? "#fff" : C.darkMuted} />
+                  <IconGlobe size={iconSize(isWsActive)} color={isWsActive ? "#fff" : navInactiveColor} />
                   {!collapsed && <span style={bottomLabelStyle(isWsActive)}>Workspaces</span>}
                 </button>
               );
@@ -440,10 +441,10 @@ export default function Navigation({
               onMouseLeave={(e) => { if (activePage !== "dashboard") e.currentTarget.style.background = "transparent"; }}
             >
               <svg width={iconSize(activePage === "dashboard")} height={iconSize(activePage === "dashboard")} viewBox="0 0 16 16" fill="none">
-                <rect x="1" y="1" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
-                <rect x="9" y="1" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
-                <rect x="1" y="9" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
-                <rect x="9" y="9" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
+                <rect x="1" y="1" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? "#fff" : navInactiveColor} strokeWidth="1.3" fill="none" />
+                <rect x="9" y="1" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? "#fff" : navInactiveColor} strokeWidth="1.3" fill="none" />
+                <rect x="1" y="9" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? "#fff" : navInactiveColor} strokeWidth="1.3" fill="none" />
+                <rect x="9" y="9" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? "#fff" : navInactiveColor} strokeWidth="1.3" fill="none" />
               </svg>
               {!collapsed && <span style={bottomLabelStyle(activePage === "dashboard")}>Dashboard</span>}
             </button>
@@ -456,7 +457,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "tasks" && activePage !== null) e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "tasks" && activePage !== null) e.currentTarget.style.background = "transparent"; }}
             >
-              <IconCalendar size={iconSize(activePage === "tasks" || activePage === null)} color={(activePage === "tasks" || activePage === null) ? "#fff" : C.darkMuted} />
+              <IconCalendar size={iconSize(activePage === "tasks" || activePage === null)} color={(activePage === "tasks" || activePage === null) ? "#fff" : navInactiveColor} />
               {!collapsed && <span style={bottomLabelStyle(activePage === "tasks" || activePage === null)}>To-Do & Calendar</span>}
             </button>
 
@@ -469,10 +470,10 @@ export default function Navigation({
               onMouseLeave={(e) => { if (activePage !== "notes") e.currentTarget.style.background = "transparent"; }}
             >
               <svg width={iconSize(activePage === "notes")} height={iconSize(activePage === "notes")} viewBox="0 0 16 16" fill="none">
-                <rect x="3" y="2" width="10" height="12" rx="1.5" stroke={activePage === "notes" ? "#fff" : C.darkMuted} strokeWidth="1.3" fill="none" />
-                <line x1="5.5" y1="5.5" x2="10.5" y2="5.5" stroke={activePage === "notes" ? "#fff" : C.darkMuted} strokeWidth="1" />
-                <line x1="5.5" y1="8" x2="10.5" y2="8" stroke={activePage === "notes" ? "#fff" : C.darkMuted} strokeWidth="1" />
-                <line x1="5.5" y1="10.5" x2="8.5" y2="10.5" stroke={activePage === "notes" ? "#fff" : C.darkMuted} strokeWidth="1" />
+                <rect x="3" y="2" width="10" height="12" rx="1.5" stroke={activePage === "notes" ? "#fff" : navInactiveColor} strokeWidth="1.3" fill="none" />
+                <line x1="5.5" y1="5.5" x2="10.5" y2="5.5" stroke={activePage === "notes" ? "#fff" : navInactiveColor} strokeWidth="1" />
+                <line x1="5.5" y1="8" x2="10.5" y2="8" stroke={activePage === "notes" ? "#fff" : navInactiveColor} strokeWidth="1" />
+                <line x1="5.5" y1="10.5" x2="8.5" y2="10.5" stroke={activePage === "notes" ? "#fff" : navInactiveColor} strokeWidth="1" />
               </svg>
               {!collapsed && <span style={bottomLabelStyle(activePage === "notes")}>Notes</span>}
             </button>
@@ -487,7 +488,7 @@ export default function Navigation({
                 onMouseLeave={(e) => { if (activePage !== "gmail") e.currentTarget.style.background = "transparent"; }}
               >
                 <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                  <IconMail size={iconSize(activePage === "gmail")} color={activePage === "gmail" ? "#fff" : C.darkMuted} />
+                  <IconMail size={iconSize(activePage === "gmail")} color={activePage === "gmail" ? "#fff" : navInactiveColor} />
                   {unreadCount > 0 && (
                     <span style={{
                       position: "absolute", top: -5, right: -8,
@@ -513,7 +514,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "notifications") e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "notifications") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconBell size={iconSize(activePage === "notifications")} color={activePage === "notifications" ? "#fff" : C.darkMuted} />
+              <IconBell size={iconSize(activePage === "notifications")} color={activePage === "notifications" ? "#fff" : navInactiveColor} />
               {notifUnreadCount > 0 && (
                 <span style={{
                   position: "absolute",
@@ -543,7 +544,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "knowledge") e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "knowledge") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconBrain size={iconSize(activePage === "knowledge")} color={activePage === "knowledge" ? "#fff" : C.darkMuted} />
+              <IconBrain size={iconSize(activePage === "knowledge")} color={activePage === "knowledge" ? "#fff" : navInactiveColor} />
               {!collapsed && <span style={bottomLabelStyle(activePage === "knowledge")}>Knowledge Base</span>}
             </button>
 
@@ -556,7 +557,7 @@ export default function Navigation({
                 onMouseEnter={(e) => { if (activePage !== "system") e.currentTarget.style.background = C.darkSurf2; }}
                 onMouseLeave={(e) => { if (activePage !== "system") e.currentTarget.style.background = "transparent"; }}
               >
-                <IconGear size={iconSize(activePage === "system")} color={activePage === "system" ? "#fff" : C.darkMuted} />
+                <IconGear size={iconSize(activePage === "system")} color={activePage === "system" ? "#fff" : navInactiveColor} />
                 {!collapsed && <span style={bottomLabelStyle(activePage === "system")}>Settings</span>}
               </button>
             )}
@@ -583,7 +584,7 @@ export default function Navigation({
                 {!collapsed && (
                   <span style={{
                     fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: 500,
-                    color: C.darkMuted, letterSpacing: "0.02em",
+                    color: navInactiveColor, letterSpacing: "0.02em",
                   }}>
                     Wasabi
                   </span>
