@@ -14,34 +14,34 @@ const CREATE_OPTIONS = [
 ];
 
 export default function CreateMenu({ onCreateItem, collapsed }) {
-  // Direct click → go straight to the full visual builder (no dropdown)
+  const inactiveColor = C.darkText + "BB";
   return (
-    <div style={{ position: "relative", padding: collapsed ? "6px 0" : "6px 8px" }}>
+    <div style={{ position: "relative" }}>
       <button
         onClick={() => onCreateItem?.("page")}
         style={{
           width: "100%",
-          border: collapsed ? "none" : `1px dashed ${C.darkBorder}`,
-          borderTop: collapsed ? `1px dashed ${C.darkBorder}` : undefined,
-          borderBottom: collapsed ? `1px dashed ${C.darkBorder}` : undefined,
+          border: "none",
           background: "transparent",
           cursor: "pointer",
           display: "flex",
           alignItems: "center",
-          gap: collapsed ? 0 : 8,
+          gap: collapsed ? 0 : 10,
           justifyContent: collapsed ? "center" : "flex-start",
-          padding: collapsed ? "8px 0" : "7px 14px",
-          borderRadius: collapsed ? 0 : 999,
+          padding: collapsed ? "8px 6px" : "8px 12px",
+          minHeight: 36,
+          borderRadius: 8,
           fontFamily: FONT,
           fontSize: 12,
-          color: C.darkMuted,
+          fontWeight: 500,
+          color: inactiveColor,
           outline: "none",
-          transition: "all 0.12s",
+          transition: "background 0.15s, color 0.12s",
         }}
-        onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.color = C.accent; }}
-        onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; e.currentTarget.style.color = C.darkMuted; }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; e.currentTarget.style.color = C.accent; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = inactiveColor; }}
       >
-        <IconPlus size={12} color="currentColor" />
+        <IconPlus size={collapsed ? 18 : 16} color="currentColor" />
         {!collapsed && <span>Create New</span>}
       </button>
     </div>
