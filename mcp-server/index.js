@@ -98,7 +98,7 @@ server.tool(
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_pages",
-  "List all pages/databases in the workspace, get a page config, get table schema, or manage page configs. Use 'list' first to discover available pages and their IDs.",
+  "List all pages/databases in the workspace, get a page config, get table schema, or manage page configs. Use 'list' first to discover available pages and their IDs. Page types: database, document, sheet, page, dashboard. To CREATE a database: provide title, page_type='database', columns array with {id, name, type} objects. To ADD VIEWS: update the page config with views array containing {type, label, config} objects. View types: table, kanban, gantt, calendar, cardGrid, charts, form, summaryTiles, activityFeed, customView. Read wasabi://docs/data-model for full view config schemas.",
   {
     action: z.enum(["list", "get", "get_schema", "create", "update", "delete"]),
     id: z.string().optional().describe("Page ID (required for get/get_schema/update/delete)"),
@@ -188,7 +188,7 @@ server.tool(
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_automations",
-  "CRUD automation rules. Rules trigger on schedule, status_change, field_change, page_created, or manual. action_config.instruction supports {{field}} template variables.",
+  "CRUD automation rules. Trigger types: schedule (cron), status_change, field_change, page_created, manual. action_config.instruction is an AI prompt that supports {{field}} template variables. Example: trigger_type='schedule', trigger_config={cron:'0 9 * * 1-5'}, action_config={instruction:'Check inventory levels and alert if below threshold'}. Read wasabi://docs/data-model for full rule schema.",
   {
     action: z.enum(["list", "get", "create", "update", "delete"]),
     id: z.string().optional().describe("Rule ID"),
@@ -217,7 +217,7 @@ server.tool(
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_functions",
-  "CRUD custom functions and plugins. Types: transform, aggregation, forecast, alert, pipeline, view, plugin. Plugins have type='plugin' and include a manifest. Use list_executions to see past runs.",
+  "CRUD custom functions and plugins. Types: transform, aggregation, forecast, alert, pipeline, view, plugin. Plugins have type='plugin' and include a manifest. Use list_executions to see past runs. To BUILD a plugin: create with type='plugin', code containing HTML/CSS/JS (rendered in iframe), and meta.manifest with name/icon/version. To build a CUSTOM VIEW: type='view', code with HTML/CSS/JS. Read wasabi://docs/data-model resource for full schema and examples.",
   {
     action: z.enum(["list", "get", "create", "update", "delete", "list_executions"]),
     id: z.string().optional().describe("Function ID"),
@@ -257,7 +257,7 @@ server.tool(
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_flows",
-  "CRUD automation flows (multi-step node-based workflows with a graph of connected actions).",
+  "CRUD automation flows (multi-step node-based workflows with a graph of connected actions). Flow graph has nodes array [{id, type, config}] and edges array [{source, target}]. Node types: trigger, action, condition, delay. Action nodes use config.instruction for AI-powered steps. Read wasabi://docs/data-model for flow schema examples.",
   {
     action: z.enum(["list", "get", "create", "update", "delete", "list_executions"]),
     id: z.string().optional().describe("Flow ID"),
@@ -357,7 +357,7 @@ server.tool(
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_neurons",
-  "Neurons are named relationship clusters linking records, pages, and fields across the workspace. View the graph or manage neurons and their nodes.",
+  "Neurons are named relationship clusters linking records, pages, and fields across the workspace. Use to discover hidden connections (e.g. which vendors supply which SKUs, or which projects depend on which inventory). Create neurons with nodes: each node has node_type (record|page|field|table), node_id, node_label, page_config_id. Use 'graph' to visualize all relationships. Use 'by_node' to find all neurons containing a specific record/field.",
   {
     action: z.enum(["list", "get", "create", "delete", "graph", "add_node", "remove_node", "by_node"]),
     id: z.string().optional().describe("Neuron ID"),
@@ -491,7 +491,7 @@ server.tool(
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_dashboard",
-  "Get a comprehensive workspace snapshot: health status, page list with row counts, unread notifications, recent activity. Perfect for morning briefings or status checks.",
+  "Get a comprehensive workspace snapshot: health status, page list with row counts, unread notifications, recent activity. Perfect for morning briefings or status checks. START HERE when exploring the workspace — this gives you the full picture. Then use wasabi_pages to drill into specific pages, wasabi_data to read rows, wasabi_analytics for aggregations.",
   {
     include: z.enum(["all", "health", "pages", "notifications", "activity"]).optional().describe("What to include (default: all)"),
   },
@@ -1103,6 +1103,179 @@ server.tool(
       }
     } catch (e) { return err(e); }
   }
+);
+
+// ═══════════════════════════════════════════
+// RESOURCE: Wasabi Schema & Data Model Docs
+// ═══════════════════════════════════════════
+server.resource(
+  "wasabi-docs",
+  "wasabi://docs/data-model",
+  async () => ({
+    contents: [{
+      uri: "wasabi://docs/data-model",
+      mimeType: "text/markdown",
+      text: `# Wasabi Data Model & Schema Reference
+
+## Page Types
+- \`database\` — table with rows, columns, views (most common)
+- \`document\` — rich text page (stored in R2)
+- \`sheet\` — spreadsheet (cells, formulas)
+- \`page\` — generic container
+- \`dashboard\` — widget grid
+
+## View Types (14 total)
+\`table\` \`kanban\` \`gantt\` \`calendar\` \`cardGrid\` \`charts\` \`form\` \`summaryTiles\` \`activityFeed\` \`document\` \`notificationFeed\` \`linked_sheet\` \`sheet\` \`customView\`
+
+### View Config Examples
+\`\`\`json
+// Kanban view
+{ "type": "kanban", "label": "By Status", "config": { "groupByField": "Status", "cardFields": ["Title", "Priority", "Due Date"] } }
+
+// Gantt view
+{ "type": "gantt", "label": "Timeline", "config": { "startField": "Start Date", "endField": "End Date", "taskField": "Title" } }
+
+// Chart view
+{ "type": "charts", "label": "Spend Chart", "config": { "chartType": "bar", "xAxis": "Vendor", "yAxis": "Cost", "aggregation": "sum" } }
+
+// Custom view (renders a custom function)
+{ "type": "customView", "label": "Pomodoro Timer", "config": { "functionId": "fn_abc123" } }
+\`\`\`
+
+## Column Types (15 total)
+\`text\` \`rich_text\` \`title\` \`number\` \`select\` \`multi_select\` \`date\` \`checkbox\` \`url\` \`email\` \`phone_number\` \`status\` \`people\` \`relation\` \`created_time\` \`last_edited_time\`
+
+### Column Definition
+\`\`\`json
+{ "id": "col_1", "name": "Status", "type": "select", "options": [{ "label": "Active", "color": "#4CAF50" }, { "label": "Done", "color": "#9E9E9E" }] }
+\`\`\`
+
+## Dashboard Widget Types
+\`view\` \`shortcut\` \`text\` \`plugin\`
+
+### Widget Examples
+\`\`\`json
+// Embed a database view as a widget
+{ "id": "w_1", "type": "view", "pageId": "page_abc", "viewIndex": 0, "label": "Projects Kanban", "h": 400, "colSpan": 2 }
+
+// Plugin widget (renders custom function in iframe)
+{ "id": "w_2", "type": "plugin", "functionId": "fn_pomodoro", "label": "Pomodoro Timer", "h": 300, "colSpan": 1, "refreshInterval": 0 }
+
+// Text/markdown widget
+{ "id": "w_3", "type": "text", "content": "## Welcome\\nDaily standup at 9am", "label": "Notes", "h": 200 }
+
+// Shortcut button
+{ "id": "w_4", "type": "shortcut", "pageId": "page_xyz", "label": "Open Inventory", "h": 80 }
+\`\`\`
+
+## Custom Function Schema
+Types: \`transform\` \`aggregation\` \`forecast\` \`alert\` \`pipeline\` \`view\` \`plugin\`
+
+### Creating a Plugin (e.g. Pomodoro Timer)
+\`\`\`json
+{
+  "name": "Pomodoro Timer",
+  "description": "Animated 25-min focus timer with break intervals",
+  "type": "plugin",
+  "status": "active",
+  "inputs": {},
+  "outputs": {},
+  "code": "<div id='timer'>25:00</div><style>#timer{font-size:4em;text-align:center;font-family:monospace;color:var(--text)}</style><script>let s=1500,i=setInterval(()=>{if(s<=0)clearInterval(i);document.getElementById('timer').textContent=Math.floor(s/60)+':'+(s%60+'').padStart(2,'0');s--},1000)</script>",
+  "meta": { "manifest": { "name": "Pomodoro Timer", "icon": "⏱️", "version": "1.0" } }
+}
+\`\`\`
+
+### Creating a Custom View Function
+\`\`\`json
+{
+  "name": "Heat Map View",
+  "type": "view",
+  "status": "active",
+  "code": "<!-- HTML/CSS/JS that renders a custom visualization -->",
+  "inputs": { "tableId": { "type": "string" } },
+  "outputs": { "html": { "type": "string" } }
+}
+\`\`\`
+
+## Automation Rules
+Trigger types: \`schedule\` \`status_change\` \`field_change\` \`page_created\` \`manual\`
+
+### Rule Examples
+\`\`\`json
+// Daily inventory check
+{
+  "name": "Daily Inventory Alert",
+  "trigger_type": "schedule",
+  "trigger_config": { "cron": "0 9 * * 1-5" },
+  "action_config": { "instruction": "Check all SKUs where OR Site Inventory < 1000 and create a notification for each" },
+  "scope_table_id": "inventory_page_id",
+  "enabled": true
+}
+
+// Status change trigger
+{
+  "name": "Notify on Complete",
+  "trigger_type": "status_change",
+  "trigger_config": { "field_name": "Status", "new_value": "Complete" },
+  "action_config": { "instruction": "Send notification: {{Title}} has been marked complete" },
+  "scope_table_id": "projects_page_id"
+}
+\`\`\`
+
+## Automation Flows (multi-step)
+\`\`\`json
+{
+  "name": "New Order Pipeline",
+  "flow_data": {
+    "nodes": [
+      { "id": "n1", "type": "trigger", "config": { "trigger_type": "page_created" } },
+      { "id": "n2", "type": "action", "config": { "instruction": "Validate order fields" } },
+      { "id": "n3", "type": "condition", "config": { "field": "Priority", "operator": "eq", "value": "High" } },
+      { "id": "n4", "type": "action", "config": { "instruction": "Send urgent notification" } }
+    ],
+    "edges": [
+      { "source": "n1", "target": "n2" },
+      { "source": "n2", "target": "n3" },
+      { "source": "n3", "target": "n4" }
+    ]
+  }
+}
+\`\`\`
+
+## Neurons (relationship clusters)
+\`\`\`json
+// Create a neuron linking a vendor, their SKUs, and production records
+{
+  "name": "Vendor → SKU → Production",
+  "nodes": [
+    { "node_type": "record", "node_id": "row_vendor1", "node_label": "Acme Corp", "page_config_id": "vendors_page" },
+    { "node_type": "record", "node_id": "row_sku1", "node_label": "TIN-100S", "page_config_id": "inventory_page" },
+    { "node_type": "field", "node_id": "Status", "node_label": "Production Status", "page_config_id": "projects_page" }
+  ]
+}
+\`\`\`
+Node types: \`record\` \`page\` \`field\` \`table\`
+
+## Workflow: Building a Custom Plugin Widget
+1. \`wasabi_functions\` create — type "plugin", code with HTML/CSS/JS
+2. \`wasabi_pages\` update — add a customView to the page's views array (or skip if dashboard-only)
+3. Read current dashboard: \`wasabi_data\` won't work here — use the dashboard endpoint
+4. Pin to dashboard: add a widget with type "plugin", functionId pointing to the function
+
+## Workflow: Creating a New Database with Views
+1. \`wasabi_pages\` create — page_type "database", include columns array
+2. \`wasabi_pages\` update — add views to config (kanban, gantt, etc.)
+3. \`wasabi_data\` create — add initial rows
+4. Optionally \`wasabi_sync\` configure — link to Notion database
+
+## Key IDs
+- Page IDs look like: \`pg_abc123\` or UUIDs
+- Row IDs look like: UUIDs
+- Function IDs look like: \`fn_abc123\`
+- Column IDs look like: \`col_abc123\`
+`,
+    }],
+  })
 );
 
 // ═══════════════════════════════════════════
