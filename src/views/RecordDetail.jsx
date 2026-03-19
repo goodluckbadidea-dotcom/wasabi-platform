@@ -336,8 +336,6 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
   const [pendingChanges, setPendingChanges] = useState({});
   const [activeTab, setActiveTab] = useState("properties");
 
-  if (!page) return null;
-
   // Get ordered property list from schema
   const properties = useMemo(() => {
     if (!page?.properties) return [];
@@ -412,6 +410,8 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
     if (!bucket || !schema[bucket]) return null;
     return schema[bucket].find((f) => f.name === fieldName);
   }, [schema]);
+
+  if (!page) return null;
 
   return (
     <div style={ds.overlay} onClick={onClose} onKeyDown={(e) => e.stopPropagation()}>
