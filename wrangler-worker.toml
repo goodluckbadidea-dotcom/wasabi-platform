@@ -22,7 +22,7 @@ bindings = [
 
 [[migrations]]
 tag = "v1"
-new_classes = ["TableRoom"]
+new_sqlite_classes = ["TableRoom"]
 
 [triggers]
 crons = ["*/2 * * * *"]
