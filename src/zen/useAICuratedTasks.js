@@ -523,19 +523,39 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
         ).catch(() => {});
       }
 
+      // Build interaction type map from new task_interactions table (if available)
+      const interactionTypeMap = new Map(); // taskId → lastInteractionType
+      if (identity?.id) {
+        try {
+          const intPromises = Object.keys(tasksBySource).map(async (source) => {
+            try {
+              const result = await listTaskInteractions(source, identity.id);
+              for (const i of (result?.interactions || [])) {
+                // Only store the first (most recent) per task
+                if (!interactionTypeMap.has(i.task_id)) {
+                  interactionTypeMap.set(i.task_id, i.interaction_type);
+                }
+              }
+            } catch {}
+          });
+          await Promise.allSettled(intPromises);
+        } catch {}
+      }
+
       // Apply smart inclusion filter
       const filteredTasks = allTasks.filter((task) => {
         const lastActivity = activityMap.get(task.id) || null;
         const nearest = task.nearestDate || task.due;
+        const lastInteractionType = interactionTypeMap.get(task.id) || null;
 
         // Tasks with no dates: include them (let AI decide relevance)
         if (!nearest) return true;
 
         // Annotate for AI prompt
         task._isOverdue = isSmartOverdue(nearest, lastActivity);
-        task._isStale = shouldIncludeTask(nearest, lastActivity);
+        task._isStale = shouldIncludeTask(nearest, lastActivity, lastInteractionType);
 
-        return shouldIncludeTask(nearest, lastActivity);
+        return shouldIncludeTask(nearest, lastActivity, lastInteractionType);
       });
 
       // Step 2.7: Enrich tasks with per-user signals

@@ -98,8 +98,12 @@ export function shouldIncludeTask(nearestDate, lastActivityAt, lastInteractionTy
   // Today or tomorrow → always include
   if (diffDays >= 0 && diffDays <= 1) return true;
 
-  // Overdue → include only if smart-overdue
-  if (diffDays < 0) return isSmartOverdue(nearestDate, lastActivityAt);
+  // Overdue → always include (it's past due, user needs to see it)
+  // Exception: if last interaction was a terminal status change, AI will filter it
+  if (diffDays < 0) return true;
+
+  // Within 7 days → include (approaching deadline)
+  if (diffDays <= 7) return true;
 
   // Interaction-type-aware staleness
   // Comment-only = not resolved, use shorter staleness window (1/5 instead of 1/3)
