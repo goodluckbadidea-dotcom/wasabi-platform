@@ -401,7 +401,10 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
         }
       }
 
+      console.log(`[AICurated] Task-like databases found: ${taskDbs.length}`, taskDbs.map((d) => d.pageName));
+
       if (taskDbs.length === 0) {
+        console.warn("[AICurated] No task-like databases found. Candidates checked:", candidates.length);
         // Only treat as a real "no tasks" if we didn't have errors
         if (schemaErrors > 0) {
           setError(`Failed to scan ${schemaErrors} database(s)`);
@@ -480,6 +483,8 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
         }
       }
 
+      console.log(`[AICurated] allTasks count: ${allTasks.length}`, allTasks.map((t) => ({ title: t.title, done: t.done, nearestDate: t.nearestDate, status: t.status })));
+
       if (fetchErrors > 0) {
         setError(`Failed to fetch from ${fetchErrors} database(s)`);
       }
@@ -555,8 +560,14 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
         task._isOverdue = isSmartOverdue(nearest, lastActivity);
         task._isStale = shouldIncludeTask(nearest, lastActivity, lastInteractionType);
 
-        return shouldIncludeTask(nearest, lastActivity, lastInteractionType);
+        const include = shouldIncludeTask(nearest, lastActivity, lastInteractionType);
+        if (!include) {
+          console.log(`[AICurated] FILTERED OUT: "${task.title}" (date: ${nearest}, activity: ${lastActivity}, interactionType: ${lastInteractionType})`);
+        }
+        return include;
       });
+
+      console.log(`[AICurated] filteredTasks count: ${filteredTasks.length} (from ${allTasks.length} total)`);
 
       // Step 2.7: Enrich tasks with per-user signals
       if (identity?.id) {
@@ -922,6 +933,7 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
             const targetCount = Math.min(TARGET_MAX, BASE_TARGET + completedCountRef.current);
             // Filter out dismissed tasks, then slice to target
             const visible = result.filter((t) => !dismissedIdsRef.current.has(t.id));
+            console.log(`[AICurated] AI scored ${result.length} tasks, showing ${Math.min(visible.length, targetCount)} (target: ${targetCount}, dismissed: ${dismissedIdsRef.current.size})`);
             setAiTasks(visible.slice(0, targetCount));
             setCache(CACHE_KEY, result); // cache full ranked list (unfiltered)
           } else {
