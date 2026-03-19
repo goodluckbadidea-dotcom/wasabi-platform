@@ -16,6 +16,8 @@ import NeuronBadge from "../neurons/NeuronBadge.jsx";
 export default function Kanban({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, onViewConfigChange, pageConfig }) {
   const [dragState, setDragState] = useState(null); // { pageId, fromCol, startX, startY, isDragging }
   const [dropTarget, setDropTarget] = useState(null); // column option name
+  const [colDrag, setColDrag] = useState(null); // { colName, startX } — column reorder drag
+  const [colDropTarget, setColDropTarget] = useState(null); // target column name for reorder
   const record = useRecordDetail();
   const ghostRef = useRef(null);
   const columnRefs = useRef({});
@@ -76,12 +78,21 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
       }
     }
 
-    // Build column array
-    const cols = columnOptions.map((opt) => ({
-      name: opt.name,
-      color: getStatusColor(opt.name, optionNames, config.colorMapping),
-      pages: grouped[opt.name] || [],
-    }));
+    // Build column array — filter out statuses hidden by chip filters on the columnField
+    const hiddenStatuses = chipFilters[columnField];
+    const cols = columnOptions
+      .filter((opt) => {
+        // If chip filters are active on the group-by field, hide filtered-out columns entirely
+        if (hiddenStatuses && hiddenStatuses.length > 0) {
+          return hiddenStatuses.includes(opt.name);
+        }
+        return true;
+      })
+      .map((opt) => ({
+        name: opt.name,
+        color: getStatusColor(opt.name, optionNames, config.colorMapping),
+        pages: grouped[opt.name] || [],
+      }));
 
     // Add uncategorized if any
     if (grouped["__uncategorized__"].length > 0) {
@@ -89,6 +100,17 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
         name: "__uncategorized__",
         color: C.darkMuted,
         pages: grouped["__uncategorized__"],
+      });
+    }
+
+    // Apply custom column order if set
+    if (config.columnOrder && config.columnOrder.length > 0) {
+      const orderMap = {};
+      config.columnOrder.forEach((name, i) => { orderMap[name] = i; });
+      cols.sort((a, b) => {
+        const oa = orderMap[a.name] ?? 999;
+        const ob = orderMap[b.name] ?? 999;
+        return oa - ob;
       });
     }
 
@@ -206,6 +228,51 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
     };
   }, [dragState, dropTarget, onUpdate, columnField, columnType]);
 
+  // ── Column reorder drag ──
+  const handleColDragStart = useCallback((e, colName) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setColDrag({ colName, startX: e.clientX });
+  }, []);
+
+  useEffect(() => {
+    if (!colDrag) return;
+    const handleMove = (e) => {
+      // Find which column the cursor is over
+      for (const [name, el] of Object.entries(columnRefs.current)) {
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        if (e.clientX >= r.left && e.clientX <= r.right) {
+          setColDropTarget(name !== colDrag.colName ? name : null);
+          return;
+        }
+      }
+      setColDropTarget(null);
+    };
+    const handleUp = () => {
+      if (colDropTarget && colDropTarget !== colDrag.colName) {
+        // Reorder: move colDrag.colName to position of colDropTarget
+        const currentOrder = columns.map((c) => c.name);
+        const fromIdx = currentOrder.indexOf(colDrag.colName);
+        const toIdx = currentOrder.indexOf(colDropTarget);
+        if (fromIdx >= 0 && toIdx >= 0) {
+          const newOrder = [...currentOrder];
+          newOrder.splice(fromIdx, 1);
+          newOrder.splice(toIdx, 0, colDrag.colName);
+          onViewConfigChange?.({ columnOrder: newOrder });
+        }
+      }
+      setColDrag(null);
+      setColDropTarget(null);
+    };
+    document.addEventListener("mousemove", handleMove);
+    document.addEventListener("mouseup", handleUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMove);
+      document.removeEventListener("mouseup", handleUp);
+    };
+  }, [colDrag, colDropTarget, columns, onViewConfigChange]);
+
   // ── Open new-record modal, optionally pre-filling column value ──
   const openNewModal = useCallback((colName) => {
     const prefill = {};
@@ -292,7 +359,27 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
                 display: "flex",
                 alignItems: "center",
                 gap: 8,
+                background: colDrag?.colName === col.name ? C.accent + "11" : colDropTarget === col.name ? C.accent + "0A" : "transparent",
+                transition: "background 0.15s",
               }}>
+                {/* Drag handle for column reorder */}
+                {col.name !== "__uncategorized__" && (
+                  <span
+                    onMouseDown={(e) => handleColDragStart(e, col.name)}
+                    style={{
+                      cursor: "grab",
+                      color: C.darkMuted,
+                      fontSize: 10,
+                      lineHeight: 1,
+                      opacity: 0.5,
+                      userSelect: "none",
+                      flexShrink: 0,
+                    }}
+                    title="Drag to reorder column"
+                  >
+                    ⠿
+                  </span>
+                )}
                 <span style={{
                   fontSize: 13,
                   fontWeight: 600,
