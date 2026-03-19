@@ -921,18 +921,7 @@ export default {
         return await handleCreateFlow(env, body);
       }
 
-      // ─── D1 Notifications CRUD ───
-      const notifMatch = path.match(/^\/d1\/notifications\/([^/]+)$/);
-      if (notifMatch) {
-        const id = notifMatch[1];
-        if (request.method === "GET") return await handleGetNotification(env, id);
-        if (request.method === "PATCH") {
-          const body = await request.json();
-          return await handleUpdateNotification(env, id, body);
-        }
-        if (request.method === "DELETE") return await handleDeleteNotification(env, id);
-      }
-
+      // ─── D1 Notifications ───
       if (path === "/d1/notifications" && request.method === "GET") {
         const user = await extractUser(request, env);
         return await handleListNotifications(env, url, user);
@@ -982,6 +971,18 @@ export default {
           "INSERT OR REPLACE INTO user_connections (user_id, key, value, updated_at) VALUES (?, 'notification_prefs', ?, datetime('now'))"
         ).bind(user.sub, prefs).run();
         return jsonResponse({ success: true });
+      }
+
+      // ─── D1 Notifications CRUD (by ID — must come AFTER specific sub-path routes) ───
+      const notifMatch = path.match(/^\/d1\/notifications\/([^/]+)$/);
+      if (notifMatch) {
+        const id = notifMatch[1];
+        if (request.method === "GET") return await handleGetNotification(env, id);
+        if (request.method === "PATCH") {
+          const body = await request.json();
+          return await handleUpdateNotification(env, id, body);
+        }
+        if (request.method === "DELETE") return await handleDeleteNotification(env, id);
       }
 
       // ─── D1 Knowledge Base CRUD ───

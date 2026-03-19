@@ -292,7 +292,11 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
     try { localStorage.removeItem("wasabi_zen_ai_tasks_v3"); } catch {}
     const cached = getCached(CACHE_KEY, CACHE_TTL);
     if (cached) {
-      setAiTasks(cached);
+      // Filter out any zen tasks that may have been cached before exclusion fix
+      const filtered = zenTableId
+        ? cached.filter((t) => t.source !== `d1:${zenTableId}` && t.source !== "manual")
+        : cached.filter((t) => t.source !== "manual");
+      setAiTasks(filtered);
       setLastUpdated(new Date(JSON.parse(localStorage.getItem(CACHE_KEY))?.ts));
       setLoading(false);
     }
@@ -348,7 +352,9 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
         }
         if (pt === "database" && page.id) {
           // Skip the zen tasks table — it's the user's manual task list, not a source DB
+          // Check by ID, name pattern, and _systemInternal flag for robustness
           if (zenTableId && page.id === zenTableId) continue;
+          if (page.name && page.name.startsWith("Zen Tasks")) continue;
           candidates.push({ type: "d1", tableId: page.id, pageName: page.name });
         }
       }
@@ -452,10 +458,19 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
 
       const fetchResults = await Promise.allSettled(fetchPromises);
       const tasksBySource = {};
+      // Build set of sources to exclude (zen tasks table)
+      const excludedSources = new Set();
+      if (zenTableId) excludedSources.add(`d1:${zenTableId}`);
       for (const r of fetchResults) {
         if (r.status === "fulfilled" && r.value) {
-          allTasks.push(...r.value.tasks);
-          if (r.value.source) tasksBySource[r.value.source] = r.value.tasks;
+          // Safety: never include zen/manual tasks in AI-curated list
+          const safeTasks = r.value.tasks.filter((t) =>
+            t.source !== "manual" && !excludedSources.has(t.source)
+          );
+          allTasks.push(...safeTasks);
+          if (r.value.source && !excludedSources.has(r.value.source)) {
+            tasksBySource[r.value.source] = safeTasks;
+          }
         }
       }
 
