@@ -1361,8 +1361,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   // ── Cell Linking ──
   const { resolveLinksForView, createLink, removeLink, getLinksForTarget } = useLinks();
   const [resolvedLinks, setResolvedLinks] = useState(new Map());
-  const [linkPickerCell, setLinkPickerCell] = useState(null); // { pageId, field }
-  const [hoveredCell, setHoveredCell] = useState(null); // { pageId, field }
+  const [linkPickerCell, setLinkPickerCell] = useState(null); // { pageId, field, fieldType }
 
   // Resolve linked values for this view
   const viewIdx = pageConfig?.views?.findIndex((v) => v === config) ?? 0;
@@ -3123,6 +3122,12 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           }}
           onDelete={onDelete ? (ids) => { onDelete(ids); setDetailPage(null); } : undefined}
           pageConfigId={pageConfig?.id}
+          resolvedLinks={resolvedLinks}
+          onLinkField={(fieldName, fieldType) => setLinkPickerCell({ pageId: detailPage.id, field: fieldName, fieldType })}
+          onUnlinkField={(linkId) => {
+            removeLink(linkId);
+            resolveLinksForView(pageConfig?.id, viewIdx).then(setResolvedLinks).catch(() => {});
+          }}
         />
       )}
 
@@ -3224,9 +3229,10 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
 
       {linkPickerCell && (
         <LinkPicker
+          targetFieldType={linkPickerCell.fieldType}
           onCancel={() => setLinkPickerCell(null)}
           onSelect={async (selection) => {
-            const { sourceRef, sourcePageId, sourceViewIdx, sourceName, sourceIsReadOnly, previewValue } = selection;
+            const { sourceRef, sourcePageId, sourceViewIdx, sourceName, sourceIsReadOnly, previewValue, sourceFieldType } = selection;
             const targetRef = { type: "notion", pageId: linkPickerCell.pageId, field: linkPickerCell.field };
             await createLink({
               name: sourceName,
@@ -3237,6 +3243,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
               targetView: viewIdx,
               targetRef,
               direction: "one_way",
+              sourceFieldType: sourceFieldType || "",
+              targetFieldType: linkPickerCell.fieldType || "",
             });
             // Refresh resolved links
             resolveLinksForView(pageConfig?.id, viewIdx)

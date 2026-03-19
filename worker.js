@@ -132,8 +132,12 @@ CREATE TABLE IF NOT EXISTS cell_links (
   target_ref TEXT NOT NULL,
   direction TEXT DEFAULT 'one_way',
   active INTEGER DEFAULT 1,
-  created_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT (datetime('now')),
+  source_field_type TEXT DEFAULT '',
+  target_field_type TEXT DEFAULT ''
 );
+CREATE INDEX IF NOT EXISTS idx_cell_links_target ON cell_links(target_page_id, target_view_idx);
+CREATE INDEX IF NOT EXISTS idx_cell_links_source ON cell_links(source_page_id);
 
 CREATE TABLE IF NOT EXISTS sync_configs (
   id TEXT PRIMARY KEY,
@@ -1209,8 +1213,8 @@ export default {
         const body = await request.json();
         const id = crypto.randomUUID();
         await env.DB.prepare(
-          `INSERT INTO cell_links (id, source_page_id, source_view_idx, source_ref, target_page_id, target_view_idx, target_ref, direction, active)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`
+          `INSERT INTO cell_links (id, source_page_id, source_view_idx, source_ref, target_page_id, target_view_idx, target_ref, direction, active, source_field_type, target_field_type)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`
         ).bind(
           id,
           body.source_page_id || "",
@@ -1219,7 +1223,9 @@ export default {
           body.target_page_id || "",
           body.target_view_idx ?? 0,
           JSON.stringify(body.target_ref || {}),
-          body.direction || "one_way"
+          body.direction || "one_way",
+          body.source_field_type || "",
+          body.target_field_type || ""
         ).run();
         return jsonResponse({ id }, 201);
       }
@@ -1259,6 +1265,8 @@ export default {
           if (body.active !== undefined) { sets.push("active = ?"); vals.push(body.active ? 1 : 0); }
           if (body.source_ref !== undefined) { sets.push("source_ref = ?"); vals.push(JSON.stringify(body.source_ref)); }
           if (body.target_ref !== undefined) { sets.push("target_ref = ?"); vals.push(JSON.stringify(body.target_ref)); }
+          if (body.source_field_type !== undefined) { sets.push("source_field_type = ?"); vals.push(body.source_field_type); }
+          if (body.target_field_type !== undefined) { sets.push("target_field_type = ?"); vals.push(body.target_field_type); }
           if (sets.length > 0) {
             vals.push(id);
             await env.DB.prepare(`UPDATE cell_links SET ${sets.join(", ")} WHERE id = ?`).bind(...vals).run();
@@ -1691,6 +1699,11 @@ async function handleInit(env) {
       "CREATE TABLE IF NOT EXISTS task_interactions (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, source TEXT NOT NULL, user_id TEXT NOT NULL DEFAULT 'default', interaction_type TEXT NOT NULL DEFAULT 'view', detail TEXT, created_at TEXT DEFAULT (datetime('now')))",
       "CREATE INDEX IF NOT EXISTS idx_task_interactions_lookup ON task_interactions(task_id, source)",
       "CREATE INDEX IF NOT EXISTS idx_task_interactions_user ON task_interactions(user_id, source)",
+      // Cell links: field type columns + indexes
+      "ALTER TABLE cell_links ADD COLUMN source_field_type TEXT DEFAULT ''",
+      "ALTER TABLE cell_links ADD COLUMN target_field_type TEXT DEFAULT ''",
+      "CREATE INDEX IF NOT EXISTS idx_cell_links_target ON cell_links(target_page_id, target_view_idx)",
+      "CREATE INDEX IF NOT EXISTS idx_cell_links_source ON cell_links(source_page_id)",
     ];
     for (const sql of migrations) {
       try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }

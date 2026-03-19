@@ -323,13 +323,13 @@ if (typeof document !== "undefined") {
   if (!document.getElementById(styleId)) {
     const style = document.createElement("style");
     style.id = styleId;
-    style.textContent = `@keyframes slideInRight{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}`;
+    style.textContent = `@keyframes slideInRight{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}} .prop-row-hover:hover .link-btn-hover{opacity:1!important}`;
     document.head.appendChild(style);
   }
 }
 
 // ── Main Component ──
-export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete, pageConfigId }) {
+export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete, pageConfigId, resolvedLinks, onLinkField, onUnlinkField }) {
   const [editingField, setEditingField] = useState(null);
   const [editValue, setEditValue] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -465,21 +465,45 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
                 const isEditing = editingField === fieldName;
                 const isEditable = EDITABLE_TYPES.has(prop.type);
                 const hasPending = !!pendingChanges[fieldName];
+                const cellKey = `${page.id}:${fieldName}`;
+                const linkData = resolvedLinks?.get(cellKey);
+                const isLinked = !!linkData;
 
                 return (
                   <div
                     key={fieldName}
+                    className="prop-row-hover"
                     style={{
                       ...ds.propRow,
                       background: hasPending ? `${C.accent}08` : "transparent",
+                      borderLeft: isLinked ? `3px solid ${linkData.stale ? "#FF6B3D" : C.accent}` : "3px solid transparent",
                       cursor: isEditable ? "pointer" : "default",
+                      position: "relative",
                     }}
-                    onClick={() => !isEditing && isEditable && startEdit(fieldName, prop)}
+                    onClick={() => !isEditing && isEditable && !isLinked && startEdit(fieldName, prop)}
                   >
                     {/* Label */}
-                    <div style={ds.propLabel}>
+                    <div style={{ ...ds.propLabel, display: "flex", alignItems: "center", gap: 6 }}>
                       <span>{fieldName}</span>
                       <span style={ds.propType}>{TYPE_LABELS[prop.type] || prop.type}</span>
+                      {/* Link icon — visible on hover for editable unlinked fields */}
+                      {isEditable && !isLinked && !isEditing && onLinkField && (
+                        <button
+                          className="link-btn-hover"
+                          onClick={(e) => { e.stopPropagation(); onLinkField(fieldName, prop.type); }}
+                          title="Link to another field"
+                          style={{
+                            background: "none", border: "none", cursor: "pointer",
+                            padding: 2, borderRadius: 3, display: "flex", alignItems: "center",
+                            opacity: 0, transition: "opacity 0.15s",
+                          }}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={C.darkMuted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
 
                     {/* Value */}
@@ -499,9 +523,32 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
                           fieldName={fieldName}
                           schema={schema}
                           pendingValue={pendingChanges[fieldName]?.value}
+                          linkedValue={linkData?.value}
                         />
                       )}
-                      {isEditable && !isEditing && (
+                      {/* Linked indicator — small tag icon */}
+                      {isLinked && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm(`Remove link from "${linkData.link?.name || fieldName}"?`)) {
+                              onUnlinkField?.(linkData.link.id);
+                            }
+                          }}
+                          title={`Linked from: ${linkData.link?.name || "unknown source"}${linkData.stale ? " (stale)" : ""}`}
+                          style={{
+                            background: "none", border: "none", cursor: "pointer",
+                            padding: 2, borderRadius: 3, display: "flex", alignItems: "center",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={linkData.stale ? "#FF6B3D" : C.accent} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                          </svg>
+                        </button>
+                      )}
+                      {isEditable && !isEditing && !isLinked && (
                         <IconEdit size={10} color={C.darkMuted + "66"} />
                       )}
                     </div>
@@ -762,8 +809,8 @@ function CommentsTab({ recordId, pageConfigId }) {
 }
 
 // ── Display a property value (read mode) ──
-function DisplayValue({ prop, fieldName, schema, pendingValue }) {
-  const value = pendingValue !== undefined ? pendingValue : readProp(prop);
+function DisplayValue({ prop, fieldName, schema, pendingValue, linkedValue }) {
+  const value = linkedValue !== undefined ? linkedValue : (pendingValue !== undefined ? pendingValue : readProp(prop));
 
   if (value === null || value === undefined || value === "") {
     return <span style={{ color: C.darkMuted + "66", fontStyle: "italic", fontSize: 12 }}>Empty</span>;

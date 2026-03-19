@@ -14,6 +14,7 @@ import {
   IconClose, IconSearch, IconTable, IconTimeline, IconCalendar,
   IconKanban, IconChart, IconFolder, IconDatabase, IconBolt, IconSheet, IconConnect,
 } from "../design/icons.jsx";
+import { areTypesCompatible, getCompatGroup, getGroupLabel } from "../config/linkTypeCompat.js";
 
 // ── View type → icon ──
 const VIEW_ICONS = {
@@ -35,7 +36,87 @@ const LINKABLE_TYPES = new Set(["table", "kanban", "cardGrid", "linked_sheet"]);
 // For target mode: only writable view types can receive linked values
 const WRITABLE_TYPES = new Set(["table", "kanban", "cardGrid"]);
 
-export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode = "source" }) {
+// ── Grid sub-component with type filtering ──
+function LinkPickerGrid({ viewData, targetFieldType, selectedCell, setSelectedCell, s }) {
+  // Build column type map
+  const colTypeMap = useMemo(() => {
+    const map = {};
+    if (viewData.schema) {
+      const allFields = [
+        ...(viewData.schema.titles || []),
+        ...(viewData.schema.texts || []),
+        ...(viewData.schema.numbers || []),
+        ...(viewData.schema.selects || []),
+        ...(viewData.schema.multiSelects || []),
+        ...(viewData.schema.statuses || []),
+        ...(viewData.schema.dates || []),
+        ...(viewData.schema.checkboxes || []),
+        ...(viewData.schema.urls || []),
+        ...(viewData.schema.emails || []),
+        ...(viewData.schema.phones || []),
+        ...(viewData.schema.formulas || []),
+        ...(viewData.schema.rollups || []),
+        ...(viewData.schema.relations || []),
+        ...(viewData.schema.people || []),
+      ];
+      for (const f of allFields) map[f.name] = f.type;
+    }
+    return map;
+  }, [viewData.schema]);
+
+  return (
+    <table style={s.gridTable}>
+      <thead>
+        <tr>
+          {viewData.columns.slice(0, 12).map((col) => {
+            const colType = colTypeMap[col] || (viewData.type === "sheet" ? "rich_text" : "");
+            const compatible = !targetFieldType || areTypesCompatible(colType, targetFieldType);
+            return (
+              <th key={col} style={{ ...s.th, opacity: compatible ? 1 : 0.35 }}>
+                {col}
+                {colType && (
+                  <div style={{ fontSize: 9, fontWeight: 400, color: C.darkMuted, marginTop: 1 }}>
+                    {getGroupLabel(getCompatGroup(colType))}
+                  </div>
+                )}
+              </th>
+            );
+          })}
+        </tr>
+      </thead>
+      <tbody>
+        {(viewData.type === "sheet" ? viewData.rows : viewData.rows.map((r) => r.cells))
+          .slice(0, 50).map((row, ri) => (
+          <tr key={ri}>
+            {(Array.isArray(row) ? row : row).slice(0, 12).map((cell, ci) => {
+              const isActive = selectedCell?.rowIdx === ri && selectedCell?.colIdx === ci;
+              const displayVal = cell === null || cell === undefined ? "" : String(cell);
+              const colType = colTypeMap[viewData.columns[ci]] || (viewData.type === "sheet" ? "rich_text" : "");
+              const compatible = !targetFieldType || areTypesCompatible(colType, targetFieldType);
+              return (
+                <td
+                  key={ci}
+                  style={{ ...s.td(isActive), opacity: compatible ? 1 : 0.3, cursor: compatible ? "pointer" : "not-allowed" }}
+                  onClick={() => compatible && setSelectedCell({
+                    rowIdx: ri,
+                    colIdx: ci,
+                    column: viewData.columns[ci],
+                    value: displayVal,
+                  })}
+                  title={compatible ? displayVal : `Incompatible type: ${getGroupLabel(getCompatGroup(colType))}`}
+                >
+                  {displayVal.slice(0, 60) || "\u2014"}
+                </td>
+              );
+            })}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode = "source", targetFieldType }) {
   const { user, pages } = usePlatform();
   const [search, setSearch] = useState("");
   const [selectedPage, setSelectedPage] = useState(null);
@@ -141,6 +222,33 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
       };
     }
 
+    // Determine source field type
+    let sourceFieldType = "";
+    if (viewData.type === "sheet") {
+      sourceFieldType = "rich_text"; // sheets are text
+    } else if (viewData.schema) {
+      // Look up property type from schema
+      const allFields = [
+        ...(viewData.schema.titles || []),
+        ...(viewData.schema.texts || []),
+        ...(viewData.schema.numbers || []),
+        ...(viewData.schema.selects || []),
+        ...(viewData.schema.multiSelects || []),
+        ...(viewData.schema.statuses || []),
+        ...(viewData.schema.dates || []),
+        ...(viewData.schema.checkboxes || []),
+        ...(viewData.schema.urls || []),
+        ...(viewData.schema.emails || []),
+        ...(viewData.schema.phones || []),
+        ...(viewData.schema.formulas || []),
+        ...(viewData.schema.rollups || []),
+        ...(viewData.schema.relations || []),
+        ...(viewData.schema.people || []),
+      ];
+      const match = allFields.find((f) => f.name === column);
+      sourceFieldType = match?.type || "";
+    }
+
     onSelect({
       sourceRef,
       sourcePageId: selectedPage.id,
@@ -148,6 +256,7 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
       sourceName: `${selectedPage.name || "Untitled"} → ${selectedView.name || VIEW_LABELS[selectedView.type] || selectedView.type}`,
       sourceIsReadOnly: viewData.type === "sheet",
       previewValue: value,
+      sourceFieldType,
     });
   }, [selectedCell, selectedView, selectedPage, viewData, onSelect]);
 
@@ -321,41 +430,13 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
               </div>
             )}
             {viewData && !viewLoading && (
-              <table style={s.gridTable}>
-                <thead>
-                  <tr>
-                    {viewData.columns.slice(0, 12).map((col) => (
-                      <th key={col} style={s.th}>{col}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(viewData.type === "sheet" ? viewData.rows : viewData.rows.map((r) => r.cells))
-                    .slice(0, 50).map((row, ri) => (
-                    <tr key={ri}>
-                      {(Array.isArray(row) ? row : row).slice(0, 12).map((cell, ci) => {
-                        const isActive = selectedCell?.rowIdx === ri && selectedCell?.colIdx === ci;
-                        const displayVal = cell === null || cell === undefined ? "" : String(cell);
-                        return (
-                          <td
-                            key={ci}
-                            style={s.td(isActive)}
-                            onClick={() => setSelectedCell({
-                              rowIdx: ri,
-                              colIdx: ci,
-                              column: viewData.columns[ci],
-                              value: displayVal,
-                            })}
-                            title={displayVal}
-                          >
-                            {displayVal.slice(0, 60) || "—"}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <LinkPickerGrid
+                viewData={viewData}
+                targetFieldType={targetFieldType}
+                selectedCell={selectedCell}
+                setSelectedCell={setSelectedCell}
+                s={s}
+              />
             )}
           </div>
         </div>

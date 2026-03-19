@@ -48,7 +48,7 @@ export function loadCachedLinks() {
  * Save a link to D1 (create or update). Returns the link ID.
  */
 export async function saveLink(_workerUrl, _notionKey, _linksDbId, link) {
-  const { id, name, sourcePage, sourceView, sourceRef, targetPage, targetView, targetRef, direction } = link;
+  const { id, name, sourcePage, sourceView, sourceRef, targetPage, targetView, targetRef, direction, sourceFieldType, targetFieldType } = link;
 
   const payload = {
     source_page_id: sourcePage || "",
@@ -58,6 +58,8 @@ export async function saveLink(_workerUrl, _notionKey, _linksDbId, link) {
     target_view_idx: targetView ?? 0,
     target_ref: targetRef || {},
     direction: direction || "one_way",
+    source_field_type: sourceFieldType || "",
+    target_field_type: targetFieldType || "",
   };
 
   // Existing link → update
@@ -117,6 +119,8 @@ function normalizeLink(row) {
     targetView: row.target_view_idx ?? 0,
     targetRef: typeof row.target_ref === "string" ? JSON.parse(row.target_ref || "{}") : (row.target_ref || {}),
     direction: row.direction || "one_way",
+    sourceFieldType: row.source_field_type || "",
+    targetFieldType: row.target_field_type || "",
   };
 }
 
