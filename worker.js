@@ -7190,9 +7190,12 @@ async function syncFlushInternal(env, notionKey) {
  * Used when auto-creating a table_schemas entry for a linked Notion database.
  */
 function notionPropsToD1Columns(notionProps) {
+  // Map Notion property types to D1 column types
+  // CRITICAL: title→title (not text), status→status (not select)
+  // These must match what d1SchemaToClassified() expects
   const typeMap = {
-    title: "text", rich_text: "text", number: "number",
-    select: "select", multi_select: "multi_select", status: "select",
+    title: "title", rich_text: "text", number: "number",
+    select: "select", multi_select: "multi_select", status: "status",
     date: "date", checkbox: "checkbox", url: "url", email: "email",
     phone_number: "phone", people: "people", files: "files",
     relation: "relation", formula: "text", rollup: "text",
@@ -7202,6 +7205,8 @@ function notionPropsToD1Columns(notionProps) {
   };
 
   const columns = [];
+  let titleCol = null;
+
   for (const [name, prop] of Object.entries(notionProps)) {
     const colType = typeMap[prop.type] || "text";
     const col = {
@@ -7210,7 +7215,7 @@ function notionPropsToD1Columns(notionProps) {
       type: colType,
     };
 
-    // Extract select/multi_select options
+    // Extract select/multi_select/status options
     if (prop.type === "select" && prop.select?.options) {
       col.options = prop.select.options.map((o) => ({ label: o.name, color: o.color }));
     }
@@ -7219,6 +7224,12 @@ function notionPropsToD1Columns(notionProps) {
     }
     if (prop.type === "status" && prop.status?.options) {
       col.options = prop.status.options.map((o) => ({ label: o.name, color: o.color }));
+      if (prop.status?.groups) {
+        col.groups = prop.status.groups.map((g) => ({
+          name: g.name, color: g.color,
+          options: (g.option_ids || []),
+        }));
+      }
     }
 
     // Mark computed properties as read-only
@@ -7226,8 +7237,19 @@ function notionPropsToD1Columns(notionProps) {
       col.readOnly = true;
     }
 
-    columns.push(col);
+    // Track title column to ensure it's first
+    if (prop.type === "title") {
+      titleCol = col;
+    } else {
+      columns.push(col);
+    }
   }
+
+  // Title column MUST be first — d1SchemaToClassified uses columns[0] as title
+  if (titleCol) {
+    columns.unshift(titleCol);
+  }
+
   return columns;
 }
 
@@ -7259,22 +7281,17 @@ async function handleSyncConfigure(env, tableId, body, notionKey) {
     return jsonResponse({ _error: `Failed to reach Notion: ${err.message}` }, 502);
   }
 
-  // Get D1 table schema — if it doesn't exist, CREATE it from Notion properties
-  let schema = await env.DB.prepare("SELECT columns FROM table_schemas WHERE id = ?").bind(tableId).first();
-  let columns;
+  // Always regenerate D1 schema from Notion properties (handles schema drift + type fixes)
+  const notionProps = notionSchema.properties || {};
+  const columns = notionPropsToD1Columns(notionProps);
 
-  if (!schema) {
-    // Generate D1 schema from Notion database properties
-    const notionProps = notionSchema.properties || {};
-    columns = notionPropsToD1Columns(notionProps);
+  await env.DB.prepare(
+    `INSERT INTO table_schemas (id, columns, updated_at)
+     VALUES (?, ?, datetime('now'))
+     ON CONFLICT(id) DO UPDATE SET columns = excluded.columns, updated_at = datetime('now')`
+  ).bind(tableId, JSON.stringify(columns)).run();
 
-    await env.DB.prepare(
-      `INSERT INTO table_schemas (id, columns, updated_at)
-       VALUES (?, ?, datetime('now'))
-       ON CONFLICT(id) DO UPDATE SET columns = excluded.columns, updated_at = datetime('now')`
-    ).bind(tableId, JSON.stringify(columns)).run();
-  } else {
-    columns = safeParseJSON(schema.columns);
+  {
   }
 
   // Auto-generate field mapping from D1 columns ↔ Notion properties

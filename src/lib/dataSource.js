@@ -316,13 +316,16 @@ function d1SchemaToClassified(tableId, title, columns) {
   };
 
   columns.forEach((col, idx) => {
-    const notionType = idx === 0 ? "title" : mapD1Type(col.type);
+    // Use explicit "title" type if set, otherwise first column is title
+    const isTitle = col.type === "title" || (idx === 0 && !schema.title);
+    const notionType = isTitle ? "title" : mapD1Type(col.type);
     const field = { name: col.name, id: col.id, type: notionType };
 
-    if (idx === 0) {
+    if (isTitle && !schema.title) {
       schema.title = field;
     } else {
       switch (col.type) {
+        case "title": // Explicit title type (from Notion-synced schemas)
         case "text":
           schema.richTexts.push(field);
           break;
@@ -357,6 +360,15 @@ function d1SchemaToClassified(tableId, title, columns) {
         case "status":
           field.options = normalizeOptions(col.options);
           schema.statuses.push(field);
+          break;
+        case "relation":
+          schema.relations.push(field);
+          break;
+        case "people":
+          schema.people.push(field);
+          break;
+        case "files":
+          schema.files.push(field);
           break;
       }
     }
