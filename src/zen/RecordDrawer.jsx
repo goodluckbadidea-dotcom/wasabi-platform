@@ -8,7 +8,6 @@ import Drawer from "../core/Drawer.jsx";
 import { useRecordDrawer } from "./RecordDrawerContext.jsx";
 import {
   updateRow, deleteRow, updateCalendarEvent, deleteCalendarEvent,
-  listRecordComments, createRecordComment, deleteRecordComment,
   getRecordNote, saveRecordNote,
   upsertTaskActivity, putRecordView,
   logTaskInteraction, getInteractionSummary,
@@ -17,7 +16,8 @@ import { updatePage } from "../notion/client.js";
 import { buildProp } from "../notion/properties.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import EmailThreadDrawer from "./EmailThreadDrawer.jsx";
-import MentionInput from "../components/MentionInput.jsx";
+import RecordComments from "../components/RecordComments.jsx";
+import RecordFiles from "../components/RecordFiles.jsx";
 import { IconLightbulb } from "../design/icons.jsx";
 
 // ── Priority colors (aligned to INFO_PALETTE) ──
@@ -402,6 +402,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
         {[
           { key: "details", label: "Details" },
           { key: "comments", label: "Comments" },
+          { key: "files", label: "Files" },
         ].map((t) => (
           <button key={t.key} style={tabStyle(activeTab === t.key)} onClick={() => setActiveTab(t.key)}>
             {t.label}
@@ -613,168 +614,29 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
 
       {/* ── Comments tab ── */}
       {activeTab === "comments" && (
-        <TaskCommentsTab recordId={task.id} pageConfigId={pageConfigId} taskSource={task.source} />
-      )}
-    </div>
-  );
-}
-
-
-// ════════════════════════════════════════════
-// TaskCommentsTab — threaded comments per record
-// ════════════════════════════════════════════
-function TaskCommentsTab({ recordId, pageConfigId, taskSource }) {
-  const { identity } = usePlatform();
-  const [comments, setComments] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [newComment, setNewComment] = useState("");
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState(null);
-  const inputRef = useRef(null);
-
-  const fetchComments = useCallback(async () => {
-    try {
-      setError(null);
-      const res = await listRecordComments(recordId, pageConfigId);
-      setComments(res?.comments || []);
-    } catch (err) {
-      console.error("[Comments] Failed to load:", err);
-      setError("Failed to load comments.");
-      setComments([]);
-    }
-    finally { setLoading(false); }
-  }, [recordId, pageConfigId]);
-
-  useEffect(() => { fetchComments(); }, [fetchComments]);
-
-  const handleSend = useCallback(async () => {
-    const text = newComment.trim();
-    if (!text || sending) return;
-    setSending(true);
-    setError(null);
-    try {
-      await createRecordComment(recordId, pageConfigId, text, identity?.id, identity?.display_name);
-      // Log comment interaction (bumps task priority — acknowledged but needs more work)
-      if (taskSource) logTaskInteraction(recordId, taskSource, identity?.id, "comment", text.slice(0, 50)).catch(() => {});
-      setNewComment("");
-      await fetchComments();
-      inputRef.current?.focus();
-    } catch (err) {
-      console.error("[Comments] Failed to add:", err);
-      setError("Failed to send comment. Please try again.");
-    }
-    finally { setSending(false); }
-  }, [newComment, sending, recordId, pageConfigId, fetchComments]);
-
-  const handleDeleteComment = useCallback(async (commentId) => {
-    try {
-      setError(null);
-      await deleteRecordComment(recordId, commentId);
-      setComments((prev) => prev.filter((c) => c.id !== commentId));
-    } catch (err) {
-      console.error("[Comments] Failed to delete:", err);
-      setError("Failed to delete comment.");
-    }
-  }, [recordId]);
-
-  const handleKeyDown = useCallback((e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
-  }, [handleSend]);
-
-  if (loading) {
-    return <div style={{ fontSize: 12, fontFamily: FONT, color: C.darkMuted, padding: "20px 0", textAlign: "center" }}>Loading comments...</div>;
-  }
-
-  return (
-    <div>
-      {/* Wasabi-internal notice */}
-      <div style={{
-        fontSize: 10, fontFamily: FONT, color: C.darkMuted, opacity: 0.7,
-        padding: "4px 0 8px", textAlign: "center",
-      }}>
-        Comments are stored in Wasabi — not synced to source database
-      </div>
-      {/* Comments list */}
-      <div style={{ maxHeight: 300, overflowY: "auto", marginBottom: 12 }}>
-        {comments.length === 0 && (
-          <div style={{ fontSize: 12, fontFamily: FONT, color: C.darkMuted, padding: "20px 0", textAlign: "center" }}>
-            No comments yet
-          </div>
-        )}
-        {comments.map((comment) => (
-          <div key={comment.id} style={{
-            display: "flex", alignItems: "flex-start", gap: 8,
-            padding: "8px 0", borderBottom: `1px solid ${C.darkBorder}`,
-          }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 2 }}>
-                {comment.user_name && (
-                  <span style={{ fontSize: 11, fontWeight: 600, fontFamily: FONT, color: C.accent }}>
-                    {comment.user_name}
-                  </span>
-                )}
-                <span style={{ fontSize: 10, fontFamily: FONT, color: C.darkMuted }}>
-                  {comment.created_at ? timeAgo(comment.created_at) : ""}
-                </span>
-              </div>
-              <div style={{ fontSize: 13, fontFamily: FONT, color: C.darkText, wordBreak: "break-word" }}>
-                {comment.content}
-              </div>
-            </div>
-            {(!identity || comment.user_id === identity?.id || identity?.role === "admin") && (
-              <button
-                onClick={() => handleDeleteComment(comment.id)}
-                style={{
-                  background: "transparent", border: "none", color: C.darkMuted,
-                  cursor: "pointer", fontSize: 16, padding: "6px 8px", borderRadius: RADIUS.sm,
-                  outline: "none", flexShrink: 0, transition: "color 0.15s",
-                  minWidth: 28, minHeight: 28, display: "flex", alignItems: "center", justifyContent: "center",
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = "#E05252"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = C.darkMuted; }}
-                title="Delete comment"
-              >&times;</button>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* Error message */}
-      {error && (
-        <div style={{
-          fontSize: 11, fontFamily: FONT, color: "#E05252",
-          marginBottom: 8, padding: "6px 10px",
-          background: "#E0525215", borderRadius: RADIUS.md,
-        }}>{error}</div>
-      )}
-
-      {/* New comment input with @mention support */}
-      <div style={{ display: "flex", gap: 6 }}>
-        <div style={{ flex: 1 }}>
-          <MentionInput
-            value={newComment}
-            onChange={setNewComment}
-            onKeyDown={handleKeyDown}
-            placeholder="Add a comment... (@ to mention)"
-            style={{ ...inputStyle, width: "100%" }}
-          />
-        </div>
-        <button
-          onClick={handleSend}
-          disabled={sending || !newComment.trim()}
-          style={{
-            padding: "8px 14px", borderRadius: RADIUS.md,
-            background: C.accent, color: "#fff", border: "none",
-            fontSize: 12, fontWeight: 600, fontFamily: FONT,
-            cursor: sending || !newComment.trim() ? "default" : "pointer",
-            opacity: sending || !newComment.trim() ? 0.4 : 1,
-            outline: "none", transition: "opacity 0.15s",
+        <RecordComments
+          recordId={task.id}
+          pageConfigId={pageConfigId}
+          onCommentAdded={(text) => {
+            if (task.source) logTaskInteraction(task.id, task.source, identity?.id, "comment", text.slice(0, 50)).catch(() => {});
+            upsertTaskActivity(task.id, task.source, new Date().toISOString()).catch(() => {});
           }}
-        >{sending ? "..." : "Send"}</button>
-      </div>
+          userId={identity?.id}
+          userName={identity?.display_name}
+          userRole={identity?.role}
+        />
+      )}
+
+      {/* ── Files tab ── */}
+      {activeTab === "files" && (
+        <RecordFiles recordId={task.id} pageConfigId={pageConfigId} />
+      )}
     </div>
   );
 }
+
+
+// TaskCommentsTab extracted to: src/components/RecordComments.jsx
 
 // ════════════════════════════════════════════
 // EventEditor

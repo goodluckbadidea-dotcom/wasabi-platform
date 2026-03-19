@@ -640,6 +640,44 @@ export async function deleteFile(fileId) {
   return apiFetch(`/files/${fileId}`, { method: "DELETE" });
 }
 
+// ─── Record Files (per-record) ───
+
+export async function listFilesByRecord(recordId) {
+  return apiFetch(`/files?record_id=${encodeURIComponent(recordId)}`, { method: "GET" });
+}
+
+export async function uploadFileToRecord(file, recordId, pageConfigId = "") {
+  const conn = getConnection();
+  if (!conn?.workerUrl) throw new Error("Not connected");
+
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("record_id", recordId);
+  if (pageConfigId) formData.append("page_id", pageConfigId);
+
+  const jwt = getJwt();
+  const res = await fetch(`${conn.workerUrl}/files`, {
+    method: "POST",
+    headers: {
+      ...(conn.secret ? { "X-Wasabi-Key": conn.secret } : {}),
+      ...(jwt ? { "Authorization": `Bearer ${jwt}` } : {}),
+    },
+    body: formData,
+  });
+  const data = await res.json().catch(() => ({ _error: `HTTP ${res.status}` }));
+  if (!res.ok || data._error) throw new Error(data._error || `Upload error: ${res.status}`);
+  return data;
+}
+
+// ─── Record Badge Counts ───
+
+export async function getRecordBadgeCounts(recordIds, pageConfigId) {
+  return apiFetch("/records/badge-counts", {
+    method: "POST",
+    body: { record_ids: recordIds, page_config_id: pageConfigId },
+  });
+}
+
 // ─── Google OAuth ───
 
 export async function getGoogleAuthUrl() {

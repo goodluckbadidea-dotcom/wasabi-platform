@@ -7,12 +7,11 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from "react"
 import { C, FONT, RADIUS, SHADOW, getSolidPillColor } from "../design/tokens.js";
 import { readProp, buildProp } from "../notion/properties.js";
 import { IconClose, IconEdit, IconExpand } from "../design/icons.jsx";
-import {
-  getRecordNote, saveRecordNote,
-  listRecordComments, createRecordComment, deleteRecordComment,
-} from "../lib/api.js";
 import { timeAgo } from "../utils/helpers.js";
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
+import RecordNotes from "../components/RecordNotes.jsx";
+import RecordComments from "../components/RecordComments.jsx";
+import RecordFiles from "../components/RecordFiles.jsx";
 
 // ── Property type labels ──
 const TYPE_LABELS = {
@@ -444,6 +443,7 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
             { key: "properties", label: "Properties" },
             { key: "notes", label: "Notes" },
             { key: "comments", label: "Comments" },
+            { key: "files", label: "Files" },
           ].map((t) => (
             <button
               key={t.key}
@@ -603,210 +603,21 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
         )}
 
         {/* Notes Tab */}
-        {activeTab === "notes" && <NotesTab recordId={page.id} pageConfigId={pageConfigId} />}
+        {activeTab === "notes" && <RecordNotes recordId={page.id} pageConfigId={pageConfigId} />}
 
         {/* Comments Tab */}
-        {activeTab === "comments" && <CommentsTab recordId={page.id} pageConfigId={pageConfigId} />}
+        {activeTab === "comments" && <RecordComments recordId={page.id} pageConfigId={pageConfigId} />}
+
+        {/* Files Tab */}
+        {activeTab === "files" && <RecordFiles recordId={page.id} pageConfigId={pageConfigId} />}
       </div>
     </div>
   );
 }
 
 // ── Notes Tab ──
-function NotesTab({ recordId, pageConfigId }) {
-  const [content, setContent] = useState("");
-  const [status, setStatus] = useState("");      // "", "Saving...", "Saved"
-  const [loading, setLoading] = useState(true);
-  const debounceRef = useRef(null);
-  const latestContentRef = useRef("");
-
-  // Fetch note on mount
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    getRecordNote(recordId, pageConfigId)
-      .then((res) => {
-        if (!cancelled) {
-          const text = res?.note?.content || "";
-          setContent(text);
-          latestContentRef.current = text;
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setContent("");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [recordId, pageConfigId]);
-
-  // Auto-save helper
-  const doSave = useCallback(async (text) => {
-    setStatus("Saving...");
-    try {
-      await saveRecordNote(recordId, pageConfigId, text);
-      setStatus("Saved");
-    } catch {
-      setStatus("Save failed");
-    }
-  }, [recordId, pageConfigId]);
-
-  // Debounced save on change
-  const handleChange = useCallback((e) => {
-    const val = e.target.value;
-    setContent(val);
-    latestContentRef.current = val;
-    setStatus("");
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => doSave(val), 1000);
-  }, [doSave]);
-
-  // Save on blur
-  const handleBlur = useCallback(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    doSave(latestContentRef.current);
-  }, [doSave]);
-
-  // Cleanup timer
-  useEffect(() => {
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, []);
-
-  if (loading) {
-    return <div style={ds.emptyState}>Loading notes...</div>;
-  }
-
-  return (
-    <div style={ds.notesArea}>
-      <textarea
-        style={ds.noteTextarea}
-        value={content}
-        onChange={handleChange}
-        onBlur={handleBlur}
-        placeholder="Write notes about this record..."
-        onFocus={(e) => { e.currentTarget.style.borderColor = C.accent; }}
-        onMouseLeave={() => {}}
-        onBlurCapture={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
-      />
-      <div style={ds.noteStatus}>{status}</div>
-    </div>
-  );
-}
-
-// ── Comments Tab ──
-function CommentsTab({ recordId, pageConfigId }) {
-  const [comments, setComments] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [newComment, setNewComment] = useState("");
-  const [sending, setSending] = useState(false);
-  const inputRef = useRef(null);
-
-  // Fetch comments on mount
-  const fetchComments = useCallback(async () => {
-    try {
-      const res = await listRecordComments(recordId, pageConfigId);
-      setComments(res?.comments || []);
-    } catch {
-      setComments([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [recordId, pageConfigId]);
-
-  useEffect(() => { fetchComments(); }, [fetchComments]);
-
-  // Add comment
-  const handleSend = useCallback(async () => {
-    const text = newComment.trim();
-    if (!text || sending) return;
-    setSending(true);
-    try {
-      await createRecordComment(recordId, pageConfigId, text);
-      setNewComment("");
-      await fetchComments();
-      if (inputRef.current) inputRef.current.focus();
-    } catch (err) {
-      console.error("Failed to add comment:", err);
-    } finally {
-      setSending(false);
-    }
-  }, [newComment, sending, recordId, pageConfigId, fetchComments]);
-
-  // Delete comment
-  const handleDelete = useCallback(async (commentId) => {
-    try {
-      await deleteRecordComment(recordId, commentId);
-      setComments((prev) => prev.filter((c) => c.id !== commentId));
-    } catch (err) {
-      console.error("Failed to delete comment:", err);
-    }
-  }, [recordId]);
-
-  // Enter to send
-  const handleKeyDown = useCallback((e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  }, [handleSend]);
-
-  if (loading) {
-    return <div style={ds.emptyState}>Loading comments...</div>;
-  }
-
-  return (
-    <>
-      <div style={ds.commentsList}>
-        {comments.length === 0 && (
-          <div style={ds.emptyState}>No comments yet</div>
-        )}
-        {comments.map((comment) => (
-          <div key={comment.id} style={ds.commentItem}>
-            <div style={{ flex: 1 }}>
-              <div style={ds.commentContent}>{comment.content}</div>
-              <div style={ds.commentMeta}>
-                {comment.created_at ? timeAgo(comment.created_at) : ""}
-              </div>
-            </div>
-            <button
-              style={ds.commentDeleteBtn}
-              onClick={() => handleDelete(comment.id)}
-              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; e.currentTarget.style.color = "#E05252"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = C.darkMuted; }}
-              title="Delete comment"
-            >
-              &times;
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {/* New comment input */}
-      <div style={ds.commentInput}>
-        <input
-          ref={inputRef}
-          type="text"
-          value={newComment}
-          onChange={(e) => setNewComment(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Add a comment..."
-          style={{ ...ds.input, flex: 1 }}
-        />
-        <button
-          style={{
-            ...ds.btn(true),
-            opacity: sending || !newComment.trim() ? 0.5 : 1,
-          }}
-          onClick={handleSend}
-          disabled={sending || !newComment.trim()}
-        >
-          {sending ? "..." : "Send"}
-        </button>
-      </div>
-    </>
-  );
-}
+// NotesTab and CommentsTab have been extracted to shared components:
+// src/components/RecordNotes.jsx and src/components/RecordComments.jsx
 
 // ── Display a property value (read mode) ──
 function DisplayValue({ prop, fieldName, schema, pendingValue, linkedValue }) {

@@ -201,9 +201,11 @@ CREATE TABLE IF NOT EXISTS files (
   mime_type TEXT DEFAULT 'application/octet-stream',
   size INTEGER DEFAULT 0,
   page_id TEXT DEFAULT '',
+  record_id TEXT DEFAULT '',
   meta TEXT DEFAULT '{}',
   created_at TEXT DEFAULT (datetime('now'))
 );
+CREATE INDEX IF NOT EXISTS idx_files_record ON files(record_id);
 
 CREATE TABLE IF NOT EXISTS rule_snapshots (
   rule_id TEXT NOT NULL,
@@ -823,6 +825,39 @@ export default {
         }
       }
 
+      // ─── Record Badge Counts (batch) ───
+      if (path === "/records/badge-counts" && request.method === "POST") {
+        try {
+          const body = await request.json();
+          const recordIds = body.record_ids || [];
+          const pageConfigId = body.page_config_id || "";
+          if (recordIds.length === 0) return jsonResponse({ counts: {} });
+          // Limit to 200 records per request
+          const ids = recordIds.slice(0, 200);
+          const placeholders = ids.map(() => "?").join(",");
+
+          const [commentsRes, notesRes, filesRes] = await Promise.all([
+            env.DB.prepare(
+              `SELECT record_id, COUNT(*) as c FROM record_comments WHERE record_id IN (${placeholders}) AND page_config_id = ? GROUP BY record_id`
+            ).bind(...ids, pageConfigId).all(),
+            env.DB.prepare(
+              `SELECT record_id FROM record_notes WHERE record_id IN (${placeholders}) AND page_config_id = ? AND content != ''`
+            ).bind(...ids, pageConfigId).all(),
+            env.DB.prepare(
+              `SELECT record_id, COUNT(*) as c FROM files WHERE record_id IN (${placeholders}) GROUP BY record_id`
+            ).bind(...ids).all(),
+          ]);
+
+          const counts = {};
+          for (const r of (commentsRes.results || [])) counts[r.record_id] = { ...counts[r.record_id], comments: r.c };
+          for (const r of (notesRes.results || [])) counts[r.record_id] = { ...counts[r.record_id], notes: true };
+          for (const r of (filesRes.results || [])) counts[r.record_id] = { ...counts[r.record_id], files: r.c };
+          return jsonResponse({ counts });
+        } catch (err) {
+          return jsonResponse({ _error: err.message }, 500);
+        }
+      }
+
       // ─── Task Activity ───
       const taskActivityMatch = path.match(/^\/task-activity\/([^/]+)$/);
       if (taskActivityMatch) {
@@ -1328,9 +1363,9 @@ export default {
       if (path === "/files" && request.method === "POST") {
         return await handleFileUpload(request, env);
       }
-      // GET /files — list files, optional ?page_id=
+      // GET /files — list files, optional ?page_id= or ?record_id=
       if (path === "/files" && request.method === "GET") {
-        return await handleListFiles(env, url.searchParams.get("page_id"));
+        return await handleListFiles(env, url.searchParams.get("page_id"), url.searchParams.get("record_id"));
       }
       // GET /files/:id — download file
       if (fileMatch && request.method === "GET") {
@@ -1704,6 +1739,9 @@ async function handleInit(env) {
       "ALTER TABLE cell_links ADD COLUMN target_field_type TEXT DEFAULT ''",
       "CREATE INDEX IF NOT EXISTS idx_cell_links_target ON cell_links(target_page_id, target_view_idx)",
       "CREATE INDEX IF NOT EXISTS idx_cell_links_source ON cell_links(source_page_id)",
+      // Record model: file-per-record support
+      "ALTER TABLE files ADD COLUMN record_id TEXT DEFAULT ''",
+      "CREATE INDEX IF NOT EXISTS idx_files_record ON files(record_id)",
     ];
     for (const sql of migrations) {
       try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }
@@ -4567,6 +4605,10 @@ async function handleFileUpload(request, env) {
   try {
     const contentType = request.headers.get("content-type") || "";
 
+    // Workspace quota check (5GB = 5368709120 bytes)
+    const WORKSPACE_QUOTA = 5368709120;
+    const FILE_MAX = 52428800; // 50MB per file
+
     // Support multipart form-data
     if (contentType.includes("multipart/form-data")) {
       const formData = await request.formData();
@@ -4574,7 +4616,17 @@ async function handleFileUpload(request, env) {
       if (!file || typeof file === "string") {
         return jsonResponse({ _error: "No file provided" }, 400);
       }
+      if (file.size > FILE_MAX) {
+        return jsonResponse({ _error: `File exceeds 50MB limit (${(file.size / 1048576).toFixed(1)}MB)` }, 400);
+      }
+      // Check workspace quota
+      const usage = await env.DB.prepare("SELECT COALESCE(SUM(size), 0) as total FROM files").first();
+      if ((usage?.total || 0) + file.size > WORKSPACE_QUOTA) {
+        return jsonResponse({ _error: "Workspace storage limit (5GB) reached" }, 400);
+      }
+
       const pageId = formData.get("page_id") || "";
+      const recordId = formData.get("record_id") || "";
       const meta = formData.get("meta") || "{}";
       const id = crypto.randomUUID();
       const ext = file.name.split(".").pop() || "bin";
@@ -4585,10 +4637,10 @@ async function handleFileUpload(request, env) {
       });
 
       await env.DB.prepare(
-        `INSERT INTO files (id, name, r2_key, mime_type, size, page_id, meta) VALUES (?, ?, ?, ?, ?, ?, ?)`
-      ).bind(id, file.name, r2Key, file.type || "application/octet-stream", file.size, pageId, meta).run();
+        `INSERT INTO files (id, name, r2_key, mime_type, size, page_id, record_id, meta) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(id, file.name, r2Key, file.type || "application/octet-stream", file.size, pageId, recordId, meta).run();
 
-      return jsonResponse({ id, name: file.name, r2_key: r2Key, size: file.size, mime_type: file.type });
+      return jsonResponse({ id, name: file.name, r2_key: r2Key, size: file.size, mime_type: file.type, record_id: recordId });
     }
 
     // Support JSON body with base64 data
@@ -4596,10 +4648,18 @@ async function handleFileUpload(request, env) {
     if (!body.name || !body.data) {
       return jsonResponse({ _error: "name and data (base64) required" }, 400);
     }
+    const bytes = Uint8Array.from(atob(body.data), (c) => c.charCodeAt(0));
+    if (bytes.length > FILE_MAX) {
+      return jsonResponse({ _error: `File exceeds 50MB limit (${(bytes.length / 1048576).toFixed(1)}MB)` }, 400);
+    }
+    const usage = await env.DB.prepare("SELECT COALESCE(SUM(size), 0) as total FROM files").first();
+    if ((usage?.total || 0) + bytes.length > WORKSPACE_QUOTA) {
+      return jsonResponse({ _error: "Workspace storage limit (5GB) reached" }, 400);
+    }
+
     const id = crypto.randomUUID();
     const ext = body.name.split(".").pop() || "bin";
     const r2Key = `files/${id}.${ext}`;
-    const bytes = Uint8Array.from(atob(body.data), (c) => c.charCodeAt(0));
     const mimeType = body.mime_type || "application/octet-stream";
 
     await env.DOCS.put(r2Key, bytes, {
@@ -4607,19 +4667,21 @@ async function handleFileUpload(request, env) {
     });
 
     await env.DB.prepare(
-      `INSERT INTO files (id, name, r2_key, mime_type, size, page_id, meta) VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).bind(id, body.name, r2Key, mimeType, bytes.length, body.page_id || "", JSON.stringify(body.meta || {})).run();
+      `INSERT INTO files (id, name, r2_key, mime_type, size, page_id, record_id, meta) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(id, body.name, r2Key, mimeType, bytes.length, body.page_id || "", body.record_id || "", JSON.stringify(body.meta || {})).run();
 
-    return jsonResponse({ id, name: body.name, r2_key: r2Key, size: bytes.length, mime_type: mimeType });
+    return jsonResponse({ id, name: body.name, r2_key: r2Key, size: bytes.length, mime_type: mimeType, record_id: body.record_id || "" });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
   }
 }
 
-async function handleListFiles(env, pageId) {
+async function handleListFiles(env, pageId, recordId) {
   try {
     let result;
-    if (pageId) {
+    if (recordId) {
+      result = await env.DB.prepare("SELECT * FROM files WHERE record_id = ? ORDER BY created_at DESC").bind(recordId).all();
+    } else if (pageId) {
       result = await env.DB.prepare("SELECT * FROM files WHERE page_id = ? ORDER BY created_at DESC").bind(pageId).all();
     } else {
       result = await env.DB.prepare("SELECT * FROM files ORDER BY created_at DESC LIMIT 200").all();
