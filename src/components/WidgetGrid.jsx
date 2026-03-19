@@ -50,8 +50,13 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
     onUpdateWidgets(widgets.filter((w) => w.id !== widgetId));
   }, [widgets, onUpdateWidgets]);
 
-  const handleResize = useCallback((widgetId, newW, newH) => {
-    onUpdateWidgets(widgets.map((w) => w.id === widgetId ? { ...w, h: newH } : w));
+  const handleResize = useCallback((widgetId, newColSpan, newH) => {
+    onUpdateWidgets(widgets.map((w) => {
+      if (w.id !== widgetId) return w;
+      const updates = { h: newH };
+      if (newColSpan != null) updates.colSpan = newColSpan;
+      return { ...w, ...updates };
+    }));
   }, [widgets, onUpdateWidgets]);
 
   const handleToggleSpan = useCallback((widgetId) => {
@@ -232,7 +237,7 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
                 onDrop={(e) => handleDrop(e, idx)}
                 onDragEnd={handleDragEnd}
                 style={{
-                  gridColumn: `span ${Math.min(colSpan, 2)}`,
+                  gridColumn: `span ${colSpan}`,
                   opacity: isDragging ? 0.4 : 1,
                   borderTop: isDragOver ? `2px solid ${C.accent}` : "2px solid transparent",
                   transition: "opacity 0.15s, border-color 0.15s",
@@ -244,6 +249,7 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
                   editMode={editMode}
                   zoom={1}
                   gridMode
+                  gridGap={16}
                   onReposition={() => {}}
                   onResize={handleResize}
                   onDelete={handleDeleteWidget}

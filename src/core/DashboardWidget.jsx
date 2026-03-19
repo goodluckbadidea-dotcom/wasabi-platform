@@ -31,12 +31,13 @@ function getConstraints(type) {
 }
 
 export default function DashboardWidget({
-  widget,         // { id, type, pageId, viewIndex, x, y, w, h, content, label }
+  widget,         // { id, type, pageId, viewIndex, x, y, w, h, content, label, colSpan }
   editMode,
   zoom = 1,       // canvas zoom level — drag/resize deltas divided by this
   gridMode = false, // true = responsive grid layout (no absolute positioning)
+  gridGap = 16,   // grid gap in px (for colSpan snapping)
   onReposition,   // (id, newX, newY) => void
-  onResize,       // (id, newW, newH) => void
+  onResize,       // (id, newColSpan, newH) => void
   onDelete,       // (id) => void
   onToggleSpan,   // (id) => void — toggle colSpan 1↔2
   onClick,        // (widget) => void — navigate to full view
@@ -44,6 +45,7 @@ export default function DashboardWidget({
 }) {
   const [dragging, setDragging] = useState(false);
   const [resizing, setResizing] = useState(false);
+  const widgetRef = useRef(null);
   const dragStart = useRef(null);
   const resizeStart = useRef(null);
 
@@ -81,23 +83,49 @@ export default function DashboardWidget({
     };
   }, [dragging, widget.id, onReposition, zoom]);
 
-  // ── Resize (bottom-right corner) ──
+  // ── Resize (bottom-right corner — height + colSpan) ──
   const handleResizeStart = useCallback((e) => {
     if (!editMode) return;
     e.preventDefault();
     e.stopPropagation();
-    resizeStart.current = { startY: e.clientY, origH: widget.h };
+    // Measure current widget width and derive single-column width
+    const el = widgetRef.current;
+    const origW = el ? el.offsetWidth : 400;
+    const origColSpan = widget.colSpan || 1;
+    const singleColW = origColSpan > 1
+      ? (origW - (origColSpan - 1) * gridGap) / origColSpan
+      : origW;
+    // Detect max columns from parent grid
+    const gridEl = el?.parentElement?.parentElement;
+    const gridCols = gridEl
+      ? getComputedStyle(gridEl).gridTemplateColumns.split(" ").length
+      : 4;
+    resizeStart.current = {
+      startX: e.clientX, startY: e.clientY,
+      origH: widget.h, origW, origColSpan,
+      singleColW, maxCols: gridCols,
+    };
     setResizing(true);
-  }, [editMode, widget.h]);
+  }, [editMode, widget.h, widget.colSpan, gridGap]);
 
   useEffect(() => {
     if (!resizing) return;
     const handleMove = (e) => {
       const rs = resizeStart.current;
       if (!rs) return;
+      // Height
       const dy = (e.clientY - rs.startY) / zoom;
       const newH = snap(Math.max(constraints.minH, Math.min(constraints.maxH, rs.origH + dy)));
-      onResize?.(widget.id, null, newH);
+      // ColSpan from horizontal drag
+      let newColSpan = rs.origColSpan;
+      if (gridMode) {
+        const dx = (e.clientX - rs.startX) / zoom;
+        const targetW = rs.origW + dx;
+        // n columns = n * singleColW + (n-1) * gap
+        const raw = (targetW + rs.singleColW * 0.3) / (rs.singleColW + gridGap);
+        newColSpan = Math.max(1, Math.min(rs.maxCols, Math.round(raw)));
+      }
+      onResize?.(widget.id, newColSpan, newH);
     };
     const handleUp = () => {
       setResizing(false);
@@ -109,10 +137,11 @@ export default function DashboardWidget({
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
     };
-  }, [resizing, widget.id, constraints, onResize, zoom]);
+  }, [resizing, widget.id, constraints, onResize, zoom, gridMode, gridGap]);
 
   return (
     <div
+      ref={widgetRef}
       style={{
         ...(gridMode
           ? { position: "relative", width: "100%", height: widget.h || 360 }
@@ -239,29 +268,25 @@ export default function DashboardWidget({
         {children}
       </div>
 
-      {/* ── Resize handle (bottom-center, vertical only, edit mode) ── */}
+      {/* ── Resize handle (bottom-right corner, edit mode) ── */}
       {editMode && (
         <div
           onMouseDown={handleResizeStart}
           style={{
             position: "absolute",
-            left: "50%",
+            right: 0,
             bottom: 0,
-            transform: "translateX(-50%)",
-            width: 48,
-            height: 14,
-            cursor: "ns-resize",
+            width: 18,
+            height: 18,
+            cursor: "nwse-resize",
             zIndex: 10,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
           }}
         >
-          {/* Horizontal grip dots */}
-          <svg width="24" height="6" viewBox="0 0 24 6">
-            <circle cx="6"  cy="3" r="1.2" fill={C.darkBorder} />
-            <circle cx="12" cy="3" r="1.2" fill={C.darkBorder} />
-            <circle cx="18" cy="3" r="1.2" fill={C.darkBorder} />
+          {/* Diagonal grip dots */}
+          <svg width="12" height="12" viewBox="0 0 12 12" style={{ position: "absolute", right: 2, bottom: 2 }}>
+            <circle cx="4" cy="10" r="1.2" fill={C.darkBorder} />
+            <circle cx="8" cy="10" r="1.2" fill={C.darkBorder} />
+            <circle cx="8" cy="6" r="1.2" fill={C.darkBorder} />
           </svg>
         </div>
       )}
