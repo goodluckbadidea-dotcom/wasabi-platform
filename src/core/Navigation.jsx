@@ -121,7 +121,7 @@ export default function Navigation({
   // Active view index (from App.jsx viewStates)
   const activeViewIndex = viewStates?.[activePage] ?? 0;
 
-  const SIDEBAR_W = collapsed ? 54 : 220;
+  const SIDEBAR_W = collapsed ? 62 : 220;
 
   // ── Debounced database entry search ──
   useEffect(() => {
@@ -276,8 +276,8 @@ export default function Navigation({
     display: "flex",
     alignItems: "center",
     gap: collapsed ? 0 : 10,
-    padding: collapsed ? "8px 6px" : "8px 12px",
-    minHeight: 36,
+    padding: collapsed ? "10px 8px" : "10px 14px",
+    minHeight: 44, // touch-friendly minimum (Apple HIG: 44pt)
     borderRadius: RADIUS.lg,
     transition: "background 0.15s, transform 0.12s",
     outline: "none",
@@ -285,12 +285,12 @@ export default function Navigation({
     justifyContent: collapsed ? "center" : "flex-start",
   });
 
-  const iconSize = (isActive) => collapsed ? (isActive ? 22 : 18) : (isActive ? 18 : 16);
+  const iconSize = (isActive) => collapsed ? (isActive ? 24 : 20) : (isActive ? 20 : 18);
 
   const navInactiveColor = C.darkText + "BB"; // higher contrast than darkMuted
   const bottomLabelStyle = (isActive) => ({
     fontFamily: "'Outfit',sans-serif",
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: isActive ? 600 : 500,
     color: isActive ? "#fff" : navInactiveColor,
     letterSpacing: "0.02em",
@@ -312,7 +312,7 @@ export default function Navigation({
       {/* Top: expand/collapse toggle + search */}
           <div style={{
             flexShrink: 0,
-            padding: collapsed ? "8px 4px" : "8px 10px",
+            padding: collapsed ? "10px 6px" : "10px 10px",
             display: "flex",
             flexDirection: "column",
             gap: 6,
@@ -324,7 +324,8 @@ export default function Navigation({
               style={{
                 background: "none", border: "none", cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                padding: "6px",
+                padding: "10px",
+                minHeight: 44,
                 borderRadius: RADIUS.sm, transition: "background 0.15s",
                 outline: "none", width: collapsed ? "100%" : "auto", alignSelf: collapsed ? "center" : "flex-start",
               }}
@@ -333,7 +334,7 @@ export default function Navigation({
             >
               {collapsed ? (
                 /* Search / magnifying glass icon */
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
                   <circle cx="7" cy="7" r="4.5" stroke={navInactiveColor} strokeWidth="1.4" />
                   <line x1="10.5" y1="10.5" x2="13.5" y2="13.5" stroke={navInactiveColor} strokeWidth="1.4" strokeLinecap="round" />
                 </svg>
@@ -480,11 +481,11 @@ export default function Navigation({
               flexShrink: 0,
               borderTop: `1px solid ${C.darkBorder}`,
               borderImage: `linear-gradient(90deg, ${C.darkBorder}, ${C.accent}44, ${C.accent}44, ${C.darkBorder}) 1`,
-              padding: collapsed ? "6px 4px" : "8px 12px",
-              paddingBottom: collapsed ? "calc(6px + env(safe-area-inset-bottom, 0px))" : "calc(8px + env(safe-area-inset-bottom, 0px))",
+              padding: collapsed ? "8px 6px" : "10px 12px",
+              paddingBottom: collapsed ? "calc(8px + env(safe-area-inset-bottom, 0px))" : "calc(10px + env(safe-area-inset-bottom, 0px))",
               display: "flex",
               flexDirection: "column",
-              gap: 1,
+              gap: 2,
               transition: "padding 0.25s",
             }}
           >
@@ -668,11 +669,12 @@ export default function Navigation({
                   background: "none", border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center",
                   gap: collapsed ? 0 : 10,
-                  padding: collapsed ? "8px 6px" : "8px 12px",
+                  padding: collapsed ? "10px 8px" : "10px 14px",
+                  minHeight: 44,
                   borderRadius: RADIUS.lg, transition: "background 0.15s",
                   outline: "none", width: "100%",
                   justifyContent: collapsed ? "center" : "flex-start",
-                  marginTop: 1,
+                  marginTop: 2,
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
