@@ -107,16 +107,8 @@ export default function DashboardWidget({
     };
   }, [resizing, widget.id, constraints, onResize, zoom]);
 
-  // ── Click handler (navigate in normal mode) ──
-  const handleClick = useCallback(() => {
-    if (!editMode && widget.type === "view" && onClick) {
-      onClick(widget);
-    }
-  }, [editMode, widget, onClick]);
-
   return (
     <div
-      onClick={handleClick}
       style={{
         position: "absolute",
         left: widget.x,
@@ -130,7 +122,7 @@ export default function DashboardWidget({
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
-        cursor: editMode ? (dragging ? "grabbing" : "default") : (widget.type === "view" ? "pointer" : "default"),
+        cursor: editMode ? (dragging ? "grabbing" : "default") : "default",
         animation: editMode ? "widgetEditPop 0.3s cubic-bezier(0.34,1.56,0.64,1) both" : "none",
         transition: dragging || resizing ? "none" : "box-shadow 0.15s, border-color 0.15s",
         borderColor: editMode ? C.accent + "55" : C.darkBorder,
@@ -166,6 +158,27 @@ export default function DashboardWidget({
         }}>
           {widget.label || widget.type}
         </span>
+
+        {/* Open in workspace button (normal mode, view widgets only) */}
+        {!editMode && widget.type === "view" && onClick && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onClick(widget); }}
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              padding: "2px 4px", opacity: 0.4, transition: "opacity 0.12s",
+              display: "flex", alignItems: "center", flexShrink: 0,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.4"; }}
+            title="Open in workspace"
+          >
+            <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke={C.darkMuted} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M7 1h4v4" />
+              <path d="M11 1L5 7" />
+              <path d="M9 7v4H1V3h4" />
+            </svg>
+          </button>
+        )}
 
         {/* Delete button (edit mode only) */}
         {editMode && (
