@@ -1373,23 +1373,6 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   }, [pageConfig?.id, viewIdx, resolveLinksForView]);
   const targetDatabaseId = config.databaseId || pageConfig?.databaseIds?.[0] || pageConfig?.id;
 
-  // ── Record badge counts (comments, notes, files) ──
-  const [badgeCounts, setBadgeCounts] = useState({});
-  const badgeFetchRef = useRef(null);
-  useEffect(() => {
-    if (!processedData || processedData.length === 0 || !pageConfig?.id) return;
-    if (badgeFetchRef.current) clearTimeout(badgeFetchRef.current);
-    badgeFetchRef.current = setTimeout(async () => {
-      try {
-        const ids = processedData.map((p) => p.id).filter(Boolean);
-        if (ids.length === 0) return;
-        const res = await getRecordBadgeCounts(ids, pageConfig.id);
-        setBadgeCounts(res?.counts || {});
-      } catch {}
-    }, 500); // debounce to avoid rapid re-fetches
-    return () => { if (badgeFetchRef.current) clearTimeout(badgeFetchRef.current); };
-  }, [processedData, pageConfig?.id]);
-
   // ── Relation title resolution ──
   // Query each related database to get page titles for relation fields
   const [relationTitles, setRelationTitles] = useState({});
@@ -1820,6 +1803,23 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
 
     return rows;
   }, [data, filters, chipFilters, debouncedSearch, sortField, sortDir, columns, schema]);
+
+  // ── Record badge counts (comments, notes, files) ──
+  const [badgeCounts, setBadgeCounts] = useState({});
+  const badgeFetchRef = useRef(null);
+  useEffect(() => {
+    if (!processedData || processedData.length === 0 || !pageConfig?.id) return;
+    if (badgeFetchRef.current) clearTimeout(badgeFetchRef.current);
+    badgeFetchRef.current = setTimeout(async () => {
+      try {
+        const ids = processedData.map((p) => p.id).filter(Boolean);
+        if (ids.length === 0) return;
+        const res = await getRecordBadgeCounts(ids, pageConfig.id);
+        setBadgeCounts(res?.counts || {});
+      } catch {}
+    }, 500);
+    return () => { if (badgeFetchRef.current) clearTimeout(badgeFetchRef.current); };
+  }, [processedData, pageConfig?.id]);
 
   // Re-sync visible range when data or container size changes
   useEffect(() => {
