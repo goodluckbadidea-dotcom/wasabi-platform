@@ -347,7 +347,23 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
 
     const hint = interactionHints.length > 0 ? interactionHints.join(" ") : null;
     if (hint && clean) return `${hint} ${clean}`;
-    return hint || clean || null;
+    if (hint || clean) return hint || clean;
+
+    // Fallback: generate a contextual summary from task metadata
+    const parts = [];
+    if (task.nearestDate || task.due) {
+      const d = new Date(task.nearestDate || task.due);
+      const now = new Date(); now.setHours(0, 0, 0, 0);
+      const diff = Math.round((d - now) / 86400000);
+      if (diff < 0) parts.push(`${Math.abs(diff)} day${Math.abs(diff) !== 1 ? "s" : ""} overdue.`);
+      else if (diff === 0) parts.push("Due today.");
+      else if (diff === 1) parts.push("Due tomorrow.");
+      else if (diff <= 7) parts.push(`Due in ${diff} days.`);
+      else parts.push(`Due ${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}.`);
+    }
+    if (task.priority) parts.push(`Priority: ${task.priority}.`);
+    if (task.status) parts.push(`Status: ${task.status}.`);
+    return parts.length > 0 ? parts.join(" ") : null;
   })();
 
   return (
