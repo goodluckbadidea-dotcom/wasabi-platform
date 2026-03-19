@@ -44,13 +44,15 @@ CREATE TABLE IF NOT EXISTS table_rows (
   id TEXT PRIMARY KEY,
   table_id TEXT NOT NULL,
   cells TEXT NOT NULL,
+  cell_versions TEXT DEFAULT '{}',
   sort_order INTEGER DEFAULT 0,
   archived INTEGER DEFAULT 0,
   metadata TEXT DEFAULT '{}',
   sync_dirty INTEGER DEFAULT 0,
   sync_retry_count INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now'))
+  updated_at TEXT DEFAULT (datetime('now')),
+  updated_by TEXT DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS sheet_data (
@@ -205,7 +207,6 @@ CREATE TABLE IF NOT EXISTS files (
   meta TEXT DEFAULT '{}',
   created_at TEXT DEFAULT (datetime('now'))
 );
-CREATE INDEX IF NOT EXISTS idx_files_record ON files(record_id);
 
 CREATE TABLE IF NOT EXISTS rule_snapshots (
   rule_id TEXT NOT NULL,
@@ -325,6 +326,7 @@ CREATE INDEX IF NOT EXISTS idx_record_comments_lookup ON record_comments(record_
 CREATE INDEX IF NOT EXISTS idx_nn_neuron ON neuron_nodes(neuron_id);
 CREATE INDEX IF NOT EXISTS idx_nn_nodeid ON neuron_nodes(node_id);
 CREATE INDEX IF NOT EXISTS idx_files_page ON files(page_id);
+CREATE INDEX IF NOT EXISTS idx_files_record ON files(record_id);
 CREATE INDEX IF NOT EXISTS idx_snapshots_rule ON rule_snapshots(rule_id);
 CREATE INDEX IF NOT EXISTS idx_custom_fn_status ON custom_functions(status);
 CREATE INDEX IF NOT EXISTS idx_fn_exec_fn ON function_executions(function_id, executed_at);
@@ -1749,6 +1751,9 @@ async function handleInit(env) {
       // Record model: file-per-record support
       "ALTER TABLE files ADD COLUMN record_id TEXT DEFAULT ''",
       "CREATE INDEX IF NOT EXISTS idx_files_record ON files(record_id)",
+      // Sprint 14: Real-time collaboration — field-level versioning
+      "ALTER TABLE table_rows ADD COLUMN cell_versions TEXT DEFAULT '{}'",
+      "ALTER TABLE table_rows ADD COLUMN updated_by TEXT DEFAULT NULL",
     ];
     for (const sql of migrations) {
       try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }
@@ -1756,7 +1761,7 @@ async function handleInit(env) {
 
     // Create indexes (after migrations so new columns exist)
     for (const sql of indexStatements) {
-      await env.DB.prepare(sql).run();
+      try { await env.DB.prepare(sql).run(); } catch (_) { /* index may already exist or column missing */ }
     }
 
     // Bootstrap: if no users exist, create a default admin invite
@@ -2229,37 +2234,35 @@ const GOOGLE_SCOPES = [
  * Returns { access_token, email } or null if not connected.
  */
 async function getGoogleAccessTokenForUser(env, userId) {
+  // No userId (MCP/API key access) — use global connection
   if (!userId) return getGoogleAccessToken(env);
+  // Per-user: only use their own token, NEVER fall back to global
   try {
     const row = await env.DB.prepare(
       "SELECT value FROM user_connections WHERE user_id = ? AND key = 'google'"
     ).bind(userId).first();
-    if (row?.value) {
-      const tokens = JSON.parse(row.value);
-      if (tokens.access_token && tokens.refresh_token) {
-        // Check expiry
-        if (tokens.expires_at && Date.now() < tokens.expires_at - 60000) return tokens;
-        // Refresh
-        const clientId = env.GOOGLE_CLIENT_ID;
-        const clientSecret = env.GOOGLE_CLIENT_SECRET;
-        if (!clientId || !clientSecret) return null;
-        const res = await fetch("https://oauth2.googleapis.com/token", {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: tokens.refresh_token, grant_type: "refresh_token" }),
-        });
-        if (!res.ok) return null;
-        const data = await res.json();
-        const updated = { ...tokens, access_token: data.access_token, expires_at: Date.now() + (data.expires_in || 3600) * 1000 };
-        await env.DB.prepare(
-          "INSERT OR REPLACE INTO user_connections (user_id, key, value, updated_at) VALUES (?, 'google', ?, datetime('now'))"
-        ).bind(userId, JSON.stringify(updated)).run();
-        return updated;
-      }
-    }
-  } catch {}
-  // Fall back to global connection
-  return getGoogleAccessToken(env);
+    if (!row?.value) return null; // User has no Google connection
+    const tokens = JSON.parse(row.value);
+    if (!tokens.access_token || !tokens.refresh_token) return null;
+    // Check expiry
+    if (tokens.expires_at && Date.now() < tokens.expires_at - 60000) return tokens;
+    // Refresh
+    const clientId = env.GOOGLE_CLIENT_ID;
+    const clientSecret = env.GOOGLE_CLIENT_SECRET;
+    if (!clientId || !clientSecret) return null;
+    const res = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: tokens.refresh_token, grant_type: "refresh_token" }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const updated = { ...tokens, access_token: data.access_token, expires_at: Date.now() + (data.expires_in || 3600) * 1000 };
+    await env.DB.prepare(
+      "INSERT OR REPLACE INTO user_connections (user_id, key, value, updated_at) VALUES (?, 'google', ?, datetime('now'))"
+    ).bind(userId, JSON.stringify(updated)).run();
+    return updated;
+  } catch { return null; }
 }
 
 /**
@@ -2427,19 +2430,20 @@ async function handleGoogleCallback(request, env) {
     const tokensJson = JSON.stringify(tokens);
 
     if (stateUserId) {
-      // Store per-user in user_connections
+      // Store per-user in user_connections — this is the primary storage
       await env.DB.prepare(
         `INSERT INTO user_connections (user_id, key, value, updated_at)
          VALUES (?, 'google', ?, datetime('now'))
          ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
       ).bind(stateUserId, tokensJson).run();
+    } else {
+      // No user context (shouldn't happen from UI, but handle MCP/direct access)
+      await env.DB.prepare(
+        `INSERT INTO connections (key, value, metadata, updated_at)
+         VALUES ('google', ?, '{}', datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+      ).bind(tokensJson).run();
     }
-    // Also store globally for backward compatibility / MCP access
-    await env.DB.prepare(
-      `INSERT INTO connections (key, value, metadata, updated_at)
-       VALUES ('google', ?, '{}', datetime('now'))
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
-    ).bind(tokensJson).run();
 
     return new Response(callbackHTML("success", email), {
       status: 200,
@@ -2475,20 +2479,20 @@ setTimeout(function(){window.close()},3000);
 
 async function handleGoogleStatus(env, userId) {
   try {
-    // Check per-user first, fall back to global
+    // Per-user: only show their own connection
     if (userId) {
       const userRow = await env.DB.prepare(
         "SELECT value FROM user_connections WHERE user_id = ? AND key = 'google'"
       ).bind(userId).first();
-      if (userRow?.value) {
-        const tokens = JSON.parse(userRow.value);
-        return jsonResponse({ connected: true, email: tokens.email || "", scopes: tokens.scopes || "", per_user: true });
-      }
+      if (!userRow?.value) return jsonResponse({ connected: false });
+      const tokens = JSON.parse(userRow.value);
+      return jsonResponse({ connected: true, email: tokens.email || "", scopes: tokens.scopes || "" });
     }
+    // No userId (MCP/API key access) — check global
     const row = await env.DB.prepare("SELECT value FROM connections WHERE key = 'google'").first();
     if (!row?.value) return jsonResponse({ connected: false });
     const tokens = JSON.parse(row.value);
-    return jsonResponse({ connected: true, email: tokens.email || "", scopes: tokens.scopes || "", per_user: false });
+    return jsonResponse({ connected: true, email: tokens.email || "", scopes: tokens.scopes || "" });
   } catch (err) {
     return jsonResponse({ connected: false, error: err.message });
   }
@@ -2496,7 +2500,7 @@ async function handleGoogleStatus(env, userId) {
 
 async function handleGoogleDisconnect(env, userId) {
   try {
-    // Disconnect per-user tokens if they exist
+    // Per-user: only disconnect their own token
     if (userId) {
       const userRow = await env.DB.prepare(
         "SELECT value FROM user_connections WHERE user_id = ? AND key = 'google'"
@@ -2507,10 +2511,11 @@ async function handleGoogleDisconnect(env, userId) {
           await fetch(`https://oauth2.googleapis.com/revoke?token=${tokens.access_token}`, { method: "POST" }).catch(() => {});
         }
         await env.DB.prepare("DELETE FROM user_connections WHERE user_id = ? AND key = 'google'").bind(userId).run();
-        return jsonResponse({ ok: true });
       }
+      // Always return ok — user is now disconnected (even if they had no token)
+      return jsonResponse({ ok: true });
     }
-    // Fall back to global disconnect
+    // No userId (MCP/API key access) — disconnect global
     const row = await env.DB.prepare("SELECT value FROM connections WHERE key = 'google'").first();
     if (row?.value) {
       const tokens = JSON.parse(row.value);
@@ -3425,6 +3430,7 @@ async function handleListRows(env, tableId, url) {
     const parsed = rows.results.map((r) => ({
       ...r,
       cells: JSON.parse(r.cells || "{}"),
+      cell_versions: JSON.parse(r.cell_versions || "{}"),
       metadata: JSON.parse(r.metadata || "{}"),
     }));
 
@@ -3470,20 +3476,66 @@ async function handleUpdateRow(env, tableId, rowId, body, user) {
   const binds = [];
 
   try {
-    // Read existing row for merge and automation trigger comparison
+    // Read existing row for merge, automation triggers, and conflict detection
     const existing = await env.DB.prepare(
-      "SELECT cells, metadata, owner_user_id FROM table_rows WHERE id = ? AND table_id = ?"
+      "SELECT cells, cell_versions, metadata, owner_user_id FROM table_rows WHERE id = ? AND table_id = ?"
     ).bind(rowId, tableId).first();
     const oldCells = existing ? JSON.parse(existing.cells || "{}") : {};
+    const currentVersions = existing ? JSON.parse(existing.cell_versions || "{}") : {};
 
     let newCells = oldCells;
+    let conflicts = null;
+
     if (body.cells !== undefined) {
-      if (body.merge_cells) {
-        newCells = { ...oldCells, ...body.cells };
-        sets.push("cells = ?"); binds.push(JSON.stringify(newCells));
+      const incomingCells = body.cells;
+      const baseVersions = body.base_versions; // sent by collaboration-aware clients
+
+      if (baseVersions) {
+        // ── Field-level conflict detection ──
+        const accepted = {};
+        const rejected = {};
+        const newVersions = { ...currentVersions };
+
+        for (const [field, value] of Object.entries(incomingCells)) {
+          const currentV = currentVersions[field] || 0;
+          const baseV = baseVersions[field];
+
+          if (baseV === undefined || baseV >= currentV) {
+            // Accept: base version is current or field is new
+            accepted[field] = value;
+            newVersions[field] = currentV + 1;
+          } else {
+            // Conflict: base version is stale — another user changed this field
+            rejected[field] = {
+              yourValue: value,
+              currentValue: oldCells[field],
+              currentVersion: currentV,
+            };
+          }
+        }
+
+        if (Object.keys(rejected).length) conflicts = rejected;
+
+        if (Object.keys(accepted).length) {
+          newCells = { ...oldCells, ...accepted };
+          sets.push("cells = ?"); binds.push(JSON.stringify(newCells));
+          sets.push("cell_versions = ?"); binds.push(JSON.stringify(newVersions));
+        }
       } else {
-        newCells = body.cells;
+        // ── Legacy path: no base_versions sent, accept unconditionally ──
+        if (body.merge_cells) {
+          newCells = { ...oldCells, ...incomingCells };
+        } else {
+          newCells = incomingCells;
+        }
         sets.push("cells = ?"); binds.push(JSON.stringify(newCells));
+
+        // Bump versions for all changed fields
+        const newVersions = { ...currentVersions };
+        for (const field of Object.keys(incomingCells)) {
+          newVersions[field] = (currentVersions[field] || 0) + 1;
+        }
+        sets.push("cell_versions = ?"); binds.push(JSON.stringify(newVersions));
       }
     }
     if (body.sort_order !== undefined) { sets.push("sort_order = ?"); binds.push(body.sort_order); }
@@ -3501,7 +3553,14 @@ async function handleUpdateRow(env, tableId, rowId, body, user) {
       }
     }
 
-    if (sets.length === 0) return jsonResponse({ _error: "No fields to update" }, 400);
+    if (sets.length === 0 && !conflicts) return jsonResponse({ _error: "No fields to update" }, 400);
+    // If everything was conflicted (nothing accepted), return conflicts without writing
+    if (sets.length === 0 && conflicts) {
+      return jsonResponse({ ok: false, conflicts, cell_versions: currentVersions });
+    }
+
+    // Track who made this change
+    if (user?.sub) { sets.push("updated_by = ?"); binds.push(user.sub); }
 
     // Mark row dirty for Notion sync (skip if this is a sync-originated update)
     if (!body._fromSync) {
@@ -3608,7 +3667,15 @@ async function handleUpdateRow(env, tableId, rowId, body, user) {
       })();
     }
 
-    return jsonResponse({ ok: true, id: rowId });
+    // Read back the final cell_versions for the response
+    const finalRow = await env.DB.prepare(
+      "SELECT cell_versions FROM table_rows WHERE id = ? AND table_id = ?"
+    ).bind(rowId, tableId).first();
+    const finalVersions = finalRow ? JSON.parse(finalRow.cell_versions || "{}") : {};
+
+    const response = { ok: true, id: rowId, cell_versions: finalVersions };
+    if (conflicts) response.conflicts = conflicts;
+    return jsonResponse(response);
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
   }
@@ -3655,6 +3722,7 @@ async function handleQueryTable(env, tableId, body) {
     let parsed = rows.results.map((r) => ({
       ...r,
       cells: JSON.parse(r.cells || "{}"),
+      cell_versions: JSON.parse(r.cell_versions || "{}"),
       metadata: JSON.parse(r.metadata || "{}"),
     }));
 

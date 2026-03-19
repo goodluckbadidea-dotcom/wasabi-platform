@@ -18,6 +18,7 @@ import { IconWarning, IconPlus, IconClose } from "../design/icons.jsx";
 import { ANIM } from "../design/animations.js";
 import SyncPanel from "../components/SyncPanel.jsx";
 import ViewSettingsPanel from "../components/ViewSettingsPanel.jsx";
+import ConflictToast from "../components/ConflictToast.jsx";
 import PinLockOverlay from "../components/PinLockOverlay.jsx";
 import { useColorMapping } from "../context/ColorMappingContext.jsx";
 
@@ -36,6 +37,7 @@ export default function PageShell({
   const [schema, setSchema] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [pendingConflicts, setPendingConflicts] = useState([]);
   const refreshTimer = useRef(null);
   const [showAddDb, setShowAddDb] = useState(false);
   const [showViewPicker, setShowViewPicker] = useState(false);
@@ -132,7 +134,26 @@ export default function PageShell({
     async (pageId, propertyName, propPayload) => {
       try {
         if (propPayload) {
-          await updateRecord(pageConfig, pageId, propertyName, propPayload, user);
+          // Find current record to get cell_versions for conflict detection
+          const record = data.find((r) => r.id === pageId);
+          const cellVersions = record?.cell_versions || null;
+
+          const result = await updateRecord(pageConfig, pageId, propertyName, propPayload, user, cellVersions);
+
+          // Check for conflicts in the response
+          if (result?.conflicts) {
+            console.warn("[Collab] Conflict detected:", result.conflicts);
+            const conflictList = Object.entries(result.conflicts).map(([field, info]) => ({
+              recordId: pageId,
+              field,
+              yourValue: info.yourValue,
+              currentValue: info.currentValue,
+              currentVersion: info.currentVersion,
+            }));
+            setPendingConflicts((prev) => [...prev, ...conflictList]);
+          }
+
+          // Update local state with new cell_versions from response
           setData((prev) =>
             prev.map((page) => {
               if (page.id !== pageId) return page;
@@ -145,6 +166,7 @@ export default function PageShell({
                     ...propPayload,
                   },
                 },
+                ...(result?.cell_versions ? { cell_versions: result.cell_versions } : {}),
               };
             })
           );
@@ -154,7 +176,7 @@ export default function PageShell({
         console.error("Update failed:", err);
       }
     },
-    [pageConfig, user, fetchData]
+    [pageConfig, user, data, fetchData]
   );
 
   const handleCreate = useCallback(
@@ -387,6 +409,23 @@ export default function PageShell({
           <ViewTypePicker
             onSelect={handleAddView}
             onClose={() => setShowViewPicker(false)}
+          />
+        )}
+
+        {/* Conflict resolution toast */}
+        {pendingConflicts.length > 0 && (
+          <ConflictToast
+            conflicts={pendingConflicts}
+            onResolve={(field, chosenValue) => {
+              const conflict = pendingConflicts.find((c) => c.field === field);
+              if (conflict) {
+                // Re-save with the chosen value (force write, no base_versions to skip conflict check)
+                updateRecord(pageConfig, conflict.recordId, field, chosenValue, user).catch(console.error);
+                setPendingConflicts((prev) => prev.filter((c) => c.field !== field));
+                setTimeout(fetchData, 500);
+              }
+            }}
+            onDismiss={() => setPendingConflicts([])}
           />
         )}
 

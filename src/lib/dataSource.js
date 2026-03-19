@@ -170,7 +170,7 @@ async function fetchMondayBoard(pageConfig, user) {
 
 // ─── Update a record in any source ───
 
-export async function updateRecord(pageConfig, recordId, fieldName, propPayload, user) {
+export async function updateRecord(pageConfig, recordId, fieldName, propPayload, user, cellVersions) {
   const type = resolveSourceType(pageConfig);
 
   if (type === "d1") {
@@ -181,9 +181,13 @@ export async function updateRecord(pageConfig, recordId, fieldName, propPayload,
 
     // Extract raw value from Notion-format property payload
     const rawValue = extractRawValue(propPayload, col.type);
-    // Send partial cell update — worker merges with existing cells
-    await updateRow(tableId, recordId, { cells: { [col.id]: rawValue }, merge_cells: true });
-    return true;
+    // Build update with base_versions for conflict detection
+    const update = { cells: { [col.id]: rawValue }, merge_cells: true };
+    if (cellVersions && cellVersions[col.id] !== undefined) {
+      update.base_versions = { [col.id]: cellVersions[col.id] };
+    }
+    const result = await updateRow(tableId, recordId, update);
+    return result;
   }
 
   // Notion: propPayload is already a Notion property object
