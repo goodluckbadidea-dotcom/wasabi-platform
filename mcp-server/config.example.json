@@ -1,0 +1,4 @@
+{
+  "workerUrl": "https://wasabi-worker.goodluckbadidea.workers.dev",
+  "apiKey": "YOUR_WASABI_SECRET_HERE"
+}
