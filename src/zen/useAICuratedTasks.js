@@ -8,7 +8,7 @@ import { detectSchema } from "../notion/schema.js";
 import { queryLimited } from "../notion/pagination.js";
 import {
   listRows, claudeProxy, getTableSchema, listTaskActivity, upsertTaskActivity,
-  getRecordViews, listRecordComments,
+  getRecordViews, listRecordComments, listTaskInteractions,
 } from "../lib/api.js";
 import { loadCachedNeuronGraph } from "../neurons/neuronStorage.js";
 import {
@@ -261,6 +261,11 @@ function compressTask(task) {
   // Neuron sibling signals
   if (task._neuronNames?.length) obj.neuronClusters = task._neuronNames;
   if (task._neuronSiblingUrgent) obj.neuronSiblingUrgent = true;
+  // Interaction history signals
+  if (task._lastInteractionType) obj.lastInteraction = task._lastInteractionType;
+  if (task._lastInteractionAgo) obj.lastInteractionAgo = task._lastInteractionAgo;
+  if (task._interactionGap) obj.interactionGap = task._interactionGap;
+  if (task._otherUserActions?.length) obj.otherUserActions = task._otherUserActions;
   return obj;
 }
 
@@ -706,6 +711,62 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
         console.warn("[AICurated] Neuron enrichment failed:", err.message);
       }
 
+      // Step 2.95: Interaction history enrichment (per-user, typed)
+      try {
+        const userId = identity?.id;
+        if (userId) {
+          const interactionPromises = Object.keys(tasksBySource).map(async (source) => {
+            try {
+              const result = await listTaskInteractions(source, userId);
+              return result?.interactions || [];
+            } catch { return []; }
+          });
+          const interactionResults = await Promise.allSettled(interactionPromises);
+          // Build per-task interaction map: taskId → { myLast, otherActions }
+          const interactionMap = new Map(); // taskId → interactions[]
+          for (const r of interactionResults) {
+            if (r.status !== "fulfilled") continue;
+            for (const interaction of r.value) {
+              if (!interactionMap.has(interaction.task_id)) interactionMap.set(interaction.task_id, []);
+              interactionMap.get(interaction.task_id).push(interaction);
+            }
+          }
+          const now = Date.now();
+          for (const task of filteredTasks) {
+            const interactions = interactionMap.get(task.id);
+            if (!interactions?.length) continue;
+            // Find my most recent interaction
+            const myInteractions = interactions.filter((i) => i.user_id === userId);
+            const otherInteractions = interactions.filter((i) => i.user_id !== userId && i.user_id !== "default");
+            if (myInteractions.length > 0) {
+              const latest = myInteractions[0]; // already sorted DESC by created_at
+              task._lastInteractionType = latest.interaction_type;
+              const ago = now - new Date(latest.created_at).getTime();
+              if (ago < 3600000) task._lastInteractionAgo = `${Math.round(ago / 60000)}m ago`;
+              else if (ago < 86400000) task._lastInteractionAgo = `${Math.round(ago / 3600000)}h ago`;
+              else task._lastInteractionAgo = `${Math.round(ago / 86400000)}d ago`;
+              // Detect interaction gap: commented but didn't update status
+              if (latest.interaction_type === "comment") {
+                const hasStatusChange = myInteractions.find((i) => i.interaction_type === "status_change" && i.created_at >= latest.created_at);
+                if (!hasStatusChange) {
+                  task._interactionGap = "commented but status unchanged";
+                }
+              }
+            }
+            // Other user signals (shared signals)
+            if (otherInteractions.length > 0) {
+              task._otherUserActions = otherInteractions.slice(0, 3).map((i) => ({
+                user: i.user_id,
+                type: i.interaction_type,
+                detail: i.detail,
+              }));
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("[AICurated] Interaction enrichment failed:", err.message);
+      }
+
       // Step 3: Call Haiku for prioritization (on filtered tasks)
       if (user.claudeKey && filteredTasks.length > 0) {
         try {
@@ -727,7 +788,11 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
 - blockingCount: number of other tasks this task blocks
 - blockedByOthers: this task is blocked by other tasks
 - neuronClusters: names of neuron clusters this task belongs to (campaigns, initiatives)
-- neuronSiblingUrgent: another task in the same neuron cluster is overdue/high-priority\n`
+- neuronSiblingUrgent: another task in the same neuron cluster is overdue/high-priority
+- lastInteraction: type of this user's most recent interaction (comment, status_change, field_edit, view)
+- lastInteractionAgo: human-readable time since last interaction (e.g., "2h ago")
+- interactionGap: describes incomplete workflows (e.g., "commented but status unchanged" — user acknowledged but didn't progress)
+- otherUserActions: recent interactions by other team members (shared signals)\n`
             : "";
 
           const prompt = `You are a smart task prioritizer and workspace advisor. Tasks have been pre-filtered to only include items approaching deadlines, overdue, or not recently updated.
@@ -754,6 +819,10 @@ Priority rules:
 - In-progress items approaching dates (score 2-3)
 - Tasks owned by or assigned to this user get a slight boost
 - Tasks with neuronSiblingUrgent=true belong to a campaign where another task is already overdue — boost score by +1 (cascading urgency)
+- interactionGap="commented but status unchanged" — this user acknowledged the task but didn't progress it. BOOST score +1 (needs follow-through)
+- lastInteraction="comment" with no status_change — task is not resolved, should resurface
+- lastInteraction="status_change" — user progressed this, lower priority
+- otherUserActions present — mention team activity in the reason (e.g., "Graham commented 2h ago")
 - When writing reasons, mention the neuron cluster name if present (e.g., "Part of the Q3 Launch campaign, which has 2 overdue items")
 Exclude any items that are NOT actionable tasks (contacts, records, inventory, labels).
 
@@ -932,6 +1001,40 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
     return () => clearInterval(interval);
   }, [scan]);
 
+  // ── Local score adjustments on interaction (instant, zero tokens) ──
+  const TERMINAL_STATUSES = new Set(["done", "complete", "completed", "cancelled", "canceled", "archived", "delivered", "closed"]);
+
+  const recordInteraction = useCallback((taskId, type, detail) => {
+    setAiTasks((prev) => {
+      let tasks = prev.map((t) => {
+        if (t.id !== taskId) return t;
+        const currentScore = t._aiScore || 3;
+        let adjustment = 0;
+        if (type === "status_change") {
+          // Check if the new status is terminal
+          const newStatus = (detail || "").split("→").pop()?.trim().toLowerCase() || "";
+          if (TERMINAL_STATUSES.has(newStatus) || detail === "completed") {
+            adjustment = -10; // Remove from list
+          } else {
+            adjustment = -2; // Deprioritize but keep
+          }
+        } else if (type === "field_edit") {
+          adjustment = -1;
+        } else if (type === "comment") {
+          adjustment = +1; // Bump UP — needs more work
+        } else if (type === "view") {
+          adjustment = -0.5;
+        }
+        return { ...t, _aiScore: currentScore + adjustment };
+      });
+      // Filter out tasks with very low scores (terminal status changes)
+      tasks = tasks.filter((t) => (t._aiScore || 0) > -5);
+      // Re-sort by score
+      tasks.sort((a, b) => (b._aiScore || 0) - (a._aiScore || 0));
+      return tasks;
+    });
+  }, []);
+
   return {
     aiTasks,
     loading,
@@ -941,5 +1044,6 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
     debouncedRefresh,
     error,
     insight,
+    recordInteraction,
   };
 }

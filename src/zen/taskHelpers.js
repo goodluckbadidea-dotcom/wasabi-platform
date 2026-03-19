@@ -84,7 +84,7 @@ export function isSmartOverdue(dateStr, lastActivityAt) {
  * - Nearest date is today or tomorrow
  * - Stale: not updated within 1/3 of remaining time
  */
-export function shouldIncludeTask(nearestDate, lastActivityAt) {
+export function shouldIncludeTask(nearestDate, lastActivityAt, lastInteractionType) {
   if (!nearestDate) return false; // no dates → handled separately
 
   const d = parseDate(nearestDate);
@@ -101,12 +101,25 @@ export function shouldIncludeTask(nearestDate, lastActivityAt) {
   // Overdue → include only if smart-overdue
   if (diffDays < 0) return isSmartOverdue(nearestDate, lastActivityAt);
 
-  // Future → check staleness (1/3 ratio)
+  // Interaction-type-aware staleness
+  // Comment-only = not resolved, use shorter staleness window (1/5 instead of 1/3)
+  // Status change = progressed, use longer window (1/2)
+  // View only = minimal effect, standard window
   if (!lastActivityAt) return true; // no activity record → stale
   const activity = new Date(lastActivityAt);
   const remainingMs = dDay.getTime() - now.getTime();
   const timeSinceActivityMs = now.getTime() - activity.getTime();
-  return timeSinceActivityMs > remainingMs / 3;
+
+  let stalenessRatio = 1 / 3; // default
+  if (lastInteractionType === "comment") {
+    stalenessRatio = 1 / 5; // resurfaces faster — task was acknowledged but not progressed
+  } else if (lastInteractionType === "status_change") {
+    stalenessRatio = 1 / 2; // stays hidden longer — real progress was made
+  } else if (lastInteractionType === "view") {
+    stalenessRatio = 1 / 4; // slight staleness reduction for just viewing
+  }
+
+  return timeSinceActivityMs > remainingMs * stalenessRatio;
 }
 
 /**

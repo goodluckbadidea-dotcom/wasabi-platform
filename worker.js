@@ -261,6 +261,16 @@ CREATE TABLE IF NOT EXISTS task_activity (
   UNIQUE(task_id, source)
 );
 
+CREATE TABLE IF NOT EXISTS task_interactions (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL,
+  source TEXT NOT NULL,
+  user_id TEXT NOT NULL DEFAULT 'default',
+  interaction_type TEXT NOT NULL DEFAULT 'view',
+  detail TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   display_name TEXT NOT NULL,
@@ -314,6 +324,8 @@ CREATE INDEX IF NOT EXISTS idx_custom_fn_status ON custom_functions(status);
 CREATE INDEX IF NOT EXISTS idx_fn_exec_fn ON function_executions(function_id, executed_at);
 CREATE INDEX IF NOT EXISTS idx_flow_exec_flow ON flow_executions(flow_id, started_at);
 CREATE INDEX IF NOT EXISTS idx_task_activity_lookup ON task_activity(task_id, source);
+CREATE INDEX IF NOT EXISTS idx_task_interactions_lookup ON task_interactions(task_id, source);
+CREATE INDEX IF NOT EXISTS idx_task_interactions_user ON task_interactions(user_id, source);
 CREATE INDEX IF NOT EXISTS idx_sync_dirty ON table_rows(sync_dirty) WHERE sync_dirty = 1;
 CREATE INDEX IF NOT EXISTS idx_users_invite ON users(invite_code);
 CREATE INDEX IF NOT EXISTS idx_user_conn ON user_connections(user_id);
@@ -823,6 +835,19 @@ export default {
       if (path === "/task-activity" && request.method === "GET") {
         const source = url.searchParams.get("source");
         return await handleListTaskActivity(env, source);
+      }
+
+      // ─── Task Interaction Journal Routes ───
+      const interactionSummaryMatch = path.match(/^\/task-interactions\/([^/]+)\/summary$/);
+      if (interactionSummaryMatch && request.method === "GET") {
+        return await handleGetInteractionSummary(env, interactionSummaryMatch[1]);
+      }
+      if (path === "/task-interactions" && request.method === "POST") {
+        const body = await request.json();
+        return await handleLogInteraction(env, body);
+      }
+      if (path === "/task-interactions" && request.method === "GET") {
+        return await handleListInteractions(env, url);
       }
 
       // ─── Sheet Routes ───
@@ -1662,6 +1687,10 @@ async function handleInit(env) {
       "ALTER TABLE notifications ADD COLUMN page_config_id TEXT DEFAULT ''",
       "ALTER TABLE notifications ADD COLUMN page_name TEXT DEFAULT ''",
       "ALTER TABLE notifications ADD COLUMN actor_name TEXT DEFAULT ''",
+      // Task interaction journal (per-user, typed interactions)
+      "CREATE TABLE IF NOT EXISTS task_interactions (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, source TEXT NOT NULL, user_id TEXT NOT NULL DEFAULT 'default', interaction_type TEXT NOT NULL DEFAULT 'view', detail TEXT, created_at TEXT DEFAULT (datetime('now')))",
+      "CREATE INDEX IF NOT EXISTS idx_task_interactions_lookup ON task_interactions(task_id, source)",
+      "CREATE INDEX IF NOT EXISTS idx_task_interactions_user ON task_interactions(user_id, source)",
     ];
     for (const sql of migrations) {
       try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }
@@ -3759,6 +3788,65 @@ async function handleUpsertTaskActivity(env, taskId, body) {
        ON CONFLICT(id) DO UPDATE SET last_activity_at = excluded.last_activity_at`
     ).bind(id, taskId, source, last_activity_at).run();
     return jsonResponse({ ok: true });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// ─── Task Interaction Journal Handlers ───
+
+async function handleLogInteraction(env, body) {
+  try {
+    const { task_id, source, user_id, interaction_type, detail } = body;
+    if (!task_id || !source || !interaction_type) {
+      return jsonResponse({ _error: "task_id, source, and interaction_type required" }, 400);
+    }
+    const id = `${task_id}:${user_id || "default"}:${interaction_type}:${Date.now()}`;
+    await env.DB.prepare(
+      `INSERT INTO task_interactions (id, task_id, source, user_id, interaction_type, detail)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).bind(id, task_id, source, user_id || "default", interaction_type, detail || null).run();
+    // Also update legacy task_activity for backward compat
+    const legacyId = `${task_id}:${source}`;
+    await env.DB.prepare(
+      `INSERT INTO task_activity (id, task_id, source, last_activity_at)
+       VALUES (?, ?, ?, datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET last_activity_at = datetime('now')`
+    ).bind(legacyId, task_id, source).run();
+    return jsonResponse({ ok: true });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleListInteractions(env, url) {
+  try {
+    const source = url.searchParams.get("source");
+    const userId = url.searchParams.get("user_id");
+    const limit = parseInt(url.searchParams.get("limit") || "100", 10);
+    let query = "SELECT * FROM task_interactions WHERE 1=1";
+    const params = [];
+    if (source) { query += " AND source = ?"; params.push(source); }
+    if (userId) { query += " AND user_id = ?"; params.push(userId); }
+    query += " ORDER BY created_at DESC LIMIT ?";
+    params.push(limit);
+    const { results } = await env.DB.prepare(query).bind(...params).all();
+    return jsonResponse({ interactions: results || [] });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleGetInteractionSummary(env, taskId) {
+  try {
+    // Return the most recent interaction per user per type for this task
+    const { results } = await env.DB.prepare(
+      `SELECT user_id, interaction_type, detail, MAX(created_at) as last_at, COUNT(*) as count
+       FROM task_interactions WHERE task_id = ?
+       GROUP BY user_id, interaction_type
+       ORDER BY last_at DESC`
+    ).bind(taskId).all();
+    return jsonResponse({ summary: results || [] });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
   }

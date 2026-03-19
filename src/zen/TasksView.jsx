@@ -41,6 +41,7 @@ export default function TasksView() {
     refresh: refreshAI,
     debouncedRefresh,
     error: aiError,
+    recordInteraction,
   } = useAICuratedTasks({ dismissedIds, completedCount, zenTableId: tableId });
 
   const { openDrawer, onSaved, onDeleted } = useRecordDrawer();
@@ -298,6 +299,7 @@ export default function TasksView() {
         onTaskDeleted={handleTaskDeleted}
         onEventUpdated={handleEventUpdated}
         onEventDeleted={handleEventDeleted}
+        onRecordInteraction={recordInteraction}
       />
 
       {/* View settings panel */}

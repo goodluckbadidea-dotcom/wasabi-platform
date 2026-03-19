@@ -716,6 +716,26 @@ export async function upsertTaskActivity(taskId, source, lastActivityAt) {
   });
 }
 
+// ─── Task Interaction Journal ───
+
+export async function logTaskInteraction(taskId, source, userId, interactionType, detail) {
+  return apiFetch("/task-interactions", {
+    method: "POST",
+    body: { task_id: taskId, source, user_id: userId || "default", interaction_type: interactionType, detail: detail || null },
+  });
+}
+
+export async function listTaskInteractions(source, userId) {
+  const params = new URLSearchParams();
+  if (source) params.set("source", source);
+  if (userId) params.set("user_id", userId);
+  return apiFetch(`/task-interactions?${params.toString()}`, { method: "GET" });
+}
+
+export async function getInteractionSummary(taskId) {
+  return apiFetch(`/task-interactions/${taskId}/summary`, { method: "GET" });
+}
+
 // ─── Google Calendar ───
 
 export async function listCalendars() {

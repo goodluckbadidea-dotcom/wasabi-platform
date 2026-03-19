@@ -11,6 +11,7 @@ import {
   listRecordComments, createRecordComment, deleteRecordComment,
   getRecordNote, saveRecordNote,
   upsertTaskActivity, putRecordView,
+  logTaskInteraction, getInteractionSummary,
 } from "../lib/api.js";
 import { updatePage } from "../notion/client.js";
 import { buildProp } from "../notion/properties.js";
@@ -97,8 +98,8 @@ function toDateInput(isoStr) {
 // ════════════════════════════════════════════
 // TaskEditor
 // ════════════════════════════════════════════
-function TaskEditor({ task, onSaved, onDeleted, onClose }) {
-  const { user, pages, setActivePage } = usePlatform();
+function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) {
+  const { user, pages, setActivePage, identity } = usePlatform();
   const { notifySaved, notifyDeleted } = useRecordDrawer();
   const isNotion = task.source && task.source.startsWith("notion:");
   const isD1 = task.source === "manual" || (task.source && task.source.startsWith("d1:"));
@@ -115,6 +116,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState(null);
+  const [interactionSummary, setInteractionSummary] = useState([]);
 
   const statusOptions = task._statusOptions || [];
   const fieldMap = task._fieldMap || {};
@@ -143,6 +145,16 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
     if (isNotion && !fieldMap.notes && task.id && pageConfigId) {
       getRecordNote(task.id, pageConfigId)
         .then((res) => { if (res?.note?.content) setNotes(res.note.content); })
+        .catch(() => {});
+    }
+    // Log view interaction
+    if (task.id && task.source) {
+      logTaskInteraction(task.id, task.source, identity?.id, "view", null).catch(() => {});
+    }
+    // Fetch interaction summary for smart display
+    if (task.id) {
+      getInteractionSummary(task.id)
+        .then((res) => setInteractionSummary(res?.summary || []))
         .catch(() => {});
     }
   }, [task.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -189,8 +201,21 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
         if (!fieldMap.notes && notes) {
           await saveRecordNote(task.id, pageConfigId, notes).catch(() => {});
         }
-        // Update activity so task gets removed from to-do list
-        upsertTaskActivity(task.id, task.source, new Date().toISOString()).catch(() => {});
+        // Log typed interaction for smart task list scoring
+        const statusChanged = status !== task.status;
+        if (statusChanged) {
+          const detail = `${task.status || "none"} → ${status}`;
+          logTaskInteraction(task.id, task.source, identity?.id, "status_change", detail).catch(() => {});
+          onRecordInteraction?.(task.id, "status_change", detail);
+        } else if (Object.keys(properties).length > 0) {
+          const changedFields = [];
+          if (title !== task.title) changedFields.push("title");
+          if (priority !== task.priority) changedFields.push("priority");
+          if (due !== toDateInput(task.due)) changedFields.push("due date");
+          if (notes !== (task.notes || "")) changedFields.push("notes");
+          logTaskInteraction(task.id, task.source, identity?.id, "field_edit", changedFields.join(", ")).catch(() => {});
+          onRecordInteraction?.(task.id, "field_edit", changedFields.join(", "));
+        }
         const updated = { ...task, title, done, status, priority, due, notes };
         onSaved?.(updated);
         notifySaved("task", updated);
@@ -201,6 +226,17 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
         await updateRow(tableId, task.id, {
           cells: { task: title, done, priority: priority || null, due: due || null, notes },
         });
+        // Log typed interaction for D1 tasks
+        if (task.source && task.source !== "manual") {
+          const doneChanged = done !== task.done;
+          if (doneChanged) {
+            logTaskInteraction(task.id, task.source, identity?.id, "status_change", done ? "completed" : "reopened").catch(() => {});
+            onRecordInteraction?.(task.id, "status_change", done ? "completed" : "reopened");
+          } else {
+            logTaskInteraction(task.id, task.source, identity?.id, "field_edit", "updated").catch(() => {});
+            onRecordInteraction?.(task.id, "field_edit", "updated");
+          }
+        }
         const updated = { ...task, title, done, priority, due, notes };
         onSaved?.(updated);
         notifySaved("task", updated);
@@ -212,7 +248,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
     } finally {
       setSaving(false);
     }
-  }, [task, title, done, status, priority, due, notes, isEditable, isNotion, user, fieldMap, onSaved, onClose]);
+  }, [task, title, done, status, priority, due, notes, isEditable, isNotion, user, fieldMap, identity, onSaved, onClose, onRecordInteraction]);
 
   const handleDelete = useCallback(async () => {
     if (!confirmDelete) { setConfirmDelete(true); return; }
@@ -281,13 +317,37 @@ function TaskEditor({ task, onSaved, onDeleted, onClose }) {
 
   const canGoToTask = task.source !== "manual" && !!findSourcePage();
 
-  // ── AI attention summary ──
-  // Strip any leftover [tag] prefixes, show the clean natural-language reason
+  // ── AI attention summary enriched with interaction context ──
   const attentionSummary = (() => {
     const reason = task._aiReason;
-    if (!reason) return null;
-    const clean = reason.replace(/\[[^\]]+\]\s*/g, "").trim();
-    return clean || null;
+    const clean = reason ? reason.replace(/\[[^\]]+\]\s*/g, "").trim() : null;
+
+    // Build interaction context from summary
+    const interactionHints = [];
+    if (interactionSummary.length > 0) {
+      const myInteractions = interactionSummary.filter((s) => s.user_id === identity?.id);
+      const otherInteractions = interactionSummary.filter((s) => s.user_id !== identity?.id && s.user_id !== "default");
+
+      // Check if user commented but didn't change status
+      const lastComment = myInteractions.find((s) => s.interaction_type === "comment");
+      const lastStatusChange = myInteractions.find((s) => s.interaction_type === "status_change");
+      if (lastComment && (!lastStatusChange || lastComment.last_at > lastStatusChange.last_at)) {
+        interactionHints.push(`You commented but status is still "${status || "unchanged"}".`);
+      }
+
+      // Show other user interactions
+      for (const other of otherInteractions) {
+        if (other.interaction_type === "comment") {
+          interactionHints.push(`${other.user_id} commented.`);
+        } else if (other.interaction_type === "status_change") {
+          interactionHints.push(`${other.user_id} updated status${other.detail ? `: ${other.detail}` : ""}.`);
+        }
+      }
+    }
+
+    const hint = interactionHints.length > 0 ? interactionHints.join(" ") : null;
+    if (hint && clean) return `${hint} ${clean}`;
+    return hint || clean || null;
   })();
 
   return (
@@ -578,8 +638,8 @@ function TaskCommentsTab({ recordId, pageConfigId, taskSource }) {
     setError(null);
     try {
       await createRecordComment(recordId, pageConfigId, text, identity?.id, identity?.display_name);
-      // Update activity so task gets recognized as worked-on (removes from to-do list)
-      if (taskSource) upsertTaskActivity(recordId, taskSource, new Date().toISOString()).catch(() => {});
+      // Log comment interaction (bumps task priority — acknowledged but needs more work)
+      if (taskSource) logTaskInteraction(recordId, taskSource, identity?.id, "comment", text.slice(0, 50)).catch(() => {});
       setNewComment("");
       await fetchComments();
       inputRef.current?.focus();
@@ -1086,7 +1146,7 @@ function WorkspaceSettingsEditor({ workspace, onClose }) {
 // ════════════════════════════════════════════
 // RecordDrawer (main export)
 // ════════════════════════════════════════════
-export default function RecordDrawer({ onTaskUpdated, onTaskDeleted, onEventUpdated, onEventDeleted }) {
+export default function RecordDrawer({ onTaskUpdated, onTaskDeleted, onEventUpdated, onEventDeleted, onRecordInteraction }) {
   const { drawerItem, closeDrawer } = useRecordDrawer();
   const { identity } = usePlatform();
 
@@ -1119,6 +1179,7 @@ export default function RecordDrawer({ onTaskUpdated, onTaskDeleted, onEventUpda
           onSaved={onTaskUpdated}
           onDeleted={onTaskDeleted}
           onClose={closeDrawer}
+          onRecordInteraction={onRecordInteraction}
         />
       ) : drawerItem.type === "email" ? (
         <EmailThreadDrawer
