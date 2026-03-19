@@ -163,10 +163,23 @@ export default function RecordFiles({ recordId, pageConfigId }) {
         {files.map((file) => {
           const meta = typeof file.meta === "string" ? JSON.parse(file.meta || "{}") : (file.meta || {});
           const isUrl = file.mime_type === "text/x-url";
+          const isImage = file.mime_type?.startsWith("image/");
           const href = isUrl ? (meta.url || "") : getFileUrl(file.id);
           return (
             <div key={file.id} style={s.fileItem}>
-              <span style={s.fileIcon}>{getFileIcon(file.mime_type)}</span>
+              {/* Thumbnail for images, icon for everything else */}
+              {isImage ? (
+                <a href={href} target="_blank" rel="noopener noreferrer" style={{ flexShrink: 0 }}>
+                  <img
+                    src={href}
+                    alt={file.name}
+                    style={s.thumbnail}
+                    onError={(e) => { e.target.style.display = "none"; }}
+                  />
+                </a>
+              ) : (
+                <span style={s.fileIcon}>{getFileIcon(file.mime_type)}</span>
+              )}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <a
                   href={href}
@@ -238,7 +251,15 @@ const s = {
     padding: "8px 0", borderBottom: `1px solid ${C.darkBorder}`,
   },
   fileIcon: {
-    fontSize: 16, flexShrink: 0, width: 24, textAlign: "center",
+    fontSize: 16, flexShrink: 0, width: 36, textAlign: "center",
+  },
+  thumbnail: {
+    width: 36,
+    height: 36,
+    objectFit: "cover",
+    borderRadius: RADIUS.sm,
+    border: `1px solid ${C.darkBorder}`,
+    cursor: "pointer",
   },
   fileName: {
     fontSize: 13, fontFamily: FONT, color: C.accent,
