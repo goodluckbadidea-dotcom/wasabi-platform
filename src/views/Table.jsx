@@ -26,6 +26,7 @@ import { updateDatabase, searchDatabases } from "../notion/client.js";
 import SelectPicker from "../components/SelectPicker.jsx";
 import MultiSelectPicker from "../components/MultiSelectPicker.jsx";
 import SavedViewsDropdown from "../components/SavedViewsDropdown.jsx";
+import { useCollaboration } from "../context/CollaborationContext.jsx";
 
 // ─── Owner Column Constants ───
 const OWNER_COL_NAME = "Owner";
@@ -1032,6 +1033,7 @@ function OwnerPicker({ ownerIds, users, onCommit, onClose }) {
 
 export default function Table({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onSaveFilters, onViewConfigChange }) {
   const { user } = usePlatform();
+  const collab = useCollaboration();
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState(config.sort?.field || config.sortField || null);
   const [sortDir, setSortDir] = useState(config.sort?.direction || config.sortDir || (config.sortField ? "asc" : null)); // "asc" | "desc" | null
@@ -2704,6 +2706,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                           const isSelected = selectedRows.has(pageId);
 
                           const cardBg = isSelected ? C.accent + "10" : isHovered ? C.darkSurf2 : C.darkSurf;
+                          const othersOnRow = collab?.getUsersOnRecord?.(pageId) || [];
+                          const presenceColor = othersOnRow.length > 0 ? othersOnRow[0].color : null;
 
                           return (
                             <div
@@ -2715,6 +2719,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                 height: ROW_HEIGHT,
                                 background: cardBg,
                                 ...(isHovered ? { boxShadow: `0 1px 4px rgba(0,0,0,0.08)` } : {}),
+                                ...(presenceColor ? { borderLeft: `3px solid ${presenceColor}` } : {}),
                                 animation: ANIM.scrollReveal(localIdx),
                               }}
                               onMouseEnter={() => setHoveredRow(pageId)}

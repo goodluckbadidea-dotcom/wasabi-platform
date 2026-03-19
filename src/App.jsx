@@ -346,7 +346,7 @@ function AppContent() {
               Loading...
             </div>
           }>
-            <DashboardView />
+            <DashboardView key={identity?.id || "default"} />
           </React.Suspense>
         </ErrorBoundary>
       );

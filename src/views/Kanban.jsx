@@ -13,8 +13,10 @@ import ViewToolbar from "../components/ViewToolbar.jsx";
 import SavedViewsDropdown from "../components/SavedViewsDropdown.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
+import { useCollaboration } from "../context/CollaborationContext.jsx";
 
 export default function Kanban({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, onViewConfigChange, pageConfig }) {
+  const collab = useCollaboration();
   const [dragState, setDragState] = useState(null); // { pageId, fromCol, startX, startY, isDragging }
   const [dropTarget, setDropTarget] = useState(null); // column option name
   const [colDrag, setColDrag] = useState(null); // { colName, startX } — column reorder drag
@@ -484,6 +486,8 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
                 {col.pages.map((page) => {
                   const title = titleField ? readField(page, titleField) : "Untitled";
                   const isDragging = dragState?.pageId === page.id;
+                  const othersOnCard = collab?.getUsersOnRecord?.(page.id) || [];
+                  const cardPresenceColor = othersOnCard.length > 0 ? othersOnCard[0].color : null;
 
                   return (
                     <div
@@ -502,16 +506,17 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
                       }}
                       style={{
                         background: C.darkSurf2,
-                        border: `1px solid ${C.darkBorder}`,
+                        border: `1px solid ${cardPresenceColor || C.darkBorder}`,
                         borderRadius: RADIUS.lg,
                         padding: "10px 12px",
                         cursor: "grab",
                         opacity: isDragging ? 0.4 : 1,
                         transition: "opacity 0.15s, border-color 0.15s",
                         userSelect: "none",
+                        ...(cardPresenceColor ? { boxShadow: `0 0 0 1px ${cardPresenceColor}33` } : {}),
                       }}
-                      onMouseEnter={(e) => { if (!dragState) e.currentTarget.style.borderColor = C.accent + "44"; }}
-                      onMouseLeave={(e) => { if (!dragState) e.currentTarget.style.borderColor = C.darkBorder; }}
+                      onMouseEnter={(e) => { if (!dragState) e.currentTarget.style.borderColor = cardPresenceColor || C.accent + "44"; }}
+                      onMouseLeave={(e) => { if (!dragState) e.currentTarget.style.borderColor = cardPresenceColor || C.darkBorder; }}
                     >
                       {/* Card title */}
                       <div style={{
@@ -539,6 +544,20 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
                           </div>
                         );
                       })}
+
+                      {/* Presence badge */}
+                      {othersOnCard.length > 0 && (
+                        <div style={{ display: "flex", gap: 4, marginTop: 6, alignItems: "center" }}>
+                          {othersOnCard.map((u) => (
+                            <span key={u.userId} style={{
+                              fontSize: 10, color: u.color, fontWeight: 600,
+                              background: u.color + "18", borderRadius: 4, padding: "1px 5px",
+                            }}>
+                              {u.userName || "User"}{u.isTyping ? " typing…" : ""}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}

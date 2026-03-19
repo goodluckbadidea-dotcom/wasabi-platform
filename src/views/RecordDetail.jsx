@@ -12,6 +12,7 @@ import NeuronBadge from "../neurons/NeuronBadge.jsx";
 import RecordNotes from "../components/RecordNotes.jsx";
 import RecordComments from "../components/RecordComments.jsx";
 import RecordFiles from "../components/RecordFiles.jsx";
+import { useCollaboration } from "../context/CollaborationContext.jsx";
 
 // ── Property type labels ──
 const TYPE_LABELS = {
@@ -335,6 +336,14 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [pendingChanges, setPendingChanges] = useState({});
   const [activeTab, setActiveTab] = useState("properties");
+  const collab = useCollaboration();
+
+  // ── Collaboration: focus/blur on open/close ──
+  useEffect(() => {
+    if (!page?.id || !collab) return;
+    collab.focusRecord(page.id);
+    return () => collab.blurRecord();
+  }, [page?.id, collab]);
 
   // Get ordered property list from schema
   const properties = useMemo(() => {
@@ -362,7 +371,8 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
     if (!EDITABLE_TYPES.has(prop.type)) return;
     setEditingField(fieldName);
     setEditValue(readProp(prop));
-  }, []);
+    if (collab && page?.id) collab.startTyping(page.id, fieldName);
+  }, [collab, page?.id]);
 
   // Commit an edit
   const commitEdit = useCallback((fieldName, type, value) => {
@@ -372,7 +382,8 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
     }
     setEditingField(null);
     setEditValue(null);
-  }, []);
+    if (collab) collab.stopTyping();
+  }, [collab]);
 
   // Save all pending changes
   const handleSave = useCallback(async () => {
@@ -436,6 +447,23 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
             <IconClose size={12} color={C.darkMuted} />
           </button>
         </div>
+
+        {/* Collaboration banner */}
+        {(() => {
+          const others = collab?.getUsersOnRecord?.(page.id) || [];
+          if (others.length === 0) return null;
+          return (
+            <div style={{
+              padding: "6px 16px", background: C.accent + "12",
+              borderBottom: `1px solid ${C.accent}22`,
+              fontSize: 11, color: C.accent, display: "flex", alignItems: "center", gap: 6,
+            }}>
+              <span style={{ fontSize: 12 }}>👥</span>
+              {others.map((u) => u.userName || "User").join(", ")} also {others.some((u) => u.isTyping) ? "editing" : "viewing"}.
+              Changes merge automatically.
+            </div>
+          );
+        })()}
 
         {/* Tab Bar */}
         <div style={ds.tabBar}>

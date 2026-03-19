@@ -1,7 +1,7 @@
 # 13 — Real-Time Collaboration & Conflict Resolution
 
 **Last updated**: 2026-03-19
-**Status**: Phase 1 complete. Phases 2-5 pending (blocked on D1/Notion sync fix — see doc 14).
+**Status**: Phases 1-3 complete. Phase 4 (live record updates) and Phase 5 (polish) pending.
 
 ### Multi-User Fixes Completed (2026-03-19)
 - ✅ Google OAuth per-user isolation: `handleGoogleStatus` no longer falls back to global token for logged-in users
@@ -363,28 +363,30 @@ function userColor(userId) {
 
 **BLOCKER for full functionality**: Notion-linked databases have empty D1 table_rows — conflict detection only works on standalone D1 tables until the D1/Notion sync architecture is fixed. See `docs/14-d1-notion-sync-architecture.md`.
 
-### Phase 2: Durable Object + WebSocket
+### Phase 2: Durable Object + WebSocket — COMPLETE ✅
 **Files**: `worker.js` (TableRoom class), `wrangler-worker.toml`, `src/lib/tableSocket.js`
 
-1. Create `TableRoom` Durable Object class
-2. Add `/ws/table/:tableId` upgrade endpoint
-3. Implement join/leave/focus/blur/typing message handling
-4. Build `TableSocket` client class
-5. Deploy with new wrangler migration
+1. ✅ Created `TableRoom` Durable Object class with full message protocol
+2. ✅ Added `/ws/table/:tableId` WebSocket upgrade endpoint with JWT + API key auth
+3. ✅ Implemented join/leave/focus/blur/typing/save message handling
+4. ✅ Built `TableSocket` client class with auto-reconnect (exponential backoff up to 30s)
+5. ✅ Updated `wrangler-worker.toml` with DO binding + migration tag v1
+6. ✅ Save-through-DO conflict detection (reads D1, detects conflicts, broadcasts accepted changes)
 
-**Outcome**: Live WebSocket connections per table. Server can broadcast.
+**Outcome**: Live WebSocket connections per table. Server can broadcast presence and record changes.
 
-### Phase 3: Presence UI
+### Phase 3: Presence UI — COMPLETE ✅
 **Files**: `src/context/CollaborationContext.jsx`, view components
 
-1. Create `CollaborationContext` React context
-2. Wire into `PageShell` (connect on mount, disconnect on unmount)
-3. Add presence rendering to TableView (colored row borders + avatar badges)
-4. Add presence rendering to KanbanView (card borders + badges)
-5. Add typing indicator to RecordDrawer
-6. Add soft lock banner to RecordDrawer
+1. ✅ Created `CollaborationContext` React context wrapping `TableSocket`
+2. ✅ Wired into `PageShell` via `CollaborationProvider` (connect on mount, disconnect on unmount)
+3. ✅ Added presence rendering to Table (colored left border on rows with other users)
+4. ✅ Added presence rendering to Kanban (colored card border + name badge with typing indicator)
+5. ✅ Added typing indicator to RecordDetail (startTyping on field edit, stopTyping on commit)
+6. ✅ Added collaboration banner to RecordDetail ("X also viewing/editing. Changes merge automatically.")
+7. ✅ RecordDrawer sends focus/blur events on open/close
 
-**Outcome**: Users see who's editing what, across all views.
+**Outcome**: Users see who's editing what, across Table and Kanban views + record detail.
 
 ### Phase 4: Live Record Updates
 **Files**: `TableRoom` DO, `CollaborationContext`, `RecordDrawer`

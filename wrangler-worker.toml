@@ -15,6 +15,15 @@ database_id = "74c85b52-e230-43c1-8d7d-631402b6a682"
 binding = "DOCS"
 bucket_name = "wasabi-docs"
 
+[durable_objects]
+bindings = [
+  { name = "TABLE_ROOMS", class_name = "TableRoom" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["TableRoom"]
+
 [triggers]
 crons = ["*/2 * * * *"]
 

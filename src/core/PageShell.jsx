@@ -22,6 +22,7 @@ import ViewSettingsPanel from "../components/ViewSettingsPanel.jsx";
 import ConflictToast from "../components/ConflictToast.jsx";
 import PinLockOverlay from "../components/PinLockOverlay.jsx";
 import { useColorMapping } from "../context/ColorMappingContext.jsx";
+import { CollaborationProvider } from "../context/CollaborationContext.jsx";
 
 const DEFAULT_REFRESH_MS = 30000;
 
@@ -369,7 +370,13 @@ export default function PageShell({
         </div>
       )}
 
-      {/* Active view */}
+      {/* Active view — wrapped in CollaborationProvider for real-time presence */}
+      <CollaborationProvider
+        tableId={isStandaloneTable || sourceType === "notion" ? pageConfig.id : null}
+        userId={identity?.id}
+        userName={identity?.display_name}
+        role={identity?.role}
+      >
       <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
         {pageConfig.pin_protected && identity && identity.role !== "admin" ? (
           <PinLockOverlay pageConfigId={pageConfig.id} userRole={identity.role}>
@@ -494,6 +501,7 @@ export default function PageShell({
           </>
         )}
       </div>
+      </CollaborationProvider>
     </div>
   );
 }

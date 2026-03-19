@@ -15,6 +15,7 @@ import {
 import { updatePage } from "../notion/client.js";
 import { buildProp } from "../notion/properties.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
+import { useCollaboration } from "../context/CollaborationContext.jsx";
 import EmailThreadDrawer from "./EmailThreadDrawer.jsx";
 import RecordComments from "../components/RecordComments.jsx";
 import RecordFiles from "../components/RecordFiles.jsx";
@@ -1027,8 +1028,9 @@ function WorkspaceSettingsEditor({ workspace, onClose }) {
 export default function RecordDrawer({ onTaskUpdated, onTaskDeleted, onEventUpdated, onEventDeleted, onRecordInteraction }) {
   const { drawerItem, closeDrawer } = useRecordDrawer();
   const { identity } = usePlatform();
+  const collab = useCollaboration();
 
-  // Track record view for read receipts
+  // Track record view for read receipts + collaboration focus
   const lastTrackedRef = useRef(null);
   useEffect(() => {
     if (!drawerItem?.data?.id || !identity?.id) return;
@@ -1036,7 +1038,9 @@ export default function RecordDrawer({ onTaskUpdated, onTaskDeleted, onEventUpda
     if (lastTrackedRef.current === recordId) return;
     lastTrackedRef.current = recordId;
     putRecordView(recordId).catch(() => {});
-  }, [drawerItem, identity]);
+    if (collab) collab.focusRecord(recordId);
+    return () => { if (collab) collab.blurRecord(); };
+  }, [drawerItem, identity, collab]);
 
   if (!drawerItem) return null;
 
