@@ -16,7 +16,7 @@ import {
   scoreTerminalStatuses, shouldIncludeTask, isSmartOverdue,
 } from "./taskHelpers.js";
 
-const CACHE_KEY = "wasabi_ai_tasks_v4"; // v4: word-boundary name matching
+const CACHE_KEY = "wasabi_ai_tasks_v5"; // v5: interaction journal + zen table exclusion fix
 const INSIGHT_CACHE_KEY = "wasabi_insight";
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 const MAX_DATABASES = 5;
@@ -295,6 +295,7 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
     try { localStorage.removeItem("wasabi_zen_ai_tasks"); } catch {}
     try { localStorage.removeItem("wasabi_zen_ai_tasks_v2"); } catch {}
     try { localStorage.removeItem("wasabi_zen_ai_tasks_v3"); } catch {}
+    try { localStorage.removeItem("wasabi_ai_tasks_v4"); } catch {}
     const cached = getCached(CACHE_KEY, CACHE_TTL);
     if (cached) {
       // Filter out any zen tasks that may have been cached before exclusion fix

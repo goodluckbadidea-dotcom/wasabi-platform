@@ -44,6 +44,15 @@ export default function useTasksTable() {
             return;
           }
         } catch {}
+
+        // Fallback: search pages for existing zen table (may exist from before user_state was set)
+        const existing = pages.find((p) => p._systemInternal || (p.name && p.name.startsWith("Zen Tasks")));
+        if (existing) {
+          if (!cancelled) setTableId(existing.id);
+          // Persist to user_state so we find it next time
+          putUserState({ zen_tasks_table_id: existing.id }).catch(() => {});
+          return;
+        }
       }
 
       // 2. Fallback for single-user mode: check localStorage
@@ -55,7 +64,7 @@ export default function useTasksTable() {
         }
 
         // Search existing pages for a system-internal page
-        const existing = pages.find((p) => p._systemInternal);
+        const existing = pages.find((p) => p._systemInternal || (p.name && p.name.startsWith("Zen Tasks")));
         if (existing) {
           if (!cancelled) setTableId(existing.id);
           localStorage.setItem("wasabi_tasks_table_id", existing.id);
