@@ -642,77 +642,84 @@ export default {
         return await handleDeleteConnection(env, key);
       }
 
-      // ─── Google OAuth + API Proxy ───
+      // ─── Google OAuth + API Proxy (per-user) ───
       if (path === "/google/auth-url" && request.method === "GET") {
-        return handleGoogleAuthUrl(request, env);
+        const gUser = await extractUser(request, env);
+        return handleGoogleAuthUrl(request, env, gUser?.sub);
       }
       if (path === "/google/status" && request.method === "GET") {
-        return await handleGoogleStatus(env);
+        const gUser = await extractUser(request, env);
+        return await handleGoogleStatus(env, gUser?.sub);
       }
       if (path === "/google/disconnect" && request.method === "POST") {
-        return await handleGoogleDisconnect(env);
+        const gUser = await extractUser(request, env);
+        return await handleGoogleDisconnect(env, gUser?.sub);
       }
-      // Gmail proxy
-      if (path === "/google/gmail/summary" && request.method === "GET") {
-        return await handleGmailSummary(env);
-      }
-      if (path === "/google/gmail/messages" && request.method === "POST") {
-        const body = await request.json();
-        return await handleGmailSearch(env, body);
-      }
-      if (path.match(/^\/google\/gmail\/messages\/[^/]+$/) && request.method === "GET") {
-        const msgId = path.split("/google/gmail/messages/")[1];
-        return await handleGmailGetMessage(env, msgId);
-      }
-      if (path === "/google/gmail/send" && request.method === "POST") {
-        const body = await request.json();
-        return await handleGmailSend(env, body);
-      }
-      if (path.match(/^\/google\/gmail\/threads\/[^/]+$/) && request.method === "GET") {
-        const threadId = path.split("/google/gmail/threads/")[1];
-        return await handleGmailGetThread(env, threadId);
-      }
-      if (path === "/google/gmail/drafts" && request.method === "POST") {
-        const body = await request.json();
-        return await handleGmailCreateDraft(env, body);
-      }
-      if (path.match(/^\/google\/gmail\/drafts\/[^/]+$/) && request.method === "PUT") {
-        const draftId = path.split("/google/gmail/drafts/")[1];
-        const body = await request.json();
-        return await handleGmailUpdateDraft(env, draftId, body);
-      }
-      if (path.match(/^\/google\/gmail\/modify\/[^/]+$/) && request.method === "POST") {
-        const msgId = path.split("/google/gmail/modify/")[1];
-        const body = await request.json();
-        return await handleGmailModify(env, msgId, body);
-      }
-      // Calendar proxy
-      if (path === "/google/calendar/list" && request.method === "GET") {
-        return await handleCalendarList(env);
-      }
-      if (path === "/google/calendar/summary" && request.method === "GET") {
-        return await handleCalendarSummary(env);
-      }
-      if (path === "/google/calendar/events" && request.method === "GET") {
-        const params = Object.fromEntries(url.searchParams);
-        return await handleCalendarListEvents(env, params);
-      }
-      if (path === "/google/calendar/events" && request.method === "POST") {
-        const body = await request.json();
-        return await handleCalendarCreateEvent(env, body);
-      }
-      if (path.match(/^\/google\/calendar\/events\/[^/]+$/) && request.method === "PATCH") {
-        const eventId = path.split("/google/calendar/events/")[1];
-        const body = await request.json();
-        return await handleCalendarUpdateEvent(env, eventId, body);
-      }
-      if (path.match(/^\/google\/calendar\/events\/[^/]+$/) && request.method === "DELETE") {
-        const eventId = path.split("/google/calendar/events/")[1];
-        return await handleCalendarDeleteEvent(env, eventId);
-      }
-      if (path === "/google/calendar/freebusy" && request.method === "POST") {
-        const body = await request.json();
-        return await handleCalendarFreeBusy(env, body);
+      // Gmail proxy (per-user)
+      {
+        const gUser = await extractUser(request, env);
+        const gUid = gUser?.sub;
+        if (path === "/google/gmail/summary" && request.method === "GET") {
+          return await handleGmailSummary(env, gUid);
+        }
+        if (path === "/google/gmail/messages" && request.method === "POST") {
+          const body = await request.json();
+          return await handleGmailSearch(env, body, gUid);
+        }
+        if (path.match(/^\/google\/gmail\/messages\/[^/]+$/) && request.method === "GET") {
+          const msgId = path.split("/google/gmail/messages/")[1];
+          return await handleGmailGetMessage(env, msgId, gUid);
+        }
+        if (path === "/google/gmail/send" && request.method === "POST") {
+          const body = await request.json();
+          return await handleGmailSend(env, body, gUid);
+        }
+        if (path.match(/^\/google\/gmail\/threads\/[^/]+$/) && request.method === "GET") {
+          const threadId = path.split("/google/gmail/threads/")[1];
+          return await handleGmailGetThread(env, threadId, gUid);
+        }
+        if (path === "/google/gmail/drafts" && request.method === "POST") {
+          const body = await request.json();
+          return await handleGmailCreateDraft(env, body, gUid);
+        }
+        if (path.match(/^\/google\/gmail\/drafts\/[^/]+$/) && request.method === "PUT") {
+          const draftId = path.split("/google/gmail/drafts/")[1];
+          const body = await request.json();
+          return await handleGmailUpdateDraft(env, draftId, body, gUid);
+        }
+        if (path.match(/^\/google\/gmail\/modify\/[^/]+$/) && request.method === "POST") {
+          const msgId = path.split("/google/gmail/modify/")[1];
+          const body = await request.json();
+          return await handleGmailModify(env, msgId, body, gUid);
+        }
+        // Calendar proxy (per-user)
+        if (path === "/google/calendar/list" && request.method === "GET") {
+          return await handleCalendarList(env, gUid);
+        }
+        if (path === "/google/calendar/summary" && request.method === "GET") {
+          return await handleCalendarSummary(env, gUid);
+        }
+        if (path === "/google/calendar/events" && request.method === "GET") {
+          const params = Object.fromEntries(url.searchParams);
+          return await handleCalendarListEvents(env, params, gUid);
+        }
+        if (path === "/google/calendar/events" && request.method === "POST") {
+          const body = await request.json();
+          return await handleCalendarCreateEvent(env, body, gUid);
+        }
+        if (path.match(/^\/google\/calendar\/events\/[^/]+$/) && request.method === "PATCH") {
+          const eventId = path.split("/google/calendar/events/")[1];
+          const body = await request.json();
+          return await handleCalendarUpdateEvent(env, eventId, body, gUid);
+        }
+        if (path.match(/^\/google\/calendar\/events\/[^/]+$/) && request.method === "DELETE") {
+          const eventId = path.split("/google/calendar/events/")[1];
+          return await handleCalendarDeleteEvent(env, eventId, gUid);
+        }
+        if (path === "/google/calendar/freebusy" && request.method === "POST") {
+          const body = await request.json();
+          return await handleCalendarFreeBusy(env, body, gUid);
+        }
       }
 
       // ─── Page Config CRUD ───
@@ -2310,13 +2317,15 @@ async function getGoogleAccessToken(env) {
   }
 }
 
-function handleGoogleAuthUrl(request, env) {
+function handleGoogleAuthUrl(request, env, userId) {
   const clientId = env.GOOGLE_CLIENT_ID;
   if (!clientId) return jsonResponse({ _error: "GOOGLE_CLIENT_ID not configured" }, 500);
 
   const workerUrl = new URL(request.url).origin;
   const redirectUri = `${workerUrl}/google/callback`;
 
+  // Encode user ID in state so the callback can store tokens per-user
+  const stateObj = { workerUrl, userId: userId || null };
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -2324,7 +2333,7 @@ function handleGoogleAuthUrl(request, env) {
     scope: GOOGLE_SCOPES,
     access_type: "offline",
     prompt: "consent",
-    state: workerUrl,
+    state: JSON.stringify(stateObj),
   });
 
   const url = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
@@ -2407,11 +2416,30 @@ async function handleGoogleCallback(request, env) {
       scopes: GOOGLE_SCOPES,
     };
 
+    // Extract user ID from OAuth state for per-user storage
+    let stateUserId = null;
+    const stateParam = url.searchParams.get("state");
+    try {
+      const stateObj = JSON.parse(stateParam);
+      stateUserId = stateObj.userId || null;
+    } catch { /* state may be plain URL from old flow */ }
+
+    const tokensJson = JSON.stringify(tokens);
+
+    if (stateUserId) {
+      // Store per-user in user_connections
+      await env.DB.prepare(
+        `INSERT INTO user_connections (user_id, key, value, updated_at)
+         VALUES (?, 'google', ?, datetime('now'))
+         ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+      ).bind(stateUserId, tokensJson).run();
+    }
+    // Also store globally for backward compatibility / MCP access
     await env.DB.prepare(
       `INSERT INTO connections (key, value, metadata, updated_at)
        VALUES ('google', ?, '{}', datetime('now'))
        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
-    ).bind(JSON.stringify(tokens)).run();
+    ).bind(tokensJson).run();
 
     return new Response(callbackHTML("success", email), {
       status: 200,
@@ -2445,34 +2473,51 @@ setTimeout(function(){window.close()},3000);
 </script></body></html>`;
 }
 
-async function handleGoogleStatus(env) {
+async function handleGoogleStatus(env, userId) {
   try {
+    // Check per-user first, fall back to global
+    if (userId) {
+      const userRow = await env.DB.prepare(
+        "SELECT value FROM user_connections WHERE user_id = ? AND key = 'google'"
+      ).bind(userId).first();
+      if (userRow?.value) {
+        const tokens = JSON.parse(userRow.value);
+        return jsonResponse({ connected: true, email: tokens.email || "", scopes: tokens.scopes || "", per_user: true });
+      }
+    }
     const row = await env.DB.prepare("SELECT value FROM connections WHERE key = 'google'").first();
     if (!row?.value) return jsonResponse({ connected: false });
     const tokens = JSON.parse(row.value);
-    return jsonResponse({
-      connected: true,
-      email: tokens.email || "",
-      scopes: tokens.scopes || "",
-    });
+    return jsonResponse({ connected: true, email: tokens.email || "", scopes: tokens.scopes || "", per_user: false });
   } catch (err) {
     return jsonResponse({ connected: false, error: err.message });
   }
 }
 
-async function handleGoogleDisconnect(env) {
+async function handleGoogleDisconnect(env, userId) {
   try {
-    // Try to revoke the token
+    // Disconnect per-user tokens if they exist
+    if (userId) {
+      const userRow = await env.DB.prepare(
+        "SELECT value FROM user_connections WHERE user_id = ? AND key = 'google'"
+      ).bind(userId).first();
+      if (userRow?.value) {
+        const tokens = JSON.parse(userRow.value);
+        if (tokens.access_token) {
+          await fetch(`https://oauth2.googleapis.com/revoke?token=${tokens.access_token}`, { method: "POST" }).catch(() => {});
+        }
+        await env.DB.prepare("DELETE FROM user_connections WHERE user_id = ? AND key = 'google'").bind(userId).run();
+        return jsonResponse({ ok: true });
+      }
+    }
+    // Fall back to global disconnect
     const row = await env.DB.prepare("SELECT value FROM connections WHERE key = 'google'").first();
     if (row?.value) {
       const tokens = JSON.parse(row.value);
       if (tokens.access_token) {
-        await fetch(`https://oauth2.googleapis.com/revoke?token=${tokens.access_token}`, {
-          method: "POST",
-        }).catch(() => {});
+        await fetch(`https://oauth2.googleapis.com/revoke?token=${tokens.access_token}`, { method: "POST" }).catch(() => {});
       }
     }
-    // Remove from D1
     await env.DB.prepare("DELETE FROM connections WHERE key = 'google'").run();
     return jsonResponse({ ok: true });
   } catch (err) {
@@ -2484,8 +2529,8 @@ async function handleGoogleDisconnect(env) {
 
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
 
-async function handleGmailSummary(env) {
-  const tokens = await getGoogleAccessToken(env);
+async function handleGmailSummary(env, userId) {
+  const tokens = await getGoogleAccessTokenForUser(env, userId);
   if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
 
   try {
@@ -2531,8 +2576,8 @@ async function handleGmailSummary(env) {
   }
 }
 
-async function handleGmailSearch(env, body) {
-  const tokens = await getGoogleAccessToken(env);
+async function handleGmailSearch(env, body, userId) {
+  const tokens = await getGoogleAccessTokenForUser(env, userId);
   if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
 
   const { q, maxResults = 20, labelIds } = body;
@@ -2580,8 +2625,8 @@ async function handleGmailSearch(env, body) {
   }
 }
 
-async function handleGmailGetMessage(env, messageId) {
-  const tokens = await getGoogleAccessToken(env);
+async function handleGmailGetMessage(env, messageId, userId) {
+  const tokens = await getGoogleAccessTokenForUser(env, userId);
   if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
 
   try {
@@ -2627,8 +2672,8 @@ async function handleGmailGetMessage(env, messageId) {
   }
 }
 
-async function handleGmailGetThread(env, threadId) {
-  const tokens = await getGoogleAccessToken(env);
+async function handleGmailGetThread(env, threadId, userId) {
+  const tokens = await getGoogleAccessTokenForUser(env, userId);
   if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
 
   try {
@@ -2678,8 +2723,8 @@ async function handleGmailGetThread(env, threadId) {
   }
 }
 
-async function handleGmailUpdateDraft(env, draftId, body) {
-  const tokens = await getGoogleAccessToken(env);
+async function handleGmailUpdateDraft(env, draftId, body, userId) {
+  const tokens = await getGoogleAccessTokenForUser(env, userId);
   if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
 
   const { to, subject, bodyText, threadId } = body;
@@ -2719,8 +2764,8 @@ async function handleGmailUpdateDraft(env, draftId, body) {
   }
 }
 
-async function handleGmailSend(env, body) {
-  const tokens = await getGoogleAccessToken(env);
+async function handleGmailSend(env, body, userId) {
+  const tokens = await getGoogleAccessTokenForUser(env, userId);
   if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
 
   const { to, subject, bodyText, threadId, inReplyTo, references } = body;
@@ -2762,8 +2807,8 @@ async function handleGmailSend(env, body) {
   }
 }
 
-async function handleGmailCreateDraft(env, body) {
-  const tokens = await getGoogleAccessToken(env);
+async function handleGmailCreateDraft(env, body, userId) {
+  const tokens = await getGoogleAccessTokenForUser(env, userId);
   if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
 
   const { to, subject, bodyText } = body;
@@ -2800,8 +2845,8 @@ async function handleGmailCreateDraft(env, body) {
   }
 }
 
-async function handleGmailModify(env, messageId, body) {
-  const tokens = await getGoogleAccessToken(env);
+async function handleGmailModify(env, messageId, body, userId) {
+  const tokens = await getGoogleAccessTokenForUser(env, userId);
   if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
 
   const { action, addLabelIds, removeLabelIds } = body;
@@ -2840,8 +2885,8 @@ async function handleGmailModify(env, messageId, body) {
 
 const GCAL_API = "https://www.googleapis.com/calendar/v3";
 
-async function handleCalendarSummary(env) {
-  const tokens = await getGoogleAccessToken(env);
+async function handleCalendarSummary(env, userId) {
+  const tokens = await getGoogleAccessTokenForUser(env, userId);
   if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
 
   try {
@@ -2872,8 +2917,8 @@ async function handleCalendarSummary(env) {
   }
 }
 
-async function handleCalendarList(env) {
-  const tokens = await getGoogleAccessToken(env);
+async function handleCalendarList(env, userId) {
+  const tokens = await getGoogleAccessTokenForUser(env, userId);
   if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
 
   try {
@@ -2900,8 +2945,8 @@ async function handleCalendarList(env) {
   }
 }
 
-async function handleCalendarListEvents(env, params) {
-  const tokens = await getGoogleAccessToken(env);
+async function handleCalendarListEvents(env, params, userId) {
+  const tokens = await getGoogleAccessTokenForUser(env, userId);
   if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
 
   try {
@@ -2976,8 +3021,8 @@ async function handleCalendarListEvents(env, params) {
   }
 }
 
-async function handleCalendarCreateEvent(env, body) {
-  const tokens = await getGoogleAccessToken(env);
+async function handleCalendarCreateEvent(env, body, userId) {
+  const tokens = await getGoogleAccessTokenForUser(env, userId);
   if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
 
   const { summary, description, start, end, location, attendees } = body;
@@ -3020,8 +3065,8 @@ async function handleCalendarCreateEvent(env, body) {
   }
 }
 
-async function handleCalendarUpdateEvent(env, eventId, body) {
-  const tokens = await getGoogleAccessToken(env);
+async function handleCalendarUpdateEvent(env, eventId, body, userId) {
+  const tokens = await getGoogleAccessTokenForUser(env, userId);
   if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
 
   try {
@@ -3052,8 +3097,8 @@ async function handleCalendarUpdateEvent(env, eventId, body) {
   }
 }
 
-async function handleCalendarDeleteEvent(env, eventId) {
-  const tokens = await getGoogleAccessToken(env);
+async function handleCalendarDeleteEvent(env, eventId, userId) {
+  const tokens = await getGoogleAccessTokenForUser(env, userId);
   if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
 
   try {
@@ -3071,8 +3116,8 @@ async function handleCalendarDeleteEvent(env, eventId) {
   }
 }
 
-async function handleCalendarFreeBusy(env, body) {
-  const tokens = await getGoogleAccessToken(env);
+async function handleCalendarFreeBusy(env, body, userId) {
+  const tokens = await getGoogleAccessTokenForUser(env, userId);
   if (!tokens) return jsonResponse({ _error: "Google not connected" }, 401);
 
   const { timeMin, timeMax } = body;
@@ -3233,6 +3278,7 @@ async function handleUpdatePage(env, id, body) {
   if (body.page_type !== undefined) { sets.push("page_type = ?"); binds.push(body.page_type); }
   if (body.sort_order !== undefined) { sets.push("sort_order = ?"); binds.push(body.sort_order); }
   if (body.config !== undefined) { sets.push("config = ?"); binds.push(JSON.stringify(body.config)); }
+  if (body.pin_protected !== undefined) { sets.push("pin_protected = ?"); binds.push(body.pin_protected ? 1 : 0); }
 
   if (sets.length === 0) return jsonResponse({ _error: "No fields to update" }, 400);
 

@@ -11,26 +11,40 @@ import RecordDrawer from "./RecordDrawer.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { getUserDashboard, putUserDashboard } from "../lib/api.js";
 
-const STORAGE_KEY = "wasabi-dashboard-widgets";
+function storageKey(userId) {
+  return userId ? `wasabi-dashboard-widgets:${userId}` : "wasabi-dashboard-widgets:default";
+}
 
-function loadWidgetsLocal() {
+function loadWidgetsLocal(key) {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : [];
   } catch { return []; }
 }
 
-function saveWidgetsLocal(widgets) {
+function saveWidgetsLocal(key, widgets) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(widgets));
+    localStorage.setItem(key, JSON.stringify(widgets));
   } catch {}
 }
 
 export default function DashboardView() {
   const { identity } = usePlatform();
-  const [widgets, setWidgets] = useState(() => loadWidgetsLocal());
+  const key = storageKey(identity?.id);
+  const [widgets, setWidgets] = useState(() => loadWidgetsLocal(key));
   const saveTimerRef = useRef(null);
   const hasLoadedFromD1 = useRef(false);
+  const prevIdentityId = useRef(identity?.id);
+
+  // ── Reload widgets when user changes ──
+  useEffect(() => {
+    if (prevIdentityId.current !== identity?.id) {
+      prevIdentityId.current = identity?.id;
+      hasLoadedFromD1.current = false;
+      const newKey = storageKey(identity?.id);
+      setWidgets(loadWidgetsLocal(newKey));
+    }
+  }, [identity?.id]);
 
   // ── Load from D1 per-user on mount ──
   useEffect(() => {
@@ -40,28 +54,23 @@ export default function DashboardView() {
       .then(({ widgets: w }) => {
         if (w && w.length > 0) {
           setWidgets(w);
-          saveWidgetsLocal(w);
+          saveWidgetsLocal(key, w);
         }
       })
       .catch(() => {}); // Fall back to localStorage
-  }, [identity]);
-
-  // Reset on identity change
-  useEffect(() => {
-    if (!identity) hasLoadedFromD1.current = false;
-  }, [identity]);
+  }, [identity, key]);
 
   // Persist on every change (localStorage immediate, D1 debounced)
   const handleUpdateWidgets = useCallback((newWidgets) => {
     setWidgets(newWidgets);
-    saveWidgetsLocal(newWidgets);
+    saveWidgetsLocal(key, newWidgets);
 
     // Debounced D1 save
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       putUserDashboard(newWidgets).catch(() => {});
     }, 1000);
-  }, []);
+  }, [key]);
 
   return (
     <div style={{

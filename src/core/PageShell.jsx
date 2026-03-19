@@ -376,6 +376,9 @@ export default function PageShell({
             onClose={() => setShowViewSettings(false)}
             globalColorMapping={globalColorMapping}
             globalColorField={globalColorField}
+            pageConfig={pageConfig}
+            identity={identity}
+            onUpdatePageConfig={updatePageConfig}
           />
         )}
 

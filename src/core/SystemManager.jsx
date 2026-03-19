@@ -1051,6 +1051,85 @@ export default function SystemManager() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// PIN Setup Section (admin-only, used inside SettingsTab)
+// ════════════════════════════════════════════════════════════════════════════
+
+function PinSetupSection() {
+  const { identity } = usePlatform();
+  const [pin, setPin] = useState("");
+  const [status, setStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
+
+  // Only show to admins
+  if (identity && identity.role !== "admin") return null;
+
+  const handleSetPin = async () => {
+    if (pin.length < 4) { setStatus("error"); return; }
+    setStatus("saving");
+    try {
+      await api.setPin(pin);
+      setStatus("saved");
+      setPin("");
+      setTimeout(() => setStatus(null), 2000);
+    } catch { setStatus("error"); }
+  };
+
+  return (
+    <>
+      <div style={{
+        fontSize: 10, color: C.darkMuted, fontFamily: FONT,
+        textTransform: "uppercase", letterSpacing: "0.08em",
+        marginTop: 40, marginBottom: 14,
+      }}>
+        PIN Lock
+      </div>
+      <div style={{
+        background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
+        borderRadius: RADIUS.lg, padding: "16px 18px",
+        display: "flex", alignItems: "center", gap: 16, marginBottom: 28,
+      }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.darkText, fontFamily: FONT, marginBottom: 4 }}>
+            Set Workspace PIN
+          </div>
+          <div style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT, lineHeight: 1.4, marginBottom: 10 }}>
+            Editors must enter this PIN to unlock protected pages. Enable protection per-page in View Settings.
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              type="password"
+              value={pin}
+              onChange={(e) => { setPin(e.target.value); setStatus(null); }}
+              placeholder="4+ digit PIN"
+              maxLength={8}
+              style={{
+                background: C.dark, border: `1px solid ${C.darkBorder}`,
+                borderRadius: RADIUS.md, padding: "7px 12px",
+                color: C.darkText, fontFamily: FONT, fontSize: 14,
+                letterSpacing: "0.2em", width: 120, textAlign: "center",
+              }}
+              onKeyDown={(e) => e.key === "Enter" && handleSetPin()}
+            />
+            <button
+              onClick={handleSetPin}
+              disabled={status === "saving"}
+              style={{
+                ...S.btnPrimary, padding: "7px 16px", fontSize: 12,
+                opacity: status === "saving" ? 0.6 : 1,
+              }}
+            >
+              {status === "saving" ? "Saving..." : status === "saved" ? "Saved" : "Set PIN"}
+            </button>
+            {status === "error" && (
+              <span style={{ fontSize: 11, color: "#E05252" }}>Min 4 characters</span>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // Settings Tab (theme picker)
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -1398,6 +1477,9 @@ function SettingsTab() {
           Log Out
         </button>
       </div>
+
+      {/* ── PIN Lock ── */}
+      <PinSetupSection />
 
       {/* ── Factory Reset ── */}
       <div

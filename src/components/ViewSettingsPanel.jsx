@@ -307,6 +307,10 @@ export default function ViewSettingsPanel({
   databaseSections,    // [{ dbId, dbName, schema, viewColorConfig }] — per-database configs
   onSaveSection,       // (dbId, { colorField, colorMapping }) => void
   onResetSection,      // (dbId) => void
+  // Page-level settings (PIN protection)
+  pageConfig,          // optional — page config for PIN toggle
+  identity,            // optional — current user identity for admin check
+  onUpdatePageConfig,  // optional — (pageId, updates) => void
 }) {
   const isUnifiedMode = !!viewKey || !!databaseSections;
 
@@ -635,6 +639,37 @@ export default function ViewSettingsPanel({
 
         {/* Content */}
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 16px 24px" }}>
+
+          {/* ═══ PIN Protection Toggle (admin-only) ═══ */}
+          {pageConfig && identity && identity.role === "admin" && onUpdatePageConfig && (
+            <div style={{ marginBottom: 16 }}>
+              <SectionLabel>Protection</SectionLabel>
+              <div style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "8px 0",
+              }}>
+                <div>
+                  <div style={{ fontSize: 12, color: C.darkText, fontWeight: 500 }}>PIN Lock</div>
+                  <div style={{ fontSize: 10, color: C.darkMuted }}>Editors must enter PIN to edit this page</div>
+                </div>
+                <button
+                  onClick={() => onUpdatePageConfig(pageConfig.id, { pin_protected: !pageConfig.pin_protected })}
+                  style={{
+                    width: 38, height: 20, borderRadius: 10, border: "none", cursor: "pointer",
+                    background: pageConfig.pin_protected ? C.accent : C.darkBorder,
+                    position: "relative", transition: "background 0.2s",
+                  }}
+                >
+                  <div style={{
+                    width: 16, height: 16, borderRadius: 8, background: "#fff",
+                    position: "absolute", top: 2,
+                    left: pageConfig.pin_protected ? 20 : 2,
+                    transition: "left 0.2s",
+                  }} />
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* ═══ Multi-database sections (Tasks view) ═══ */}
           {databaseSections && databaseSections.map((sec) => {
