@@ -4,10 +4,13 @@
 // Supports: paragraph, heading_1/2/3, bulleted_list_item, numbered_list_item, code, divider.
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
+import { C, FONT, MONO, RADIUS, SHADOW } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { getBlocks, appendBlocks, updateBlock, deleteBlock } from "../notion/client.js";
 import { getDocument, saveDocument } from "../lib/api.js";
+import RecordNotes from "../components/RecordNotes.jsx";
+import RecordComments from "../components/RecordComments.jsx";
+import RecordFiles from "../components/RecordFiles.jsx";
 
 // ─── Constants ───
 
@@ -876,6 +879,7 @@ export default function DocumentEditor({ pageId: legacyPageId, config, pageConfi
   // Determine standalone vs Notion-backed mode
   const isStandalone = config?.standalone === true || pageConfig?.standalone === true;
   const docId = isStandalone ? pageConfig?.id : (config?.pageId || legacyPageId);
+  const docPageConfigId = pageConfig?.id || docId || "document";
 
   const [blocks, setBlocks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -884,6 +888,8 @@ export default function DocumentEditor({ pageId: legacyPageId, config, pageConfi
   const [focusIdx, setFocusIdx] = useState(null);
   const [slashMenu, setSlashMenu] = useState(null); // { index, position, filter }
   const [linkPopup, setLinkPopup] = useState(null); // { position }
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState("notes"); // notes | comments | files
   const saveTimerRef = useRef(null);
   const blockRefs = useRef({});
   const deletedIdsRef = useRef([]);
@@ -1558,7 +1564,29 @@ export default function DocumentEditor({ pageId: legacyPageId, config, pageConfi
         >
           ¶
         </button>
+
+        <div style={{ flex: 1 }} />
+
+        {/* Sidebar toggle */}
+        <button
+          style={{
+            ...toolBtn(sidebarOpen),
+            display: "flex", alignItems: "center", gap: 4,
+            fontSize: 11, padding: "4px 10px",
+          }}
+          onClick={() => setSidebarOpen((o) => !o)}
+          title="Toggle sidebar"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+            <rect x="1" y="2" width="12" height="10" rx="1.5" />
+            <line x1="9" y1="2" x2="9" y2="12" />
+          </svg>
+          {sidebarOpen ? "Hide" : "Panel"}
+        </button>
       </div>
+
+      {/* Editor body + sidebar row */}
+      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
 
       {/* Editor body */}
       <div
@@ -1606,6 +1634,68 @@ export default function DocumentEditor({ pageId: legacyPageId, config, pageConfi
           />
         </div>
       </div>
+
+      {/* ── Sidebar ── */}
+      {sidebarOpen && docId && (
+        <div style={{
+          width: 340,
+          minWidth: 340,
+          borderLeft: `1px solid ${C.darkBorder}`,
+          overflowY: "auto",
+          display: "flex",
+          flexDirection: "column",
+          background: C.darkSurf,
+        }}>
+          {/* Sidebar tab bar */}
+          <div style={{
+            display: "flex", gap: 2, padding: "10px 12px 0",
+            borderBottom: `1px solid ${C.darkBorder}`,
+          }}>
+            {[
+              { key: "notes", label: "Notes" },
+              { key: "comments", label: "Comments" },
+              { key: "files", label: "Files" },
+            ].map((t) => {
+              const active = sidebarTab === t.key;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setSidebarTab(t.key)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    borderBottom: `2px solid ${active ? C.accent : "transparent"}`,
+                    color: active ? C.darkText : C.darkMuted,
+                    fontFamily: FONT,
+                    fontSize: 12,
+                    fontWeight: active ? 600 : 400,
+                    padding: "6px 12px 8px",
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Sidebar content */}
+          <div style={{ flex: 1, padding: "0 12px", overflowY: "auto" }}>
+            {sidebarTab === "notes" && (
+              <RecordNotes recordId={docId} pageConfigId={docPageConfigId} />
+            )}
+            {sidebarTab === "comments" && (
+              <RecordComments recordId={docId} pageConfigId={docPageConfigId} />
+            )}
+            {sidebarTab === "files" && (
+              <RecordFiles recordId={docId} pageConfigId={docPageConfigId} />
+            )}
+          </div>
+        </div>
+      )}
+
+      </div>{/* Close editor + sidebar flex row */}
 
       {/* Slash menu */}
       {slashMenu && (
