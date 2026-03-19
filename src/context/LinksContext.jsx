@@ -56,9 +56,10 @@ export function LinksProvider({ children }) {
 
   // Fetch data for a source ref (with caching)
   const fetchSourceData = useCallback(async (sourceRef, sourcePageConfigId) => {
-    if (!user?.workerUrl || !user?.notionKey) return { notionData: [], sheetDataMap: {} };
+    if (!user?.workerUrl) return { notionData: [], sheetDataMap: {} };
 
     if (sourceRef.type === "notion") {
+      if (!user?.notionKey) return { notionData: [], sheetDataMap: {} };
       // Find which database this page belongs to
       const pageConfig = pages.find((p) => p.id === sourcePageConfigId);
       if (!pageConfig?.databaseIds?.length) return { notionData: [], sheetDataMap: {} };

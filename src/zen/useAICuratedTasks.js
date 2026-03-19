@@ -313,10 +313,11 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
 
   // Background scan and AI curation
   const scan = useCallback(async (force = false) => {
-    if (!user?.workerUrl || !user?.notionKey) {
+    if (!user?.workerUrl) {
       setLoading(false);
       return;
     }
+    const hasNotion = !!user?.notionKey;
     if (scanningRef.current) return;
 
     // Force refresh: clear stale cache so results aren't served from old data
@@ -351,7 +352,7 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
         if (page._systemInternal) continue;
         const pt = page.page_type || page.pageType;
 
-        if (pt === "linked_notion" && page.databaseIds?.length > 0) {
+        if (hasNotion && pt === "linked_notion" && page.databaseIds?.length > 0) {
           for (const dbId of page.databaseIds) {
             candidates.push({ type: "notion", dbId, pageName: page.name });
           }

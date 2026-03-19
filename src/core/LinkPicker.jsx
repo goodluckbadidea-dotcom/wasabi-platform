@@ -64,7 +64,7 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
 
   // Load view data when a view is selected
   useEffect(() => {
-    if (!selectedView || !user?.workerUrl || !user?.notionKey) return;
+    if (!selectedView || !user?.workerUrl) return;
     let cancelled = false;
     setViewLoading(true);
     setViewData(null);
@@ -85,7 +85,8 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
             });
           }
         } else {
-          // Notion-backed view
+          // Notion-backed view — requires Notion key
+          if (!user?.notionKey) return;
           const dbId = selectedView.config?.databaseId || selectedPage?.databaseIds?.[0];
           if (!dbId) return;
           const [schema, results] = await Promise.all([
