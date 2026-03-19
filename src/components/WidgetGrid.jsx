@@ -157,6 +157,15 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
           viewIndex={widget.viewIndex ?? 0}
           width={widget.w}
           height={widget.h - 28}
+          widgetViewConfig={widget.viewConfig}
+          onWidgetViewConfigChange={(configUpdates) => {
+            const updated = widgets.map((w) =>
+              w.id === widget.id
+                ? { ...w, viewConfig: { ...(w.viewConfig || {}), ...configUpdates } }
+                : w
+            );
+            onUpdateWidgets(updated);
+          }}
         />
       );
     }
