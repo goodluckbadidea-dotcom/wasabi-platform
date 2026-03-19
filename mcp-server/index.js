@@ -1,7 +1,15 @@
 // ─── Wasabi MCP Server ───
-// Local MCP server for Claude Desktop.
+// Local MCP server for Claude Desktop (Cowork).
 // Proxies requests to the remote Wasabi Cloudflare Worker.
 // Speaks MCP protocol over stdio transport.
+//
+// TOOL USAGE PLAYBOOK (for the AI reading these descriptions):
+// 1. Start with wasabi_dashboard to understand the workspace
+// 2. Use wasabi_pages (list) to find page IDs and their types
+// 3. Use wasabi_data to read/write rows — if rows come back empty,
+//    the table may need a Notion sync pull (use wasabi_sync pull)
+// 4. Use wasabi_search to find anything by keyword across all data
+// 5. Use wasabi_analytics for aggregations (count, sum, group_by)
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -47,6 +55,21 @@ function parseJSON(str) {
   if (!str) return undefined;
   if (typeof str === "object") return str;
   try { return JSON.parse(str); } catch { return str; }
+}
+
+// ── Auto-sync helper: check if a table needs sync pull ──
+async function ensureSynced(tableId) {
+  try {
+    const status = await wasabiFetch(`/sync/${tableId}/status`);
+    if (status && status.notion_db_id && !status.last_synced_at) {
+      // Sync is configured but never pulled — do a full pull now
+      const pullResult = await wasabiFetch(`/sync/${tableId}/pull?full=1`, "POST");
+      return { auto_synced: true, pull_result: pullResult };
+    }
+    return null;
+  } catch {
+    return null; // No sync config — that's fine
+  }
 }
 
 // ── Create MCP Server ──
@@ -97,7 +120,7 @@ server.tool(
 );
 
 // ═══════════════════════════════════════════
-// 3. DATA (table rows)
+// 3. DATA (table rows) — with auto-sync
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_data",
@@ -121,10 +144,34 @@ server.tool(
     try {
       const lim = limit || 100;
       switch (action) {
-        case "list":
-          return ok(await wasabiFetch(`/tables/${table_id}/rows?limit=${lim}&offset=${offset || 0}`));
-        case "query":
-          return ok(await wasabiFetch(`/tables/${table_id}/query`, "POST", { filters, sorts, limit: lim, offset }));
+        case "list": {
+          let result = await wasabiFetch(`/tables/${table_id}/rows?limit=${lim}&offset=${offset || 0}`);
+          let rowArr = result?.rows || (Array.isArray(result) ? result : []);
+          // Auto-sync: if empty, check if Notion sync needs initial pull
+          if (rowArr.length === 0) {
+            const syncInfo = await ensureSynced(table_id);
+            if (syncInfo?.auto_synced) {
+              // Re-fetch after sync
+              result = await wasabiFetch(`/tables/${table_id}/rows?limit=${lim}&offset=${offset || 0}`);
+              rowArr = result?.rows || (Array.isArray(result) ? result : []);
+              return ok({ ...result, rows: rowArr, _auto_synced: true, _sync_result: syncInfo.pull_result });
+            }
+          }
+          return ok(result);
+        }
+        case "query": {
+          let result = await wasabiFetch(`/tables/${table_id}/query`, "POST", { filters, sorts, limit: lim, offset });
+          let rowArr = result?.rows || (Array.isArray(result) ? result : []);
+          // Auto-sync on empty query too
+          if (rowArr.length === 0) {
+            const syncInfo = await ensureSynced(table_id);
+            if (syncInfo?.auto_synced) {
+              result = await wasabiFetch(`/tables/${table_id}/query`, "POST", { filters, sorts, limit: lim, offset });
+              return ok({ ...(typeof result === 'object' ? result : { rows: result }), _auto_synced: true });
+            }
+          }
+          return ok(result);
+        }
         case "create":
           return ok(await wasabiFetch(`/tables/${table_id}/rows`, "POST", { rows }));
         case "update":
@@ -388,7 +435,7 @@ server.tool(
 );
 
 // ═══════════════════════════════════════════
-// 12. SEARCH (cross-table fuzzy search)
+// 12. SEARCH
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_search",
@@ -424,7 +471,6 @@ server.tool(
         const pages = await wasabiFetch("/pages").catch(() => []);
         const tables = (Array.isArray(pages) ? pages : []).filter((p) => p.id);
         const tableResults = [];
-        // Search first 10 tables to avoid timeout
         for (const page of tables.slice(0, 10)) {
           try {
             const rows = await wasabiFetch(`/tables/${page.id}/rows?limit=${lim}&search=${encodeURIComponent(query)}`);
@@ -441,7 +487,7 @@ server.tool(
 );
 
 // ═══════════════════════════════════════════
-// 13. DASHBOARD (workspace snapshot)
+// 13. DASHBOARD
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_dashboard",
@@ -455,10 +501,28 @@ server.tool(
       const snapshot = {};
       const fetches = [];
 
-      if (inc === "all" || inc === "health") fetches.push(wasabiFetch("/health").then((r) => (snapshot.health = r)).catch(() => (snapshot.health = { status: "unreachable" })));
-      if (inc === "all" || inc === "pages") fetches.push(wasabiFetch("/pages").then((r) => (snapshot.pages = (Array.isArray(r) ? r : []).map((p) => ({ id: p.id, name: p.name, type: p.page_type, views: (p.views || []).length })))).catch(() => (snapshot.pages = [])));
-      if (inc === "all" || inc === "notifications") fetches.push(wasabiFetch("/d1/notifications/unread-count").then((r) => (snapshot.unread_notifications = r)).catch(() => (snapshot.unread_notifications = 0)));
-      if (inc === "all" || inc === "activity") fetches.push(wasabiFetch("/task-activity?limit=10").then((r) => (snapshot.recent_activity = r)).catch(() => (snapshot.recent_activity = [])));
+      if (inc === "all" || inc === "health") {
+        fetches.push(wasabiFetch("/health").then((r) => (snapshot.health = r)).catch(() => (snapshot.health = { status: "unreachable" })));
+      }
+      if (inc === "all" || inc === "pages") {
+        fetches.push(wasabiFetch("/pages").then((pages) => {
+          const arr = Array.isArray(pages) ? pages : [];
+          snapshot.pages = arr.map((p) => ({
+            id: p.id,
+            name: p.name,
+            type: p.page_type,
+            parent_id: p.parent_id || null,
+            views: (p.views || []).length,
+          }));
+          snapshot.page_count = arr.length;
+        }).catch(() => (snapshot.pages = [])));
+      }
+      if (inc === "all" || inc === "notifications") {
+        fetches.push(wasabiFetch("/d1/notifications/unread-count").then((r) => (snapshot.unread_notifications = r)).catch(() => (snapshot.unread_notifications = 0)));
+      }
+      if (inc === "all" || inc === "activity") {
+        fetches.push(wasabiFetch("/task-activity?limit=10").then((r) => (snapshot.recent_activity = r)).catch(() => (snapshot.recent_activity = [])));
+      }
 
       await Promise.all(fetches);
       snapshot.timestamp = new Date().toISOString();
@@ -468,7 +532,7 @@ server.tool(
 );
 
 // ═══════════════════════════════════════════
-// 14. ANALYTICS (aggregate queries)
+// 14. ANALYTICS
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_analytics",
@@ -483,10 +547,18 @@ server.tool(
   async ({ table_id, operation, field, group_by, filters: rawFilters }) => {
     const filters = parseJSON(rawFilters);
     try {
-      // Fetch all matching rows
       const body = { filters, limit: 5000 };
       const result = await wasabiFetch(`/tables/${table_id}/query`, "POST", body);
-      const rows = result?.rows || (Array.isArray(result) ? result : []);
+      let rows = result?.rows || (Array.isArray(result) ? result : []);
+
+      // Auto-sync if empty
+      if (rows.length === 0) {
+        const syncInfo = await ensureSynced(table_id);
+        if (syncInfo?.auto_synced) {
+          const retry = await wasabiFetch(`/tables/${table_id}/query`, "POST", body);
+          rows = retry?.rows || (Array.isArray(retry) ? retry : []);
+        }
+      }
 
       const getCellValue = (row, f) => {
         const cells = row.cells || row;
@@ -496,7 +568,6 @@ server.tool(
       switch (operation) {
         case "count":
           return ok({ count: rows.length });
-
         case "sum": {
           const total = rows.reduce((s, r) => s + (Number(getCellValue(r, field)) || 0), 0);
           return ok({ field, sum: total, count: rows.length });
@@ -521,7 +592,7 @@ server.tool(
 );
 
 // ═══════════════════════════════════════════
-// 15. DIFF (change tracking)
+// 15. DIFF
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_diff",
@@ -534,7 +605,6 @@ server.tool(
   async ({ table_id, since, limit }) => {
     const lim = limit || 50;
     try {
-      // Fetch rows and filter by updated_at
       const result = await wasabiFetch(`/tables/${table_id}/rows?limit=${lim}`);
       const rows = result?.rows || (Array.isArray(result) ? result : []);
 
@@ -544,7 +614,6 @@ server.tool(
         return ok({ table_id, since, changed_rows: changed.length, rows: changed });
       }
 
-      // Sort by most recently modified
       const sorted = [...rows].sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at));
       return ok({ table_id, total: sorted.length, rows: sorted.slice(0, lim) });
     } catch (e) { return err(e); }
@@ -552,7 +621,7 @@ server.tool(
 );
 
 // ═══════════════════════════════════════════
-// 16. IMPORT (bulk insert with schema mapping)
+// 16. IMPORT
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_import",
@@ -573,7 +642,6 @@ server.tool(
       const rows = parseJSON(rawRows);
       if (!Array.isArray(rows) || !rows.length) return err("rows must be a non-empty JSON array of objects");
 
-      // If merge_key is set, fetch existing rows to check for duplicates
       if (merge_key) {
         const existing = await wasabiFetch(`/tables/${table_id}/rows?limit=5000`);
         const existingRows = existing?.rows || (Array.isArray(existing) ? existing : []);
@@ -596,7 +664,7 @@ server.tool(
 
         const results = { created: 0, updated: 0, errors: [] };
         if (toCreate.length) {
-          const created = await wasabiFetch(`/tables/${table_id}/rows`, "POST", { rows: toCreate });
+          await wasabiFetch(`/tables/${table_id}/rows`, "POST", { rows: toCreate });
           results.created = toCreate.length;
         }
         for (const u of toUpdate) {
@@ -608,7 +676,6 @@ server.tool(
         return ok(results);
       }
 
-      // Simple bulk create
       const result = await wasabiFetch(`/tables/${table_id}/rows`, "POST", { rows });
       return ok({ created: rows.length, result });
     } catch (e) { return err(e); }
@@ -616,7 +683,7 @@ server.tool(
 );
 
 // ═══════════════════════════════════════════
-// 17. EXPORT (table data as JSON/CSV)
+// 17. EXPORT
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_export",
@@ -643,7 +710,6 @@ server.tool(
 
       if (fmt === "csv") {
         if (!rows.length) return ok({ csv: "", row_count: 0 });
-        // Extract all unique cell keys
         const allKeys = new Set();
         for (const r of rows) for (const k of Object.keys(r.cells || r)) allKeys.add(k);
         const headers = [...allKeys];
@@ -661,7 +727,7 @@ server.tool(
 );
 
 // ═══════════════════════════════════════════
-// 18. LINK EXTERNAL (attach refs to records)
+// 18. LINK EXTERNAL
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_link_external",
@@ -694,7 +760,7 @@ server.tool(
 );
 
 // ═══════════════════════════════════════════
-// 19. SQL (raw D1 queries via query builder)
+// 19. SQL (advanced query)
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_sql",
@@ -715,7 +781,15 @@ server.tool(
       const result = await wasabiFetch(`/tables/${table_id}/query`, "POST", body);
       let rows = result?.rows || (Array.isArray(result) ? result : []);
 
-      // Field filtering (client-side)
+      // Auto-sync if empty
+      if (rows.length === 0) {
+        const syncInfo = await ensureSynced(table_id);
+        if (syncInfo?.auto_synced) {
+          const retry = await wasabiFetch(`/tables/${table_id}/query`, "POST", body);
+          rows = retry?.rows || (Array.isArray(retry) ? retry : []);
+        }
+      }
+
       if (fields) {
         const fieldList = fields.split(",").map((f) => f.trim());
         rows = rows.map((r) => {
@@ -732,7 +806,7 @@ server.tool(
 );
 
 // ═══════════════════════════════════════════
-// 20. SCHEMA ALTER (add/rename/remove columns)
+// 20. SCHEMA ALTER
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_schema_alter",
@@ -754,7 +828,7 @@ server.tool(
 );
 
 // ═══════════════════════════════════════════
-// 21. BULK UPDATE (update rows matching filter)
+// 21. BULK UPDATE
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_bulk_update",
@@ -769,13 +843,11 @@ server.tool(
     const filters = parseJSON(rawFilters);
     const updates = parseJSON(rawUpdates);
     try {
-      // Find matching rows
       const result = await wasabiFetch(`/tables/${table_id}/query`, "POST", { filters, limit: 5000 });
       const rows = result?.rows || (Array.isArray(result) ? result : []);
 
       if (dry_run) return ok({ matched: rows.length, rows: rows.slice(0, 20), note: "Dry run — no changes made" });
 
-      // Update each row
       let updated = 0;
       const errors = [];
       for (const row of rows) {
@@ -790,7 +862,7 @@ server.tool(
 );
 
 // ═══════════════════════════════════════════
-// 22. BACKUP (export snapshot to R2)
+// 22. BACKUP
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_backup",
@@ -840,7 +912,7 @@ server.tool(
 );
 
 // ═══════════════════════════════════════════
-// 24. AGENT CONFIG (read/update agent settings)
+// 24. AGENT CONFIG
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_agent_config",
@@ -868,7 +940,7 @@ server.tool(
 );
 
 // ═══════════════════════════════════════════
-// 25. TRIGGER (manually fire automations)
+// 25. TRIGGER
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_trigger",
@@ -882,9 +954,7 @@ server.tool(
     const input = parseJSON(rawInput);
     try {
       if (type === "rule") {
-        // Get the rule, then simulate its action
         const rule = await wasabiFetch(`/d1/rules/${id}`);
-        // Log execution
         await wasabiFetch("/d1/function-executions", "POST", {
           function_id: id, trigger: "manual_mcp", status: "running",
           input_data: JSON.stringify(input || {}),
@@ -904,7 +974,7 @@ server.tool(
 );
 
 // ═══════════════════════════════════════════
-// 26. SCHEDULE (create/update scheduled tasks)
+// 26. SCHEDULE
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_schedule",
@@ -931,7 +1001,7 @@ server.tool(
 );
 
 // ═══════════════════════════════════════════
-// BONUS: 27. GOOGLE (Gmail + Calendar via Wasabi's OAuth)
+// 27. GOOGLE (Gmail + Calendar)
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_google",
@@ -974,7 +1044,7 @@ server.tool(
 );
 
 // ═══════════════════════════════════════════
-// BONUS: 28. SYNC (Notion <> Wasabi sync)
+// 28. SYNC (Notion <> Wasabi)
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_sync",
@@ -1001,7 +1071,7 @@ server.tool(
 );
 
 // ═══════════════════════════════════════════
-// BONUS: 29. RECORDS (notes, comments, badges)
+// 29. RECORDS (notes, comments, badges)
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_records",
