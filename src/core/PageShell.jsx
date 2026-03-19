@@ -7,6 +7,7 @@ import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { fetchDataSource, updateRecord, createRecord, deleteRecords, resolveSourceType } from "../lib/dataSource.js";
+import { configureSyncNotionDB, syncPull } from "../lib/api.js";
 // savePageConfig is handled internally by updatePageConfig (PagesContext)
 import ViewRenderer from "../views/ViewRenderer.jsx";
 import ChatPanel from "../views/ChatPanel.jsx";
@@ -268,6 +269,17 @@ export default function PageShell({
         views: newViews,
       });
       setShowAddDb(false);
+
+      // Auto-configure sync and pull Notion data into D1
+      // Notion is an integration, not a dependency — all data lives in D1
+      try {
+        await configureSyncNotionDB(pageConfig.id, { notion_db_id: id });
+        await syncPull(pageConfig.id, true); // full=true for initial pull
+      } catch (err) {
+        console.warn("[Sync] Auto-sync on link failed:", err.message);
+        // Don't block — data will still be fetched from Notion as fallback
+      }
+
       fetchData();
     },
     [pageConfig, updatePageConfig, fetchData]

@@ -1359,6 +1359,12 @@ export default {
         return await handleSyncFlush(env, notionKey);
       }
 
+      // Sync bootstrap — auto-configure + full pull for all linked Notion databases
+      if (path === "/sync/bootstrap" && request.method === "POST") {
+        const notionKey = await getNotionKey(request, env);
+        return await handleSyncBootstrap(env, notionKey);
+      }
+
       const syncDeleteMatch = path.match(/^\/sync\/([^/]+)$/);
       if (syncDeleteMatch && request.method === "DELETE") {
         const tableId = syncDeleteMatch[1];
@@ -7180,20 +7186,62 @@ async function syncFlushInternal(env, notionKey) {
 }
 
 /**
+ * Convert Notion database properties to D1 column definitions.
+ * Used when auto-creating a table_schemas entry for a linked Notion database.
+ */
+function notionPropsToD1Columns(notionProps) {
+  const typeMap = {
+    title: "text", rich_text: "text", number: "number",
+    select: "select", multi_select: "multi_select", status: "select",
+    date: "date", checkbox: "checkbox", url: "url", email: "email",
+    phone_number: "phone", people: "people", files: "files",
+    relation: "relation", formula: "text", rollup: "text",
+    created_time: "date", last_edited_time: "date",
+    created_by: "text", last_edited_by: "text",
+    unique_id: "text",
+  };
+
+  const columns = [];
+  for (const [name, prop] of Object.entries(notionProps)) {
+    const colType = typeMap[prop.type] || "text";
+    const col = {
+      id: name, // Use Notion property name as column ID for direct mapping
+      name: name,
+      type: colType,
+    };
+
+    // Extract select/multi_select options
+    if (prop.type === "select" && prop.select?.options) {
+      col.options = prop.select.options.map((o) => ({ label: o.name, color: o.color }));
+    }
+    if (prop.type === "multi_select" && prop.multi_select?.options) {
+      col.options = prop.multi_select.options.map((o) => ({ label: o.name, color: o.color }));
+    }
+    if (prop.type === "status" && prop.status?.options) {
+      col.options = prop.status.options.map((o) => ({ label: o.name, color: o.color }));
+    }
+
+    // Mark computed properties as read-only
+    if (["formula", "rollup", "created_time", "last_edited_time", "created_by", "last_edited_by", "unique_id"].includes(prop.type)) {
+      col.readOnly = true;
+    }
+
+    columns.push(col);
+  }
+  return columns;
+}
+
+/**
  * Configure sync between a D1 table and a Notion database.
  * Creates or updates a sync_configs row + auto-generates field mapping.
+ * If no D1 schema exists, auto-creates one from Notion properties.
  */
 async function handleSyncConfigure(env, tableId, body, notionKey) {
-  const { notion_db_id, direction = "app_to_notion", field_mapping } = body;
+  const { notion_db_id, direction = "bidirectional", field_mapping } = body;
   if (!notion_db_id) return jsonResponse({ _error: "notion_db_id required" }, 400);
   if (!notionKey) return jsonResponse({ _error: "Notion API key not configured" }, 400);
 
-  // Get D1 table schema
-  const schema = await env.DB.prepare("SELECT columns FROM table_schemas WHERE id = ?").bind(tableId).first();
-  if (!schema) return jsonResponse({ _error: "Table not found" }, 404);
-  const columns = safeParseJSON(schema.columns);
-
-  // Get Notion database schema
+  // Get Notion database schema FIRST (we need this whether or not D1 schema exists)
   let notionSchema;
   try {
     const res = await fetch(`${NOTION_API}/databases/${notion_db_id}`, {
@@ -7211,13 +7259,30 @@ async function handleSyncConfigure(env, tableId, body, notionKey) {
     return jsonResponse({ _error: `Failed to reach Notion: ${err.message}` }, 502);
   }
 
-  // Auto-generate field mapping if not provided
+  // Get D1 table schema — if it doesn't exist, CREATE it from Notion properties
+  let schema = await env.DB.prepare("SELECT columns FROM table_schemas WHERE id = ?").bind(tableId).first();
+  let columns;
+
+  if (!schema) {
+    // Generate D1 schema from Notion database properties
+    const notionProps = notionSchema.properties || {};
+    columns = notionPropsToD1Columns(notionProps);
+
+    await env.DB.prepare(
+      `INSERT INTO table_schemas (id, columns, updated_at)
+       VALUES (?, ?, datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET columns = excluded.columns, updated_at = datetime('now')`
+    ).bind(tableId, JSON.stringify(columns)).run();
+  } else {
+    columns = safeParseJSON(schema.columns);
+  }
+
+  // Auto-generate field mapping from D1 columns ↔ Notion properties
   let mapping = field_mapping;
   if (!mapping || Object.keys(mapping).length === 0) {
     mapping = {};
     const notionProps = notionSchema.properties || {};
     for (const col of Array.isArray(columns) ? columns : []) {
-      // Try exact name match first, then case-insensitive
       const colName = col.name || col.id;
       if (notionProps[colName]) {
         mapping[col.id] = { notion_property: colName, notion_type: notionProps[colName].type };
@@ -7549,6 +7614,92 @@ async function handleSyncStatus(env, tableId) {
 async function handleSyncDelete(env, tableId) {
   await env.DB.prepare("DELETE FROM sync_configs WHERE table_id = ?").bind(tableId).run();
   return jsonResponse({ success: true, table_id: tableId });
+}
+
+/**
+ * Bootstrap sync for all linked Notion databases.
+ * Finds page_configs with notion databaseIds that have no sync_config,
+ * creates sync configs, generates schemas, and runs full pulls.
+ * POST /sync/bootstrap
+ */
+async function handleSyncBootstrap(env, notionKey) {
+  if (!notionKey) return jsonResponse({ _error: "Notion API key not configured" }, 400);
+
+  try {
+    // Get all page configs
+    const pages = await env.DB.prepare("SELECT * FROM page_configs").all();
+    const allPages = pages.results || [];
+
+    // Get existing sync configs to skip already-configured tables
+    const syncs = await env.DB.prepare("SELECT table_id FROM sync_configs").all();
+    const syncedTableIds = new Set((syncs.results || []).map((s) => s.table_id));
+
+    const results = [];
+
+    for (const page of allPages) {
+      // Find pages with linked Notion database IDs
+      let dbIds = [];
+      try {
+        const config = JSON.parse(page.config || "{}");
+        const raw = config.databaseIds || config.notion_database_id;
+        if (Array.isArray(raw)) dbIds = raw;
+        else if (typeof raw === "string" && raw) dbIds = [raw];
+      } catch {}
+
+      // Also check top-level notion_database_id
+      if (page.notion_database_id) dbIds.push(page.notion_database_id);
+
+      if (!dbIds.length) continue;
+      if (syncedTableIds.has(page.id)) {
+        results.push({ page_id: page.id, status: "already_synced" });
+        continue;
+      }
+
+      // Use the first database ID for sync
+      const notionDbId = dbIds[0];
+
+      try {
+        // Configure sync (this auto-creates schema if missing)
+        const configBody = { notion_db_id: notionDbId, direction: "bidirectional" };
+        // Call handleSyncConfigure internally
+        const configRes = await handleSyncConfigure(env, page.id, configBody, notionKey);
+        const configData = await configRes.json().catch(() => ({}));
+
+        if (configData._error) {
+          results.push({ page_id: page.id, notion_db: notionDbId, status: "config_error", error: configData._error });
+          continue;
+        }
+
+        // Run full pull
+        const pullRes = await handleSyncPull(env, page.id, true, notionKey);
+        const pullData = await pullRes.json().catch(() => ({}));
+
+        if (pullData._error) {
+          results.push({ page_id: page.id, notion_db: notionDbId, status: "pull_error", error: pullData._error });
+          continue;
+        }
+
+        // Update page_type to "database" so resolveSourceType returns "d1"
+        await env.DB.prepare(
+          "UPDATE page_configs SET page_type = 'database' WHERE id = ?"
+        ).bind(page.id).run();
+
+        results.push({
+          page_id: page.id,
+          notion_db: notionDbId,
+          status: "synced",
+          rows_created: pullData.created || 0,
+          rows_updated: pullData.updated || 0,
+        });
+      } catch (err) {
+        results.push({ page_id: page.id, notion_db: notionDbId, status: "error", error: err.message });
+      }
+    }
+
+    return jsonResponse({ bootstrapped: results.filter((r) => r.status === "synced").length, results });
+  } catch (err) {
+    return jsonResponse({ _error: `Bootstrap failed: ${err.message}` }, 500);
+  }
 }
 
 /**

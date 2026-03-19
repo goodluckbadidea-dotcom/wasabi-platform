@@ -38,14 +38,15 @@ export async function fetchDataSource(pageConfig, user) {
 
 export function resolveSourceType(pageConfig) {
   const pt = pageConfig.page_type || pageConfig.pageType;
-  if (pt === "database") return "d1";
-  if (pt === "linked_notion") return "notion";
+  if (pt === "database") return "d1"; // D1 is source of truth — includes synced Notion databases
+  if (pt === "standalone_table") return "d1";
+  if (pt === "linked_notion") return "d1"; // After bootstrap sync, linked_notion data is in D1 too
   if (pt === "linked_monday") return "monday";
   if (pt === "linked_sheet") return "linked_sheet";
   if (pt === "document") return "document";
   if (pt === "folder") return "folder";
-  // Legacy: pages with databaseIds are Notion-based
-  if (pageConfig.databaseIds?.length) return "notion";
+  // Legacy: pages with databaseIds — try D1 first (data should be synced)
+  if (pageConfig.databaseIds?.length) return "d1";
   return "none";
 }
 

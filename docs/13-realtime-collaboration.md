@@ -1,5 +1,13 @@
 # 13 — Real-Time Collaboration & Conflict Resolution
 
+**Last updated**: 2026-03-19
+**Status**: Phase 1 complete. Phases 2-5 pending (blocked on D1/Notion sync fix — see doc 14).
+
+### Multi-User Fixes Completed (2026-03-19)
+- ✅ Google OAuth per-user isolation: `handleGoogleStatus` no longer falls back to global token for logged-in users
+- ✅ Disconnect only removes the current user's token, not the global one
+- ✅ Field-level conflict detection deployed to production
+
 ## Context
 
 Wasabi supports 5-10 concurrent users. Without real-time sync, two users editing the same record causes silent data loss (last-write-wins with no detection). This plan implements Google Docs-style collaboration: field-level merge, live presence, and conflict resolution across all views.
@@ -339,16 +347,21 @@ function userColor(userId) {
 
 ## Implementation Phases
 
-### Phase 1: Field-Level Versioning (no WebSocket yet)
-**Files**: `worker.js`, `src/lib/api.js`
+### Phase 1: Field-Level Versioning (no WebSocket yet) — COMPLETE ✅
+**Files**: `worker.js`, `src/lib/dataSource.js`, `src/core/PageShell.jsx`, `src/components/ConflictToast.jsx`
+**Commit**: `138b481` (2026-03-19)
 
-1. Add `cell_versions` column to `table_rows` (ALTER TABLE in init)
-2. Modify `handleUpdateRow` to support `base_versions` conflict detection
-3. Include `cell_versions` in row query responses
-4. Frontend: track base versions, send with PATCH, handle conflict response
-5. Show conflict toast UI
+1. ✅ Added `cell_versions` TEXT column + `updated_by` TEXT column to `table_rows`
+2. ✅ Modified `handleUpdateRow` to support `base_versions` conflict detection
+3. ✅ `cell_versions` included in both row list and query responses (parsed from JSON)
+4. ✅ Frontend tracks `cell_versions` per record, passes `base_versions` through `dataSource.updateRecord` → `api.updateRow`
+5. ✅ `ConflictToast` component: shows conflicted fields with "Keep mine" / "Accept theirs" buttons
+6. ✅ Legacy clients (no `base_versions`) still work unconditionally — backward compatible
+7. ✅ Worker deployed, init migration runs successfully
 
 **Outcome**: Conflict detection works via polling. No real-time presence yet, but no more silent data loss.
+
+**BLOCKER for full functionality**: Notion-linked databases have empty D1 table_rows — conflict detection only works on standalone D1 tables until the D1/Notion sync architecture is fixed. See `docs/14-d1-notion-sync-architecture.md`.
 
 ### Phase 2: Durable Object + WebSocket
 **Files**: `worker.js` (TableRoom class), `wrangler-worker.toml`, `src/lib/tableSocket.js`
