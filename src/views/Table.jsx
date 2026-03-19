@@ -20,7 +20,7 @@ import { useLinks } from "../context/LinksContext.jsx";
 import LinkPicker from "../core/LinkPicker.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
-import { updateTableSchema, getTableSchema, listUsers, updateRowOwner, notionProxy } from "../lib/api.js";
+import { updateTableSchema, getTableSchema, listUsers, updateRowOwner, notionProxy, getRecordBadgeCounts } from "../lib/api.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { updateDatabase, searchDatabases } from "../notion/client.js";
 import SelectPicker from "../components/SelectPicker.jsx";
@@ -1373,6 +1373,23 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   }, [pageConfig?.id, viewIdx, resolveLinksForView]);
   const targetDatabaseId = config.databaseId || pageConfig?.databaseIds?.[0] || pageConfig?.id;
 
+  // ── Record badge counts (comments, notes, files) ──
+  const [badgeCounts, setBadgeCounts] = useState({});
+  const badgeFetchRef = useRef(null);
+  useEffect(() => {
+    if (!processedData || processedData.length === 0 || !pageConfig?.id) return;
+    if (badgeFetchRef.current) clearTimeout(badgeFetchRef.current);
+    badgeFetchRef.current = setTimeout(async () => {
+      try {
+        const ids = processedData.map((p) => p.id).filter(Boolean);
+        if (ids.length === 0) return;
+        const res = await getRecordBadgeCounts(ids, pageConfig.id);
+        setBadgeCounts(res?.counts || {});
+      } catch {}
+    }, 500); // debounce to avoid rapid re-fetches
+    return () => { if (badgeFetchRef.current) clearTimeout(badgeFetchRef.current); };
+  }, [processedData, pageConfig?.id]);
+
   // ── Relation title resolution ──
   // Query each related database to get page titles for relation fields
   const [relationTitles, setRelationTitles] = useState({});
@@ -2597,7 +2614,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           </div>
         ) : (
           (() => {
-            const gtc = `52px ${columns.map(col => `${colWidths[col] || (col === OWNER_COL_NAME ? OWNER_COL_WIDTH : 120)}px`).join(" ")} 40px${canEditSchema ? " 44px" : ""}`;
+            const gtc = `52px ${columns.map(col => `${colWidths[col] || (col === OWNER_COL_NAME ? OWNER_COL_WIDTH : 120)}px`).join(" ")} 56px 40px${canEditSchema ? " 44px" : ""}`;
             const totalTableWidth = 52 + columns.reduce((sum, col) => sum + (colWidths[col] || (col === OWNER_COL_NAME ? OWNER_COL_WIDTH : 120)), 0) + 40 + (canEditSchema ? 44 : 0);
 
             return (
@@ -2699,6 +2716,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                       </div>
                     );
                   })}
+                  {/* Badge column header */}
+                  <div style={{ ...styles.gridHeaderCell, padding: "10px 2px" }} />
                   {/* Neuron column header */}
                   <div style={{ ...styles.gridHeaderCell, padding: "10px 4px" }} />
                   {/* Add column button */}
@@ -2980,6 +2999,24 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                   </div>
                                 );
                               })}
+                              {/* Record badge cell (comments, files, notes) */}
+                              <div style={{ ...styles.gridCell, justifyContent: "center", padding: "4px 2px", gap: 3, display: "flex", alignItems: "center" }}>
+                                {badgeCounts[pageId]?.comments > 0 && (
+                                  <span title={`${badgeCounts[pageId].comments} comment${badgeCounts[pageId].comments !== 1 ? "s" : ""}`} style={{ fontSize: 10, color: C.darkMuted, display: "flex", alignItems: "center", gap: 2 }}>
+                                    <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M2 3h12v8H5l-3 3V3z" stroke="currentColor" strokeWidth="1.3" fill="none"/></svg>
+                                    {badgeCounts[pageId].comments}
+                                  </span>
+                                )}
+                                {badgeCounts[pageId]?.files > 0 && (
+                                  <span title={`${badgeCounts[pageId].files} file${badgeCounts[pageId].files !== 1 ? "s" : ""}`} style={{ fontSize: 10, color: C.darkMuted, display: "flex", alignItems: "center", gap: 2 }}>
+                                    <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M8.5 1.5l4 4v8a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1h4z" stroke="currentColor" strokeWidth="1.3" fill="none"/></svg>
+                                    {badgeCounts[pageId].files}
+                                  </span>
+                                )}
+                                {badgeCounts[pageId]?.notes && (
+                                  <span title="Has notes" style={{ width: 5, height: 5, borderRadius: "50%", background: C.accent, flexShrink: 0 }} />
+                                )}
+                              </div>
                               {/* Neuron badge cell — inline */}
                               <div style={{ ...styles.gridCell, justifyContent: "center", padding: "4px 2px" }}>
                                 <NeuronBadge nodeId={pageId} />
@@ -3062,7 +3099,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                           </div>
                         );
                       })}
-                      <div style={{ ...styles.gridCell, padding: "4px 2px" }} />
+                      <div style={{ ...styles.gridCell, padding: "4px 2px" }} /> {/* badge column spacer */}
+                      <div style={{ ...styles.gridCell, padding: "4px 2px" }} /> {/* neuron column spacer */}
                     </div>
                   )}
                   {ghostError && (
