@@ -13,13 +13,16 @@ import MiniView from "../core/MiniView.jsx";
 import PluginWidget from "../core/PluginWidget.jsx";
 import * as api from "../lib/api.js";
 
-// Grid cell default heights by widget type
-const DEFAULT_HEIGHTS = {
-  view: 360,
-  shortcut: 80,
-  text: 160,
-  plugin: 280,
-};
+// Viewport-relative height ratios (fraction of window.innerHeight)
+const VH_RATIOS = { view: 0.4, shortcut: 0.09, text: 0.18, plugin: 0.31 };
+const MIN_HEIGHTS = { view: 240, shortcut: 60, text: 100, plugin: 180 };
+
+function defaultHeight(type) {
+  const vh = window.innerHeight || 900;
+  const ratio = VH_RATIOS[type] || VH_RATIOS.view;
+  const floor = MIN_HEIGHTS[type] || MIN_HEIGHTS.view;
+  return Math.max(floor, Math.round(vh * ratio));
+}
 
 export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
   const { setActivePage } = usePlatform();
@@ -32,10 +35,11 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
   // ── Widget CRUD ──
   const handleAddWidget = useCallback((widgetConfig) => {
     const id = `w_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const type = widgetConfig.type || "view";
     const newWidget = {
       id,
-      h: DEFAULT_HEIGHTS[widgetConfig.type] || DEFAULT_HEIGHTS.view,
-      colSpan: widgetConfig.type === "shortcut" ? 1 : 2,
+      h: defaultHeight(type),
+      colSpan: (type === "view" || type === "plugin") ? 2 : 1,
       ...widgetConfig,
     };
     onUpdateWidgets([...widgets, newWidget]);
@@ -48,6 +52,12 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
 
   const handleResize = useCallback((widgetId, newW, newH) => {
     onUpdateWidgets(widgets.map((w) => w.id === widgetId ? { ...w, h: newH } : w));
+  }, [widgets, onUpdateWidgets]);
+
+  const handleToggleSpan = useCallback((widgetId) => {
+    onUpdateWidgets(widgets.map((w) =>
+      w.id === widgetId ? { ...w, colSpan: (w.colSpan || 1) === 1 ? 2 : 1 } : w
+    ));
   }, [widgets, onUpdateWidgets]);
 
   // ── Drag-to-reorder ──
@@ -91,7 +101,6 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
           pageId={widget.pageId}
           viewIndex={widget.viewIndex ?? 0}
           width="100%"
-          height={widget.h - 36}
           widgetConfig={widget.widgetConfig}
           onWidgetViewConfigChange={(configUpdates) => {
             onUpdateWidgets(widgets.map((w) =>
@@ -206,12 +215,12 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
       {widgets.length > 0 ? (
         <div style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
           gap: 16,
           alignItems: "start",
         }}>
           {widgets.map((widget, idx) => {
-            const colSpan = widget.colSpan || (widget.type === "shortcut" ? 1 : 1);
+            const colSpan = widget.colSpan || 1;
             const isDragging = dragIdx === idx;
             const isDragOver = dragOverIdx === idx;
             return (
@@ -238,6 +247,7 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
                   onReposition={() => {}}
                   onResize={handleResize}
                   onDelete={handleDeleteWidget}
+                  onToggleSpan={handleToggleSpan}
                   onClick={() => {}}
                 >
                   {renderWidgetContent(widget)}

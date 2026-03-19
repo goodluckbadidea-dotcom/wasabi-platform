@@ -5,7 +5,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
-import { IconClose } from "../design/icons.jsx";
+import { IconClose, IconExpand } from "../design/icons.jsx";
 
 const GRID = 20; // snap unit in px
 
@@ -14,16 +14,20 @@ function snap(val) {
   return Math.round(val / GRID) * GRID;
 }
 
-// ── Widget type constraints ──
+// ── Widget type constraints (height-only in grid mode) ──
+const MAX_VH = 0.85;
+function maxH() { return Math.round((window.innerHeight || 900) * MAX_VH); }
+
 const SIZE_CONSTRAINTS = {
-  view:     { minW: 200, minH: 200, maxW: 1200, maxH: 800 },
-  shortcut: { minW: 120, minH: 80,  maxW: 300,  maxH: 120 },
-  text:     { minW: 120, minH: 80,  maxW: 600,  maxH: 400 },
-  plugin:   { minW: 160, minH: 120, maxW: 1200, maxH: 800 },
+  view:     { minH: 200, maxH: maxH },
+  shortcut: { minH: 60,  maxH: 160  },
+  text:     { minH: 80,  maxH: 400  },
+  plugin:   { minH: 120, maxH: maxH },
 };
 
 function getConstraints(type) {
-  return SIZE_CONSTRAINTS[type] || SIZE_CONSTRAINTS.view;
+  const c = SIZE_CONSTRAINTS[type] || SIZE_CONSTRAINTS.view;
+  return { minH: c.minH, maxH: typeof c.maxH === "function" ? c.maxH() : c.maxH };
 }
 
 export default function DashboardWidget({
@@ -34,6 +38,7 @@ export default function DashboardWidget({
   onReposition,   // (id, newX, newY) => void
   onResize,       // (id, newW, newH) => void
   onDelete,       // (id) => void
+  onToggleSpan,   // (id) => void — toggle colSpan 1↔2
   onClick,        // (widget) => void — navigate to full view
   children,       // rendered widget content
 }) {
@@ -81,20 +86,18 @@ export default function DashboardWidget({
     if (!editMode) return;
     e.preventDefault();
     e.stopPropagation();
-    resizeStart.current = { startX: e.clientX, startY: e.clientY, origW: widget.w, origH: widget.h };
+    resizeStart.current = { startY: e.clientY, origH: widget.h };
     setResizing(true);
-  }, [editMode, widget.w, widget.h]);
+  }, [editMode, widget.h]);
 
   useEffect(() => {
     if (!resizing) return;
     const handleMove = (e) => {
       const rs = resizeStart.current;
       if (!rs) return;
-      const dx = (e.clientX - rs.startX) / zoom;
       const dy = (e.clientY - rs.startY) / zoom;
-      const newW = snap(Math.max(constraints.minW, Math.min(constraints.maxW, rs.origW + dx)));
       const newH = snap(Math.max(constraints.minH, Math.min(constraints.maxH, rs.origH + dy)));
-      onResize?.(widget.id, newW, newH);
+      onResize?.(widget.id, null, newH);
     };
     const handleUp = () => {
       setResizing(false);
@@ -180,6 +183,24 @@ export default function DashboardWidget({
           </button>
         )}
 
+        {/* Expand/collapse toggle (edit mode only, grid mode) */}
+        {editMode && gridMode && onToggleSpan && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleSpan(widget.id); }}
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              padding: 2, display: "flex", alignItems: "center",
+              opacity: (widget.colSpan || 1) >= 2 ? 0.9 : 0.4,
+              transition: "opacity 0.12s", outline: "none", flexShrink: 0,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.opacity = (widget.colSpan || 1) >= 2 ? "0.9" : "0.4"; }}
+            title={(widget.colSpan || 1) >= 2 ? "Half width" : "Full width"}
+          >
+            <IconExpand size={10} color={(widget.colSpan || 1) >= 2 ? C.accent : C.darkMuted} />
+          </button>
+        )}
+
         {/* Delete button (edit mode only) */}
         {editMode && (
           <button
@@ -218,25 +239,29 @@ export default function DashboardWidget({
         {children}
       </div>
 
-      {/* ── Resize handle (bottom-right, edit mode only) ── */}
+      {/* ── Resize handle (bottom-center, vertical only, edit mode) ── */}
       {editMode && (
         <div
           onMouseDown={handleResizeStart}
           style={{
             position: "absolute",
-            right: 0,
+            left: "50%",
             bottom: 0,
-            width: 16,
-            height: 16,
-            cursor: "nwse-resize",
+            transform: "translateX(-50%)",
+            width: 48,
+            height: 14,
+            cursor: "ns-resize",
             zIndex: 10,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
-          {/* Grip dots */}
-          <svg width="12" height="12" viewBox="0 0 12 12" style={{ position: "absolute", right: 2, bottom: 2 }}>
-            <circle cx="4" cy="10" r="1.2" fill={C.darkBorder} />
-            <circle cx="8" cy="10" r="1.2" fill={C.darkBorder} />
-            <circle cx="8" cy="6" r="1.2" fill={C.darkBorder} />
+          {/* Horizontal grip dots */}
+          <svg width="24" height="6" viewBox="0 0 24 6">
+            <circle cx="6"  cy="3" r="1.2" fill={C.darkBorder} />
+            <circle cx="12" cy="3" r="1.2" fill={C.darkBorder} />
+            <circle cx="18" cy="3" r="1.2" fill={C.darkBorder} />
           </svg>
         </div>
       )}
