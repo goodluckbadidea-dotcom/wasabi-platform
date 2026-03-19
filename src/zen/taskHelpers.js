@@ -76,51 +76,37 @@ export function isSmartOverdue(dateStr, lastActivityAt) {
 }
 
 /**
- * Staleness filter: determines if a task should appear on the to-do list.
- * Returns true if the task should be included.
- *
- * Inclusion criteria (any one):
- * - Nearest date is smart-overdue (past + no recent activity)
- * - Nearest date is today or tomorrow
- * - Stale: not updated within 1/3 of remaining time
+ * Staleness check: returns true if the task is "stale" (not recently worked on
+ * relative to its deadline). Used as a SIGNAL for AI scoring, NOT as a filter.
  */
 export function shouldIncludeTask(nearestDate, lastActivityAt, lastInteractionType) {
-  if (!nearestDate) return false; // no dates → handled separately
+  if (!nearestDate) return true; // no dates → include, let AI score it
 
   const d = parseDate(nearestDate);
-  if (isNaN(d)) return false;
+  if (isNaN(d)) return true;
 
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   const dDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const diffDays = Math.round((dDay - now) / (1000 * 60 * 60 * 24));
 
-  // Today or tomorrow → always include
-  if (diffDays >= 0 && diffDays <= 1) return true;
-
-  // Overdue → always include (it's past due, user needs to see it)
-  // Exception: if last interaction was a terminal status change, AI will filter it
-  if (diffDays < 0) return true;
-
-  // Within 7 days → include (approaching deadline)
+  // Overdue or within 7 days → definitely stale/urgent
   if (diffDays <= 7) return true;
 
-  // Interaction-type-aware staleness
-  // Comment-only = not resolved, use shorter staleness window (1/5 instead of 1/3)
-  // Status change = progressed, use longer window (1/2)
-  // View only = minimal effect, standard window
-  if (!lastActivityAt) return true; // no activity record → stale
+  // No activity → stale
+  if (!lastActivityAt) return true;
+
   const activity = new Date(lastActivityAt);
   const remainingMs = dDay.getTime() - now.getTime();
   const timeSinceActivityMs = now.getTime() - activity.getTime();
 
-  let stalenessRatio = 1 / 3; // default
+  let stalenessRatio = 1 / 3;
   if (lastInteractionType === "comment") {
-    stalenessRatio = 1 / 5; // resurfaces faster — task was acknowledged but not progressed
+    stalenessRatio = 1 / 5; // comment-only = acknowledged but not progressed
   } else if (lastInteractionType === "status_change") {
-    stalenessRatio = 1 / 2; // stays hidden longer — real progress was made
+    stalenessRatio = 1 / 2; // status change = real progress
   } else if (lastInteractionType === "view") {
-    stalenessRatio = 1 / 4; // slight staleness reduction for just viewing
+    stalenessRatio = 1 / 4;
   }
 
   return timeSinceActivityMs > remainingMs * stalenessRatio;

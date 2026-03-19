@@ -16,7 +16,7 @@ import {
   scoreTerminalStatuses, shouldIncludeTask, isSmartOverdue,
 } from "./taskHelpers.js";
 
-const CACHE_KEY = "wasabi_ai_tasks_v5"; // v5: interaction journal + zen table exclusion fix
+const CACHE_KEY = "wasabi_ai_tasks_v7"; // v7: rank-all model — no filtering, AI scores everything
 const INSIGHT_CACHE_KEY = "wasabi_insight";
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 const MAX_DATABASES = 5;
@@ -269,8 +269,8 @@ function compressTask(task) {
   return obj;
 }
 
-const BASE_TARGET = 12;
-const TARGET_MAX = 20;
+const BASE_TARGET = 15;
+const TARGET_MAX = 25;
 
 export default function useAICuratedTasks({ dismissedIds, completedCount, zenTableId } = {}) {
   const { user, pages, identity } = usePlatform();
@@ -547,27 +547,21 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
         } catch {}
       }
 
-      // Apply smart inclusion filter
-      const filteredTasks = allTasks.filter((task) => {
+      // No filtering — all non-terminal tasks go to AI scorer for ranking.
+      // Terminal tasks (done/complete) are already excluded during normalization.
+      // We only annotate tasks with signals here.
+      const filteredTasks = allTasks;
+      for (const task of filteredTasks) {
         const lastActivity = activityMap.get(task.id) || null;
         const nearest = task.nearestDate || task.due;
         const lastInteractionType = interactionTypeMap.get(task.id) || null;
 
-        // Tasks with no dates: include them (let AI decide relevance)
-        if (!nearest) return true;
-
-        // Annotate for AI prompt
+        // Annotate for AI prompt (signals for scoring, not for filtering)
         task._isOverdue = isSmartOverdue(nearest, lastActivity);
         task._isStale = shouldIncludeTask(nearest, lastActivity, lastInteractionType);
+      }
 
-        const include = shouldIncludeTask(nearest, lastActivity, lastInteractionType);
-        if (!include) {
-          console.log(`[AICurated] FILTERED OUT: "${task.title}" (date: ${nearest}, activity: ${lastActivity}, interactionType: ${lastInteractionType})`);
-        }
-        return include;
-      });
-
-      console.log(`[AICurated] filteredTasks count: ${filteredTasks.length} (from ${allTasks.length} total)`);
+      console.log(`[AICurated] All ${filteredTasks.length} non-terminal tasks passed to AI scorer`);
 
       // Step 2.7: Enrich tasks with per-user signals
       if (identity?.id) {
@@ -827,7 +821,7 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
 - otherUserActions: recent interactions by other team members (shared signals)\n`
             : "";
 
-          const prompt = `You are a smart task prioritizer and workspace advisor. Tasks have been pre-filtered to only include items approaching deadlines, overdue, or not recently updated.
+          const prompt = `You are a smart task prioritizer and workspace advisor. You are ranking ALL active (non-complete) tasks from the user's databases. Your job is to score and rank them so the most important surface first.
 
 Each task includes:
 - nearestDate: the closest date across ALL date fields (timeline ends, deadlines, etc.)
