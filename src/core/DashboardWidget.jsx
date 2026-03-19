@@ -30,6 +30,7 @@ export default function DashboardWidget({
   widget,         // { id, type, pageId, viewIndex, x, y, w, h, content, label }
   editMode,
   zoom = 1,       // canvas zoom level — drag/resize deltas divided by this
+  gridMode = false, // true = responsive grid layout (no absolute positioning)
   onReposition,   // (id, newX, newY) => void
   onResize,       // (id, newW, newH) => void
   onDelete,       // (id) => void
@@ -110,11 +111,10 @@ export default function DashboardWidget({
   return (
     <div
       style={{
-        position: "absolute",
-        left: widget.x,
-        top: widget.y,
-        width: widget.w,
-        height: widget.h,
+        ...(gridMode
+          ? { position: "relative", width: "100%", height: widget.h || 360 }
+          : { position: "absolute", left: widget.x, top: widget.y, width: widget.w, height: widget.h }
+        ),
         background: C.darkSurf,
         border: `1px solid ${C.darkBorder}`,
         borderRadius: RADIUS.lg,

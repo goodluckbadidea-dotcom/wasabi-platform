@@ -198,7 +198,7 @@ export default function MiniView({
     <div style={{
       width: "100%",
       height: "100%",
-      overflow: "hidden",
+      overflow: "auto",
       position: "relative",
     }}>
       <ViewRenderer

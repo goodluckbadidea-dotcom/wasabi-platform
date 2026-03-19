@@ -1,7 +1,7 @@
 // ─── Widget Grid ───
-// Extracted from Dashboard.jsx. Dot-grid canvas with draggable, resizable widgets.
-// Edit mode: jiggle animation, add/remove/reposition/resize widgets.
-// Normal mode: read-only, click widget to navigate to full view.
+// Responsive grid layout for dashboard widgets.
+// Edit mode: add/remove/reorder widgets.
+// Normal mode: fully interactive widgets with scrollable content.
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
@@ -13,20 +13,12 @@ import MiniView from "../core/MiniView.jsx";
 import PluginWidget from "../core/PluginWidget.jsx";
 import * as api from "../lib/api.js";
 
-const GRID = 20;
-const MIN_ZOOM = 0.25;
-const MAX_ZOOM = 2.0;
-const ZOOM_STEP = 0.08;
-const CANVAS_SIZE = 10000;
-const DRAG_THRESHOLD = 3;
-
-function snap(val) { return Math.round(val / GRID) * GRID; }
-
-const DEFAULT_SIZES = {
-  view:     { w: 400, h: 300 },
-  shortcut: { w: 180, h: 80 },
-  text:     { w: 240, h: 160 },
-  plugin:   { w: 320, h: 240 },
+// Grid cell default heights by widget type
+const DEFAULT_HEIGHTS = {
+  view: 360,
+  shortcut: 80,
+  text: 160,
+  plugin: 280,
 };
 
 export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
@@ -34,119 +26,62 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
 
   const [editMode, setEditMode] = useState(false);
   const [widgetPickerOpen, setWidgetPickerOpen] = useState(false);
-
-  // ── Canvas state (infinite pan/zoom) ──
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(1);
-  const [isPanning, setIsPanning] = useState(false);
-  const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
-  const containerRef = useRef(null);
-  const transformRef = useRef(null);
-
-  // ── Pan handlers ──
-  const handleCanvasMouseDown = useCallback((e) => {
-    if (e.button !== 0) return;
-    // Only pan when clicking directly on the canvas background (not on a widget)
-    if (e.target !== containerRef.current && e.target !== transformRef.current) return;
-    e.preventDefault();
-    setIsPanning(true);
-    panStartRef.current = {
-      x: e.clientX, y: e.clientY,
-      panX: pan.x, panY: pan.y,
-    };
-  }, [pan]);
-
-  useEffect(() => {
-    if (!isPanning) return;
-    let hasDragged = false;
-
-    const handleMouseMove = (e) => {
-      const dx = e.clientX - panStartRef.current.x;
-      const dy = e.clientY - panStartRef.current.y;
-      if (!hasDragged && Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
-      hasDragged = true;
-      setPan({
-        x: panStartRef.current.panX + dx,
-        y: panStartRef.current.panY + dy,
-      });
-    };
-    const handleMouseUp = () => setIsPanning(false);
-
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [isPanning]);
-
-  // ── Zoom toward cursor (pinch only) ──
-  const handleWheel = useCallback((e) => {
-    e.preventDefault();
-    // Only zoom on pinch gesture (ctrlKey is set by trackpad pinch).
-    // Two-finger swipe (regular scroll) is blocked — use click+drag to pan.
-    if (!e.ctrlKey) return;
-
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-
-    // Pinch deltaY is typically smaller, so use a larger step
-    const delta = e.deltaY > 0 ? -ZOOM_STEP * 2 : ZOOM_STEP * 2;
-    const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom + delta));
-    const scale = newZoom / zoom;
-
-    const newPanX = mouseX - scale * (mouseX - pan.x);
-    const newPanY = mouseY - scale * (mouseY - pan.y);
-
-    setZoom(newZoom);
-    setPan({ x: newPanX, y: newPanY });
-  }, [zoom, pan]);
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    el.addEventListener("wheel", handleWheel, { passive: false });
-    return () => el.removeEventListener("wheel", handleWheel);
-  }, [handleWheel]);
+  const [dragIdx, setDragIdx] = useState(null);
+  const [dragOverIdx, setDragOverIdx] = useState(null);
 
   // ── Widget CRUD ──
   const handleAddWidget = useCallback((widgetConfig) => {
     const id = `w_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    const defaults = DEFAULT_SIZES[widgetConfig.type] || DEFAULT_SIZES.view;
-    // Place new widget at viewport center
-    const rect = containerRef.current?.getBoundingClientRect();
-    const viewCenterX = rect ? (rect.width / 2 - pan.x) / zoom : GRID * 2;
-    const viewCenterY = rect ? (rect.height / 2 - pan.y) / zoom : GRID * 2;
     const newWidget = {
       id,
-      x: snap(viewCenterX - defaults.w / 2),
-      y: snap(viewCenterY - defaults.h / 2),
-      w: defaults.w,
-      h: defaults.h,
+      h: DEFAULT_HEIGHTS[widgetConfig.type] || DEFAULT_HEIGHTS.view,
+      colSpan: widgetConfig.type === "shortcut" ? 1 : 2,
       ...widgetConfig,
     };
     onUpdateWidgets([...widgets, newWidget]);
     setWidgetPickerOpen(false);
-  }, [widgets, onUpdateWidgets, pan, zoom]);
+  }, [widgets, onUpdateWidgets]);
 
   const handleDeleteWidget = useCallback((widgetId) => {
     onUpdateWidgets(widgets.filter((w) => w.id !== widgetId));
   }, [widgets, onUpdateWidgets]);
 
-  const handleReposition = useCallback((widgetId, newX, newY) => {
-    onUpdateWidgets(widgets.map((w) => w.id === widgetId ? { ...w, x: newX, y: newY } : w));
-  }, [widgets, onUpdateWidgets]);
-
   const handleResize = useCallback((widgetId, newW, newH) => {
-    onUpdateWidgets(widgets.map((w) => w.id === widgetId ? { ...w, w: newW, h: newH } : w));
+    onUpdateWidgets(widgets.map((w) => w.id === widgetId ? { ...w, h: newH } : w));
   }, [widgets, onUpdateWidgets]);
 
-  const handleWidgetClick = useCallback((widget) => {
-    if (widget.pageId) setActivePage(widget.pageId);
-  }, [setActivePage]);
+  // ── Drag-to-reorder ──
+  const handleDragStart = useCallback((e, idx) => {
+    if (!editMode) return;
+    setDragIdx(idx);
+    e.dataTransfer.effectAllowed = "move";
+  }, [editMode]);
+
+  const handleDragOver = useCallback((e, idx) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverIdx(idx);
+  }, []);
+
+  const handleDrop = useCallback((e, dropIdx) => {
+    e.preventDefault();
+    if (dragIdx === null || dragIdx === dropIdx) {
+      setDragIdx(null);
+      setDragOverIdx(null);
+      return;
+    }
+    const reordered = [...widgets];
+    const [moved] = reordered.splice(dragIdx, 1);
+    reordered.splice(dropIdx, 0, moved);
+    onUpdateWidgets(reordered);
+    setDragIdx(null);
+    setDragOverIdx(null);
+  }, [dragIdx, widgets, onUpdateWidgets]);
+
+  const handleDragEnd = useCallback(() => {
+    setDragIdx(null);
+    setDragOverIdx(null);
+  }, []);
 
   // ── Render widget content ──
   const renderWidgetContent = (widget) => {
@@ -155,40 +90,31 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
         <MiniView
           pageId={widget.pageId}
           viewIndex={widget.viewIndex ?? 0}
-          width={widget.w}
-          height={widget.h - 28}
-          widgetViewConfig={widget.viewConfig}
+          width="100%"
+          height={widget.h - 36}
+          widgetConfig={widget.widgetConfig}
           onWidgetViewConfigChange={(configUpdates) => {
-            const updated = widgets.map((w) =>
+            onUpdateWidgets(widgets.map((w) =>
               w.id === widget.id
-                ? { ...w, viewConfig: { ...(w.viewConfig || {}), ...configUpdates } }
+                ? { ...w, widgetConfig: { ...(w.widgetConfig || {}), ...configUpdates } }
                 : w
-            );
-            onUpdateWidgets(updated);
+            ));
           }}
         />
       );
     }
     if (widget.type === "shortcut") {
       return (
-        <div style={{
-          display: "flex", alignItems: "center", justifyContent: "center",
-          height: "100%", padding: "8px 12px", gap: 8,
-        }}>
-          <div style={{
-            width: 28, height: 28, borderRadius: RADIUS.md,
-            background: C.accent + "22",
-            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-          }}>
-            <IconBolt size={14} color={C.accent} />
-          </div>
-          <span style={{
-            fontSize: 12, fontFamily: FONT, fontWeight: 600,
-            color: C.darkText, whiteSpace: "nowrap",
-            overflow: "hidden", textOverflow: "ellipsis",
-          }}>
-            {widget.label || "Shortcut"}
-          </span>
+        <div
+          onClick={() => widget.pageId && setActivePage(widget.pageId)}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            height: "100%", cursor: widget.pageId ? "pointer" : "default",
+            fontFamily: FONT, fontSize: 13, fontWeight: 600,
+            color: C.accent, letterSpacing: "0.02em",
+          }}
+        >
+          {widget.label || "Shortcut"}
         </div>
       );
     }
@@ -198,15 +124,14 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
           contentEditable={editMode}
           suppressContentEditableWarning
           onBlur={(e) => {
-            const newContent = e.currentTarget.innerText;
             onUpdateWidgets(widgets.map((w) =>
-              w.id === widget.id ? { ...w, content: newContent } : w
+              w.id === widget.id ? { ...w, content: e.currentTarget.textContent } : w
             ));
           }}
           style={{
-            padding: "8px 12px", fontSize: 12, fontFamily: FONT,
-            color: C.darkText, lineHeight: 1.5, height: "100%",
-            overflowY: "auto", outline: "none",
+            padding: 12, fontFamily: FONT, fontSize: 13, lineHeight: 1.6,
+            color: C.darkText, whiteSpace: "pre-wrap", minHeight: 40,
+            outline: "none",
             cursor: editMode ? "text" : "default",
           }}
         >
@@ -218,8 +143,8 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
       return (
         <PluginWidget
           functionId={widget.functionId}
-          width={widget.w}
-          height={widget.h - 28}
+          width="100%"
+          height={widget.h - 36}
           refreshInterval={widget.refreshInterval}
         />
       );
@@ -228,96 +153,17 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
   };
 
   return (
-    <div
-      ref={containerRef}
-      onMouseDown={handleCanvasMouseDown}
-      style={{
-        flex: 1, position: "relative", overflow: "hidden",
-        backgroundColor: C.dark,
-        minHeight: 300,
-        cursor: isPanning ? "grabbing" : (editMode ? "default" : "grab"),
-      }}
-    >
-      <style>{`
-        @keyframes widgetEditPop {
-          0% { transform: scale(1); }
-          40% { transform: scale(1.015) rotate(0.3deg); }
-          70% { transform: scale(0.995) rotate(-0.15deg); }
-          100% { transform: scale(1) rotate(0deg); }
-        }
-      `}</style>
-
-      {/* ── Canvas transform layer (absolute so 10k size doesn't inflate parent) ── */}
-      <div
-        ref={transformRef}
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          transformOrigin: "0 0",
-          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-          width: CANVAS_SIZE,
-          height: CANVAS_SIZE,
-          backgroundImage: `radial-gradient(circle, ${C.darkBorder} 1px, transparent 1px)`,
-          backgroundSize: `${GRID}px ${GRID}px`,
-        }}
-      >
-        {/* ── Widgets ── */}
-        {widgets.map((widget, idx) => (
-          <div key={widget.id} style={{ animation: ANIM.popIn(idx * 0.05) }}>
-            <DashboardWidget
-              widget={widget}
-              editMode={editMode}
-              zoom={zoom}
-              onReposition={handleReposition}
-              onResize={handleResize}
-              onDelete={handleDeleteWidget}
-              onClick={handleWidgetClick}
-            >
-              {renderWidgetContent(widget)}
-            </DashboardWidget>
-          </div>
-        ))}
-      </div>
-
-      {/* ── Empty state (viewport overlay) ── */}
-      {widgets.length === 0 && !editMode && (
-        <div style={{
-          position: "absolute", top: "50%", left: "50%",
-          transform: "translate(-50%, -50%)", textAlign: "center",
-          color: C.darkMuted, fontFamily: FONT,
-          animation: ANIM.snapUp(0.1),
-          zIndex: 100, pointerEvents: "auto",
-        }}>
-          <div style={{ marginBottom: 12, opacity: 0.3 }}>
-            <IconChart size={32} color={C.darkMuted} />
-          </div>
-          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
-            No widgets yet
-          </div>
-          <div style={{ fontSize: 12, marginBottom: 16, opacity: 0.7 }}>
-            Add widgets to pin views from your pages
-          </div>
-          <button
-            onClick={() => { setEditMode(true); setWidgetPickerOpen(true); }}
-            style={{
-              background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
-              color: "#fff", border: "none", borderRadius: RADIUS.pill,
-              padding: "8px 20px", fontSize: 12, fontFamily: FONT,
-              fontWeight: 600, cursor: "pointer",
-              display: "inline-flex", alignItems: "center", gap: 6,
-            }}
-          >
-            <IconPlus size={10} color="#fff" />
-            Add Widget
-          </button>
-        </div>
-      )}
-
-      {/* ── Floating controls (top-right, viewport overlay) ── */}
+    <div style={{
+      flex: 1,
+      overflowY: "auto",
+      backgroundColor: C.dark,
+      padding: "16px 20px",
+      position: "relative",
+    }}>
+      {/* ── Top controls ── */}
       <div style={{
-        position: "absolute", top: 12, right: 16,
-        display: "flex", gap: 8, zIndex: 200,
+        display: "flex", justifyContent: "flex-end", gap: 8,
+        marginBottom: 16, position: "sticky", top: 0, zIndex: 50,
       }}>
         <button
           onClick={() => {
@@ -356,36 +202,82 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
         )}
       </div>
 
-      {/* ── Zoom controls (bottom-right, viewport overlay) ── */}
-      <div style={{
-        position: "absolute", bottom: 16, right: 16,
-        display: "flex", gap: 4,
-        background: C.darkSurf2, borderRadius: 8,
-        border: `1px solid ${C.darkBorder}`, padding: 4,
-        zIndex: 200,
-      }}>
-        <button
-          onClick={() => setZoom((z) => Math.max(MIN_ZOOM, z - ZOOM_STEP * 2))}
-          style={getZoomBtnStyle()}
-          title="Zoom out"
-        >−</button>
-        <span style={{
-          padding: "4px 8px", fontSize: 11, color: C.darkMuted,
-          fontFamily: FONT, minWidth: 40, textAlign: "center",
+      {/* ── Grid ── */}
+      {widgets.length > 0 ? (
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))",
+          gap: 16,
+          alignItems: "start",
         }}>
-          {Math.round(zoom * 100)}%
-        </span>
-        <button
-          onClick={() => setZoom((z) => Math.min(MAX_ZOOM, z + ZOOM_STEP * 2))}
-          style={getZoomBtnStyle()}
-          title="Zoom in"
-        >+</button>
-        <button
-          onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}
-          style={{ ...getZoomBtnStyle(), fontSize: 10, padding: "4px 8px" }}
-          title="Reset view"
-        >⟳</button>
-      </div>
+          {widgets.map((widget, idx) => {
+            const colSpan = widget.colSpan || (widget.type === "shortcut" ? 1 : 1);
+            const isDragging = dragIdx === idx;
+            const isDragOver = dragOverIdx === idx;
+            return (
+              <div
+                key={widget.id}
+                draggable={editMode}
+                onDragStart={(e) => handleDragStart(e, idx)}
+                onDragOver={(e) => handleDragOver(e, idx)}
+                onDrop={(e) => handleDrop(e, idx)}
+                onDragEnd={handleDragEnd}
+                style={{
+                  gridColumn: `span ${Math.min(colSpan, 2)}`,
+                  opacity: isDragging ? 0.4 : 1,
+                  borderTop: isDragOver ? `2px solid ${C.accent}` : "2px solid transparent",
+                  transition: "opacity 0.15s, border-color 0.15s",
+                  animation: ANIM.popIn(idx * 0.04),
+                }}
+              >
+                <DashboardWidget
+                  widget={widget}
+                  editMode={editMode}
+                  zoom={1}
+                  gridMode
+                  onReposition={() => {}}
+                  onResize={handleResize}
+                  onDelete={handleDeleteWidget}
+                  onClick={() => {}}
+                >
+                  {renderWidgetContent(widget)}
+                </DashboardWidget>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        /* ── Empty state ── */
+        !editMode && (
+          <div style={{
+            textAlign: "center", color: C.darkMuted, fontFamily: FONT,
+            animation: ANIM.snapUp(0.1), padding: "80px 0",
+          }}>
+            <div style={{ marginBottom: 12, opacity: 0.3 }}>
+              <IconChart size={32} color={C.darkMuted} />
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
+              No widgets yet
+            </div>
+            <div style={{ fontSize: 12, marginBottom: 16, opacity: 0.7 }}>
+              Add widgets to pin views from your pages
+            </div>
+            <button
+              onClick={() => { setEditMode(true); setWidgetPickerOpen(true); }}
+              style={{
+                background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
+                color: "#fff", border: "none", borderRadius: RADIUS.pill,
+                padding: "8px 20px", fontSize: 12, fontFamily: FONT,
+                fontWeight: 600, cursor: "pointer",
+                display: "inline-flex", alignItems: "center", gap: 6,
+              }}
+            >
+              <IconPlus size={10} color="#fff" />
+              Add Widget
+            </button>
+          </div>
+        )
+      )}
 
       {/* ── Widget Picker ── */}
       {widgetPickerOpen && (
@@ -409,12 +301,10 @@ function WidgetPickerInline({ onClose, onAddWidget }) {
     let cancelled = false;
     (async () => {
       try {
-        // First try fetching only plugin-type functions
         const result = await api.listCustomFunctions({ type: "plugin" });
         const fns = result?.entries || result?.functions || result?.data || result?.rows || [];
         if (!cancelled) setPluginFunctions(fns);
 
-        // If that returned nothing, try all functions and filter client-side
         if (fns.length === 0) {
           const allResult = await api.listCustomFunctions();
           const allFns = allResult?.entries || allResult?.functions || allResult?.data || allResult?.rows || [];
@@ -424,7 +314,7 @@ function WidgetPickerInline({ onClose, onAddWidget }) {
           if (!cancelled) setPluginFunctions(plugins);
         }
       } catch {
-        // No plugins available — that's fine
+        // No plugins available
       } finally {
         if (!cancelled) setLoadingPlugins(false);
       }
@@ -636,19 +526,4 @@ function WidgetPickerInline({ onClose, onAddWidget }) {
       </div>
     </>
   );
-}
-
-// ── Zoom button styling (matches NodeCanvas) ──
-function getZoomBtnStyle() {
-  return {
-    background: "transparent",
-    border: "none",
-    color: C.darkText,
-    fontSize: 14,
-    cursor: "pointer",
-    padding: "4px 10px",
-    borderRadius: 4,
-    fontFamily: FONT,
-    outline: "none",
-  };
 }
