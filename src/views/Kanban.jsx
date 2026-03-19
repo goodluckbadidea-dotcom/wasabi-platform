@@ -10,6 +10,7 @@ import FilterChips, { applyChipFilters } from "./FilterChips.jsx";
 import { useRecordDetail } from "../hooks/useRecordDetail.js";
 import RecordDetailPortals from "../components/RecordDetailPortals.jsx";
 import ViewToolbar from "../components/ViewToolbar.jsx";
+import SavedViewsDropdown from "../components/SavedViewsDropdown.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
 
@@ -29,8 +30,57 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
   const [chipFilters, setChipFilters] = useState(config.activeFilters || {});
   const handleChipFilterChange = useCallback((newFilters) => {
     setChipFilters(newFilters);
-    if (onViewConfigChange) onViewConfigChange({ activeFilters: newFilters });
+    if (onViewConfigChange) onViewConfigChange({ activeFilters: newFilters, activeSavedViewId: null });
   }, [onViewConfigChange]);
+
+  // ── Saved Views ──
+  const [activeSavedViewId, setActiveSavedViewId] = useState(config.activeSavedViewId || null);
+
+  const handleSelectView = useCallback((viewId) => {
+    if (!viewId) {
+      // Reset to default
+      setChipFilters({});
+      setActiveSavedViewId(null);
+      onViewConfigChange?.({ activeFilters: {}, columnOrder: [], activeSavedViewId: null });
+      return;
+    }
+    const sv = (config.savedViews || []).find((v) => v.id === viewId);
+    if (!sv) return;
+    setChipFilters(sv.activeFilters || {});
+    setActiveSavedViewId(viewId);
+    onViewConfigChange?.({ activeFilters: sv.activeFilters || {}, columnOrder: sv.columnOrder || [], activeSavedViewId: viewId });
+  }, [config.savedViews, onViewConfigChange]);
+
+  const handleSaveNewView = useCallback((name) => {
+    const newView = {
+      id: crypto.randomUUID(),
+      name,
+      activeFilters: { ...chipFilters },
+      columnOrder: config.columnOrder || [],
+    };
+    const updated = [...(config.savedViews || []), newView];
+    setActiveSavedViewId(newView.id);
+    onViewConfigChange?.({ savedViews: updated, activeSavedViewId: newView.id });
+  }, [chipFilters, config.columnOrder, config.savedViews, onViewConfigChange]);
+
+  const handleUpdateView = useCallback((viewId) => {
+    const updated = (config.savedViews || []).map((v) =>
+      v.id === viewId ? { ...v, activeFilters: { ...chipFilters }, columnOrder: config.columnOrder || [] } : v
+    );
+    onViewConfigChange?.({ savedViews: updated, activeSavedViewId: viewId });
+  }, [chipFilters, config.columnOrder, config.savedViews, onViewConfigChange]);
+
+  const handleRenameView = useCallback((viewId, newName) => {
+    const updated = (config.savedViews || []).map((v) => v.id === viewId ? { ...v, name: newName } : v);
+    onViewConfigChange?.({ savedViews: updated });
+  }, [config.savedViews, onViewConfigChange]);
+
+  const handleDeleteView = useCallback((viewId) => {
+    const updated = (config.savedViews || []).filter((v) => v.id !== viewId);
+    const newActiveId = activeSavedViewId === viewId ? null : activeSavedViewId;
+    if (activeSavedViewId === viewId) setActiveSavedViewId(null);
+    onViewConfigChange?.({ savedViews: updated, activeSavedViewId: newActiveId });
+  }, [config.savedViews, activeSavedViewId, onViewConfigChange]);
 
   // Apply chip filters before grouping
   const filteredData = useMemo(
@@ -315,9 +365,20 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
 
       <ViewToolbar
         leading={
-          <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: C.darkMuted }}>
-            Grouped by {columnField}
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <SavedViewsDropdown
+              savedViews={config.savedViews || []}
+              activeSavedViewId={activeSavedViewId}
+              onSelectView={handleSelectView}
+              onSaveView={handleSaveNewView}
+              onUpdateView={handleUpdateView}
+              onRenameView={handleRenameView}
+              onDeleteView={handleDeleteView}
+            />
+            <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: C.darkMuted }}>
+              Grouped by {columnField}
+            </span>
+          </div>
         }
         recordCount={filteredData.length}
       />
