@@ -211,7 +211,7 @@ export default function DashboardWidget({
       {/* ── Content area ── */}
       <div style={{
         flex: 1,
-        overflow: "hidden",
+        overflow: "auto",
         position: "relative",
         pointerEvents: editMode ? "none" : "auto",
       }}>
