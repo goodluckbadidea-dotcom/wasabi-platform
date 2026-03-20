@@ -523,6 +523,9 @@ const ROUTE_PERMISSIONS = [
   // Sync — admin for all mutations
   { pattern: /^\/sync\//, method: "POST", minRole: "admin" },
   { pattern: /^\/sync\//, method: "DELETE", minRole: "admin" },
+  // Disconnect & Sync Backup — admin only
+  { pattern: /^\/pages\/[^/]+\/disconnect$/, method: "POST", minRole: "admin" },
+  { pattern: /^\/pages\/[^/]+\/sync-backup$/, method: "POST", minRole: "admin" },
   // Files — editor for mutations
   { pattern: "/files", method: "POST", minRole: "editor", exact: true },
   { pattern: /^\/files\/[^/]+$/, method: "DELETE", minRole: "editor" },
@@ -1558,6 +1561,21 @@ export default {
       if (syncDeleteMatch && request.method === "DELETE") {
         const tableId = syncDeleteMatch[1];
         return await handleSyncDelete(env, tableId);
+      }
+
+      // ─── Disconnect & Sync Backup ───
+      const disconnectMatch = path.match(/^\/pages\/([^/]+)\/disconnect$/);
+      if (disconnectMatch && request.method === "POST") {
+        const pageId = disconnectMatch[1];
+        return await handleDisconnect(env, pageId);
+      }
+
+      const syncBackupMatch = path.match(/^\/pages\/([^/]+)\/sync-backup$/);
+      if (syncBackupMatch && request.method === "POST") {
+        const pageId = syncBackupMatch[1];
+        const body = await request.json();
+        const notionKey = await getNotionKey(request, env);
+        return await handleSyncBackup(env, pageId, body, notionKey);
       }
 
       // ─── File Storage (R2) ───
@@ -8037,6 +8055,236 @@ async function handleSyncStatus(env, tableId) {
 async function handleSyncDelete(env, tableId) {
   await env.DB.prepare("DELETE FROM sync_configs WHERE table_id = ?").bind(tableId).run();
   return jsonResponse({ success: true, table_id: tableId });
+}
+
+/**
+ * Disconnect a page from its external source (Notion, etc).
+ * - Deletes sync_configs for the page
+ * - Changes page_type from "linked_notion" to "database"
+ * - Strips external connection metadata from config (databaseIds, etc)
+ * - Clears notion_page_id from row metadata
+ * - Data remains in D1 untouched
+ * POST /pages/:id/disconnect
+ */
+async function handleDisconnect(env, pageId) {
+  // Verify page exists
+  const page = await env.DB.prepare("SELECT * FROM page_configs WHERE id = ?").bind(pageId).first();
+  if (!page) return jsonResponse({ _error: "Page not found" }, 404);
+
+  const pageType = page.page_type;
+  if (pageType !== "linked_notion") {
+    return jsonResponse({ _error: `Cannot disconnect: page_type is "${pageType}", expected "linked_notion"` }, 400);
+  }
+
+  // Check sync config exists
+  const syncConfig = await env.DB.prepare(
+    "SELECT * FROM sync_configs WHERE table_id = ?"
+  ).bind(pageId).first();
+
+  // Delete sync config
+  if (syncConfig) {
+    await env.DB.prepare("DELETE FROM sync_configs WHERE table_id = ?").bind(pageId).run();
+  }
+
+  // Update page_type to "database" and strip Notion-specific config
+  const config = safeParseJSON(page.config);
+  const disconnectedFrom = {
+    source: "notion",
+    notion_db_id: syncConfig?.notion_db_id || config.databaseIds?.[0] || null,
+    disconnected_at: new Date().toISOString(),
+    last_synced_at: syncConfig?.last_synced_at || null,
+  };
+  delete config.databaseIds;
+  config.disconnected_from = disconnectedFrom;
+
+  await env.DB.prepare(
+    "UPDATE page_configs SET page_type = 'database', config = ? WHERE id = ?"
+  ).bind(JSON.stringify(config), pageId).run();
+
+  // Clear notion_page_id from all row metadata (sever row-level links)
+  const { results: rows } = await env.DB.prepare(
+    "SELECT id, metadata FROM table_rows WHERE table_id = ? AND archived = 0"
+  ).bind(pageId).all();
+
+  let clearedRows = 0;
+  for (const row of rows || []) {
+    const meta = safeParseJSON(row.metadata);
+    if (meta.notion_page_id) {
+      delete meta.notion_page_id;
+      delete meta.last_synced_at;
+      await env.DB.prepare(
+        "UPDATE table_rows SET metadata = ? WHERE id = ?"
+      ).bind(JSON.stringify(meta), row.id).run();
+      clearedRows++;
+    }
+  }
+
+  return jsonResponse({
+    ok: true,
+    page_id: pageId,
+    previous_type: pageType,
+    new_type: "database",
+    sync_config_deleted: !!syncConfig,
+    rows_cleared: clearedRows,
+    disconnected_from: disconnectedFrom,
+  });
+}
+
+/**
+ * Create a synced backup: creates a new Notion database from D1 schema,
+ * pushes all D1 rows to it, and configures ongoing bidirectional sync.
+ * Converts page_type from "database" to "linked_notion".
+ * POST /pages/:id/sync-backup
+ * Body: { parent_page_id } — Notion page ID to create the database under
+ */
+async function handleSyncBackup(env, pageId, body, notionKey) {
+  if (!notionKey) return jsonResponse({ _error: "Notion API key not configured" }, 400);
+
+  const { parent_page_id } = body || {};
+  if (!parent_page_id) return jsonResponse({ _error: "parent_page_id required (Notion page to create database under)" }, 400);
+
+  // Verify page exists
+  const page = await env.DB.prepare("SELECT * FROM page_configs WHERE id = ?").bind(pageId).first();
+  if (!page) return jsonResponse({ _error: "Page not found" }, 404);
+
+  // Check no active sync already exists
+  const existingSync = await env.DB.prepare(
+    "SELECT id FROM sync_configs WHERE table_id = ? AND enabled = 1"
+  ).bind(pageId).first();
+  if (existingSync) {
+    return jsonResponse({ _error: "Page already has an active sync configuration. Disconnect first to create a new backup." }, 400);
+  }
+
+  // Get D1 schema
+  const schemaRow = await env.DB.prepare("SELECT columns FROM table_schemas WHERE id = ?").bind(pageId).first();
+  if (!schemaRow) return jsonResponse({ _error: "No schema found for this page" }, 404);
+  const columns = safeParseJSON(schemaRow.columns);
+  if (!columns.length) return jsonResponse({ _error: "Schema has no columns" }, 400);
+
+  // Build Notion database properties from D1 columns
+  const notionProperties = d1ColumnsToNotionProperties(columns);
+
+  // Create the Notion database
+  const pageTitle = page.name || "Wasabi Backup";
+  const createRes = await fetch(`${NOTION_API}/databases`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${notionKey}`,
+      "Notion-Version": NOTION_VERSION,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      parent: { type: "page_id", page_id: parent_page_id },
+      title: [{ type: "text", text: { content: pageTitle } }],
+      properties: notionProperties,
+    }),
+  });
+
+  if (!createRes.ok) {
+    const err = await createRes.json().catch(() => ({}));
+    return jsonResponse({ _error: `Failed to create Notion database: ${err.message || createRes.statusText}` }, 502);
+  }
+
+  const newDb = await createRes.json();
+  const notionDbId = newDb.id;
+  const notionDbUrl = newDb.url;
+
+  // Configure sync
+  const configBody = { notion_db_id: notionDbId, direction: "bidirectional" };
+  const configRes = await handleSyncConfigure(env, pageId, configBody, notionKey);
+  const configData = await configRes.json().catch(() => ({}));
+  if (configData._error) {
+    return jsonResponse({ _error: `Sync config failed: ${configData._error}` }, 500);
+  }
+
+  // Push all D1 rows to the new Notion database
+  const pushRes = await handleSyncPush(env, pageId, notionKey);
+  const pushData = await pushRes.json().catch(() => ({}));
+
+  // Update page_type to linked_notion and store databaseIds in config
+  const config = safeParseJSON(page.config);
+  config.databaseIds = [notionDbId];
+  if (config.disconnected_from) {
+    config.previous_connections = config.previous_connections || [];
+    config.previous_connections.push(config.disconnected_from);
+    delete config.disconnected_from;
+  }
+
+  await env.DB.prepare(
+    "UPDATE page_configs SET page_type = 'linked_notion', config = ? WHERE id = ?"
+  ).bind(JSON.stringify(config), pageId).run();
+
+  return jsonResponse({
+    ok: true,
+    page_id: pageId,
+    notion_db_id: notionDbId,
+    notion_db_url: notionDbUrl,
+    new_type: "linked_notion",
+    push_results: pushData.pushed || {},
+    total_rows: pushData.total || 0,
+  });
+}
+
+/**
+ * Convert D1 column definitions to Notion database property definitions.
+ * Reverse of notionPropsToD1Columns().
+ */
+function d1ColumnsToNotionProperties(columns) {
+  const properties = {};
+  const typeMap = {
+    title: "title",
+    text: "rich_text",
+    number: "number",
+    select: "select",
+    multi_select: "multi_select",
+    status: "status",
+    date: "date",
+    checkbox: "checkbox",
+    url: "url",
+    email: "email",
+    phone: "phone_number",
+  };
+
+  for (const col of columns) {
+    const notionType = typeMap[col.type];
+    if (!notionType) continue; // Skip types that can't be created in Notion (people, files, relation, etc.)
+
+    if (notionType === "title") {
+      // Title property is special in Notion
+      properties[col.name] = { title: {} };
+    } else if (notionType === "rich_text") {
+      properties[col.name] = { rich_text: {} };
+    } else if (notionType === "number") {
+      properties[col.name] = { number: {} };
+    } else if (notionType === "select") {
+      const opts = (col.options || []).map((o) => ({
+        name: o.label || o.name || String(o),
+        color: o.color || "default",
+      }));
+      properties[col.name] = { select: { options: opts } };
+    } else if (notionType === "multi_select") {
+      const opts = (col.options || []).map((o) => ({
+        name: o.label || o.name || String(o),
+        color: o.color || "default",
+      }));
+      properties[col.name] = { multi_select: { options: opts } };
+    } else if (notionType === "status") {
+      // Notion API doesn't allow setting status options on create — just define the property
+      properties[col.name] = { status: {} };
+    } else if (notionType === "date") {
+      properties[col.name] = { date: {} };
+    } else if (notionType === "checkbox") {
+      properties[col.name] = { checkbox: {} };
+    } else if (notionType === "url") {
+      properties[col.name] = { url: {} };
+    } else if (notionType === "email") {
+      properties[col.name] = { email: {} };
+    } else if (notionType === "phone_number") {
+      properties[col.name] = { phone_number: {} };
+    }
+  }
+
+  return properties;
 }
 
 /**

@@ -641,8 +641,8 @@ export default function ViewSettingsPanel({
         {/* Content */}
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 16px 24px" }}>
 
-          {/* ═══ PIN Protection Toggle (admin-only) ═══ */}
-          {pageConfig && identity && identity.role === "admin" && onUpdatePageConfig && (
+          {/* ═══ PIN Protection Toggle (admin-only, or single-user mode) ═══ */}
+          {pageConfig && (!identity || identity.role === "admin") && onUpdatePageConfig && (
             <div style={{ marginBottom: 16 }}>
               <SectionLabel>Protection</SectionLabel>
               <div style={{

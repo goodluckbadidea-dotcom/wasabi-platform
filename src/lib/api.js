@@ -469,6 +469,19 @@ export async function deleteSync(tableId) {
   return apiFetch(`/sync/${tableId}`, { method: "DELETE" });
 }
 
+// ─── Disconnect & Sync Backup ───
+
+export async function disconnectPage(pageId) {
+  return apiFetch(`/pages/${pageId}/disconnect`, { method: "POST" });
+}
+
+export async function createSyncBackup(pageId, parentPageId) {
+  return apiFetch(`/pages/${pageId}/sync-backup`, {
+    method: "POST",
+    body: JSON.stringify({ parent_page_id: parentPageId }),
+  });
+}
+
 // ─── Data Summary Cache ───
 
 export async function getSummaryCache(pageId) {
