@@ -4,19 +4,17 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { detectSchema } from "../notion/schema.js";
-import { queryLimited } from "../notion/pagination.js";
 import {
   listRows, claudeProxy, getTableSchema, listTaskActivity, upsertTaskActivity,
   getRecordViews, listRecordComments, listTaskInteractions,
 } from "../lib/api.js";
 import { loadCachedNeuronGraph } from "../neurons/neuronStorage.js";
 import {
-  normalizeNotionTask, normalizeD1Task, getCached, setCache, parseDate,
-  scoreTerminalStatuses, shouldIncludeTask, isSmartOverdue,
+  normalizeD1Task, getCached, setCache, parseDate,
+  shouldIncludeTask, isSmartOverdue,
 } from "./taskHelpers.js";
 
-const CACHE_KEY_PREFIX = "wasabi_ai_tasks_v9"; // v9: fix ownership extraction + cache timing
+const CACHE_KEY_PREFIX = "wasabi_ai_tasks_v10"; // v10: D1-only scan, no Notion API dependency
 const INSIGHT_CACHE_KEY = "wasabi_insight";
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 const MAX_DATABASES = 5;
@@ -320,7 +318,7 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
     try {
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (k && k.startsWith("wasabi_ai_tasks_v8")) { localStorage.removeItem(k); i--; }
+        if (k && (k.startsWith("wasabi_ai_tasks_v8") || k.startsWith("wasabi_ai_tasks_v9"))) { localStorage.removeItem(k); i--; }
       }
     } catch {}
 
@@ -345,7 +343,6 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
       setLoading(false);
       return;
     }
-    const hasNotion = !!user?.notionKey;
     if (scanningRef.current) return;
 
     // Force refresh: clear stale cache so results aren't served from old data
@@ -380,10 +377,10 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
         if (page._systemInternal) continue;
         const pt = page.page_type || page.pageType;
 
-        if (hasNotion && pt === "linked_notion" && page.databaseIds?.length > 0) {
-          for (const dbId of page.databaseIds) {
-            candidates.push({ type: "notion", dbId, pageName: page.name });
-          }
+        // All data lives in D1 — linked_notion databases are synced to D1,
+        // so we scan D1 directly (no Notion API dependency).
+        if (pt === "linked_notion" && page.id) {
+          candidates.push({ type: "d1", tableId: page.id, pageName: page.name });
         }
         if (pt === "database" && page.id) {
           // Skip the zen tasks table — it's the user's manual task list, not a source DB
@@ -394,27 +391,17 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
         }
       }
 
-      // Detect schemas in parallel (batched to respect rate limits)
+      // Detect schemas in parallel — all from D1
       const taskDbs = [];
       const schemaPromises = candidates.slice(0, MAX_DATABASES * 2).map(async (c) => {
         try {
-          if (c.type === "notion") {
-            const schema = await withRetry(
-              () => detectSchema(user.workerUrl, user.notionKey, c.dbId),
-              `Schema detection for "${c.pageName}"`
-            );
-            if (isTaskLikeSchema(schema)) {
-              return { ...c, schema };
-            }
-          } else if (c.type === "d1") {
-            const schemaRes = await withRetry(
-              () => getTableSchema(c.tableId),
-              `D1 schema for "${c.pageName}"`
-            );
-            const columns = schemaRes.columns || [];
-            if (isTaskLikeD1Table(columns, c.pageName)) {
-              return { ...c, columns };
-            }
+          const schemaRes = await withRetry(
+            () => getTableSchema(c.tableId),
+            `D1 schema for "${c.pageName}"`
+          );
+          const columns = schemaRes.columns || [];
+          if (isTaskLikeD1Table(columns, c.pageName)) {
+            return { ...c, columns };
           }
         } catch (err) {
           console.warn(`[AICurated] Schema detection failed for "${c.pageName}":`, err.message);
@@ -443,50 +430,24 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
         return;
       }
 
-      // Step 2: Fetch items from each database (parallel with retry)
-      // Also compute terminal statuses per database for smart done detection
+      // Step 2: Fetch items from each database (all from D1)
       const allTasks = [];
       let fetchErrors = 0;
 
       const fetchPromises = taskDbs.map(async (db) => {
         try {
-          if (db.type === "notion") {
-            // Compute terminal statuses for this database
-            const allOptions = [
-              ...(db.schema?.statuses || []).flatMap((f) => f.options || []),
-              ...(db.schema?.selects || []).flatMap((f) => f.options || []),
-            ];
-            const terminalStatuses = scoreTerminalStatuses(allOptions);
-
-            const results = await withRetry(
-              () => queryLimited(
-                user.workerUrl, user.notionKey, db.dbId,
-                null,
-                [{ timestamp: "last_edited_time", direction: "descending" }],
-                MAX_ITEMS_PER_DB
-              ),
-              `Query "${db.pageName}"`
-            );
-            const tasks = [];
-            for (const page of (results || [])) {
-              const task = normalizeNotionTask(page, db.schema, db.pageName, terminalStatuses, db.dbId);
-              if (!task.done) tasks.push(task);
-            }
-            return { tasks, source: `notion:${db.dbId}` };
-          } else if (db.type === "d1") {
-            const result = await withRetry(
-              () => listRows(db.tableId, { limit: MAX_ITEMS_PER_DB }),
-              `D1 rows for "${db.pageName}"`
-            );
-            const tasks = [];
-            for (const row of (result.rows || [])) {
-              const task = normalizeD1Task(row, db.columns);
-              task.sourceName = db.pageName;
-              task.source = `d1:${db.tableId}`;
-              if (!task.done) tasks.push(task);
-            }
-            return { tasks, source: `d1:${db.tableId}` };
+          const result = await withRetry(
+            () => listRows(db.tableId, { limit: MAX_ITEMS_PER_DB }),
+            `D1 rows for "${db.pageName}"`
+          );
+          const tasks = [];
+          for (const row of (result.rows || [])) {
+            const task = normalizeD1Task(row, db.columns);
+            task.sourceName = db.pageName;
+            task.source = `d1:${db.tableId}`;
+            if (!task.done) tasks.push(task);
           }
+          return { tasks, source: `d1:${db.tableId}` };
         } catch (err) {
           console.warn(`[AICurated] Failed to fetch from "${db.pageName}":`, err.message);
           fetchErrors++;

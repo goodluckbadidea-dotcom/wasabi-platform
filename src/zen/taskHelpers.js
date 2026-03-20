@@ -149,12 +149,22 @@ export function normalizeD1Task(row, columns) {
     colMap[col.id || col.name?.toLowerCase()] = col;
   });
 
-  // Find fields by column name pattern
+  // Find fields by column name pattern — returns value
   const findCell = (patterns) => {
     for (const [key, val] of Object.entries(cells)) {
       const col = colMap[key];
       const name = (col?.name || key).toLowerCase();
       if (patterns.some((p) => name.includes(p))) return val;
+    }
+    return null;
+  };
+
+  // Find the column key that matches a pattern — returns the key (column ID)
+  const findCellKey = (patterns) => {
+    for (const [key] of Object.entries(cells)) {
+      const col = colMap[key];
+      const name = (col?.name || key).toLowerCase();
+      if (patterns.some((p) => name.includes(p))) return key;
     }
     return null;
   };
@@ -196,10 +206,48 @@ export function normalizeD1Task(row, columns) {
     if (!Array.isArray(ownerUserIds)) ownerUserIds = [ownerUserIds];
   }
 
+  // Build field map for save — maps semantic names to actual column keys
+  const _fieldMap = {};
+  const titleKey = findCellKey(["task", "title", "name"]);
+  if (titleKey) _fieldMap.title = titleKey;
+  const statusKey = findCellKey(["status"]);
+  if (statusKey) _fieldMap.status = statusKey;
+  const priorityKey = findCellKey(["priority"]);
+  if (priorityKey) _fieldMap.priority = priorityKey;
+  const doneKey = findCellKey(["done", "complete", "check"]);
+  if (doneKey) _fieldMap.done = doneKey;
+  const notesKey = findCellKey(["notes", "note", "description"]);
+  if (notesKey) _fieldMap.notes = notesKey;
+  const dueKey = findCellKey(["due", "deadline"]);
+  if (dueKey) _fieldMap.due = dueKey;
+
+  // Extract status options from column schema (for dropdown in RecordDrawer)
+  const _statusOptions = [];
+  if (statusKey) {
+    const statusCol = colMap[statusKey];
+    if (statusCol?.options) {
+      for (const opt of statusCol.options) {
+        _statusOptions.push({ name: opt.label || opt.name || opt, color: opt.color || "default" });
+      }
+    }
+  }
+
+  // Terminal status detection — check both checkbox and status value
+  let done = !!findCell(["done", "complete", "check"]);
+  const statusVal = findCell(["status"]) || "";
+  if (!done && statusVal) {
+    const statusLower = statusVal.toLowerCase().trim();
+    const TERMINAL_WORDS = [
+      "complete", "completed", "done", "shipped", "delivered",
+      "closed", "archived", "cancelled", "canceled", "resolved", "finished",
+    ];
+    done = TERMINAL_WORDS.some((w) => statusLower.includes(w));
+  }
+
   return {
     id: row.id,
     title: findCell(["task", "title", "name"]) || "Untitled",
-    done: !!findCell(["done", "complete", "check"]),
+    done,
     priority: findCell(["priority"]) || null,
     due: nearestDate || findCell(["due", "date"]) || null,
     nearestDate,
@@ -207,12 +255,15 @@ export function normalizeD1Task(row, columns) {
     allDates,
     notes: findCell(["notes", "note", "description"]) || "",
     assignee: findCell(["assignee", "assigned", "owner", "responsible"]) || "",
-    status: findCell(["status"]) || "",
+    status: statusVal,
     source: "manual",
     sourceName: "Zen Tasks",
     createdAt: row.created_at || null,
     lastEditedTime: row.updated_at || null,
     _ownerUserIds: ownerUserIds,
+    _fieldMap,
+    _statusOptions,
+    _statusFieldType: statusKey ? "select" : null,
     _raw: row,
   };
 }

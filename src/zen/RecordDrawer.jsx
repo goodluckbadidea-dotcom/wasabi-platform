@@ -224,21 +224,35 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
       } else {
         const tableId = task.tableId || (task.source?.startsWith("d1:") ? task.source.split(":")[1] : null);
         if (!tableId) throw new Error("No table ID");
-        await updateRow(tableId, task.id, {
-          cells: { task: title, done, priority: priority || null, due: due || null, notes },
-        });
+        // Build cells using field map (actual column names) or fallback to generic names
+        const cellsToSave = {};
+        const fm = fieldMap;
+        if (fm.title) cellsToSave[fm.title] = title;
+        else cellsToSave.task = title;
+        if (fm.done) cellsToSave[fm.done] = done;
+        else cellsToSave.done = done;
+        if (fm.status && status !== (task.status || "")) cellsToSave[fm.status] = status;
+        if (fm.priority) cellsToSave[fm.priority] = priority || null;
+        else cellsToSave.priority = priority || null;
+        if (fm.due) cellsToSave[fm.due] = due || null;
+        else cellsToSave.due = due || null;
+        if (fm.notes) cellsToSave[fm.notes] = notes;
+        else cellsToSave.notes = notes;
+        await updateRow(tableId, task.id, { cells: cellsToSave });
         // Log typed interaction for D1 tasks
         if (task.source && task.source !== "manual") {
+          const statusChanged = status !== (task.status || "");
           const doneChanged = done !== task.done;
-          if (doneChanged) {
-            logTaskInteraction(task.id, task.source, identity?.id, "status_change", done ? "completed" : "reopened").catch(() => {});
-            onRecordInteraction?.(task.id, "status_change", done ? "completed" : "reopened");
+          if (statusChanged || doneChanged) {
+            const detail = statusChanged ? `${task.status || "none"} → ${status}` : (done ? "completed" : "reopened");
+            logTaskInteraction(task.id, task.source, identity?.id, "status_change", detail).catch(() => {});
+            onRecordInteraction?.(task.id, "status_change", detail);
           } else {
             logTaskInteraction(task.id, task.source, identity?.id, "field_edit", "updated").catch(() => {});
             onRecordInteraction?.(task.id, "field_edit", "updated");
           }
         }
-        const updated = { ...task, title, done, priority, due, notes };
+        const updated = { ...task, title, done, status, priority, due, notes };
         onSaved?.(updated);
         notifySaved("task", updated);
         onClose();
@@ -382,8 +396,8 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
         </div>
       )}
 
-      {/* Notion sync badge */}
-      {isNotion && (
+      {/* Sync badge for linked databases */}
+      {task.sourceName && task.sourceName !== "Zen Tasks" && task.source !== "manual" && (
         <div style={{
           background: C.accent + "15", border: `1px solid ${C.accent}33`,
           borderRadius: RADIUS.md, padding: "8px 12px", marginBottom: 16,
@@ -394,7 +408,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
             <path d="M6 1v4l2.5 1.5" stroke={C.accent} strokeWidth="1" strokeLinecap="round" />
             <circle cx="6" cy="6" r="5" stroke={C.accent} strokeWidth="1" fill="none" />
           </svg>
-          Synced from {task.sourceName || "Notion"} — status, priority, dates save to source
+          Synced from {task.sourceName} — changes save to database
         </div>
       )}
 
@@ -414,8 +428,8 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
       {/* ── Details tab ── */}
       {activeTab === "details" && (
         <>
-          {/* Status dropdown (Notion tasks with status options) */}
-          {isNotion && statusOptions.length > 0 && (
+          {/* Status dropdown (tasks with status options — Notion or D1 with select columns) */}
+          {statusOptions.length > 0 && (
             <div style={fieldGroup}>
               <label style={labelStyle}>Status</label>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -444,8 +458,8 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
             </div>
           )}
 
-          {/* Done toggle (for D1 tasks or Notion tasks without status field) */}
-          {(!isNotion || statusOptions.length === 0) && (
+          {/* Done toggle (for tasks without a status dropdown) */}
+          {statusOptions.length === 0 && (
             <div style={{ ...fieldGroup, display: "flex", alignItems: "center", gap: 10 }}>
               <button
                 onClick={() => setDone(!done)}

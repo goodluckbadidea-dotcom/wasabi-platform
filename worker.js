@@ -3748,21 +3748,11 @@ async function handleCalendarFreeBusy(env, body, userId) {
 
 async function handleListPages(env, user) {
   try {
-    let rows;
-    if (!user || user.role === "admin") {
-      // Admin and MCP see all pages
-      rows = await env.DB.prepare(
-        "SELECT * FROM page_configs ORDER BY sort_order, created_at"
-      ).all();
-    } else {
-      // Non-admin users see only pages they have permission to
-      rows = await env.DB.prepare(`
-        SELECT pc.* FROM page_configs pc
-        INNER JOIN page_permissions pp ON pc.id = pp.page_id
-        WHERE pp.user_id = ? AND pp.permission != 'none'
-        ORDER BY pc.sort_order, pc.created_at
-      `).bind(user.sub).all();
-    }
+    // All authenticated users see all pages in the shared workspace.
+    // Page-level write permissions are enforced at mutation endpoints (update/delete).
+    const rows = await env.DB.prepare(
+      "SELECT * FROM page_configs ORDER BY sort_order, created_at"
+    ).all();
     // Parse JSON config for each page
     const pages = (rows.results || []).map((r) => ({
       ...r,
