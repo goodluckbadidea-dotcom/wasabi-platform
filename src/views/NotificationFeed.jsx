@@ -14,6 +14,7 @@ import {
   IconBell, IconGear, IconChat, IconMention, IconUser,
   IconWarning, IconRefresh, IconClipboard,
 } from "../design/icons.jsx";
+import MentionInput from "../components/MentionInput.jsx";
 
 const TABS = ["Unread", "All"];
 
@@ -209,19 +210,19 @@ function NotificationCard({ notif, expanded, onToggle, onMarkRead, onDismiss, on
           </div>
           {canReply && (
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-              <input ref={inputRef} value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleReply(); } }}
-                placeholder={`Reply to ${notif.actor_name || "this comment"}...`}
-                style={{
-                  flex: 1, padding: "8px 12px", background: C.darkSurf2,
-                  border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.md,
-                  color: C.darkText, fontFamily: FONT, fontSize: 12, outline: "none",
-                  transition: "border-color 0.15s",
-                }}
-                onFocus={(e) => { e.target.style.borderColor = cfg.color; }}
-                onBlur={(e) => { e.target.style.borderColor = C.darkBorder; }}
-              />
+              <div style={{ flex: 1 }}>
+                <MentionInput
+                  value={replyText}
+                  onChange={setReplyText}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleReply(); } }}
+                  placeholder={`Reply to ${notif.actor_name || "this comment"}... (@ to mention)`}
+                  style={{
+                    padding: "8px 12px", background: C.darkSurf2,
+                    border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.md,
+                    color: C.darkText, fontFamily: FONT, fontSize: 12,
+                  }}
+                />
+              </div>
               <button onClick={handleReply} disabled={!replyText.trim() || replying}
                 style={{
                   padding: "8px 16px", borderRadius: RADIUS.md,
@@ -517,7 +518,7 @@ export default function NotificationFeed() {
 
   const handleReply = useCallback(async (notif, text) => {
     const userId = identity?.id || "default";
-    const userName = identity?.displayName || user?.name || "User";
+    const userName = identity?.display_name || user?.name || "User";
     await api.createRecordComment(notif.record_id, notif.page_config_id, text, userId, userName);
   }, [identity, user]);
 
