@@ -16,11 +16,22 @@ import {
   scoreTerminalStatuses, shouldIncludeTask, isSmartOverdue,
 } from "./taskHelpers.js";
 
-const CACHE_KEY = "wasabi_ai_tasks_v7"; // v7: rank-all model — no filtering, AI scores everything
+const CACHE_KEY_PREFIX = "wasabi_ai_tasks_v8"; // v8: per-user cache + role-based filtering
 const INSIGHT_CACHE_KEY = "wasabi_insight";
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 const MAX_DATABASES = 5;
 const MAX_ITEMS_PER_DB = 30;
+
+// Per-user cache key — prevents cross-user cache contamination
+function cacheKeyForUser(userId) {
+  return userId ? `${CACHE_KEY_PREFIX}_${userId}` : CACHE_KEY_PREFIX;
+}
+
+// Role-based task filter — non-admins only see owned/mentioned/assigned tasks
+function applyRoleFilter(tasks, identity) {
+  if (!identity || identity.role === "admin") return tasks;
+  return tasks.filter((t) => t._isOwned || t._isMentioned || t._isAssigned);
+}
 
 // ── Task-likeness scoring ──
 // Instead of a naive "has status + title" check, we score databases on
@@ -274,6 +285,7 @@ const TARGET_MAX = 25;
 
 export default function useAICuratedTasks({ dismissedIds, completedCount, zenTableId } = {}) {
   const { user, pages, identity } = usePlatform();
+  const CACHE_KEY = cacheKeyForUser(identity?.id);
   const [aiTasks, setAiTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false); // background re-scan indicator
@@ -291,17 +303,19 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
 
   // Load cached results immediately + clean up old cache keys
   useEffect(() => {
-    // Clean up old cache keys
+    // Clean up old cache keys (including pre-per-user v7)
     try { localStorage.removeItem("wasabi_zen_ai_tasks"); } catch {}
     try { localStorage.removeItem("wasabi_zen_ai_tasks_v2"); } catch {}
     try { localStorage.removeItem("wasabi_zen_ai_tasks_v3"); } catch {}
     try { localStorage.removeItem("wasabi_ai_tasks_v4"); } catch {}
+    try { localStorage.removeItem("wasabi_ai_tasks_v7"); } catch {}
     const cached = getCached(CACHE_KEY, CACHE_TTL);
     if (cached) {
-      // Filter out any zen tasks that may have been cached before exclusion fix
-      const filtered = zenTableId
+      // Filter out zen tasks + apply role-based filter
+      let filtered = zenTableId
         ? cached.filter((t) => t.source !== `d1:${zenTableId}` && t.source !== "manual")
         : cached.filter((t) => t.source !== "manual");
+      filtered = applyRoleFilter(filtered, identity);
       setAiTasks(filtered);
       setLastUpdated(new Date(JSON.parse(localStorage.getItem(CACHE_KEY))?.ts));
       setLoading(false);
@@ -640,15 +654,9 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
       // Step 2.75: Role-based task filtering
       // Non-admins: ONLY see tasks they own or are mentioned in
       // Admins: see all tasks (ownership influences AI scoring weight)
-      const isAdmin = identity?.role === "admin" || !identity;
-      let filteredTasks;
-      if (isAdmin) {
-        filteredTasks = allTasks;
-        console.log(`[AICurated] Admin/single-user: all ${filteredTasks.length} tasks passed to scorer`);
-      } else {
-        filteredTasks = allTasks.filter((t) => t._isOwned || t._isMentioned || t._isAssigned);
-        console.log(`[AICurated] Non-admin filter: ${filteredTasks.length}/${allTasks.length} tasks (owned/mentioned/assigned)`);
-      }
+      const isAdmin = !identity || identity.role === "admin";
+      const filteredTasks = applyRoleFilter(allTasks, identity);
+      console.log(`[AICurated] ${isAdmin ? "Admin/single-user" : "Non-admin"}: ${filteredTasks.length}/${allTasks.length} tasks after role filter`);
 
       // Step 2.8: Dependency awareness (Phase 1 — implicit keyword scanning)
       try {
