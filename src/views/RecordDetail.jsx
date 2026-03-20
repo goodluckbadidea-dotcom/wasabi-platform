@@ -705,7 +705,7 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
                     <span>Owner</span>
                     <span style={ds.propType}>People</span>
                   </div>
-                  <div style={ds.propValue}>
+                  <div style={{ ...ds.propValue, position: "relative" }}>
                     {ownerIds.length === 0 ? (
                       <span style={{ color: C.darkMuted, opacity: 0.6, fontSize: 13 }}>Unassigned</span>
                     ) : (
@@ -733,10 +733,9 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
                       </div>
                     )}
                     <IconEdit size={10} color={C.darkMuted + "66"} />
-                  </div>
 
-                  {/* Owner Picker Dropdown */}
-                  {ownerPickerOpen && (
+                    {/* Owner Picker Dropdown */}
+                    {ownerPickerOpen && (
                     <OwnerPickerDropdown
                       ref={ownerPickerRef}
                       ownerIds={ownerIds}
@@ -753,7 +752,8 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
                       }}
                       onClose={() => setOwnerPickerOpen(false)}
                     />
-                  )}
+                    )}
+                  </div>
                 </div>
               )}
             </div>
