@@ -39,57 +39,54 @@ export function AuthProvider({ children }) {
   const [adminInvite, setAdminInvite] = useState(null); // first-boot invite code
   const [identityLoading, setIdentityLoading] = useState(true);
 
-  // ── D1 schema init ──
-  const hasCalledInit = useRef(false);
+  // ── D1 init + JWT validation (sequential to avoid race) ──
+  const hasBootstrapped = useRef(false);
   useEffect(() => {
-    if (!workerConnection?.workerUrl || hasCalledInit.current) return;
-    hasCalledInit.current = true;
-    initDatabase()
-      .then((result) => {
-        // If init returns an admin_invite, this is first boot
+    if (!workerConnection?.workerUrl || hasBootstrapped.current) return;
+    hasBootstrapped.current = true;
+
+    (async () => {
+      // Step 1: Init DB and detect multi-user state
+      let isMultiUser = false;
+      try {
+        const result = await initDatabase();
         if (result?.admin_invite) {
           setAdminInvite(result.admin_invite.invite_code);
-          setMultiUserEnabled(true);
+          isMultiUser = true;
         }
-        // Backend tells us if registered users exist
         if (result?.multi_user) {
-          setMultiUserEnabled(true);
+          isMultiUser = true;
         }
-      })
-      .catch((err) => {
+        if (isMultiUser) setMultiUserEnabled(true);
+      } catch (err) {
         console.warn("[Auth] D1 init check:", err.message || err);
-      });
-  }, [workerConnection]);
+      }
 
-  // ── Validate existing JWT on mount ──
-  const hasCheckedJwt = useRef(false);
-  useEffect(() => {
-    if (!workerConnection?.workerUrl || hasCheckedJwt.current) return;
-    hasCheckedJwt.current = true;
+      // Step 2: Validate JWT (only after init completes so multiUserEnabled is set)
+      const jwt = getJwt();
+      if (!jwt) {
+        setIdentityLoading(false);
+        return;
+      }
 
-    const jwt = getJwt();
-    if (!jwt) {
-      setIdentityLoading(false);
-      return;
-    }
-
-    authMe()
-      .then(({ user: u }) => {
+      try {
+        const { user: u } = await authMe();
         if (u) {
           setIdentity({ id: u.id, display_name: u.display_name, role: u.role });
           setMultiUserEnabled(true);
         } else {
           clearJwt();
         }
-      })
-      .catch((err) => {
-        // 401/404 = expired/deleted user; 500 = no users table yet (single-user mode)
+      } catch (err) {
+        // 401/404 = expired/deleted user — clear JWT so login screen shows
         if (err.status === 401 || err.status === 404) {
           clearJwt();
         }
         // On 500, assume single-user mode — don't clear JWT
-      })
-      .finally(() => setIdentityLoading(false));
+      } finally {
+        setIdentityLoading(false);
+      }
+    })();
   }, [workerConnection]);
 
   // ── Sync connection keys from D1 ──

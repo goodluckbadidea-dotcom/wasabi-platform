@@ -2958,6 +2958,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
             removeLink(linkId);
             resolveLinksForView(pageConfig?.id, viewIdx).then(setResolvedLinks).catch(() => {});
           }}
+          onRefresh={onRefresh}
         />
       )}
 
