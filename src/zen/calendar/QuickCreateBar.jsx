@@ -92,7 +92,7 @@ export default function QuickCreateBar({ selectedDate, onCreated, onClose }) {
         placeholder="Event title..."
         style={{
           flex: 1, background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-          borderRadius: RADIUS.pill, padding: "7px 10px",
+          borderRadius: RADIUS.md, padding: "7px 10px",
           fontSize: 12, fontFamily: FONT, color: C.darkText,
           outline: "none", minWidth: 0,
         }}
@@ -105,7 +105,7 @@ export default function QuickCreateBar({ selectedDate, onCreated, onClose }) {
         onChange={(e) => setStartTime(e.target.value)}
         style={{
           background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-          borderRadius: RADIUS.pill, padding: "7px 8px",
+          borderRadius: RADIUS.md, padding: "7px 8px",
           fontSize: 11, fontFamily: FONT, color: C.darkText,
           outline: "none", width: 85,
         }}

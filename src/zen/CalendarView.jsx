@@ -473,7 +473,7 @@ export default function CalendarView({ allTasks, refreshRef }) {
 const navBtnStyle = {
   background: "none", border: "none", cursor: "pointer",
   padding: 8, display: "flex", alignItems: "center", justifyContent: "center",
-  borderRadius: RADIUS.pill, outline: "none",
+  borderRadius: RADIUS.md, outline: "none",
   transition: "opacity 0.15s",
   minWidth: 32, minHeight: 32,
 };

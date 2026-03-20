@@ -102,7 +102,7 @@ const cal = {
   navBtn: {
     width: 32,
     height: 32,
-    borderRadius: RADIUS.pill,
+    borderRadius: RADIUS.md,
     border: `1px solid ${C.darkBorder}`,
     background: C.darkSurf2,
     cursor: "pointer",
@@ -114,7 +114,7 @@ const cal = {
   },
   todayBtn: {
     padding: "5px 14px",
-    borderRadius: RADIUS.pill,
+    borderRadius: RADIUS.md,
     border: `1px solid ${C.darkBorder}`,
     background: C.darkSurf2,
     cursor: "pointer",
@@ -501,7 +501,7 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
             {popover.events.map((ev, i) => (
               <div
                 key={i}
-                style={{ ...cal.popItem, cursor: "pointer", borderRadius: RADIUS.pill, padding: "6px 4px" }}
+                style={{ ...cal.popItem, cursor: "pointer", borderRadius: RADIUS.md, padding: "6px 4px" }}
                 onClick={(e) => {
                   if ((e.metaKey || e.ctrlKey) && isNeuronsMode()) {
                     e.preventDefault();

@@ -217,7 +217,7 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, aiRefreshing, d
             width: "100%",
             boxSizing: "border-box",
             padding: "12px 16px",
-            borderRadius: RADIUS.pill,
+            borderRadius: RADIUS.md,
             border: `1px solid ${C.darkBorder}`,
             background: C.darkSurf2,
             color: C.darkText,

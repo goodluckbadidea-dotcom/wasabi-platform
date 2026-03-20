@@ -86,7 +86,7 @@ export default function SetupWizard() {
     color: C.darkText,
     padding: "12px 16px",
     fontSize: 14,
-    borderRadius: RADIUS.pill,
+    borderRadius: RADIUS.md,
   };
 
   const isConnecting = step === "checking" || step === "initializing";

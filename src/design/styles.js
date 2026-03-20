@@ -43,7 +43,7 @@ function buildStyles() {
     navItem: {
       width: 40,
       height: 40,
-      borderRadius: RADIUS.pill,
+      borderRadius: RADIUS.lg,
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -222,7 +222,7 @@ function buildStyles() {
       background: C.darkSurf2,
       color: C.darkText,
       border: `1px solid ${C.darkBorder}`,
-      borderRadius: RADIUS.pill,
+      borderRadius: RADIUS.md,
       padding: "7px 18px",
       fontSize: 13,
       fontWeight: 600,
@@ -235,7 +235,7 @@ function buildStyles() {
       background: "transparent",
       color: C.darkMuted,
       border: "none",
-      borderRadius: RADIUS.pill,
+      borderRadius: RADIUS.md,
       padding: "6px 12px",
       fontSize: 13,
       fontWeight: 500,
@@ -326,7 +326,7 @@ function buildStyles() {
     input: {
       background: C.darkSurf,
       border: `1px solid ${C.darkBorder}`,
-      borderRadius: RADIUS.pill,
+      borderRadius: RADIUS.md,
       padding: "8px 12px",
       fontSize: 13,
       fontFamily: FONT,
@@ -344,7 +344,7 @@ function buildStyles() {
     inputDark: {
       background: C.darkSurf,
       border: `1px solid ${C.darkBorder}`,
-      borderRadius: RADIUS.pill,
+      borderRadius: RADIUS.md,
       padding: "8px 12px",
       fontSize: 13,
       fontFamily: FONT,
@@ -356,7 +356,7 @@ function buildStyles() {
     select: {
       background: C.darkSurf,
       border: `1px solid ${C.darkBorder}`,
-      borderRadius: RADIUS.pill,
+      borderRadius: RADIUS.md,
       padding: "8px 12px",
       fontSize: 13,
       fontFamily: FONT,

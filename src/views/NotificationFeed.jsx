@@ -43,7 +43,7 @@ const PREF_LABELS = {
 
 // ── Small button style helper ──
 const actionBtnStyle = (color) => ({
-  padding: "5px 12px", borderRadius: RADIUS.pill,
+  padding: "5px 12px", borderRadius: RADIUS.md,
   border: `1px solid ${color}44`, background: `${color}0A`,
   fontSize: 11, fontWeight: 500, fontFamily: FONT,
   color, cursor: "pointer", outline: "none",
@@ -172,7 +172,7 @@ function NotificationCard({ notif, expanded, onToggle, onMarkRead, onDismiss, on
             onClick={(e) => { e.stopPropagation(); onMarkRead(notif.id); }}
             style={{
               flexShrink: 0, border: `1px solid ${C.darkBorder}`, background: C.darkSurf,
-              borderRadius: RADIUS.pill, padding: "4px 10px", fontSize: 10, fontFamily: FONT,
+              borderRadius: RADIUS.md, padding: "4px 10px", fontSize: 10, fontFamily: FONT,
               color: C.darkMuted, cursor: "pointer", transition: "border-color 0.15s",
             }}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; }}
@@ -218,7 +218,7 @@ function NotificationCard({ notif, expanded, onToggle, onMarkRead, onDismiss, on
                   placeholder={`Reply to ${notif.actor_name || "this comment"}... (@ to mention)`}
                   style={{
                     padding: "8px 12px", background: C.darkSurf2,
-                    border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.pill,
+                    border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.md,
                     color: C.darkText, fontFamily: FONT, fontSize: 12,
                   }}
                 />
@@ -321,7 +321,7 @@ function NotificationGroup({ group, expandedId, onToggle, onMarkRead, onDismiss,
             onClick={(e) => { e.stopPropagation(); handleMarkAllInGroup(); }}
             style={{
               flexShrink: 0, border: `1px solid ${C.darkBorder}`, background: C.darkSurf,
-              borderRadius: RADIUS.pill, padding: "4px 10px", fontSize: 10, fontFamily: FONT,
+              borderRadius: RADIUS.md, padding: "4px 10px", fontSize: 10, fontFamily: FONT,
               color: C.darkMuted, cursor: "pointer", transition: "border-color 0.15s",
             }}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; }}
@@ -581,7 +581,7 @@ export default function NotificationFeed() {
             style={{
               background: showPrefs ? C.darkSurf2 : "transparent",
               border: `1px solid ${showPrefs ? C.accent : C.darkBorder}`,
-              borderRadius: RADIUS.pill, padding: "4px 8px", cursor: "pointer",
+              borderRadius: RADIUS.md, padding: "4px 8px", cursor: "pointer",
               transition: "all 0.15s", display: "flex", alignItems: "center",
             }}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; }}
@@ -594,7 +594,7 @@ export default function NotificationFeed() {
             <button onClick={markAllRead}
               style={{
                 background: "transparent", border: `1px solid ${C.darkBorder}`,
-                borderRadius: RADIUS.pill, padding: "4px 10px", fontSize: 10,
+                borderRadius: RADIUS.md, padding: "4px 10px", fontSize: 10,
                 fontFamily: FONT, color: C.darkMuted, cursor: "pointer",
                 transition: "border-color 0.15s",
               }}
@@ -605,7 +605,7 @@ export default function NotificationFeed() {
           <button onClick={() => { setLoading(true); fetchNotifications(); }}
             style={{
               background: "transparent", border: `1px solid ${C.darkBorder}`,
-              borderRadius: RADIUS.pill, padding: "4px 10px", fontSize: 10,
+              borderRadius: RADIUS.md, padding: "4px 10px", fontSize: 10,
               fontFamily: FONT, color: C.darkMuted, cursor: "pointer",
               transition: "border-color 0.15s",
             }}

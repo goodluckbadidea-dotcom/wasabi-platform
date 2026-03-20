@@ -63,7 +63,7 @@ export default function LoginScreen() {
     color: C.darkText,
     padding: "12px 16px",
     fontSize: 14,
-    borderRadius: RADIUS.pill,
+    borderRadius: RADIUS.md,
     width: "100%",
     boxSizing: "border-box",
   };

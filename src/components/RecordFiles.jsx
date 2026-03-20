@@ -216,7 +216,7 @@ const s = {
   actionBtn: {
     display: "flex", alignItems: "center", gap: 6,
     background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-    borderRadius: RADIUS.pill, padding: "6px 12px",
+    borderRadius: RADIUS.md, padding: "6px 12px",
     color: C.darkText, fontFamily: FONT, fontSize: 12,
     cursor: "pointer", outline: "none", transition: "background 0.15s",
   },
@@ -225,7 +225,7 @@ const s = {
   },
   urlInput: {
     flex: 1, background: C.dark, border: `1px solid ${C.darkBorder}`,
-    borderRadius: RADIUS.pill, color: C.darkText, fontFamily: FONT,
+    borderRadius: RADIUS.md, color: C.darkText, fontFamily: FONT,
     fontSize: 13, padding: "8px 12px", outline: "none",
   },
   sendBtn: {

@@ -71,7 +71,7 @@ export default function SavedViewsDropdown({ savedViews = [], activeSavedViewId,
         style={{
           display: "flex", alignItems: "center", gap: 6,
           background: C.darkSurf2, border: `1px solid ${activeView ? C.accent : C.darkBorder}`,
-          borderRadius: RADIUS.pill, padding: "6px 10px", fontSize: 12,
+          borderRadius: RADIUS.md, padding: "6px 10px", fontSize: 12,
           fontFamily: FONT, color: activeView ? C.accent : C.darkMuted,
           cursor: "pointer", height: 34, minWidth: 100, maxWidth: 200,
           whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",

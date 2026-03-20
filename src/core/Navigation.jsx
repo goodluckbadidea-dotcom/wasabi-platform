@@ -278,7 +278,7 @@ export default function Navigation({
     gap: collapsed ? 0 : 10,
     padding: collapsed ? "10px 8px" : "10px 14px",
     minHeight: 44, // touch-friendly minimum (Apple HIG: 44pt)
-    borderRadius: RADIUS.pill,
+    borderRadius: RADIUS.lg,
     transition: "background 0.15s, transform 0.12s",
     outline: "none",
     width: "100%",
@@ -671,7 +671,7 @@ export default function Navigation({
                   gap: collapsed ? 0 : 10,
                   padding: collapsed ? "10px 8px" : "10px 14px",
                   minHeight: 44,
-                  borderRadius: RADIUS.pill, transition: "background 0.15s",
+                  borderRadius: RADIUS.lg, transition: "background 0.15s",
                   outline: "none", width: "100%",
                   justifyContent: collapsed ? "center" : "flex-start",
                   marginTop: 2,

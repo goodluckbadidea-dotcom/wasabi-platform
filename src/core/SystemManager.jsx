@@ -226,7 +226,7 @@ function ConnectionRow({ def, connected, onSave, onDelete }) {
             onChange={(e) => setValue(e.target.value)}
             placeholder={def.placeholder}
             style={{
-              flex: 1, background: C.dark, border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.pill,
+              flex: 1, background: C.dark, border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.md,
               color: C.darkText, fontFamily: MONO, fontSize: 12, padding: "8px 10px", outline: "none",
             }}
             onFocus={(e) => { e.target.style.borderColor = C.accent; }}
@@ -248,7 +248,7 @@ function ConnectionRow({ def, connected, onSave, onDelete }) {
           <button
             onClick={() => { setEditing(false); setValue(""); }}
             style={{
-              background: C.darkSurf2, border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.pill,
+              background: C.darkSurf2, border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.md,
               color: C.darkMuted, fontFamily: FONT, fontSize: 12, padding: "8px 12px", cursor: "pointer",
             }}
           >
@@ -1405,7 +1405,7 @@ function SettingsTab() {
           style={{
             flex: 1, padding: "8px 12px", fontSize: 12, fontWeight: 500,
             fontFamily: FONT, border: `1px solid ${C.darkBorder}`,
-            borderRadius: RADIUS.pill, background: "transparent",
+            borderRadius: RADIUS.md, background: "transparent",
             color: C.darkMuted, cursor: "pointer",
           }}
         >

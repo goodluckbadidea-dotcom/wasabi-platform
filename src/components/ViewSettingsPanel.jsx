@@ -551,7 +551,7 @@ export default function ViewSettingsPanel({
             fontWeight: 500,
             fontFamily: FONT,
             border: `1px solid ${C.darkBorder}`,
-            borderRadius: RADIUS.pill,
+            borderRadius: RADIUS.md,
             background: "transparent",
             color: C.darkMuted,
             cursor: "pointer",
@@ -725,7 +725,7 @@ export default function ViewSettingsPanel({
                       onClick={() => handleResetSection(sec.dbId)}
                       style={{
                         flex: 1, padding: "6px 8px", fontSize: 11, fontFamily: FONT,
-                        border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.pill,
+                        border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.md,
                         background: "transparent", color: C.darkMuted, cursor: "pointer",
                       }}
                     >

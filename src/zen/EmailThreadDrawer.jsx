@@ -49,14 +49,14 @@ const labelStyle = {
 const fieldStyle = {
   width: "100%", boxSizing: "border-box",
   background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-  borderRadius: RADIUS.pill, padding: "8px 12px",
+  borderRadius: RADIUS.md, padding: "8px 12px",
   color: C.darkText, fontFamily: FONT, fontSize: 13,
   outline: "none", transition: "border-color 0.15s",
 };
 
 const actionBtnStyle = {
   background: "none", border: `1px solid ${C.darkBorder}`,
-  color: C.darkText, padding: "6px 14px", borderRadius: RADIUS.pill,
+  color: C.darkText, padding: "6px 14px", borderRadius: RADIUS.md,
   cursor: "pointer", fontFamily: FONT, fontSize: 11, fontWeight: 500,
   outline: "none", transition: "all 0.12s",
 };

@@ -216,7 +216,7 @@ export default function ChatUI({
                             gap: 6,
                             background: C.accent + "14",
                             border: `1px solid ${C.accent}44`,
-                            borderRadius: RADIUS.pill,
+                            borderRadius: RADIUS.md,
                             padding: "5px 12px",
                             fontSize: 11,
                             fontWeight: 500,

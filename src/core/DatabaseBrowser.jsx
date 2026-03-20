@@ -214,7 +214,7 @@ const ds = {
     width: "100%",
     background: C.darkSurf2,
     border: `1px solid ${C.darkBorder}`,
-    borderRadius: RADIUS.pill,
+    borderRadius: RADIUS.md,
     padding: "10px 14px",
     fontSize: 13,
     fontFamily: FONT,
@@ -1175,7 +1175,7 @@ function CreateDatabaseForm({
                     style={{
                       background: "none",
                       border: `1px solid ${C.darkBorder}`,
-                      borderRadius: RADIUS.pill,
+                      borderRadius: RADIUS.md,
                       padding: "8px",
                       cursor: "pointer",
                       display: "flex",
@@ -1223,7 +1223,7 @@ function CreateDatabaseForm({
           style={{
             background: "none",
             border: `1px dashed ${C.darkBorder}`,
-            borderRadius: RADIUS.pill,
+            borderRadius: RADIUS.md,
             padding: "8px 14px",
             fontSize: 12,
             fontFamily: FONT,

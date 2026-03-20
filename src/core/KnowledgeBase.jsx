@@ -412,7 +412,7 @@ function ContextTab() {
               placeholder="Entry title / key"
               style={{
                 flex: 1, background: C.dark, border: `1px solid ${C.darkBorder}`,
-                borderRadius: RADIUS.pill, color: C.darkText, fontFamily: FONT,
+                borderRadius: RADIUS.md, color: C.darkText, fontFamily: FONT,
                 fontSize: 12, padding: "8px 10px", outline: "none",
               }}
               onFocus={(e) => { e.target.style.borderColor = C.accent; }}
@@ -423,7 +423,7 @@ function ContextTab() {
               onChange={(e) => setAddCategory(e.target.value)}
               style={{
                 background: C.dark, border: `1px solid ${C.darkBorder}`,
-                borderRadius: RADIUS.pill, color: C.darkText, fontFamily: FONT,
+                borderRadius: RADIUS.md, color: C.darkText, fontFamily: FONT,
                 fontSize: 12, padding: "8px 10px", outline: "none",
               }}
             >
@@ -441,7 +441,7 @@ function ContextTab() {
             rows={5}
             style={{
               width: "100%", background: C.dark, border: `1px solid ${C.darkBorder}`,
-              borderRadius: RADIUS.pill, color: C.darkText, fontFamily: FONT,
+              borderRadius: RADIUS.md, color: C.darkText, fontFamily: FONT,
               fontSize: 12, padding: "8px 10px", outline: "none", resize: "vertical",
               lineHeight: 1.5, boxSizing: "border-box",
             }}
@@ -575,7 +575,7 @@ function KBEntryCard({ entry, isEditing, editContent, onStartEdit, onCancelEdit,
             rows={5}
             style={{
               width: "100%", background: C.dark, border: `1px solid ${C.darkBorder}`,
-              borderRadius: RADIUS.pill, color: C.darkText, fontFamily: FONT,
+              borderRadius: RADIUS.md, color: C.darkText, fontFamily: FONT,
               fontSize: 12, padding: "8px 10px", outline: "none", resize: "vertical",
               lineHeight: 1.5, boxSizing: "border-box",
             }}
@@ -587,7 +587,7 @@ function KBEntryCard({ entry, isEditing, editContent, onStartEdit, onCancelEdit,
             <button
               onClick={onCancelEdit}
               style={{
-                background: C.darkSurf2, border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.pill,
+                background: C.darkSurf2, border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.md,
                 color: C.darkMuted, fontFamily: FONT, fontSize: 11, padding: "5px 12px", cursor: "pointer", outline: "none",
               }}
             >

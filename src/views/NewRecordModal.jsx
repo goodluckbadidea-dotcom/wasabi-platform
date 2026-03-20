@@ -316,7 +316,7 @@ const ms = {
     borderBottom: `1px solid ${C.edgeLine}`, gap: 12, flexShrink: 0,
   },
   closeBtn: {
-    width: 32, height: 32, borderRadius: RADIUS.pill,
+    width: 32, height: 32, borderRadius: RADIUS.md,
     border: `1px solid ${C.darkBorder}`, background: C.darkSurf2,
     cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
     flexShrink: 0,
@@ -348,7 +348,7 @@ const ms = {
     display: "flex", gap: 8, justifyContent: "flex-end", flexShrink: 0,
   },
   btn: (primary) => ({
-    padding: "7px 18px", borderRadius: RADIUS.pill, fontSize: 12,
+    padding: "7px 18px", borderRadius: primary ? RADIUS.pill : RADIUS.md, fontSize: 12,
     fontWeight: 600, fontFamily: FONT, cursor: "pointer",
     border: primary ? "none" : `1px solid ${C.darkBorder}`,
     background: primary ? C.accent : C.darkSurf2,

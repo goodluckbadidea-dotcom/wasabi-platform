@@ -581,11 +581,11 @@ export const MONO = "'DM Mono','Courier New',monospace";
 
 // Border radius
 export const RADIUS = {
-  sm:   4,
-  md:   20,
-  lg:   20,
-  xl:   20,
-  pill: 999,
+  sm:   4,    // micro: checkboxes, inline code, tooltips
+  md:   10,   // secondary interactive: inputs, small buttons, stacked cards
+  lg:   14,   // content surfaces: cards, panels, dropdowns, modals
+  xl:   14,   // alias for lg
+  pill: 999,  // primary/navigational: CTA buttons, search bars, tabs, nav items
 };
 
 // ── Theme-aware Shadows ──

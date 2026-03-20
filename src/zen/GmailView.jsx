@@ -553,7 +553,7 @@ export default function GmailView() {
               style={{
                 display: "block", margin: "12px auto 0",
                 background: "none", border: `1px solid ${C.darkBorder}`,
-                color: C.darkMuted, padding: "6px 14px", borderRadius: RADIUS.pill,
+                color: C.darkMuted, padding: "6px 14px", borderRadius: RADIUS.md,
                 cursor: "pointer", fontFamily: FONT, fontSize: 11, outline: "none",
               }}
             >
@@ -809,7 +809,7 @@ export default function GmailView() {
                               background: "none",
                               border: `1px solid ${C.darkBorder}`,
                               cursor: "pointer",
-                              padding: "8px 16px", borderRadius: RADIUS.pill,
+                              padding: "8px 16px", borderRadius: RADIUS.md,
                               fontSize: 12, fontWeight: 500, fontFamily: FONT,
                               color: C.darkMuted, outline: "none",
                               display: "flex", alignItems: "center", gap: 6,
@@ -832,7 +832,7 @@ export default function GmailView() {
                               background: "none",
                               border: `1px solid ${C.darkBorder}`,
                               cursor: "pointer",
-                              padding: "8px 16px", borderRadius: RADIUS.pill,
+                              padding: "8px 16px", borderRadius: RADIUS.md,
                               fontSize: 12, fontWeight: 500, fontFamily: FONT,
                               color: C.darkMuted, outline: "none",
                               display: "flex", alignItems: "center", gap: 6,
@@ -874,14 +874,14 @@ const labelStyle = {
 const fieldStyle = {
   width: "100%", boxSizing: "border-box",
   background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-  borderRadius: RADIUS.pill, padding: "8px 12px",
+  borderRadius: RADIUS.md, padding: "8px 12px",
   color: C.darkText, fontFamily: FONT, fontSize: 13,
   outline: "none", transition: "border-color 0.15s",
 };
 
 const cancelBtnStyle = {
   background: "none", border: `1px solid ${C.darkBorder}`,
-  color: C.darkMuted, padding: "7px 16px", borderRadius: RADIUS.pill,
+  color: C.darkMuted, padding: "7px 16px", borderRadius: RADIUS.md,
   cursor: "pointer", fontFamily: FONT, fontSize: 12, fontWeight: 500,
   outline: "none",
 };

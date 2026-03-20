@@ -207,7 +207,7 @@ const s = {
   },
   input: {
     flex: 1, background: C.dark, border: `1px solid ${C.darkBorder}`,
-    borderRadius: RADIUS.pill, color: C.darkText, fontFamily: FONT,
+    borderRadius: RADIUS.md, color: C.darkText, fontFamily: FONT,
     fontSize: 13, padding: "8px 12px", outline: "none",
     transition: "border-color 0.15s",
   },

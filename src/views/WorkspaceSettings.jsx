@@ -71,7 +71,7 @@ const ws = {
     minHeight: 120,
     background: C.darkSurf2,
     border: `1px solid ${C.darkBorder}`,
-    borderRadius: RADIUS.pill,
+    borderRadius: RADIUS.md,
     padding: "12px 14px",
     fontSize: 13,
     fontFamily: FONT,

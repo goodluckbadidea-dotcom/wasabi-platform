@@ -196,7 +196,7 @@ export default function TasksView() {
               style={{
                 background: "none", border: "none", cursor: "pointer",
                 padding: 8, display: "flex", opacity: 0.5,
-                outline: "none", borderRadius: RADIUS.pill,
+                outline: "none", borderRadius: RADIUS.md,
                 transition: "opacity 0.15s",
                 minWidth: 32, minHeight: 32,
                 alignItems: "center", justifyContent: "center",
@@ -214,7 +214,7 @@ export default function TasksView() {
               style={{
                 background: "none", border: "none", cursor: "pointer",
                 padding: 8, display: "flex", opacity: 0.5,
-                outline: "none", borderRadius: RADIUS.pill,
+                outline: "none", borderRadius: RADIUS.md,
                 transition: "opacity 0.15s",
                 minWidth: 32, minHeight: 32,
                 alignItems: "center", justifyContent: "center",

@@ -189,7 +189,7 @@ export default function PluginWidget({ functionId, width, height, refreshInterva
           onClick={loadFunction}
           style={{
             background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-            borderRadius: RADIUS.pill, padding: "3px 10px",
+            borderRadius: RADIUS.md, padding: "3px 10px",
             fontSize: 10, fontFamily: FONT, color: C.darkMuted,
             cursor: "pointer", marginTop: 4,
           }}

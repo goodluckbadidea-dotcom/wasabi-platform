@@ -188,7 +188,7 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
             background: editMode ? C.accent : C.darkSurf2,
             color: editMode ? "#fff" : C.darkMuted,
             border: `1px solid ${editMode ? C.accent : C.darkBorder}`,
-            borderRadius: RADIUS.pill, padding: "6px 14px",
+            borderRadius: RADIUS.md, padding: "6px 14px",
             fontSize: 11, fontFamily: FONT, fontWeight: 600,
             cursor: "pointer", display: "flex", alignItems: "center",
             gap: 5, boxShadow: SHADOW.card,
@@ -204,7 +204,7 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
             style={{
               background: C.darkSurf2, color: C.darkMuted,
               border: `1px solid ${C.darkBorder}`,
-              borderRadius: RADIUS.pill, padding: "6px 14px",
+              borderRadius: RADIUS.md, padding: "6px 14px",
               fontSize: 11, fontFamily: FONT, fontWeight: 600,
               cursor: "pointer", display: "flex", alignItems: "center",
               gap: 5, boxShadow: SHADOW.card,
@@ -348,7 +348,7 @@ function WidgetPickerInline({ onClose, onAddWidget }) {
   const quickBtnStyle = {
     background: "transparent",
     border: `1px solid ${C.darkBorder}`,
-    borderRadius: RADIUS.pill,
+    borderRadius: RADIUS.md,
     padding: "8px 14px",
     cursor: "pointer",
     fontFamily: FONT,
@@ -443,7 +443,7 @@ function WidgetPickerInline({ onClose, onAddWidget }) {
                   style={{
                     width: "100%", background: "transparent",
                     border: `1px solid ${C.darkBorder}`,
-                    borderRadius: RADIUS.pill, padding: "8px 10px",
+                    borderRadius: RADIUS.md, padding: "8px 10px",
                     marginBottom: 4, cursor: "pointer", textAlign: "left",
                     fontFamily: FONT, fontSize: 11, color: C.darkMuted,
                     transition: "all 0.12s", outline: "none",
@@ -517,7 +517,7 @@ function WidgetPickerInline({ onClose, onAddWidget }) {
                   style={{
                     width: "100%", background: "transparent",
                     border: `1px solid ${C.darkBorder}`,
-                    borderRadius: RADIUS.pill, padding: "6px 10px",
+                    borderRadius: RADIUS.md, padding: "6px 10px",
                     marginBottom: 4, cursor: "pointer", textAlign: "left",
                     fontFamily: FONT, fontSize: 11, color: C.darkMuted,
                     transition: "all 0.12s", outline: "none",
