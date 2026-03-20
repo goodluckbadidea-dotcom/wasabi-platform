@@ -330,6 +330,14 @@ export default function PageShell({
     [pageConfig, updatePageConfig, fetchData]
   );
 
+  // ── Merge per-user view preferences over shared config (must be before early returns for hook ordering) ──
+  const effectiveView = useMemo(() => {
+    if (!activeView || !identity?.id) return activeView;
+    const mergedConfig = viewPrefs.getEffectiveConfig(pageConfig.id, activeViewIndex, activeView.config || {});
+    return { ...activeView, config: mergedConfig };
+  }, [activeView, identity?.id, pageConfig.id, activeViewIndex, viewPrefs]);
+  const viewsToRender = effectiveView ? [effectiveView] : [];
+
   // ── Loading state ──
   if (loading && data.length === 0) {
     const firstViewType = activeView?.type || "default";
@@ -386,14 +394,6 @@ export default function PageShell({
   }
 
   // ── Normal view rendering ──
-  // Merge per-user view preferences over shared config
-  const effectiveView = useMemo(() => {
-    if (!activeView || !identity?.id) return activeView;
-    const mergedConfig = viewPrefs.getEffectiveConfig(pageConfig.id, activeViewIndex, activeView.config || {});
-    return { ...activeView, config: mergedConfig };
-  }, [activeView, identity?.id, pageConfig.id, activeViewIndex, viewPrefs]);
-  const viewsToRender = effectiveView ? [effectiveView] : [];
-
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {/* View tabs */}
