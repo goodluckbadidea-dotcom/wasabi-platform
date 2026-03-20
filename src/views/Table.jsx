@@ -2747,26 +2747,15 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                               {columns.map((col) => {
                                 if (col === OWNER_COL_NAME && showOwnerColumn) {
                                   const ownerIds = page._ownerUserIds || [];
-                                  const isPickerOpen = ownerPickerRow === pageId;
                                   return (
                                     <div
                                       key={col}
-                                      style={{ ...styles.gridCell, padding: "4px 8px", position: "relative" }}
-                                      onClick={(e) => { e.stopPropagation(); setOwnerPickerRow(isPickerOpen ? null : pageId); }}
+                                      style={{ ...styles.gridCell, padding: "4px 8px" }}
                                     >
                                       <OwnerCellDisplay
                                         ownerIds={ownerIds}
                                         users={teamUsers}
-                                        onClick={() => setOwnerPickerRow(isPickerOpen ? null : pageId)}
                                       />
-                                      {isPickerOpen && (
-                                        <OwnerPicker
-                                          ownerIds={ownerIds}
-                                          users={teamUsers}
-                                          onCommit={(ids) => handleOwnerCommit(pageId, ids)}
-                                          onClose={() => setOwnerPickerRow(null)}
-                                        />
-                                      )}
                                     </div>
                                   );
                                 }

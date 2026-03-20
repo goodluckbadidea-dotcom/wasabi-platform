@@ -351,7 +351,7 @@ const OwnerPickerDropdown = React.forwardRef(function OwnerPickerDropdown({ owne
       ref={ref}
       onClick={(e) => e.stopPropagation()}
       style={{
-        position: "absolute", top: "100%", right: 0, zIndex: 200,
+        position: "absolute", bottom: "100%", left: 0, zIndex: 200,
         background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
         borderRadius: RADIUS.lg, boxShadow: SHADOW.dropdown,
         width: 240, maxHeight: 300, display: "flex", flexDirection: "column",
