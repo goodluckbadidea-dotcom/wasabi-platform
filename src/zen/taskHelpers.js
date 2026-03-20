@@ -189,6 +189,13 @@ export function normalizeD1Task(row, columns) {
     nearestDateField = nearest?.fieldName || null;
   }
 
+  // Parse owner_user_id from row (stored as JSON array string in D1)
+  let ownerUserIds = [];
+  if (row.owner_user_id && row.owner_user_id !== "default" && row.owner_user_id !== "unassigned") {
+    try { ownerUserIds = JSON.parse(row.owner_user_id); } catch { ownerUserIds = [row.owner_user_id]; }
+    if (!Array.isArray(ownerUserIds)) ownerUserIds = [ownerUserIds];
+  }
+
   return {
     id: row.id,
     title: findCell(["task", "title", "name"]) || "Untitled",
@@ -199,10 +206,13 @@ export function normalizeD1Task(row, columns) {
     nearestDateField,
     allDates,
     notes: findCell(["notes", "note", "description"]) || "",
+    assignee: findCell(["assignee", "assigned", "owner", "responsible"]) || "",
+    status: findCell(["status"]) || "",
     source: "manual",
     sourceName: "Zen Tasks",
     createdAt: row.created_at || null,
     lastEditedTime: row.updated_at || null,
+    _ownerUserIds: ownerUserIds,
     _raw: row,
   };
 }

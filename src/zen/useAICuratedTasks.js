@@ -16,7 +16,7 @@ import {
   scoreTerminalStatuses, shouldIncludeTask, isSmartOverdue,
 } from "./taskHelpers.js";
 
-const CACHE_KEY_PREFIX = "wasabi_ai_tasks_v8"; // v8: per-user cache + role-based filtering
+const CACHE_KEY_PREFIX = "wasabi_ai_tasks_v9"; // v9: fix ownership extraction + cache timing
 const INSIGHT_CACHE_KEY = "wasabi_insight";
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 const MAX_DATABASES = 5;
@@ -301,17 +301,25 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
   dismissedIdsRef.current = dismissedIds || new Set();
   completedCountRef.current = completedCount || 0;
 
-  // Load cached results immediately + clean up old cache keys
+  // Clean up old cache keys + load cached results
+  // Re-runs when identity changes so role filter is always applied correctly
   useEffect(() => {
-    // Clean up old cache keys (including pre-per-user v7)
+    // Cleanup stale cache versions (idempotent, cheap)
     try { localStorage.removeItem("wasabi_zen_ai_tasks"); } catch {}
     try { localStorage.removeItem("wasabi_zen_ai_tasks_v2"); } catch {}
     try { localStorage.removeItem("wasabi_zen_ai_tasks_v3"); } catch {}
     try { localStorage.removeItem("wasabi_ai_tasks_v4"); } catch {}
     try { localStorage.removeItem("wasabi_ai_tasks_v7"); } catch {}
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith("wasabi_ai_tasks_v8")) { localStorage.removeItem(k); i--; }
+      }
+    } catch {}
+
+    // Load cached results with proper role filtering
     const cached = getCached(CACHE_KEY, CACHE_TTL);
     if (cached) {
-      // Filter out zen tasks + apply role-based filter
       let filtered = zenTableId
         ? cached.filter((t) => t.source !== `d1:${zenTableId}` && t.source !== "manual")
         : cached.filter((t) => t.source !== "manual");
@@ -320,10 +328,9 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
       setLastUpdated(new Date(JSON.parse(localStorage.getItem(CACHE_KEY))?.ts));
       setLoading(false);
     }
-    // Load cached insight
     const cachedInsight = getCached(INSIGHT_CACHE_KEY, CACHE_TTL);
     if (cachedInsight) setInsight(cachedInsight);
-  }, []);
+  }, [CACHE_KEY, identity?.id, identity?.role]);
 
   // Background scan and AI curation
   const scan = useCallback(async (force = false) => {
