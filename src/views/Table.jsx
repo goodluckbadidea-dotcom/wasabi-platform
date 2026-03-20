@@ -2082,33 +2082,50 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                   </thead>
                   <tbody>
                     <tr style={{ height: ROW_HEIGHT, opacity: 0.8 }}>
-                      {cols.map((col) => (
-                        <td key={col} style={{ ...styles.td, padding: "4px 6px" }}>
-                          <input
-                            type={getFieldType(schema, col) === "number" ? "number" : getFieldType(schema, col) === "date" ? "date" : "text"}
-                            style={{
-                              width: "100%", border: "none", borderRadius: RADIUS.sm,
-                              background: "transparent", color: C.darkText, fontFamily: FONT,
-                              fontSize: 12, padding: "4px 6px", outline: "none", boxSizing: "border-box",
-                            }}
-                            value={ghostValues[col] ?? ""}
-                            placeholder={col === titleField ? "New row..." : col}
-                            autoFocus={col === titleField}
-                            onChange={(e) => {
-                              ghostActive.current = true;
-                              const type = getFieldType(schema, col);
-                              const val = type === "number" ? (e.target.value ? Number(e.target.value) : "") : e.target.value;
-                              setGhostValues((p) => ({ ...p, [col]: val }));
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") { e.preventDefault(); handleGhostCommit(); }
-                              if (e.key === "Escape") { setGhostValues({}); ghostActive.current = false; e.target.blur(); }
-                            }}
-                            onFocus={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-                            onBlur={(e) => { e.currentTarget.style.background = "transparent"; }}
-                          />
-                        </td>
-                      ))}
+                      {cols.map((col) => {
+                        const type = getFieldType(schema, col);
+                        const gib = {
+                          width: "100%", border: "none", borderRadius: RADIUS.sm,
+                          background: "transparent", color: C.darkText, fontFamily: FONT,
+                          fontSize: 12, padding: "4px 6px", outline: "none", boxSizing: "border-box",
+                        };
+                        const gkd = (e) => {
+                          if (e.key === "Enter") { e.preventDefault(); handleGhostCommit(); }
+                          if (e.key === "Escape") { setGhostValues({}); ghostActive.current = false; e.target.blur(); }
+                        };
+                        const gsv = (val) => { ghostActive.current = true; setGhostValues((p) => ({ ...p, [col]: val })); };
+                        return (
+                          <td key={col} style={{ ...styles.td, padding: "4px 6px" }}>
+                            {type === "checkbox" ? (
+                              <label style={{ display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", height: "100%" }}>
+                                <input type="checkbox" checked={!!ghostValues[col]} onChange={(e) => gsv(e.target.checked)} style={{ width: 14, height: 14, accentColor: C.accent, cursor: "pointer" }} />
+                              </label>
+                            ) : (type === "select" || type === "status") ? (
+                              <select value={ghostValues[col] || ""} onChange={(e) => gsv(e.target.value || null)} onKeyDown={gkd} style={{ ...gib, cursor: "pointer", appearance: "none" }}>
+                                <option value="">--</option>
+                                {getFieldOptions(schema, col).map((opt) => (
+                                  <option key={opt.name} value={opt.name}>{opt.name}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                type={type === "number" ? "number" : type === "date" ? "date" : "text"}
+                                style={gib}
+                                value={ghostValues[col] ?? ""}
+                                placeholder={col === titleField ? "New row..." : col}
+                                autoFocus={col === titleField}
+                                onChange={(e) => {
+                                  const val = type === "number" ? (e.target.value ? Number(e.target.value) : "") : e.target.value;
+                                  gsv(val);
+                                }}
+                                onKeyDown={gkd}
+                                onFocus={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                                onBlur={(e) => { e.currentTarget.style.background = "transparent"; }}
+                              />
+                            )}
+                          </td>
+                        );
+                      })}
                     </tr>
                   </tbody>
                 </table>
@@ -2843,50 +2860,50 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                         const type = getFieldType(schema, col);
                         const isEditable = EDITABLE_TYPES.has(type);
                         const titleField = schema?.title?.name;
+                        const ghostInputBase = {
+                          width: "100%", border: "none", borderRadius: RADIUS.sm,
+                          background: "transparent", color: C.darkText, fontFamily: FONT,
+                          fontSize: 12, padding: "4px 6px", outline: "none", boxSizing: "border-box",
+                        };
+                        const ghostKeyDown = (e) => {
+                          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleGhostCommit(); }
+                          if (e.key === "Escape") { setGhostValues({}); ghostActive.current = false; e.target.blur(); }
+                        };
+                        const ghostSetVal = (val) => { ghostActive.current = true; setGhostValues((p) => ({ ...p, [col]: val })); };
                         return (
                           <div key={col} style={{ ...styles.gridCell, padding: "2px 6px" }}>
-                            {isEditable ? (
+                            {!isEditable ? (
+                              <span style={{ color: C.darkMuted, fontSize: 11, fontStyle: "italic" }}>--</span>
+                            ) : type === "checkbox" ? (
+                              <label style={{ display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", height: "100%" }}>
+                                <input type="checkbox" checked={!!ghostValues[col]} onChange={(e) => ghostSetVal(e.target.checked)} style={{ width: 14, height: 14, accentColor: C.accent, cursor: "pointer" }} />
+                              </label>
+                            ) : (type === "select" || type === "status") ? (
+                              <select
+                                value={ghostValues[col] || ""}
+                                onChange={(e) => ghostSetVal(e.target.value || null)}
+                                onKeyDown={ghostKeyDown}
+                                style={{ ...ghostInputBase, cursor: "pointer", appearance: "none" }}
+                              >
+                                <option value="">--</option>
+                                {getFieldOptions(schema, col).map((opt) => (
+                                  <option key={opt.name} value={opt.name}>{opt.name}</option>
+                                ))}
+                              </select>
+                            ) : (
                               <input
                                 type={type === "number" ? "number" : type === "date" ? "date" : "text"}
-                                style={{
-                                  width: "100%",
-                                  border: "none",
-                                  borderRadius: RADIUS.sm,
-                                  background: "transparent",
-                                  color: C.darkText,
-                                  fontFamily: FONT,
-                                  fontSize: 12,
-                                  padding: "4px 6px",
-                                  outline: "none",
-                                  boxSizing: "border-box",
-                                }}
+                                style={ghostInputBase}
                                 value={ghostValues[col] ?? ""}
                                 placeholder={col === titleField ? "New row..." : ""}
                                 onChange={(e) => {
-                                  ghostActive.current = true;
                                   const val = type === "number" ? (e.target.value ? Number(e.target.value) : "") : e.target.value;
-                                  setGhostValues((p) => ({ ...p, [col]: val }));
+                                  ghostSetVal(val);
                                 }}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter" && !e.shiftKey) {
-                                    e.preventDefault();
-                                    handleGhostCommit();
-                                  }
-                                  if (e.key === "Escape") {
-                                    setGhostValues({});
-                                    ghostActive.current = false;
-                                    e.target.blur();
-                                  }
-                                }}
-                                onFocus={(e) => {
-                                  e.currentTarget.style.background = C.darkSurf2;
-                                }}
-                                onBlur={(e) => {
-                                  e.currentTarget.style.background = "transparent";
-                                }}
+                                onKeyDown={ghostKeyDown}
+                                onFocus={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                                onBlur={(e) => { e.currentTarget.style.background = "transparent"; }}
                               />
-                            ) : (
-                              <span style={{ color: C.darkMuted, fontSize: 11, fontStyle: "italic" }}>--</span>
                             )}
                           </div>
                         );

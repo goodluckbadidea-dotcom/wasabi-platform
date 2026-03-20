@@ -157,7 +157,7 @@ export default function useTasksTable() {
       if (priority) cells.priority = priority;
       if (due) cells.due = due;
       const result = await createRows(tableId, { cells });
-      const newId = result.rows?.[0]?.id || result.id;
+      const newId = result.ids?.[0] || result.rows?.[0]?.id || result.id;
 
       // Replace temp with real ID
       setTasks((prev) =>

@@ -504,9 +504,9 @@ function extractRawValue(prop, targetType) {
 
   switch (kind) {
     case "title":
-      return prop.title?.map((t) => t.plain_text).join("") || "";
+      return prop.title?.map((t) => t.plain_text || t.text?.content || "").join("") || "";
     case "rich_text":
-      return prop.rich_text?.map((t) => t.plain_text).join("") || "";
+      return prop.rich_text?.map((t) => t.plain_text || t.text?.content || "").join("") || "";
     case "number":
       return prop.number;
     case "date":
