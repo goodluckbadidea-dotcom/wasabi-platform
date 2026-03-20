@@ -622,11 +622,18 @@ const PERM_LEVEL = { owner: 4, editor: 3, viewer: 2, none: 0 };
 async function checkPagePermission(env, user, pageId, requiredLevel) {
   if (!user) return true;                    // single-user / MCP — full access
   if (user.role === "admin") return true;    // admin bypasses page permissions
+  // Shared workspace: all authenticated users with sufficient route-level role
+  // can read/write pages. Page-level permission records are optional overrides.
   const perm = await env.DB.prepare(
     "SELECT permission FROM page_permissions WHERE page_id = ? AND user_id = ?"
   ).bind(pageId, user.sub).first();
-  if (!perm) return false;                   // no permission record = no access
-  return (PERM_LEVEL[perm.permission] || 0) >= (PERM_LEVEL[requiredLevel] || 99);
+  if (perm) {
+    // Explicit permission record exists — enforce it
+    return (PERM_LEVEL[perm.permission] || 0) >= (PERM_LEVEL[requiredLevel] || 99);
+  }
+  // No explicit permission record — grant access based on route-level role
+  // Editors can edit, viewers can view
+  return (PERM_LEVEL[user.role] || 0) >= (PERM_LEVEL[requiredLevel] || 99);
 }
 
 // ─── Tier 3: Audit Logger ───
