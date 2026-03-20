@@ -431,6 +431,163 @@ function requireRole(user, minRole) {
   return (ROLE_LEVEL[user.role] || 0) >= (ROLE_LEVEL[minRole] || 99);
 }
 
+// ─── Route Permission Map (first match wins) ───
+// minRole: "admin" | "editor" | "viewer" | null (null = no role check, any authenticated user)
+const ROUTE_PERMISSIONS = [
+  // Auth — no role check (login/register work without JWT)
+  { pattern: /^\/auth\//, method: "*", minRole: null },
+  // Init — no role check (first-time setup)
+  { pattern: "/init", method: "POST", minRole: null, exact: true },
+  // PIN verify — any user, PIN set — admin
+  { pattern: "/pin/verify", method: "POST", minRole: null, exact: true },
+  { pattern: "/pin/set", method: "POST", minRole: "admin", exact: true },
+  // Per-user state — own data, no role check
+  { pattern: /^\/user-state/, method: "*", minRole: null },
+  { pattern: /^\/user-dashboard/, method: "*", minRole: null },
+  { pattern: /^\/record-views/, method: "*", minRole: null },
+  { pattern: /^\/d1\/notifications\/preferences/, method: "*", minRole: null },
+  { pattern: /^\/d1\/notifications\/unread-count$/, method: "GET", minRole: null },
+  { pattern: /^\/d1\/notifications\/mark-all-read$/, method: "POST", minRole: null },
+  // User management — admin only
+  { pattern: /^\/users/, method: "*", minRole: "admin" },
+  // Connections — admin for mutations, open for reads
+  { pattern: "/connections", method: "GET", minRole: null, exact: true },
+  { pattern: "/connections", method: "*", minRole: "admin" },
+  // Google reads — no role check
+  { pattern: /^\/google\//, method: "GET", minRole: null },
+  // Google mutations — editor
+  { pattern: /^\/google\//, method: "*", minRole: "editor" },
+  // Badge counts — read operation (POST but idempotent query)
+  { pattern: "/records/badge-counts", method: "POST", minRole: null, exact: true },
+  // Page titles — read operation (POST but idempotent query)
+  { pattern: "/pages/titles", method: "POST", minRole: null, exact: true },
+  // Page reorder — admin
+  { pattern: "/pages/reorder", method: "POST", minRole: "admin", exact: true },
+  // Summary cache — editor for writes
+  { pattern: /^\/pages\/[^/]+\/summary$/, method: "PUT", minRole: "editor" },
+  // Schema — admin for mutations
+  { pattern: /^\/pages\/[^/]+\/schema$/, method: "PATCH", minRole: "admin" },
+  // Page config — admin for create/update/delete
+  { pattern: "/pages", method: "POST", minRole: "admin", exact: true },
+  { pattern: /^\/pages\/[^/]+$/, method: "PATCH", minRole: "admin" },
+  { pattern: /^\/pages\/[^/]+$/, method: "DELETE", minRole: "admin" },
+  // Table row mutations — editor
+  { pattern: /^\/tables\//, method: "POST", minRole: "editor" },
+  { pattern: /^\/tables\//, method: "PATCH", minRole: "editor" },
+  { pattern: /^\/tables\//, method: "DELETE", minRole: "editor" },
+  // Record notes/comments — editor for mutations
+  { pattern: /^\/records\//, method: "PUT", minRole: "editor" },
+  { pattern: /^\/records\//, method: "POST", minRole: "editor" },
+  { pattern: /^\/records\//, method: "DELETE", minRole: "editor" },
+  // Task activity/interactions — editor for mutations
+  { pattern: /^\/task-activity/, method: "PUT", minRole: "editor" },
+  { pattern: /^\/task-interactions$/, method: "POST", minRole: "editor" },
+  // Sheets — editor for mutations
+  { pattern: /^\/sheets\/fetch$/, method: "POST", minRole: "editor" },
+  { pattern: /^\/sheets\//, method: "POST", minRole: "editor" },
+  { pattern: /^\/sheets\//, method: "PATCH", minRole: "editor" },
+  // Docs — editor for mutations
+  { pattern: /^\/docs\//, method: "PUT", minRole: "editor" },
+  { pattern: /^\/docs\//, method: "PATCH", minRole: "editor" },
+  // Rules & flows — admin for mutations
+  { pattern: /^\/d1\/rules/, method: "POST", minRole: "admin" },
+  { pattern: /^\/d1\/rules/, method: "PATCH", minRole: "admin" },
+  { pattern: /^\/d1\/rules/, method: "DELETE", minRole: "admin" },
+  { pattern: /^\/d1\/flows/, method: "POST", minRole: "admin" },
+  { pattern: /^\/d1\/flows/, method: "PATCH", minRole: "admin" },
+  { pattern: /^\/d1\/flows/, method: "DELETE", minRole: "admin" },
+  // Flow/function executions — editor for mutations
+  { pattern: /^\/d1\/flow-executions/, method: "POST", minRole: "editor" },
+  { pattern: /^\/d1\/flow-executions/, method: "PATCH", minRole: "editor" },
+  { pattern: /^\/d1\/function-executions/, method: "POST", minRole: "editor" },
+  // Notifications — editor for create, admin for delete
+  { pattern: "/d1/notifications", method: "POST", minRole: "editor", exact: true },
+  { pattern: /^\/d1\/notifications\/[^/]+$/, method: "PATCH", minRole: "editor" },
+  { pattern: /^\/d1\/notifications\/[^/]+$/, method: "DELETE", minRole: "admin" },
+  // Knowledge base — admin for mutations
+  { pattern: /^\/d1\/kb/, method: "POST", minRole: "admin" },
+  { pattern: /^\/d1\/kb/, method: "PATCH", minRole: "admin" },
+  { pattern: /^\/d1\/kb/, method: "DELETE", minRole: "admin" },
+  // Custom functions — admin for mutations
+  { pattern: /^\/d1\/custom-functions/, method: "POST", minRole: "admin" },
+  { pattern: /^\/d1\/custom-functions/, method: "PATCH", minRole: "admin" },
+  { pattern: /^\/d1\/custom-functions/, method: "DELETE", minRole: "admin" },
+  // Neurons — admin for mutations
+  { pattern: /^\/neurons/, method: "POST", minRole: "admin" },
+  { pattern: /^\/neurons/, method: "PATCH", minRole: "admin" },
+  { pattern: /^\/neurons/, method: "DELETE", minRole: "admin" },
+  // Cell links — admin for mutations
+  { pattern: /^\/links/, method: "POST", minRole: "admin" },
+  { pattern: /^\/links/, method: "PATCH", minRole: "admin" },
+  { pattern: /^\/links/, method: "DELETE", minRole: "admin" },
+  // Sync — admin for all mutations
+  { pattern: /^\/sync\//, method: "POST", minRole: "admin" },
+  { pattern: /^\/sync\//, method: "DELETE", minRole: "admin" },
+  // Files — editor for mutations
+  { pattern: "/files", method: "POST", minRole: "editor", exact: true },
+  { pattern: /^\/files\/[^/]+$/, method: "DELETE", minRole: "editor" },
+  // Monday proxy — editor
+  { pattern: "/monday/graphql", method: "POST", minRole: "editor", exact: true },
+  // Notion proxy — editor for mutations, open for reads
+  { pattern: "/page", method: "POST", minRole: "editor", exact: true },
+  { pattern: /^\/page\//, method: "PATCH", minRole: "editor" },
+  { pattern: /^\/block\//, method: "PATCH", minRole: "editor" },
+  { pattern: /^\/block\//, method: "DELETE", minRole: "editor" },
+  { pattern: /^\/blocks\//, method: "PATCH", minRole: "editor" },
+  { pattern: "/create-database", method: "POST", minRole: "editor", exact: true },
+  { pattern: /^\/database\//, method: "PATCH", minRole: "editor" },
+  { pattern: "/query", method: "POST", minRole: null, exact: true },
+  { pattern: "/search", method: "POST", minRole: null, exact: true },
+  // Claude API — editor
+  { pattern: "/claude", method: "POST", minRole: "editor", exact: true },
+  // File proxy & external API — editor
+  { pattern: "/fetch-file", method: "POST", minRole: "editor", exact: true },
+  { pattern: "/proxy/external-api", method: "POST", minRole: "editor", exact: true },
+  // Factory reset — admin
+  { pattern: "/factory-reset", method: "POST", minRole: "admin", exact: true },
+];
+
+function checkRoutePermission(path, method, user) {
+  if (!user) return true; // single-user / MCP server — full access
+  for (const rule of ROUTE_PERMISSIONS) {
+    if (rule.method !== "*" && rule.method !== method) continue;
+    const match = rule.pattern instanceof RegExp
+      ? rule.pattern.test(path)
+      : (rule.exact ? path === rule.pattern : path.startsWith(rule.pattern));
+    if (match) {
+      if (rule.minRole === null) return true;
+      return requireRole(user, rule.minRole);
+    }
+  }
+  // Default fallback: GETs are open, all other mutations require editor
+  return method === "GET" ? true : requireRole(user, "editor");
+}
+
+// ─── Tier 2: Page-Level Permission Check ───
+const PERM_LEVEL = { owner: 4, editor: 3, viewer: 2, none: 0 };
+
+async function checkPagePermission(env, user, pageId, requiredLevel) {
+  if (!user) return true;                    // single-user / MCP — full access
+  if (user.role === "admin") return true;    // admin bypasses page permissions
+  const perm = await env.DB.prepare(
+    "SELECT permission FROM page_permissions WHERE page_id = ? AND user_id = ?"
+  ).bind(pageId, user.sub).first();
+  if (!perm) return false;                   // no permission record = no access
+  return (PERM_LEVEL[perm.permission] || 0) >= (PERM_LEVEL[requiredLevel] || 99);
+}
+
+// ─── Tier 3: Audit Logger ───
+async function auditLog(env, user, action, resourceType, resourceId, details) {
+  try {
+    const id = crypto.randomUUID();
+    const userId = user?.sub || "system";
+    const userName = user?.name || "";
+    await env.DB.prepare(
+      "INSERT INTO audit_log (id, user_id, user_name, action, resource_type, resource_id, details) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).bind(id, userId, userName, action, resourceType, resourceId || "", JSON.stringify(details || {})).run();
+  } catch (_) {} // never break the request
+}
+
 // SHA-256 hash for PIN storage
 async function sha256(text) {
   const data = new TextEncoder().encode(text);
@@ -477,10 +634,14 @@ async function getMondayKey(env) {
 }
 
 export default {
-  // ─── Server-Side Cron (automations + sync flush) ───
+  // ─── Server-Side Cron (automations + sync flush + cleanup) ───
   async scheduled(event, env, ctx) {
     ctx.waitUntil(runAutomationTick(env));
     ctx.waitUntil(runSyncFlushTick(env));
+    // Clean up expired PIN sessions
+    ctx.waitUntil(
+      env.DB.prepare("DELETE FROM pin_sessions WHERE expires_at < datetime('now')").run().catch(() => {})
+    );
   },
 
   async fetch(request, env, ctx) {
@@ -527,6 +688,12 @@ export default {
         return jsonResponse({ _error: "Unauthorized" }, 401);
       }
 
+      // ─── Role Gate (centralized permission check) ───
+      const user = await extractUser(request, env);
+      if (!checkRoutePermission(path, request.method, user)) {
+        return jsonResponse({ _error: "Insufficient permissions" }, 403);
+      }
+
       // ─── D1 Bootstrap ───
       if (path === "/init" && request.method === "POST") {
         return await handleInit(env);
@@ -542,81 +709,73 @@ export default {
         return await handleAuthLogin(env, body);
       }
       if (path === "/auth/me" && request.method === "GET") {
-        const user = await extractUser(request, env);
         if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
         return await handleAuthMe(env, user);
       }
       if (path === "/auth/refresh" && request.method === "POST") {
-        const user = await extractUser(request, env);
         if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
         return await handleAuthRefresh(env, user);
       }
 
-      // ─── User Management (admin only) ───
+      // ─── User Management (admin only — role enforced by middleware) ───
       if (path === "/users/invite" && request.method === "POST") {
-        const user = await extractUser(request, env);
-        if (!requireRole(user, "admin")) return jsonResponse({ _error: "Admin required" }, 403);
         const body = await request.json();
         return await handleCreateInvite(env, body);
       }
       if (path === "/users" && request.method === "GET") {
-        const user = await extractUser(request, env);
-        if (!requireRole(user, "admin")) return jsonResponse({ _error: "Admin required" }, 403);
         return await handleListUsers(env);
       }
       if (path.match(/^\/users\/[^/]+$/) && request.method === "DELETE") {
-        const user = await extractUser(request, env);
-        if (!requireRole(user, "admin")) return jsonResponse({ _error: "Admin required" }, 403);
         const userId = path.split("/users/")[1];
-        return await handleDeleteUser(env, userId, user);
+        const result = await handleDeleteUser(env, userId, user);
+        if (result.status === 200) await auditLog(env, user, "delete_user", "user", userId, {});
+        return result;
       }
       if (path.match(/^\/users\/[^/]+$/) && request.method === "PATCH") {
-        const user = await extractUser(request, env);
-        if (!requireRole(user, "admin")) return jsonResponse({ _error: "Admin required" }, 403);
         const userId = path.split("/users/")[1];
         const body = await request.json();
-        return await handleUpdateUser(env, userId, body);
+        const result = await handleUpdateUser(env, userId, body);
+        if (result.status === 200) await auditLog(env, user, "update_user", "user", userId, { changes: body });
+        return result;
       }
       if (path.match(/^\/users\/[^/]+\/restore$/) && request.method === "POST") {
-        const user = await extractUser(request, env);
-        if (!requireRole(user, "admin")) return jsonResponse({ _error: "Admin required" }, 403);
         const userId = path.split("/users/")[1].split("/restore")[0];
-        return await handleRestoreUser(env, userId);
+        const result = await handleRestoreUser(env, userId);
+        if (result.status === 200) await auditLog(env, user, "restore_user", "user", userId, {});
+        return result;
       }
       if (path.match(/^\/users\/[^/]+\/hard-delete$/) && request.method === "POST") {
-        const user = await extractUser(request, env);
-        if (!requireRole(user, "admin")) return jsonResponse({ _error: "Admin required" }, 403);
         const userId = path.split("/users/")[1].split("/hard-delete")[0];
         const body = await request.json();
-        return await handleHardDeleteUser(env, userId, body);
+        const result = await handleHardDeleteUser(env, userId, body);
+        if (result.status === 200) await auditLog(env, user, "hard_delete_user", "user", userId, { transfer_to: body?.transfer_to });
+        return result;
       }
       if (path.match(/^\/users\/[^/]+\/reset$/) && request.method === "POST") {
-        const user = await extractUser(request, env);
-        if (!requireRole(user, "admin")) return jsonResponse({ _error: "Admin required" }, 403);
         const userId = path.split("/users/")[1].split("/reset")[0];
-        return await handleResetUserPassword(env, userId);
+        const result = await handleResetUserPassword(env, userId);
+        if (result.status === 200) await auditLog(env, user, "reset_password", "user", userId, {});
+        return result;
       }
 
-      // ─── PIN Lock ───
+      // ─── PIN Lock (role enforced by middleware) ───
       if (path === "/pin/set" && request.method === "POST") {
-        const user = await extractUser(request, env);
-        if (!requireRole(user, "admin")) return jsonResponse({ _error: "Admin required" }, 403);
         const body = await request.json();
-        return await handleSetPin(env, body);
+        const result = await handleSetPin(env, body);
+        if (result.status === 200) await auditLog(env, user, "set_pin", "system", "", {});
+        return result;
       }
       if (path === "/pin/verify" && request.method === "POST") {
         const body = await request.json();
-        return await handleVerifyPin(env, body);
+        return await handleVerifyPin(env, body, user);
       }
 
       // ─── Per-User State ───
       if (path === "/user-state" && request.method === "GET") {
-        const user = await extractUser(request, env);
         if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
         return await handleGetUserState(env, user);
       }
       if (path === "/user-state" && request.method === "PUT") {
-        const user = await extractUser(request, env);
         if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
         const body = await request.json();
         return await handlePutUserState(env, user, body);
@@ -624,12 +783,10 @@ export default {
 
       // ─── Per-User Dashboard ───
       if (path === "/user-dashboard" && request.method === "GET") {
-        const user = await extractUser(request, env);
         if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
         return await handleGetUserDashboard(env, user);
       }
       if (path === "/user-dashboard" && request.method === "PUT") {
-        const user = await extractUser(request, env);
         if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
         const body = await request.json();
         return await handlePutUserDashboard(env, user, body);
@@ -637,13 +794,11 @@ export default {
 
       // ─── Record Views ───
       if (path.match(/^\/record-views\/[^/]+$/) && request.method === "PUT") {
-        const user = await extractUser(request, env);
         if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
         const recordId = path.split("/record-views/")[1];
         return await handlePutRecordView(env, user, recordId);
       }
       if (path === "/record-views" && request.method === "GET") {
-        const user = await extractUser(request, env);
         if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
         return await handleGetRecordViews(env, user, url);
       }
@@ -663,21 +818,17 @@ export default {
 
       // ─── Google OAuth + API Proxy (per-user) ───
       if (path === "/google/auth-url" && request.method === "GET") {
-        const gUser = await extractUser(request, env);
-        return handleGoogleAuthUrl(request, env, gUser?.sub);
+        return handleGoogleAuthUrl(request, env, user?.sub);
       }
       if (path === "/google/status" && request.method === "GET") {
-        const gUser = await extractUser(request, env);
-        return await handleGoogleStatus(env, gUser?.sub);
+        return await handleGoogleStatus(env, user?.sub);
       }
       if (path === "/google/disconnect" && request.method === "POST") {
-        const gUser = await extractUser(request, env);
-        return await handleGoogleDisconnect(env, gUser?.sub);
+        return await handleGoogleDisconnect(env, user?.sub);
       }
-      // Gmail proxy (per-user)
+      // Gmail proxy (per-user — role enforced by middleware)
       {
-        const gUser = await extractUser(request, env);
-        const gUid = gUser?.sub;
+        const gUid = user?.sub;
         if (path === "/google/gmail/summary" && request.method === "GET") {
           return await handleGmailSummary(env, gUid);
         }
@@ -758,27 +909,38 @@ export default {
         const id = schemaMatch[1];
         if (request.method === "GET") return await handleGetSchema(env, id);
         if (request.method === "PATCH") {
+          if (!await checkPagePermission(env, user, id, "owner")) {
+            return jsonResponse({ _error: "You don't have permission to edit this schema" }, 403);
+          }
           const body = await request.json();
           return await handleUpdateSchema(env, id, body);
         }
       }
 
       if (path === "/pages" && request.method === "GET") {
-        return await handleListPages(env);
+        return await handleListPages(env, user);
       }
       if (path === "/pages" && request.method === "POST") {
         const body = await request.json();
-        return await handleCreatePage(env, body);
+        return await handleCreatePage(env, body, user);
       }
       const pageConfigMatch = path.match(/^\/pages\/([^/]+)$/);
       if (pageConfigMatch) {
         const id = pageConfigMatch[1];
         if (request.method === "GET") return await handleGetPage(env, id);
         if (request.method === "PATCH") {
+          if (!await checkPagePermission(env, user, id, "owner")) {
+            return jsonResponse({ _error: "You don't have permission to edit this page" }, 403);
+          }
           const body = await request.json();
           return await handleUpdatePage(env, id, body);
         }
-        if (request.method === "DELETE") return await handleDeletePage(env, id);
+        if (request.method === "DELETE") {
+          if (!await checkPagePermission(env, user, id, "owner")) {
+            return jsonResponse({ _error: "You don't have permission to delete this page" }, 403);
+          }
+          return await handleDeletePage(env, id);
+        }
       }
 
       // ─── Batch Reorder Pages ───
@@ -793,20 +955,34 @@ export default {
       if (rowMatch) {
         const [, tableId, rowId] = rowMatch;
         if (request.method === "PATCH") {
+          if (!await checkPagePermission(env, user, tableId, "editor")) {
+            return jsonResponse({ _error: "You don't have permission to edit rows in this table" }, 403);
+          }
           const body = await request.json();
-          const user = await extractUser(request, env);
           return await handleUpdateRow(env, tableId, rowId, body, user);
         }
-        if (request.method === "DELETE") return await handleDeleteRow(env, tableId, rowId);
+        if (request.method === "DELETE") {
+          if (!await checkPagePermission(env, user, tableId, "editor")) {
+            return jsonResponse({ _error: "You don't have permission to delete rows in this table" }, 403);
+          }
+          return await handleDeleteRow(env, tableId, rowId);
+        }
       }
 
       const tableRowsMatch = path.match(/^\/tables\/([^/]+)\/rows$/);
       if (tableRowsMatch) {
         const tableId = tableRowsMatch[1];
-        if (request.method === "GET") return await handleListRows(env, tableId, url);
+        if (request.method === "GET") {
+          if (!await checkPagePermission(env, user, tableId, "viewer")) {
+            return jsonResponse({ _error: "You don't have access to this table" }, 403);
+          }
+          return await handleListRows(env, tableId, url);
+        }
         if (request.method === "POST") {
+          if (!await checkPagePermission(env, user, tableId, "editor")) {
+            return jsonResponse({ _error: "You don't have permission to add rows to this table" }, 403);
+          }
           const body = await request.json();
-          const user = await extractUser(request, env);
           return await handleCreateRows(env, tableId, body, user);
         }
       }
@@ -1013,7 +1189,6 @@ export default {
 
       // ─── D1 Notifications ───
       if (path === "/d1/notifications" && request.method === "GET") {
-        const user = await extractUser(request, env);
         return await handleListNotifications(env, url, user);
       }
       if (path === "/d1/notifications" && request.method === "POST") {
@@ -1022,7 +1197,6 @@ export default {
       }
       // Mark all notifications read for current user
       if (path === "/d1/notifications/mark-all-read" && request.method === "POST") {
-        const user = await extractUser(request, env);
         let query = "UPDATE notifications SET status = 'read' WHERE status = 'unread'";
         const params = [];
         if (user && user.role !== "admin") {
@@ -1034,7 +1208,6 @@ export default {
       }
       // Lightweight unread count only (for polling)
       if (path === "/d1/notifications/unread-count" && request.method === "GET") {
-        const user = await extractUser(request, env);
         let query = "SELECT COUNT(*) as count FROM notifications WHERE status = 'unread'";
         const params = [];
         if (user && user.role !== "admin") {
@@ -1046,7 +1219,6 @@ export default {
       }
       // Notification preferences (get/put)
       if (path === "/d1/notifications/preferences" && (request.method === "GET" || request.method === "PUT")) {
-        const user = await extractUser(request, env);
         if (!user?.sub) return jsonResponse({ _error: "Auth required" }, 401);
         if (request.method === "GET") {
           const row = await env.DB.prepare(
@@ -1668,8 +1840,77 @@ export default {
         return cachedResponse;
       }
 
+      // ─── Page Permissions Management ───
+      const pagePermMatch = path.match(/^\/pages\/([^/]+)\/permissions$/);
+      if (pagePermMatch) {
+        const pageId = pagePermMatch[1];
+        if (request.method === "GET") {
+          // Only owner/admin can view permissions
+          if (!await checkPagePermission(env, user, pageId, "owner")) {
+            return jsonResponse({ _error: "Only page owners can view permissions" }, 403);
+          }
+          const { results } = await env.DB.prepare(
+            "SELECT pp.*, u.display_name FROM page_permissions pp LEFT JOIN users u ON pp.user_id = u.id WHERE pp.page_id = ? ORDER BY pp.created_at"
+          ).bind(pageId).all();
+          return jsonResponse({ permissions: results || [] });
+        }
+        if (request.method === "PUT") {
+          // Only owner/admin can set permissions
+          if (!await checkPagePermission(env, user, pageId, "owner")) {
+            return jsonResponse({ _error: "Only page owners can manage permissions" }, 403);
+          }
+          const body = await request.json();
+          if (!body.user_id || !body.permission) {
+            return jsonResponse({ _error: "Missing user_id or permission" }, 400);
+          }
+          if (!["owner", "editor", "viewer", "none"].includes(body.permission)) {
+            return jsonResponse({ _error: "Invalid permission level" }, 400);
+          }
+          await env.DB.prepare(
+            "INSERT OR REPLACE INTO page_permissions (page_id, user_id, permission, granted_by) VALUES (?, ?, ?, ?)"
+          ).bind(pageId, body.user_id, body.permission, user?.sub || "system").run();
+          await auditLog(env, user, "set_page_permission", "page", pageId, { target_user: body.user_id, permission: body.permission });
+          return jsonResponse({ ok: true });
+        }
+      }
+
+      const pagePermDeleteMatch = path.match(/^\/pages\/([^/]+)\/permissions\/([^/]+)$/);
+      if (pagePermDeleteMatch && request.method === "DELETE") {
+        const [, pageId, targetUserId] = pagePermDeleteMatch;
+        if (!await checkPagePermission(env, user, pageId, "owner")) {
+          return jsonResponse({ _error: "Only page owners can manage permissions" }, 403);
+        }
+        await env.DB.prepare(
+          "DELETE FROM page_permissions WHERE page_id = ? AND user_id = ?"
+        ).bind(pageId, targetUserId).run();
+        await auditLog(env, user, "remove_page_permission", "page", pageId, { target_user: targetUserId });
+        return jsonResponse({ ok: true });
+      }
+
+      // ─── Audit Log (admin only) ───
+      if (path === "/audit-log" && request.method === "GET") {
+        if (user && user.role !== "admin") {
+          return jsonResponse({ _error: "Admin required" }, 403);
+        }
+        const limit = Math.min(parseInt(url.searchParams.get("limit") || "100"), 500);
+        const offset = parseInt(url.searchParams.get("offset") || "0");
+        const action = url.searchParams.get("action");
+        const resourceType = url.searchParams.get("resource_type");
+        let query = "SELECT * FROM audit_log";
+        const conditions = [];
+        const binds = [];
+        if (action) { conditions.push("action = ?"); binds.push(action); }
+        if (resourceType) { conditions.push("resource_type = ?"); binds.push(resourceType); }
+        if (conditions.length) query += " WHERE " + conditions.join(" AND ");
+        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?";
+        binds.push(limit, offset);
+        const { results } = await env.DB.prepare(query).bind(...binds).all();
+        return jsonResponse({ entries: (results || []).map(r => ({ ...r, details: JSON.parse(r.details || "{}") })) });
+      }
+
       // ─── Factory Reset ───
       if (path === "/factory-reset" && request.method === "POST") {
+        await auditLog(env, user, "factory_reset", "system", "", {});
         return await handleFactoryReset(env);
       }
 
@@ -1777,6 +2018,18 @@ async function handleInit(env) {
       // Sprint 14: Real-time collaboration — field-level versioning
       "ALTER TABLE table_rows ADD COLUMN cell_versions TEXT DEFAULT '{}'",
       "ALTER TABLE table_rows ADD COLUMN updated_by TEXT DEFAULT NULL",
+      // Tier 2: Resource-level permissions
+      "CREATE TABLE IF NOT EXISTS page_permissions (page_id TEXT NOT NULL, user_id TEXT NOT NULL, permission TEXT NOT NULL DEFAULT 'viewer', granted_by TEXT, created_at TEXT DEFAULT (datetime('now')), PRIMARY KEY (page_id, user_id))",
+      "CREATE INDEX IF NOT EXISTS idx_page_perms_user ON page_permissions(user_id)",
+      "ALTER TABLE page_configs ADD COLUMN created_by TEXT DEFAULT NULL",
+      // Tier 3: Audit log
+      "CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, user_name TEXT DEFAULT '', action TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT DEFAULT '', details TEXT DEFAULT '{}', created_at TEXT DEFAULT (datetime('now')))",
+      "CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id)",
+      "CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action, resource_type)",
+      "CREATE INDEX IF NOT EXISTS idx_audit_time ON audit_log(created_at DESC)",
+      // Tier 3: Server-side PIN sessions
+      "CREATE TABLE IF NOT EXISTS pin_sessions (token TEXT PRIMARY KEY, user_id TEXT NOT NULL, page_id TEXT NOT NULL, expires_at TEXT NOT NULL)",
+      "CREATE INDEX IF NOT EXISTS idx_pin_sessions_page ON pin_sessions(page_id, user_id)",
     ];
     for (const sql of migrations) {
       try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }
@@ -1800,6 +2053,28 @@ async function handleInit(env) {
         adminBootstrap = { id: adminId, invite_code: adminCode, role: "admin" };
       }
     } catch {}
+
+    // Backfill: set created_by and page_permissions for existing pages
+    try {
+      const firstAdmin = await env.DB.prepare(
+        "SELECT id FROM users WHERE role = 'admin' AND deleted_at IS NULL ORDER BY created_at LIMIT 1"
+      ).first();
+      if (firstAdmin) {
+        // Set created_by on pages that don't have it
+        await env.DB.prepare(
+          "UPDATE page_configs SET created_by = ? WHERE created_by IS NULL"
+        ).bind(firstAdmin.id).run();
+        // Add owner permissions for all pages that don't have ANY permission entries
+        const allPages = await env.DB.prepare("SELECT id FROM page_configs").all();
+        for (const page of (allPages.results || [])) {
+          try {
+            await env.DB.prepare(
+              "INSERT OR IGNORE INTO page_permissions (page_id, user_id, permission, granted_by) VALUES (?, ?, 'owner', ?)"
+            ).bind(page.id, firstAdmin.id, firstAdmin.id).run();
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
 
     // Return table list
     const tables = await env.DB.prepare(
@@ -1833,6 +2108,7 @@ async function handleFactoryReset(env) {
     "documents", "automation_rules", "notifications", "knowledge_base",
     "cell_links", "sync_configs", "record_notes", "record_comments",
     "neurons", "neuron_nodes", "users", "user_connections",
+    "page_permissions", "audit_log", "pin_sessions",
   ];
   try {
     for (const table of userTables) {
@@ -1999,6 +2275,16 @@ async function handleDeleteUser(env, userId, requestingUser) {
   if (userId === requestingUser?.sub && requestingUser) {
     return jsonResponse({ _error: "Cannot delete your own account" }, 400);
   }
+  // Last-admin protection
+  const targetUser = await env.DB.prepare("SELECT role FROM users WHERE id = ?").bind(userId).first();
+  if (targetUser?.role === "admin") {
+    const adminCount = await env.DB.prepare(
+      "SELECT COUNT(*) as count FROM users WHERE role = 'admin' AND deleted_at IS NULL"
+    ).first();
+    if (adminCount.count <= 1) {
+      return jsonResponse({ _error: "Cannot delete the last admin. Promote another user first." }, 400);
+    }
+  }
   try {
     // Soft delete: set deleted_at timestamp (30-day grace period)
     await env.DB.prepare("UPDATE users SET deleted_at = datetime('now') WHERE id = ?").bind(userId).run();
@@ -2052,14 +2338,26 @@ async function handleUpdateUser(env, userId, body) {
   const updates = [];
   const params = [];
   if (body.display_name) { updates.push("display_name = ?"); params.push(body.display_name); }
-  if (body.role && ["admin", "editor", "viewer"].includes(body.role)) { updates.push("role = ?"); params.push(body.role); }
+  if (body.role && ["admin", "editor", "viewer"].includes(body.role)) {
+    // Self-demotion protection: prevent last admin from demoting themselves
+    const targetUser = await env.DB.prepare("SELECT role FROM users WHERE id = ?").bind(userId).first();
+    if (targetUser?.role === "admin" && body.role !== "admin") {
+      const adminCount = await env.DB.prepare(
+        "SELECT COUNT(*) as count FROM users WHERE role = 'admin' AND deleted_at IS NULL"
+      ).first();
+      if (adminCount.count <= 1) {
+        return jsonResponse({ _error: "Cannot change role: this is the last admin. Promote another user first." }, 400);
+      }
+    }
+    updates.push("role = ?"); params.push(body.role);
+  }
   if (updates.length === 0) return jsonResponse({ _error: "Nothing to update" }, 400);
 
   try {
     params.push(userId);
     await env.DB.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`).bind(...params).run();
-    const user = await env.DB.prepare("SELECT id, display_name, role FROM users WHERE id = ?").bind(userId).first();
-    return jsonResponse({ ok: true, user });
+    const updatedUser = await env.DB.prepare("SELECT id, display_name, role FROM users WHERE id = ?").bind(userId).first();
+    return jsonResponse({ ok: true, user: updatedUser });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
   }
@@ -2174,15 +2472,27 @@ async function handleSetPin(env, body) {
   }
 }
 
-async function handleVerifyPin(env, body) {
-  const { pin } = body || {};
+async function handleVerifyPin(env, body, user) {
+  const { pin, page_id } = body || {};
   if (!pin) return jsonResponse({ _error: "PIN required" }, 400);
   try {
     const row = await env.DB.prepare("SELECT value FROM connections WHERE key = 'table_pin'").first();
     if (!row) return jsonResponse({ _error: "No PIN configured" }, 404);
     const hashed = await sha256(pin);
     if (hashed !== row.value) return jsonResponse({ _error: "Incorrect PIN" }, 403);
-    return jsonResponse({ ok: true, verified: true });
+
+    // Issue a server-side PIN session token (15 minute TTL)
+    const pinToken = crypto.randomUUID();
+    const userId = user?.sub || "anonymous";
+    const pageId = page_id || "_global";
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    try {
+      await env.DB.prepare(
+        "INSERT INTO pin_sessions (token, user_id, page_id, expires_at) VALUES (?, ?, ?, ?)"
+      ).bind(pinToken, userId, pageId, expiresAt).run();
+    } catch (_) {}
+
+    return jsonResponse({ ok: true, verified: true, pin_token: pinToken, expires_in: 900 });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
   }
@@ -3178,13 +3488,25 @@ async function handleCalendarFreeBusy(env, body, userId) {
 
 // ─── Page Config Handlers ───
 
-async function handleListPages(env) {
+async function handleListPages(env, user) {
   try {
-    const rows = await env.DB.prepare(
-      "SELECT * FROM page_configs ORDER BY sort_order, created_at"
-    ).all();
+    let rows;
+    if (!user || user.role === "admin") {
+      // Admin and MCP see all pages
+      rows = await env.DB.prepare(
+        "SELECT * FROM page_configs ORDER BY sort_order, created_at"
+      ).all();
+    } else {
+      // Non-admin users see only pages they have permission to
+      rows = await env.DB.prepare(`
+        SELECT pc.* FROM page_configs pc
+        INNER JOIN page_permissions pp ON pc.id = pp.page_id
+        WHERE pp.user_id = ? AND pp.permission != 'none'
+        ORDER BY pc.sort_order, pc.created_at
+      `).bind(user.sub).all();
+    }
     // Parse JSON config for each page
-    const pages = rows.results.map((r) => ({
+    const pages = (rows.results || []).map((r) => ({
       ...r,
       config: JSON.parse(r.config || "{}"),
     }));
@@ -3194,7 +3516,7 @@ async function handleListPages(env) {
   }
 }
 
-async function handleCreatePage(env, body) {
+async function handleCreatePage(env, body, user) {
   const { title, icon, page_type, parent_id, sort_order, config, columns } = body;
   if (!title || !page_type) {
     return jsonResponse({ _error: "Missing title or page_type" }, 400);
@@ -3204,8 +3526,8 @@ async function handleCreatePage(env, body) {
 
   try {
     await env.DB.prepare(
-      `INSERT INTO page_configs (id, parent_id, title, icon, page_type, sort_order, config, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+      `INSERT INTO page_configs (id, parent_id, title, icon, page_type, sort_order, config, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
     ).bind(
       id,
       parent_id || null,
@@ -3213,8 +3535,18 @@ async function handleCreatePage(env, body) {
       icon || "",
       page_type,
       sort_order || 0,
-      JSON.stringify(config || {})
+      JSON.stringify(config || {}),
+      user?.sub || null
     ).run();
+
+    // Auto-assign owner permission to creator
+    if (user?.sub) {
+      try {
+        await env.DB.prepare(
+          "INSERT OR IGNORE INTO page_permissions (page_id, user_id, permission, granted_by) VALUES (?, ?, 'owner', ?)"
+        ).bind(id, user.sub, user.sub).run();
+      } catch (_) {}
+    }
 
     // If this is a standalone database, create the table schema
     if (page_type === "database" && columns) {

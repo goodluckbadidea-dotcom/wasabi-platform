@@ -914,6 +914,34 @@ export async function setPin(pin) {
   return apiFetch("/pin/set", { method: "POST", body: { pin } });
 }
 
-export async function verifyPin(pin) {
-  return apiFetch("/pin/verify", { method: "POST", body: { pin } });
+export async function verifyPin(pin, pageId) {
+  return apiFetch("/pin/verify", { method: "POST", body: { pin, page_id: pageId } });
+}
+
+// ─── Page Permissions ───
+
+export async function getPagePermissions(pageId) {
+  return apiFetch(`/pages/${pageId}/permissions`, { method: "GET" });
+}
+
+export async function setPagePermission(pageId, userId, permission) {
+  return apiFetch(`/pages/${pageId}/permissions`, {
+    method: "PUT",
+    body: { user_id: userId, permission },
+  });
+}
+
+export async function removePagePermission(pageId, userId) {
+  return apiFetch(`/pages/${pageId}/permissions/${userId}`, { method: "DELETE" });
+}
+
+// ─── Audit Log ───
+
+export async function getAuditLog({ action, resource_type, limit = 100, offset = 0 } = {}) {
+  const params = new URLSearchParams();
+  if (action) params.set("action", action);
+  if (resource_type) params.set("resource_type", resource_type);
+  params.set("limit", String(limit));
+  params.set("offset", String(offset));
+  return apiFetch(`/audit-log?${params}`, { method: "GET" });
 }

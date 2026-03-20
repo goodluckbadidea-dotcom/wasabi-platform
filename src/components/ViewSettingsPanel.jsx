@@ -10,6 +10,7 @@ import { C, FONT, RADIUS, SHADOW, VIEW_PALETTE, isLightColor } from "../design/t
 import { IconClose, IconGear } from "../design/icons.jsx";
 import { ANIM } from "../design/animations.js";
 import { DATE_TIERS, DATE_TIER_DEFAULTS } from "../zen/TaskList.jsx";
+import PagePermissionsPanel from "./PagePermissionsPanel.jsx";
 
 // ─── Section Header ───
 
@@ -667,6 +668,13 @@ export default function ViewSettingsPanel({
                     transition: "left 0.2s",
                   }} />
                 </button>
+              </div>
+
+              {/* Page Permissions */}
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 12, color: C.darkText, fontWeight: 500, marginBottom: 6 }}>Page Access</div>
+                <div style={{ fontSize: 10, color: C.darkMuted, marginBottom: 8 }}>Control who can view and edit this page</div>
+                <PagePermissionsPanel pageId={pageConfig.id} />
               </div>
             </div>
           )}

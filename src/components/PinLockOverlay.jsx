@@ -1,7 +1,8 @@
 // ─── PIN Lock Overlay ───
 // Covers protected table content until editor enters correct PIN.
 // Admin: never locked. Viewer: always locked (no PIN input). Editor: unlock with PIN.
-// Lock re-engages on page navigation or 30-minute timeout. Not persisted to localStorage.
+// Lock re-engages on page navigation or when server-side token expires (15 min).
+// PIN token stored in sessionStorage for server-side verification.
 
 import React, { useState, useEffect, useCallback } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
@@ -9,35 +10,60 @@ import { S } from "../design/styles.js";
 import { ANIM } from "../design/animations.js";
 import { verifyPin } from "../lib/api.js";
 
-const PIN_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+const PIN_TOKEN_KEY = "wasabi_pin_token";
+const PIN_EXPIRY_KEY = "wasabi_pin_expiry";
+
+function getPinToken(pageId) {
+  try {
+    const key = `${PIN_TOKEN_KEY}_${pageId}`;
+    const token = sessionStorage.getItem(key);
+    const expiry = sessionStorage.getItem(`${PIN_EXPIRY_KEY}_${pageId}`);
+    if (token && expiry && Date.now() < Number(expiry)) return token;
+    // Expired — clean up
+    sessionStorage.removeItem(key);
+    sessionStorage.removeItem(`${PIN_EXPIRY_KEY}_${pageId}`);
+    return null;
+  } catch { return null; }
+}
+
+function savePinToken(pageId, token, expiresIn) {
+  try {
+    sessionStorage.setItem(`${PIN_TOKEN_KEY}_${pageId}`, token);
+    sessionStorage.setItem(`${PIN_EXPIRY_KEY}_${pageId}`, String(Date.now() + expiresIn * 1000));
+  } catch {}
+}
 
 export default function PinLockOverlay({ pageConfigId, userRole, children }) {
-  const [locked, setLocked] = useState(true);
+  const [locked, setLocked] = useState(() => !getPinToken(pageConfigId));
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Re-lock on page navigation
+  // Re-lock on page navigation (check if existing token is still valid)
   useEffect(() => {
-    setLocked(true);
+    const existing = getPinToken(pageConfigId);
+    setLocked(!existing);
     setPin("");
     setError("");
   }, [pageConfigId]);
 
-  // Auto re-lock after timeout
+  // Check token expiry periodically
   useEffect(() => {
     if (locked) return;
-    const timer = setTimeout(() => setLocked(true), PIN_TIMEOUT_MS);
-    return () => clearTimeout(timer);
-  }, [locked]);
+    const interval = setInterval(() => {
+      if (!getPinToken(pageConfigId)) setLocked(true);
+    }, 30000); // check every 30s
+    return () => clearInterval(interval);
+  }, [locked, pageConfigId]);
 
   const handleUnlock = useCallback(async () => {
     if (!pin.trim()) { setError("Enter a PIN"); return; }
     setLoading(true);
     setError("");
     try {
-      const result = await verifyPin(pin);
-      if (result.verified) {
+      const result = await verifyPin(pin, pageConfigId);
+      if (result.verified && result.pin_token) {
+        savePinToken(pageConfigId, result.pin_token, result.expires_in || 900);
         setLocked(false);
         setPin("");
       }
@@ -46,7 +72,7 @@ export default function PinLockOverlay({ pageConfigId, userRole, children }) {
     } finally {
       setLoading(false);
     }
-  }, [pin]);
+  }, [pin, pageConfigId]);
 
   // Admin: never show overlay
   if (userRole === "admin") return children;
