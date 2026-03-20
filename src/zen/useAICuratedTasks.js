@@ -27,10 +27,17 @@ function cacheKeyForUser(userId) {
   return userId ? `${CACHE_KEY_PREFIX}_${userId}` : CACHE_KEY_PREFIX;
 }
 
-// Role-based task filter — non-admins only see owned/mentioned/assigned tasks
+// Role-based task filter — non-admins only see owned/mentioned/assigned/unowned tasks
+// Unowned tasks (owner_user_id='default' from Notion sync) are visible to everyone.
+// Tasks explicitly assigned to OTHER users are hidden from non-admins.
 function applyRoleFilter(tasks, identity) {
   if (!identity || identity.role === "admin") return tasks;
-  return tasks.filter((t) => t._isOwned || t._isMentioned || t._isAssigned);
+  return tasks.filter((t) => {
+    // Unowned tasks (no explicit owner) — visible to all
+    if (!t._ownerUserIds || t._ownerUserIds.length === 0) return true;
+    // Owned/mentioned/assigned — visible
+    return t._isOwned || t._isMentioned || t._isAssigned;
+  });
 }
 
 // ── Task-likeness scoring ──

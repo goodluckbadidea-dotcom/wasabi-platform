@@ -4074,7 +4074,7 @@ async function handleListRows(env, tableId, url) {
 async function handleCreateRows(env, tableId, body, user) {
   const rows = Array.isArray(body.rows) ? body.rows : [body];
   const created = [];
-  const ownerId = user?.sub || "default";
+  const ownerId = user?.sub ? JSON.stringify([user.sub]) : "default";
 
   try {
     for (const row of rows) {
