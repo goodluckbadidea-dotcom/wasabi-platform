@@ -3,8 +3,9 @@
 // Mode is inherent to each theme (no dark/light toggle).
 
 import React, { createContext, useContext, useState, useCallback } from "react";
-import { getThemeName, getThemeMode, applyTheme, THEMES } from "../design/tokens.js";
+import { C, getThemeName, getThemeMode, applyTheme, THEMES } from "../design/tokens.js";
 import { rebuildStyles } from "../design/styles.js";
+import { injectScrollbarStyles, updateCSSCustomProperties } from "../design/animations.js";
 
 const ThemeContext = createContext({
   themeName: "obsidian",
@@ -23,6 +24,8 @@ export function ThemeProvider({ children }) {
   const setThemeName = useCallback((name) => {
     applyTheme(name);
     rebuildStyles();
+    injectScrollbarStyles(C);
+    updateCSSCustomProperties(C);
     _setThemeName(name);
     // Mode is inherent to the theme
     const theme = THEMES[name];

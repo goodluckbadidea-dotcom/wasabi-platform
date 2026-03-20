@@ -43,7 +43,7 @@ const PREF_LABELS = {
 
 // ── Small button style helper ──
 const actionBtnStyle = (color) => ({
-  padding: "5px 12px", borderRadius: RADIUS.md,
+  padding: "5px 12px", borderRadius: RADIUS.pill,
   border: `1px solid ${color}44`, background: `${color}0A`,
   fontSize: 11, fontWeight: 500, fontFamily: FONT,
   color, cursor: "pointer", outline: "none",
@@ -110,7 +110,7 @@ function NotificationCard({ notif, expanded, onToggle, onMarkRead, onDismiss, on
         {/* Type icon */}
         {!isGroupChild && (
           <div style={{
-            flexShrink: 0, paddingTop: 1, width: 28, height: 28, borderRadius: RADIUS.md,
+            flexShrink: 0, paddingTop: 1, width: 28, height: 28, borderRadius: RADIUS.pill,
             background: `${cfg.color}15`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14,
           }}>
             <cfg.Icon size={14} color={cfg.color} />
@@ -172,7 +172,7 @@ function NotificationCard({ notif, expanded, onToggle, onMarkRead, onDismiss, on
             onClick={(e) => { e.stopPropagation(); onMarkRead(notif.id); }}
             style={{
               flexShrink: 0, border: `1px solid ${C.darkBorder}`, background: C.darkSurf,
-              borderRadius: RADIUS.md, padding: "4px 10px", fontSize: 10, fontFamily: FONT,
+              borderRadius: RADIUS.pill, padding: "4px 10px", fontSize: 10, fontFamily: FONT,
               color: C.darkMuted, cursor: "pointer", transition: "border-color 0.15s",
             }}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; }}
@@ -218,14 +218,14 @@ function NotificationCard({ notif, expanded, onToggle, onMarkRead, onDismiss, on
                   placeholder={`Reply to ${notif.actor_name || "this comment"}... (@ to mention)`}
                   style={{
                     padding: "8px 12px", background: C.darkSurf2,
-                    border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.md,
+                    border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.pill,
                     color: C.darkText, fontFamily: FONT, fontSize: 12,
                   }}
                 />
               </div>
               <button onClick={handleReply} disabled={!replyText.trim() || replying}
                 style={{
-                  padding: "8px 16px", borderRadius: RADIUS.md,
+                  padding: "8px 16px", borderRadius: RADIUS.pill,
                   background: replySuccess ? "#4CAF50" : `linear-gradient(135deg, ${cfg.color}, ${cfg.color}cc)`,
                   color: "#fff", border: "none", fontSize: 12, fontWeight: 600, fontFamily: FONT,
                   cursor: replying ? "wait" : "pointer", opacity: (!replyText.trim() || replying) ? 0.5 : 1,
@@ -273,7 +273,7 @@ function NotificationGroup({ group, expandedId, onToggle, onMarkRead, onDismiss,
 
         {/* Stacked icon */}
         <div style={{
-          flexShrink: 0, width: 28, height: 28, borderRadius: RADIUS.md,
+          flexShrink: 0, width: 28, height: 28, borderRadius: RADIUS.pill,
           background: `${cfg.color}15`, display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: 14, position: "relative",
         }}>
@@ -321,7 +321,7 @@ function NotificationGroup({ group, expandedId, onToggle, onMarkRead, onDismiss,
             onClick={(e) => { e.stopPropagation(); handleMarkAllInGroup(); }}
             style={{
               flexShrink: 0, border: `1px solid ${C.darkBorder}`, background: C.darkSurf,
-              borderRadius: RADIUS.md, padding: "4px 10px", fontSize: 10, fontFamily: FONT,
+              borderRadius: RADIUS.pill, padding: "4px 10px", fontSize: 10, fontFamily: FONT,
               color: C.darkMuted, cursor: "pointer", transition: "border-color 0.15s",
             }}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; }}
@@ -389,7 +389,7 @@ function PreferencesPanel({ prefs, onUpdate, onClose }) {
           return (
             <label key={type} style={{
               display: "flex", alignItems: "center", gap: 10,
-              padding: "6px 8px", borderRadius: RADIUS.md, cursor: "pointer",
+              padding: "6px 8px", borderRadius: RADIUS.pill, cursor: "pointer",
               transition: "background 0.1s",
             }}
               onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
@@ -581,7 +581,7 @@ export default function NotificationFeed() {
             style={{
               background: showPrefs ? C.darkSurf2 : "transparent",
               border: `1px solid ${showPrefs ? C.accent : C.darkBorder}`,
-              borderRadius: RADIUS.md, padding: "4px 8px", cursor: "pointer",
+              borderRadius: RADIUS.pill, padding: "4px 8px", cursor: "pointer",
               transition: "all 0.15s", display: "flex", alignItems: "center",
             }}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; }}
@@ -594,7 +594,7 @@ export default function NotificationFeed() {
             <button onClick={markAllRead}
               style={{
                 background: "transparent", border: `1px solid ${C.darkBorder}`,
-                borderRadius: RADIUS.md, padding: "4px 10px", fontSize: 10,
+                borderRadius: RADIUS.pill, padding: "4px 10px", fontSize: 10,
                 fontFamily: FONT, color: C.darkMuted, cursor: "pointer",
                 transition: "border-color 0.15s",
               }}
@@ -605,7 +605,7 @@ export default function NotificationFeed() {
           <button onClick={() => { setLoading(true); fetchNotifications(); }}
             style={{
               background: "transparent", border: `1px solid ${C.darkBorder}`,
-              borderRadius: RADIUS.md, padding: "4px 10px", fontSize: 10,
+              borderRadius: RADIUS.pill, padding: "4px 10px", fontSize: 10,
               fontFamily: FONT, color: C.darkMuted, cursor: "pointer",
               transition: "border-color 0.15s",
             }}
@@ -615,12 +615,12 @@ export default function NotificationFeed() {
         </div>
         <div style={{
           display: "flex", gap: 3, marginBottom: 12,
-          background: C.darkSurf, borderRadius: RADIUS.lg, padding: 3, width: "fit-content",
+          background: C.darkSurf, borderRadius: RADIUS.pill, padding: 3, width: "fit-content",
         }}>
           {TABS.map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               style={{
-                padding: "6px 18px", borderRadius: RADIUS.lg, border: "none",
+                padding: "6px 18px", borderRadius: RADIUS.pill, border: "none",
                 cursor: "pointer", fontSize: 12, fontWeight: activeTab === tab ? 600 : 400,
                 fontFamily: FONT,
                 background: activeTab === tab ? `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)` : "transparent",

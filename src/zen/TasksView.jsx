@@ -168,7 +168,7 @@ export default function TasksView() {
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
-        borderRight: `1px solid ${C.darkBorder}`,
+        borderRight: `3px solid ${C.dark}`,
       }}>
         {/* Panel header */}
         <div style={{
@@ -196,7 +196,7 @@ export default function TasksView() {
               style={{
                 background: "none", border: "none", cursor: "pointer",
                 padding: 8, display: "flex", opacity: 0.5,
-                outline: "none", borderRadius: RADIUS.md,
+                outline: "none", borderRadius: RADIUS.pill,
                 transition: "opacity 0.15s",
                 minWidth: 32, minHeight: 32,
                 alignItems: "center", justifyContent: "center",
@@ -214,7 +214,7 @@ export default function TasksView() {
               style={{
                 background: "none", border: "none", cursor: "pointer",
                 padding: 8, display: "flex", opacity: 0.5,
-                outline: "none", borderRadius: RADIUS.md,
+                outline: "none", borderRadius: RADIUS.pill,
                 transition: "opacity 0.15s",
                 minWidth: 32, minHeight: 32,
                 alignItems: "center", justifyContent: "center",
@@ -253,7 +253,7 @@ export default function TasksView() {
           <div style={{
             flexShrink: 0, padding: "4px 14px 6px",
             borderTop: `1px solid ${C.darkBorder}`,
-            fontSize: 9, fontFamily: FONT, color: C.darkMuted,
+            fontSize: 11, fontFamily: FONT, color: C.darkMuted,
             opacity: 0.6,
             display: "flex", alignItems: "center", justifyContent: "space-between",
           }}>

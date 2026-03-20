@@ -278,7 +278,7 @@ export default function Navigation({
     gap: collapsed ? 0 : 10,
     padding: collapsed ? "10px 8px" : "10px 14px",
     minHeight: 44, // touch-friendly minimum (Apple HIG: 44pt)
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.pill,
     transition: "background 0.15s, transform 0.12s",
     outline: "none",
     width: "100%",
@@ -362,7 +362,7 @@ export default function Navigation({
                   style={{
                     width: "100%", padding: "7px 10px 7px 28px",
                     background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
-                    borderRadius: RADIUS.lg, fontSize: 12, fontFamily: FONT,
+                    borderRadius: RADIUS.pill, fontSize: 12, fontFamily: FONT,
                     color: C.darkText, outline: "none", transition: "border-color 0.15s",
                     boxSizing: "border-box",
                   }}
@@ -671,7 +671,7 @@ export default function Navigation({
                   gap: collapsed ? 0 : 10,
                   padding: collapsed ? "10px 8px" : "10px 14px",
                   minHeight: 44,
-                  borderRadius: RADIUS.lg, transition: "background 0.15s",
+                  borderRadius: RADIUS.pill, transition: "background 0.15s",
                   outline: "none", width: "100%",
                   justifyContent: collapsed ? "center" : "flex-start",
                   marginTop: 2,

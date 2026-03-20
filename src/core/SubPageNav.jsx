@@ -54,7 +54,7 @@ function buildNavStyles() { return {
     gap: 6,
     padding: "6px 12px",
     minHeight: 32,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.pill,
     background: isActive ? C.darkSurf2 : "transparent",
     border: "none",
     cursor: "pointer",
@@ -75,7 +75,7 @@ function buildNavStyles() { return {
     padding: "6px 10px",
     minWidth: 32,
     minHeight: 32,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.pill,
     border: "none",
     background: "transparent",
     cursor: "pointer",
@@ -192,7 +192,7 @@ export default function SubPageNav({
                     display: "flex", alignItems: "center",
                     opacity: 0.4, transition: "opacity 0.12s",
                     outline: "none", marginLeft: -4,
-                    minWidth: 24, minHeight: 24, borderRadius: RADIUS.md,
+                    minWidth: 24, minHeight: 24, borderRadius: RADIUS.pill,
                   }}
                   onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
                   onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.4"; }}
@@ -243,7 +243,7 @@ export default function SubPageNav({
               border: showSync ? `1px solid ${C.accent}44` : "1px solid transparent",
               padding: "6px 10px",
               minHeight: 32,
-              borderRadius: RADIUS.md,
+              borderRadius: RADIUS.pill,
             }}
             title="Sync settings"
             onMouseEnter={(e) => { if (!showSync) e.currentTarget.style.background = C.darkSurf2; }}
@@ -258,7 +258,7 @@ export default function SubPageNav({
             style={{
               background: C.darkSurf2,
               border: `1px solid ${C.darkBorder}`,
-              borderRadius: RADIUS.md,
+              borderRadius: RADIUS.pill,
               padding: "4px 8px",
               fontSize: 12,
               fontFamily: FONT,

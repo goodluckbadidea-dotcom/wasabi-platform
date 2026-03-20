@@ -316,7 +316,7 @@ const ms = {
     borderBottom: `1px solid ${C.edgeLine}`, gap: 12, flexShrink: 0,
   },
   closeBtn: {
-    width: 32, height: 32, borderRadius: RADIUS.md,
+    width: 32, height: 32, borderRadius: RADIUS.pill,
     border: `1px solid ${C.darkBorder}`, background: C.darkSurf2,
     cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
     flexShrink: 0,
@@ -339,7 +339,7 @@ const ms = {
   },
   input: {
     width: "100%", background: C.dark,
-    border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.md,
+    border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.pill,
     padding: "7px 10px", fontSize: 13, fontFamily: FONT,
     color: C.darkText, outline: "none",
   },

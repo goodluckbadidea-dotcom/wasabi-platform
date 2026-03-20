@@ -498,7 +498,11 @@ function extractRawValue(prop, targetType) {
   if (prop === null || prop === undefined) return null;
   if (typeof prop !== "object") return prop;
 
-  switch (prop.type) {
+  // Determine the property type: explicit `prop.type`, or infer from known keys
+  // (buildProp produces `{ status: { name } }` without a `type` field)
+  const kind = prop.type || targetType || inferPropKind(prop);
+
+  switch (kind) {
     case "title":
       return prop.title?.map((t) => t.plain_text).join("") || "";
     case "rich_text":
@@ -524,6 +528,22 @@ function extractRawValue(prop, targetType) {
     default:
       return null;
   }
+}
+
+/** Infer Notion property kind from object keys when `type` is absent */
+function inferPropKind(prop) {
+  if ("title" in prop) return "title";
+  if ("rich_text" in prop) return "rich_text";
+  if ("number" in prop) return "number";
+  if ("date" in prop) return "date";
+  if ("select" in prop) return "select";
+  if ("multi_select" in prop) return "multi_select";
+  if ("checkbox" in prop) return "checkbox";
+  if ("url" in prop) return "url";
+  if ("email" in prop) return "email";
+  if ("phone_number" in prop) return "phone_number";
+  if ("status" in prop) return "status";
+  return null;
 }
 
 function mapD1Type(d1Type) {

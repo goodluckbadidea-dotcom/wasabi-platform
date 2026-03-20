@@ -226,7 +226,7 @@ function ConnectionRow({ def, connected, onSave, onDelete }) {
             onChange={(e) => setValue(e.target.value)}
             placeholder={def.placeholder}
             style={{
-              flex: 1, background: C.dark, border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.md,
+              flex: 1, background: C.dark, border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.pill,
               color: C.darkText, fontFamily: MONO, fontSize: 12, padding: "8px 10px", outline: "none",
             }}
             onFocus={(e) => { e.target.style.borderColor = C.accent; }}
@@ -238,7 +238,7 @@ function ConnectionRow({ def, connected, onSave, onDelete }) {
             onClick={handleSave}
             disabled={saving || !value.trim()}
             style={{
-              background: saving ? C.darkSurf2 : C.accent, border: "none", borderRadius: RADIUS.md,
+              background: saving ? C.darkSurf2 : C.accent, border: "none", borderRadius: RADIUS.pill,
               color: "#fff", fontFamily: FONT, fontSize: 12, fontWeight: 600, padding: "8px 16px",
               cursor: saving || !value.trim() ? "default" : "pointer", opacity: saving || !value.trim() ? 0.5 : 1,
             }}
@@ -248,7 +248,7 @@ function ConnectionRow({ def, connected, onSave, onDelete }) {
           <button
             onClick={() => { setEditing(false); setValue(""); }}
             style={{
-              background: C.darkSurf2, border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.md,
+              background: C.darkSurf2, border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.pill,
               color: C.darkMuted, fontFamily: FONT, fontSize: 12, padding: "8px 12px", cursor: "pointer",
             }}
           >
@@ -1114,7 +1114,7 @@ function PinSetupSection() {
               maxLength={8}
               style={{
                 background: C.dark, border: `1px solid ${C.darkBorder}`,
-                borderRadius: RADIUS.md, padding: "7px 12px",
+                borderRadius: RADIUS.pill, padding: "7px 12px",
                 color: C.darkText, fontFamily: FONT, fontSize: 14,
                 letterSpacing: "0.2em", width: 120, textAlign: "center",
               }}
@@ -1405,7 +1405,7 @@ function SettingsTab() {
           style={{
             flex: 1, padding: "8px 12px", fontSize: 12, fontWeight: 500,
             fontFamily: FONT, border: `1px solid ${C.darkBorder}`,
-            borderRadius: RADIUS.md, background: "transparent",
+            borderRadius: RADIUS.pill, background: "transparent",
             color: C.darkMuted, cursor: "pointer",
           }}
         >
@@ -1419,7 +1419,7 @@ function SettingsTab() {
           disabled={!mappingDirty}
           style={{
             flex: 1, padding: "8px 12px", fontSize: 12, fontWeight: 600,
-            fontFamily: FONT, border: "none", borderRadius: RADIUS.md,
+            fontFamily: FONT, border: "none", borderRadius: RADIUS.pill,
             background: mappingDirty ? C.accent : C.darkSurf2,
             color: mappingDirty ? "#fff" : C.darkMuted,
             cursor: mappingDirty ? "pointer" : "default",
@@ -1787,7 +1787,7 @@ function UsersTab({ identity }) {
               color: C.darkText,
               padding: "8px 12px",
               fontSize: 13,
-              borderRadius: RADIUS.md,
+              borderRadius: RADIUS.pill,
               cursor: "pointer",
             }}
           >
@@ -1805,7 +1805,7 @@ function UsersTab({ identity }) {
             marginTop: 12,
             background: C.accent + "18",
             border: `1px solid ${C.accent}44`,
-            borderRadius: RADIUS.md,
+            borderRadius: RADIUS.pill,
             padding: "10px 14px",
             fontSize: 13,
             color: C.accent,

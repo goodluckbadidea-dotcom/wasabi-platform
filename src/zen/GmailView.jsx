@@ -451,7 +451,7 @@ export default function GmailView() {
               style={{
                 background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
                 border: "none", cursor: "pointer",
-                padding: "7px 14px", borderRadius: RADIUS.md,
+                padding: "7px 14px", borderRadius: RADIUS.pill,
                 fontSize: 12, fontWeight: 600, fontFamily: FONT,
                 color: "#fff", outline: "none",
                 display: "flex", alignItems: "center", gap: 6,
@@ -469,7 +469,7 @@ export default function GmailView() {
               style={{
                 background: "none", border: "none", cursor: "pointer",
                 padding: 8, display: "flex", opacity: 0.5,
-                outline: "none", borderRadius: RADIUS.md,
+                outline: "none", borderRadius: RADIUS.pill,
                 transition: "opacity 0.15s",
                 minWidth: 32, minHeight: 32,
                 alignItems: "center", justifyContent: "center",
@@ -500,7 +500,7 @@ export default function GmailView() {
             style={{
               width: "100%", boxSizing: "border-box",
               background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-              borderRadius: RADIUS.md, padding: "8px 12px 8px 32px",
+              borderRadius: RADIUS.pill, padding: "8px 12px 8px 32px",
               color: C.darkText, fontFamily: FONT, fontSize: 13,
               outline: "none", transition: "border-color 0.15s",
             }}
@@ -553,7 +553,7 @@ export default function GmailView() {
               style={{
                 display: "block", margin: "12px auto 0",
                 background: "none", border: `1px solid ${C.darkBorder}`,
-                color: C.darkMuted, padding: "6px 14px", borderRadius: RADIUS.md,
+                color: C.darkMuted, padding: "6px 14px", borderRadius: RADIUS.pill,
                 cursor: "pointer", fontFamily: FONT, fontSize: 11, outline: "none",
               }}
             >
@@ -790,7 +790,7 @@ export default function GmailView() {
                             style={{
                               background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
                               border: "none", cursor: "pointer",
-                              padding: "8px 16px", borderRadius: RADIUS.md,
+                              padding: "8px 16px", borderRadius: RADIUS.pill,
                               fontSize: 12, fontWeight: 600, fontFamily: FONT,
                               color: "#fff", outline: "none",
                               display: "flex", alignItems: "center", gap: 6,
@@ -809,7 +809,7 @@ export default function GmailView() {
                               background: "none",
                               border: `1px solid ${C.darkBorder}`,
                               cursor: "pointer",
-                              padding: "8px 16px", borderRadius: RADIUS.md,
+                              padding: "8px 16px", borderRadius: RADIUS.pill,
                               fontSize: 12, fontWeight: 500, fontFamily: FONT,
                               color: C.darkMuted, outline: "none",
                               display: "flex", alignItems: "center", gap: 6,
@@ -832,7 +832,7 @@ export default function GmailView() {
                               background: "none",
                               border: `1px solid ${C.darkBorder}`,
                               cursor: "pointer",
-                              padding: "8px 16px", borderRadius: RADIUS.md,
+                              padding: "8px 16px", borderRadius: RADIUS.pill,
                               fontSize: 12, fontWeight: 500, fontFamily: FONT,
                               color: C.darkMuted, outline: "none",
                               display: "flex", alignItems: "center", gap: 6,
@@ -874,14 +874,14 @@ const labelStyle = {
 const fieldStyle = {
   width: "100%", boxSizing: "border-box",
   background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-  borderRadius: RADIUS.md, padding: "8px 12px",
+  borderRadius: RADIUS.pill, padding: "8px 12px",
   color: C.darkText, fontFamily: FONT, fontSize: 13,
   outline: "none", transition: "border-color 0.15s",
 };
 
 const cancelBtnStyle = {
   background: "none", border: `1px solid ${C.darkBorder}`,
-  color: C.darkMuted, padding: "7px 16px", borderRadius: RADIUS.md,
+  color: C.darkMuted, padding: "7px 16px", borderRadius: RADIUS.pill,
   cursor: "pointer", fontFamily: FONT, fontSize: 12, fontWeight: 500,
   outline: "none",
 };
@@ -889,7 +889,7 @@ const cancelBtnStyle = {
 const sendBtnStyle = {
   background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
   border: "none", color: "#fff",
-  padding: "7px 20px", borderRadius: RADIUS.md,
+  padding: "7px 20px", borderRadius: RADIUS.pill,
   fontFamily: FONT, fontSize: 12, fontWeight: 600,
   outline: "none",
 };

@@ -325,7 +325,7 @@ export default function NeuronLines() {
             style={{
               background: C.dark,
               border: `1px solid ${C.accent}44`,
-              borderRadius: RADIUS.md,
+              borderRadius: RADIUS.pill,
               padding: "4px 10px",
               display: "flex",
               alignItems: "center",

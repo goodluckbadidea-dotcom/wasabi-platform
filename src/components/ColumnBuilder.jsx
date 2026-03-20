@@ -30,7 +30,7 @@ function buildColumnStyles() {
     color: C.darkText,
     padding: "8px 12px",
     fontSize: 13,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.pill,
     fontFamily: FONT,
   };
   return {

@@ -168,7 +168,7 @@ export default function NeuronOverlay() {
               style={{
                 background: C.darkSurf,
                 border: `1px solid ${C.accent}44`,
-                borderRadius: RADIUS.md,
+                borderRadius: RADIUS.pill,
                 padding: "3px 10px",
                 fontSize: 10,
                 fontWeight: 500,

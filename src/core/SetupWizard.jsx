@@ -9,6 +9,7 @@ import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { saveConnection, checkHealth, initDatabase } from "../lib/api.js";
 import WasabiFlame from "./WasabiFlame.jsx";
+import Spinner from "../components/Spinner.jsx";
 
 export default function SetupWizard() {
   const { completeSetup } = usePlatform();
@@ -85,7 +86,7 @@ export default function SetupWizard() {
     color: C.darkText,
     padding: "12px 16px",
     fontSize: 14,
-    borderRadius: RADIUS.lg,
+    borderRadius: RADIUS.pill,
   };
 
   const isConnecting = step === "checking" || step === "initializing";
@@ -97,7 +98,7 @@ export default function SetupWizard() {
       justifyContent: "center",
       height: "100vh",
       width: "100vw",
-      background: C.dark,
+      background: `radial-gradient(ellipse 600px 400px at center, ${C.accent}08, ${C.dark} 70%)`,
       fontFamily: FONT,
     }}>
       <div style={{
@@ -112,7 +113,7 @@ export default function SetupWizard() {
       }}>
         {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <div style={{ marginBottom: 12 }}><WasabiFlame size={48} /></div>
+          <div style={{ marginBottom: 12 }}><WasabiFlame size={72} /></div>
           <h1 style={{ fontSize: 24, fontWeight: 700, color: C.darkText, letterSpacing: "-0.02em" }}>
             Wasabi
           </h1>
@@ -156,12 +157,12 @@ export default function SetupWizard() {
 
           {error && (
             <div style={{
-              background: "#FF480018",
-              border: `1px solid #FF480044`,
-              borderRadius: RADIUS.md,
+              background: C.orange + "18",
+              border: `1px solid ${C.orange}44`,
+              borderRadius: RADIUS.pill,
               padding: "10px 14px",
               fontSize: 13,
-              color: "#FF6B3D",
+              color: C.orange,
             }}>
               {error}
             </div>
@@ -171,7 +172,7 @@ export default function SetupWizard() {
             <div style={{
               background: C.accent + "18",
               border: `1px solid ${C.accent}44`,
-              borderRadius: RADIUS.md,
+              borderRadius: RADIUS.pill,
               padding: "10px 14px",
               fontSize: 13,
               color: C.accent,
@@ -179,7 +180,7 @@ export default function SetupWizard() {
               alignItems: "center",
               gap: 8,
             }}>
-              <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>&#x27F3;</span>
+              <Spinner size={14} color={C.accent} />
               {status}
             </div>
           )}

@@ -207,13 +207,13 @@ const s = {
   },
   input: {
     flex: 1, background: C.dark, border: `1px solid ${C.darkBorder}`,
-    borderRadius: RADIUS.md, color: C.darkText, fontFamily: FONT,
+    borderRadius: RADIUS.pill, color: C.darkText, fontFamily: FONT,
     fontSize: 13, padding: "8px 12px", outline: "none",
     transition: "border-color 0.15s",
   },
   sendBtn: {
     background: C.accent, color: "#fff", border: "none",
-    borderRadius: RADIUS.md, padding: "8px 16px",
+    borderRadius: RADIUS.pill, padding: "8px 16px",
     fontFamily: FONT, fontSize: 12, fontWeight: 600,
     cursor: "pointer", outline: "none", transition: "opacity 0.15s",
     flexShrink: 0,

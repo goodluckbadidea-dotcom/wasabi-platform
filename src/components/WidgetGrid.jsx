@@ -348,7 +348,7 @@ function WidgetPickerInline({ onClose, onAddWidget }) {
   const quickBtnStyle = {
     background: "transparent",
     border: `1px solid ${C.darkBorder}`,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.pill,
     padding: "8px 14px",
     cursor: "pointer",
     fontFamily: FONT,
@@ -443,7 +443,7 @@ function WidgetPickerInline({ onClose, onAddWidget }) {
                   style={{
                     width: "100%", background: "transparent",
                     border: `1px solid ${C.darkBorder}`,
-                    borderRadius: RADIUS.md, padding: "8px 10px",
+                    borderRadius: RADIUS.pill, padding: "8px 10px",
                     marginBottom: 4, cursor: "pointer", textAlign: "left",
                     fontFamily: FONT, fontSize: 11, color: C.darkMuted,
                     transition: "all 0.12s", outline: "none",
@@ -517,7 +517,7 @@ function WidgetPickerInline({ onClose, onAddWidget }) {
                   style={{
                     width: "100%", background: "transparent",
                     border: `1px solid ${C.darkBorder}`,
-                    borderRadius: RADIUS.md, padding: "6px 10px",
+                    borderRadius: RADIUS.pill, padding: "6px 10px",
                     marginBottom: 4, cursor: "pointer", textAlign: "left",
                     fontFamily: FONT, fontSize: 11, color: C.darkMuted,
                     transition: "all 0.12s", outline: "none",

@@ -42,7 +42,7 @@ export default function CalendarTaskBlock({ task, hourHeight, hourStart, onClick
         height: 30,
         background: C.darkSurf,
         borderLeft: `3px solid ${barColor}`,
-        borderRadius: RADIUS.md,
+        borderRadius: RADIUS.pill,
         padding: "5px 10px",
         fontSize: 12,
         fontFamily: FONT,

@@ -1,10 +1,13 @@
 // ─── Reusable Side Drawer ───
 // Slide-in panel from left or right. Used for detail views, settings, log.
+// Supports exit animation: plays slide-out before unmounting.
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { C, RADIUS } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { ANIM, injectAnimations } from "../design/animations.js";
+
+const EXIT_DURATION = 200; // ms — matches slideOut CSS duration
 
 export default function Drawer({
   open,
@@ -14,27 +17,52 @@ export default function Drawer({
   side = "right", // "right" or "left"
   width = 480,
 }) {
+  const [visible, setVisible] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const timerRef = useRef(null);
+
   useEffect(() => { injectAnimations(); }, []);
+
+  useEffect(() => {
+    if (open) {
+      setVisible(true);
+      setClosing(false);
+      clearTimeout(timerRef.current);
+    } else if (visible) {
+      // Start exit animation
+      setClosing(true);
+      timerRef.current = setTimeout(() => {
+        setVisible(false);
+        setClosing(false);
+      }, EXIT_DURATION);
+    }
+    return () => clearTimeout(timerRef.current);
+  }, [open]);
 
   // Close on Escape
   useEffect(() => {
-    if (!open) return;
+    if (!visible || closing) return;
     const handler = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [open, onClose]);
+  }, [visible, closing, onClose]);
 
-  if (!open) return null;
+  if (!visible) return null;
+
+  const overlayAnim = closing ? ANIM.backdropFadeOut : ANIM.drawerFade;
+  const panelAnim = closing
+    ? (side === "right" ? ANIM.slideOutRight : ANIM.slideOutLeft)
+    : (side === "right" ? ANIM.drawerSlide : ANIM.drawerSlideLeft);
 
   return (
     <div
       style={{
         ...S.overlay,
         justifyContent: side === "right" ? "flex-end" : "flex-start",
-        animation: ANIM.drawerFade,
+        animation: overlayAnim,
       }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (!closing && e.target === e.currentTarget) onClose();
       }}
     >
       <div
@@ -43,7 +71,7 @@ export default function Drawer({
           width,
           borderLeft: side === "right" ? `1px solid ${C.edgeLine}` : "none",
           borderRight: side === "left" ? `1px solid ${C.edgeLine}` : "none",
-          animation: side === "right" ? ANIM.drawerSlide : ANIM.drawerSlideLeft,
+          animation: panelAnim,
         }}
       >
         {/* Header */}

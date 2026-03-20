@@ -106,7 +106,7 @@ function ToggleButtons({ options, value, onChange }) {
             fontWeight: value === opt.key ? 600 : 400,
             fontFamily: FONT,
             border: `1px solid ${value === opt.key ? C.accent : C.darkBorder}`,
-            borderRadius: RADIUS.md,
+            borderRadius: RADIUS.pill,
             background: value === opt.key ? C.accent + "22" : "transparent",
             color: value === opt.key ? C.accent : C.darkMuted,
             cursor: "pointer",
@@ -133,7 +133,7 @@ function StyledSelect({ value, onChange, children, placeholder }) {
         fontSize: 12,
         fontFamily: FONT,
         border: `1px solid ${C.darkBorder}`,
-        borderRadius: RADIUS.md,
+        borderRadius: RADIUS.pill,
         background: C.darkSurf2,
         color: C.darkText,
         cursor: "pointer",
@@ -551,7 +551,7 @@ export default function ViewSettingsPanel({
             fontWeight: 500,
             fontFamily: FONT,
             border: `1px solid ${C.darkBorder}`,
-            borderRadius: RADIUS.md,
+            borderRadius: RADIUS.pill,
             background: "transparent",
             color: C.darkMuted,
             cursor: "pointer",
@@ -569,7 +569,7 @@ export default function ViewSettingsPanel({
             fontWeight: 600,
             fontFamily: FONT,
             border: "none",
-            borderRadius: RADIUS.md,
+            borderRadius: RADIUS.pill,
             background: isDirty ? C.accent : C.darkSurf2,
             color: isDirty ? "#fff" : C.darkMuted,
             cursor: isDirty ? "pointer" : "default",
@@ -725,7 +725,7 @@ export default function ViewSettingsPanel({
                       onClick={() => handleResetSection(sec.dbId)}
                       style={{
                         flex: 1, padding: "6px 8px", fontSize: 11, fontFamily: FONT,
-                        border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.md,
+                        border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.pill,
                         background: "transparent", color: C.darkMuted, cursor: "pointer",
                       }}
                     >
@@ -735,7 +735,7 @@ export default function ViewSettingsPanel({
                       onClick={() => handleSaveSection(sec.dbId)}
                       style={{
                         flex: 1, padding: "6px 8px", fontSize: 11, fontWeight: 600, fontFamily: FONT,
-                        border: "none", borderRadius: RADIUS.md,
+                        border: "none", borderRadius: RADIUS.pill,
                         background: C.accent, color: "#fff", cursor: "pointer",
                       }}
                     >

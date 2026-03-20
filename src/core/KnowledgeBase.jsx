@@ -412,7 +412,7 @@ function ContextTab() {
               placeholder="Entry title / key"
               style={{
                 flex: 1, background: C.dark, border: `1px solid ${C.darkBorder}`,
-                borderRadius: RADIUS.md, color: C.darkText, fontFamily: FONT,
+                borderRadius: RADIUS.pill, color: C.darkText, fontFamily: FONT,
                 fontSize: 12, padding: "8px 10px", outline: "none",
               }}
               onFocus={(e) => { e.target.style.borderColor = C.accent; }}
@@ -423,7 +423,7 @@ function ContextTab() {
               onChange={(e) => setAddCategory(e.target.value)}
               style={{
                 background: C.dark, border: `1px solid ${C.darkBorder}`,
-                borderRadius: RADIUS.md, color: C.darkText, fontFamily: FONT,
+                borderRadius: RADIUS.pill, color: C.darkText, fontFamily: FONT,
                 fontSize: 12, padding: "8px 10px", outline: "none",
               }}
             >
@@ -441,7 +441,7 @@ function ContextTab() {
             rows={5}
             style={{
               width: "100%", background: C.dark, border: `1px solid ${C.darkBorder}`,
-              borderRadius: RADIUS.md, color: C.darkText, fontFamily: FONT,
+              borderRadius: RADIUS.pill, color: C.darkText, fontFamily: FONT,
               fontSize: 12, padding: "8px 10px", outline: "none", resize: "vertical",
               lineHeight: 1.5, boxSizing: "border-box",
             }}
@@ -456,7 +456,7 @@ function ContextTab() {
               onClick={handleAdd}
               disabled={saving || !addKey.trim() || !addContent.trim()}
               style={{
-                padding: "7px 20px", borderRadius: RADIUS.md,
+                padding: "7px 20px", borderRadius: RADIUS.pill,
                 background: saving || !addKey.trim() || !addContent.trim() ? C.darkSurf2 : C.accent,
                 border: "none", cursor: saving || !addKey.trim() || !addContent.trim() ? "default" : "pointer",
                 fontFamily: FONT, fontSize: 12, fontWeight: 600, color: "#fff",
@@ -575,7 +575,7 @@ function KBEntryCard({ entry, isEditing, editContent, onStartEdit, onCancelEdit,
             rows={5}
             style={{
               width: "100%", background: C.dark, border: `1px solid ${C.darkBorder}`,
-              borderRadius: RADIUS.md, color: C.darkText, fontFamily: FONT,
+              borderRadius: RADIUS.pill, color: C.darkText, fontFamily: FONT,
               fontSize: 12, padding: "8px 10px", outline: "none", resize: "vertical",
               lineHeight: 1.5, boxSizing: "border-box",
             }}
@@ -587,7 +587,7 @@ function KBEntryCard({ entry, isEditing, editContent, onStartEdit, onCancelEdit,
             <button
               onClick={onCancelEdit}
               style={{
-                background: C.darkSurf2, border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.md,
+                background: C.darkSurf2, border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.pill,
                 color: C.darkMuted, fontFamily: FONT, fontSize: 11, padding: "5px 12px", cursor: "pointer", outline: "none",
               }}
             >
@@ -597,7 +597,7 @@ function KBEntryCard({ entry, isEditing, editContent, onStartEdit, onCancelEdit,
               onClick={onSaveEdit}
               disabled={saving}
               style={{
-                background: C.accent, border: "none", borderRadius: RADIUS.md,
+                background: C.accent, border: "none", borderRadius: RADIUS.pill,
                 color: "#fff", fontFamily: FONT, fontSize: 11, fontWeight: 600,
                 padding: "5px 16px", cursor: saving ? "default" : "pointer",
                 opacity: saving ? 0.5 : 1, outline: "none",

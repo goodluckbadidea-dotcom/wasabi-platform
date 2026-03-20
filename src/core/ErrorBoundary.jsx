@@ -109,7 +109,7 @@ function getShimmerBg() {
     background: `linear-gradient(90deg, ${C.darkSurf2} 25%, ${C.darkBorder} 50%, ${C.darkSurf2} 75%)`,
     backgroundSize: "200% 100%",
     animation: "shimmer 1.8s ease-in-out infinite",
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.pill,
   };
 }
 

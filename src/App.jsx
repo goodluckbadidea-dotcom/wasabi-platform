@@ -12,7 +12,7 @@ import { RecordDrawerProvider } from "./zen/RecordDrawerContext.jsx";
 import { ColorMappingProvider } from "./context/ColorMappingContext.jsx";
 import { ThemeProvider, useTheme } from "./context/ThemeContext.jsx";
 import { UserSyncProvider, useUserSync } from "./context/UserSyncContext.jsx";
-import { injectAnimations, ANIM, TRANSITION } from "./design/animations.js";
+import { injectAnimations, injectInteractionStyles, injectScrollbarStyles, updateCSSCustomProperties, ANIM, TRANSITION } from "./design/animations.js";
 import { S } from "./design/styles.js";
 import { C } from "./design/tokens.js";
 
@@ -66,8 +66,11 @@ const GmailView = lazyWithRetry(() => import("./zen/GmailView.jsx"));
 const WorkspaceBrowser = lazyWithRetry(() => import("./zen/WorkspaceBrowser.jsx"));
 const KnowledgeHub = lazyWithRetry(() => import("./zen/KnowledgeHub.jsx"));
 
-// Inject CSS animations on app load
+// Inject CSS animations + global interaction styles on app load
 injectAnimations();
+injectInteractionStyles();
+injectScrollbarStyles(C);
+updateCSSCustomProperties(C);
 
 // ── One-time localStorage key migration (zen → functional names) ──
 (() => {

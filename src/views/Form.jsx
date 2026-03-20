@@ -270,7 +270,7 @@ function FormField({ field, value, error, schema, onChange }) {
     width: "100%",
     background: C.darkSurf,
     border: `1px solid ${error ? "#E05252" : C.darkBorder}`,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.pill,
     padding: "10px 14px",
     fontSize: 14,
     fontFamily: FONT,

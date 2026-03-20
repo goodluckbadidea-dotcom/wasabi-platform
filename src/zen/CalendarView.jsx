@@ -320,7 +320,7 @@ export default function CalendarView({ allTasks, refreshRef }) {
 
         {/* View toggle: Day | Week | Month */}
         <div style={{
-          display: "flex", borderRadius: RADIUS.md,
+          display: "flex", borderRadius: RADIUS.pill,
           border: `1px solid ${C.darkBorder}`,
           overflow: "hidden",
         }}>
@@ -473,7 +473,7 @@ export default function CalendarView({ allTasks, refreshRef }) {
 const navBtnStyle = {
   background: "none", border: "none", cursor: "pointer",
   padding: 8, display: "flex", alignItems: "center", justifyContent: "center",
-  borderRadius: RADIUS.md, outline: "none",
+  borderRadius: RADIUS.pill, outline: "none",
   transition: "opacity 0.15s",
   minWidth: 32, minHeight: 32,
 };

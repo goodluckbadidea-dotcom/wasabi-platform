@@ -25,7 +25,7 @@ const tb = {
     alignItems: "center",
     background: C.darkSurf2,
     border: `1px solid ${C.darkBorder}`,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.pill,
     padding: "0 10px",
     height: TOOLBAR_HEIGHT,
     minWidth: 140,
@@ -45,7 +45,7 @@ const tb = {
   filterSelect: {
     background: C.darkSurf2,
     border: `1px solid ${C.darkBorder}`,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.pill,
     padding: "6px 10px",
     fontSize: 12,
     fontFamily: FONT,
@@ -59,7 +59,7 @@ const tb = {
   iconBtn: {
     width: TOOLBAR_HEIGHT,
     height: TOOLBAR_HEIGHT,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.pill,
     border: `1px solid ${C.darkBorder}`,
     background: C.darkSurf2,
     cursor: "pointer",
@@ -76,7 +76,7 @@ const tb = {
   },
   createBtn: {
     padding: "4px 12px",
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.pill,
     border: `1px dashed ${C.darkBorder}`,
     background: "transparent",
     color: C.darkMuted,

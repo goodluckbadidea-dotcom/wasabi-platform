@@ -561,6 +561,7 @@ export function applyTheme(name, _mode) {
   _rebuildTimelinePalette();
   _rebuildStatusColors();
   _rebuildFallbackColors();
+  _rebuildShadows();
   // Update phase colors
   PHASE_COLORS.design = { color: VIEW_PALETTE[4].hex, bg: _paleTint(VIEW_PALETTE[4].hex) };
   PHASE_COLORS.production = { color: VIEW_PALETTE[5].hex, bg: _paleTint(VIEW_PALETTE[5].hex) };
@@ -575,25 +576,56 @@ export function applyTheme(name, _mode) {
 }
 
 // Typography
-export const FONT = "'Outfit','DM Sans',sans-serif";
+export const FONT = "'Satoshi','Outfit','DM Sans',sans-serif";
 export const MONO = "'DM Mono','Courier New',monospace";
 
 // Border radius
 export const RADIUS = {
   sm:   4,
-  md:   6,
-  lg:   8,
-  xl:   12,
+  md:   20,
+  lg:   20,
+  xl:   20,
   pill: 999,
 };
 
-// Shadows
-export const SHADOW = {
-  card:      "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
-  cardHover: "0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04)",
-  dropdown:  "0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.10)",
-  inset:     "inset 0 1px 3px rgba(0,0,0,0.1)",
+// ── Theme-aware Shadows ──
+// Tinted per-theme for warm/cool temperature matching.
+// Mutable object — rebuilt by applyTheme() like C tokens.
+const _SHADOW_TINTS = {
+  obsidian: { rgb: "0,8,24",   light: false },
+  shoji:    { rgb: "12,8,4",   light: true },
+  hinoki:   { rgb: "18,10,0",  light: false },
+  kori:     { rgb: "0,6,20",   light: true },
+  sumi:     { rgb: "6,8,16",   light: false },
 };
+
+function _buildShadows(themeName) {
+  const tint = _SHADOW_TINTS[themeName] || _SHADOW_TINTS.obsidian;
+  const r = tint.rgb;
+  // Light themes get softer shadows; dark themes get deeper ones
+  if (tint.light) {
+    return {
+      card:      `0 1px 3px rgba(${r},0.05), 0 1px 2px rgba(${r},0.03)`,
+      cardHover: `0 4px 12px rgba(${r},0.07), 0 2px 4px rgba(${r},0.04)`,
+      dropdown:  `0 8px 32px rgba(${r},0.12), 0 2px 8px rgba(${r},0.06)`,
+      inset:     `inset 0 1px 3px rgba(${r},0.06)`,
+      glow:      `0 0 20px rgba(${r},0.08)`,
+    };
+  }
+  return {
+    card:      `0 1px 3px rgba(${r},0.12), 0 1px 2px rgba(${r},0.08)`,
+    cardHover: `0 4px 12px rgba(${r},0.16), 0 2px 4px rgba(${r},0.08)`,
+    dropdown:  `0 8px 32px rgba(${r},0.28), 0 2px 8px rgba(${r},0.14)`,
+    inset:     `inset 0 1px 3px rgba(${r},0.12)`,
+    glow:      `0 0 24px rgba(${r},0.14)`,
+  };
+}
+
+export const SHADOW = _buildShadows(_currentThemeName);
+
+function _rebuildShadows() {
+  Object.assign(SHADOW, _buildShadows(_currentThemeName));
+}
 
 // Responsive breakpoints
 export const BP = {

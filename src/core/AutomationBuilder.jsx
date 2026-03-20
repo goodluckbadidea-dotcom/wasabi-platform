@@ -67,7 +67,7 @@ function buildAutoStyles() { return {
     cursor: "pointer",
     fontSize: 14,
     padding: "2px 6px",
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.pill,
     lineHeight: 1,
   },
   rulesList: {
@@ -124,7 +124,7 @@ function buildAutoStyles() { return {
     fontSize: 10,
     fontWeight: 500,
     padding: "2px 8px",
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.pill,
     marginLeft: "auto",
     whiteSpace: "nowrap",
   },

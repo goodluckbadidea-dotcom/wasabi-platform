@@ -88,7 +88,7 @@ const ds = {
   closeBtn: {
     width: 32,
     height: 32,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.pill,
     border: `1px solid ${C.darkBorder}`,
     background: C.darkSurf2,
     cursor: "pointer",
@@ -147,7 +147,7 @@ const ds = {
     width: "100%",
     background: C.dark,
     border: `1px solid ${C.darkBorder}`,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.pill,
     padding: "6px 10px",
     fontSize: 13,
     fontFamily: FONT,

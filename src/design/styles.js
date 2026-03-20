@@ -2,6 +2,7 @@
 // Rebuildable style system — rebuilt on theme change via rebuildStyles().
 
 import { C, FONT, MONO, RADIUS, SHADOW } from "./tokens.js";
+// Note: SHADOW is mutable (rebuilt on theme change), same pattern as C.
 
 function buildStyles() {
   return {
@@ -42,7 +43,7 @@ function buildStyles() {
     navItem: {
       width: 40,
       height: 40,
-      borderRadius: RADIUS.lg,
+      borderRadius: RADIUS.pill,
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -234,7 +235,7 @@ function buildStyles() {
       background: "transparent",
       color: C.darkMuted,
       border: "none",
-      borderRadius: RADIUS.md,
+      borderRadius: RADIUS.pill,
       padding: "6px 12px",
       fontSize: 13,
       fontWeight: 500,
@@ -263,11 +264,13 @@ function buildStyles() {
       borderRadius: RADIUS.xl,
       border: `1px solid ${C.darkBorder}`,
       padding: 16,
-      transition: "border-color 0.15s",
+      transition: "border-color 0.15s, box-shadow 0.15s",
+      boxShadow: `${SHADOW.card}, inset 0 1px 0 0 ${C.edgeLine}`,
     },
 
     cardHover: {
       borderColor: C.accent + "66",
+      boxShadow: SHADOW.cardHover,
     },
 
     // ─── Tables ───
@@ -323,7 +326,7 @@ function buildStyles() {
     input: {
       background: C.darkSurf,
       border: `1px solid ${C.darkBorder}`,
-      borderRadius: RADIUS.md,
+      borderRadius: RADIUS.pill,
       padding: "8px 12px",
       fontSize: 13,
       fontFamily: FONT,
@@ -341,7 +344,7 @@ function buildStyles() {
     inputDark: {
       background: C.darkSurf,
       border: `1px solid ${C.darkBorder}`,
-      borderRadius: RADIUS.md,
+      borderRadius: RADIUS.pill,
       padding: "8px 12px",
       fontSize: 13,
       fontFamily: FONT,
@@ -353,7 +356,7 @@ function buildStyles() {
     select: {
       background: C.darkSurf,
       border: `1px solid ${C.darkBorder}`,
-      borderRadius: RADIUS.md,
+      borderRadius: RADIUS.pill,
       padding: "8px 12px",
       fontSize: 13,
       fontFamily: FONT,
@@ -369,6 +372,8 @@ function buildStyles() {
       position: "fixed",
       inset: 0,
       background: C.overlayBg,
+      backdropFilter: "blur(4px)",
+      WebkitBackdropFilter: "blur(4px)",
       zIndex: 100,
       display: "flex",
       alignItems: "stretch",
@@ -404,19 +409,19 @@ function buildStyles() {
 
     // ─── Typography ───
     h1: {
-      fontSize: 22,
+      fontSize: 26,
       fontWeight: 700,
-      letterSpacing: "-0.02em",
+      letterSpacing: "-0.03em",
       color: C.darkText,
-      lineHeight: 1.3,
+      lineHeight: 1.25,
     },
 
     h2: {
-      fontSize: 17,
+      fontSize: 18,
       fontWeight: 600,
-      letterSpacing: "-0.01em",
+      letterSpacing: "-0.015em",
       color: C.darkText,
-      lineHeight: 1.35,
+      lineHeight: 1.3,
     },
 
     h3: {

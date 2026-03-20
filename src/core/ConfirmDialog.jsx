@@ -1,10 +1,13 @@
 // ─── Confirm Dialog ───
 // Reusable confirmation modal for destructive actions.
 // Dark theme, centered, with Cancel + Confirm buttons.
+// Supports exit animation before unmounting.
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
+
+const EXIT_DURATION = 180; // ms — matches fadeOut CSS duration
 
 export default function ConfirmDialog({
   title,
@@ -13,27 +16,37 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
 }) {
+  const [exiting, setExiting] = useState(false);
+
+  const handleClose = useCallback((callback) => {
+    if (exiting) return;
+    setExiting(true);
+    setTimeout(() => callback(), EXIT_DURATION);
+  }, [exiting]);
+
   // Close on Escape
   useEffect(() => {
     const handler = (e) => {
-      if (e.key === "Escape") onCancel();
+      if (e.key === "Escape") handleClose(onCancel);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onCancel]);
+  }, [onCancel, handleClose]);
 
   return (
     <div
-      onClick={onCancel}
+      onClick={() => handleClose(onCancel)}
       style={{
         position: "fixed",
         inset: 0,
         background: "rgba(0,0,0,0.55)",
+        backdropFilter: "blur(4px)",
+        WebkitBackdropFilter: "blur(4px)",
         zIndex: 200,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        animation: ANIM.backdropFade,
+        animation: exiting ? ANIM.backdropFadeOut : ANIM.backdropFade,
       }}
     >
       <div
@@ -46,7 +59,7 @@ export default function ConfirmDialog({
           maxWidth: 400,
           width: "90vw",
           boxShadow: SHADOW.dropdown,
-          animation: ANIM.modalPop(),
+          animation: exiting ? ANIM.fadeOut() : ANIM.modalPop(),
           fontFamily: FONT,
         }}
       >
@@ -72,7 +85,7 @@ export default function ConfirmDialog({
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
           <button
-            onClick={onCancel}
+            onClick={() => handleClose(onCancel)}
             style={{
               background: C.darkSurf2,
               color: C.darkText,
@@ -96,7 +109,7 @@ export default function ConfirmDialog({
             Cancel
           </button>
           <button
-            onClick={onConfirm}
+            onClick={() => handleClose(onConfirm)}
             style={{
               background: "#E05252",
               color: "#fff",

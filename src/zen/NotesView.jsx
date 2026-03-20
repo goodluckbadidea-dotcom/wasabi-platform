@@ -119,7 +119,7 @@ export default function NotesView() {
             style={{
               background: saveToOpen ? C.accent + "22" : "transparent",
               border: `1px solid ${saveToOpen ? C.accent + "44" : C.darkBorder}`,
-              borderRadius: RADIUS.md,
+              borderRadius: RADIUS.pill,
               padding: "6px 12px",
               fontSize: 11, fontFamily: FONT,
               minHeight: 30,
@@ -174,7 +174,7 @@ export default function NotesView() {
             placeholder="Page name..."
             style={{
               flex: 1, background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-              borderRadius: RADIUS.md, padding: "7px 10px",
+              borderRadius: RADIUS.pill, padding: "7px 10px",
               fontSize: 12, fontFamily: FONT, color: C.darkText,
               outline: "none", minWidth: 0,
             }}
@@ -186,7 +186,7 @@ export default function NotesView() {
               onChange={(e) => setSaveToFolder(e.target.value)}
               style={{
                 background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-                borderRadius: RADIUS.md, padding: "7px 8px",
+                borderRadius: RADIUS.pill, padding: "7px 8px",
                 fontSize: 11, fontFamily: FONT, color: C.darkText,
                 outline: "none", maxWidth: 140,
               }}
@@ -203,7 +203,7 @@ export default function NotesView() {
             disabled={!saveToName.trim() || saveToStatus === "saving"}
             style={{
               background: saveToStatus === "done" ? "#2A6B38" : C.accent,
-              color: "#fff", border: "none", borderRadius: RADIUS.md,
+              color: "#fff", border: "none", borderRadius: RADIUS.pill,
               padding: "7px 14px", fontSize: 11, fontFamily: FONT,
               fontWeight: 600, cursor: saveToName.trim() && saveToStatus !== "saving" ? "pointer" : "default",
               opacity: saveToName.trim() && saveToStatus !== "saving" ? 1 : 0.4,

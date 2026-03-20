@@ -71,7 +71,7 @@ export default function BatchQueue({
               width: "100%",
               padding: "8px 0",
               border: "none",
-              borderRadius: RADIUS.md,
+              borderRadius: RADIUS.pill,
               background: C.accent,
               color: "#fff",
               fontFamily: FONT,

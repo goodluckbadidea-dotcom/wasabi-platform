@@ -172,6 +172,26 @@ const KEYFRAMES = `
   70%  { opacity: 1; transform: translateY(-0.5px) scale(1.002); }
   100% { opacity: 1; transform: translateY(0) scale(1); }
 }
+
+@keyframes fadeOut {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.96); }
+}
+
+@keyframes slideOutRight {
+  from { transform: translateX(0); opacity: 1; }
+  to   { transform: translateX(100%); opacity: 0; }
+}
+
+@keyframes slideOutLeft {
+  from { transform: translateX(0); opacity: 1; }
+  to   { transform: translateX(-100%); opacity: 0; }
+}
+
+@keyframes backdropFadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
 `;
 
 let injected = false;
@@ -230,6 +250,12 @@ export const ANIM = {
 
   // Table row scroll reveal (subtle, fast, playful)
   scrollReveal: (idx = 0) => `scrollReveal 0.22s ${SETTLE_EASE} ${idx * 0.015}s both`,
+
+  // ── Exit animations ──
+  fadeOut:          (dur = 0.18) => `fadeOut ${dur}s ease both`,
+  slideOutRight:   "slideOutRight 0.22s cubic-bezier(0.4,0,1,1) both",
+  slideOutLeft:    "slideOutLeft 0.22s cubic-bezier(0.4,0,1,1) both",
+  backdropFadeOut: "backdropFadeOut 0.18s ease both",
 };
 
 // Common transition presets for inline styles
@@ -247,3 +273,77 @@ export const TRANSITION = {
   // Panel resize — smooth deceleration, no overshoot (matches sidebar easing)
   panelResize: "width 0.28s cubic-bezier(0.25, 1, 0.5, 1)",
 };
+
+// ── Global Interaction Styles ──
+// Injects :active press feedback + :focus-visible keyboard ring.
+// Uses CSS custom property --wasabi-accent set by updateCSSCustomProperties().
+
+let interactionsInjected = false;
+
+export function injectInteractionStyles() {
+  if (interactionsInjected || typeof document === "undefined") return;
+  const style = document.createElement("style");
+  style.id = "wasabi-interactions";
+  style.textContent = `
+    /* Active press feedback */
+    button:active:not(:disabled),
+    [role="button"]:active,
+    a:active {
+      transform: scale(0.98) !important;
+      transition: transform 0.08s ease !important;
+    }
+
+    /* Focus-visible keyboard ring */
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible,
+    [role="button"]:focus-visible,
+    a:focus-visible {
+      outline: 2px solid var(--wasabi-accent, #5CC63A);
+      outline-offset: 2px;
+    }
+
+    /* Suppress default outline for mouse/touch users */
+    :focus:not(:focus-visible) {
+      outline: none;
+    }
+  `;
+  document.head.appendChild(style);
+  interactionsInjected = true;
+}
+
+// ── Dynamic Scrollbar Styles ──
+// Re-injectable on theme change — updates existing style tag.
+
+let scrollbarStyleEl = null;
+
+function _buildScrollbarCSS(C) {
+  const thumb = C.darkBorder;
+  const thumbHover = C.darkMuted;
+  return `
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: ${thumb}; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: ${thumbHover}; }
+    * { scrollbar-width: thin; scrollbar-color: ${thumb} transparent; }
+  `;
+}
+
+export function injectScrollbarStyles(C) {
+  if (typeof document === "undefined") return;
+  if (!scrollbarStyleEl) {
+    scrollbarStyleEl = document.createElement("style");
+    scrollbarStyleEl.id = "wasabi-scrollbars";
+    document.head.appendChild(scrollbarStyleEl);
+  }
+  scrollbarStyleEl.textContent = _buildScrollbarCSS(C);
+}
+
+// ── CSS Custom Properties ──
+// Sets accent color on <html> for use by injected interaction CSS.
+
+export function updateCSSCustomProperties(C) {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty("--wasabi-accent", C.accent);
+}

@@ -35,7 +35,7 @@ const PRIORITIES = ["High", "Medium", "Normal", "Low"];
 const inputStyle = {
   width: "100%", boxSizing: "border-box",
   background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-  borderRadius: RADIUS.md, padding: "8px 12px",
+  borderRadius: RADIUS.pill, padding: "8px 12px",
   color: C.darkText, fontFamily: FONT, fontSize: 13,
   outline: "none", transition: "border-color 0.15s",
 };
@@ -50,7 +50,7 @@ const fieldGroup = { marginBottom: 16 };
 
 const tabBarStyle = {
   display: "flex", gap: 2, marginBottom: 16,
-  background: C.darkSurf2, borderRadius: RADIUS.md, padding: 2,
+  background: C.darkSurf2, borderRadius: RADIUS.pill, padding: 2,
 };
 const tabStyle = (active) => ({
   flex: 1, padding: "8px 0", border: "none",
@@ -561,7 +561,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
             <button onClick={handleSave} disabled={saving}
               style={{
-                flex: 1, padding: "10px 16px", borderRadius: RADIUS.md,
+                flex: 1, padding: "10px 16px", borderRadius: RADIUS.pill,
                 background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
                 color: "#fff", border: "none", fontSize: 13,
                 fontWeight: 600, fontFamily: FONT, cursor: saving ? "wait" : "pointer",
@@ -571,7 +571,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
             {isD1 && task.source === "manual" && (
               <button onClick={handleDelete} disabled={deleting}
                 style={{
-                  padding: "10px 16px", borderRadius: RADIUS.md,
+                  padding: "10px 16px", borderRadius: RADIUS.pill,
                   background: confirmDelete ? "#E05252" : "transparent",
                   color: confirmDelete ? "#fff" : "#E05252",
                   border: `1.5px solid ${confirmDelete ? "#E05252" : C.darkBorder}`,
@@ -588,7 +588,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
             {task.source !== "manual" && (
               <button onClick={handleRemoveFromTodo} disabled={removing}
                 style={{
-                  flex: 1, padding: "8px 12px", borderRadius: RADIUS.md,
+                  flex: 1, padding: "8px 12px", borderRadius: RADIUS.pill,
                   background: "transparent",
                   color: C.darkMuted, border: `1px solid ${C.darkBorder}`,
                   fontSize: 11, fontWeight: 500, fontFamily: FONT,
@@ -606,7 +606,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
             {canGoToTask && (
               <button onClick={handleGoToTask}
                 style={{
-                  flex: 1, padding: "8px 12px", borderRadius: RADIUS.md,
+                  flex: 1, padding: "8px 12px", borderRadius: RADIUS.pill,
                   background: "transparent",
                   color: C.accent, border: `1px solid ${C.accent}44`,
                   fontSize: 11, fontWeight: 500, fontFamily: FONT,
@@ -831,7 +831,7 @@ function EventEditor({ event, onSaved, onDeleted, onClose }) {
           onClick={handleSave}
           disabled={saving}
           style={{
-            flex: 1, padding: "10px 16px", borderRadius: RADIUS.md,
+            flex: 1, padding: "10px 16px", borderRadius: RADIUS.pill,
             background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
             color: "#fff", border: "none", fontSize: 13,
             fontWeight: 600, fontFamily: FONT, cursor: saving ? "wait" : "pointer",
@@ -845,7 +845,7 @@ function EventEditor({ event, onSaved, onDeleted, onClose }) {
           onClick={handleDelete}
           disabled={deleting}
           style={{
-            padding: "10px 16px", borderRadius: RADIUS.md,
+            padding: "10px 16px", borderRadius: RADIUS.pill,
             background: confirmDelete ? "#E05252" : "transparent",
             color: confirmDelete ? "#fff" : "#E05252",
             border: `1.5px solid ${confirmDelete ? "#E05252" : C.darkBorder}`,
@@ -917,7 +917,7 @@ function WorkspaceSettingsEditor({ workspace, onClose }) {
     flex: 1, padding: "10px 12px",
     background: active ? C.accent + "18" : C.darkSurf2,
     border: `1px solid ${active ? C.accent + "55" : C.darkBorder}`,
-    borderRadius: RADIUS.md, cursor: "pointer", fontFamily: FONT,
+    borderRadius: RADIUS.pill, cursor: "pointer", fontFamily: FONT,
     fontSize: 12, fontWeight: active ? 600 : 400,
     color: active ? C.accent : C.darkMuted,
     transition: "all 0.15s", outline: "none", textAlign: "center",
@@ -1015,7 +1015,7 @@ function WorkspaceSettingsEditor({ workspace, onClose }) {
       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
         <button onClick={handleSave} disabled={saving}
           style={{
-            flex: 1, padding: "10px 16px", borderRadius: RADIUS.md,
+            flex: 1, padding: "10px 16px", borderRadius: RADIUS.pill,
             background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
             color: "#fff", border: "none", fontSize: 13,
             fontWeight: 600, fontFamily: FONT, cursor: saving ? "wait" : "pointer",
@@ -1024,7 +1024,7 @@ function WorkspaceSettingsEditor({ workspace, onClose }) {
         >{saving ? "Saving..." : "Save"}</button>
         <button onClick={handleCancel}
           style={{
-            padding: "10px 16px", borderRadius: RADIUS.md,
+            padding: "10px 16px", borderRadius: RADIUS.pill,
             background: "transparent",
             color: C.darkMuted, border: `1.5px solid ${C.darkBorder}`,
             fontSize: 13, fontWeight: 600, fontFamily: FONT,

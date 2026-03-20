@@ -92,7 +92,7 @@ export default function QuickCreateBar({ selectedDate, onCreated, onClose }) {
         placeholder="Event title..."
         style={{
           flex: 1, background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-          borderRadius: RADIUS.md, padding: "7px 10px",
+          borderRadius: RADIUS.pill, padding: "7px 10px",
           fontSize: 12, fontFamily: FONT, color: C.darkText,
           outline: "none", minWidth: 0,
         }}
@@ -105,7 +105,7 @@ export default function QuickCreateBar({ selectedDate, onCreated, onClose }) {
         onChange={(e) => setStartTime(e.target.value)}
         style={{
           background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-          borderRadius: RADIUS.md, padding: "7px 8px",
+          borderRadius: RADIUS.pill, padding: "7px 8px",
           fontSize: 11, fontFamily: FONT, color: C.darkText,
           outline: "none", width: 85,
         }}
@@ -113,7 +113,7 @@ export default function QuickCreateBar({ selectedDate, onCreated, onClose }) {
 
       {/* Duration selector */}
       <div style={{
-        display: "flex", borderRadius: RADIUS.md,
+        display: "flex", borderRadius: RADIUS.pill,
         border: `1px solid ${C.darkBorder}`,
         overflow: "hidden",
       }}>
@@ -143,7 +143,7 @@ export default function QuickCreateBar({ selectedDate, onCreated, onClose }) {
         disabled={!title.trim() || creating}
         style={{
           background: C.accent, color: "#fff",
-          border: "none", borderRadius: RADIUS.md,
+          border: "none", borderRadius: RADIUS.pill,
           padding: "7px 14px", fontSize: 11, fontFamily: FONT,
           fontWeight: 600, cursor: title.trim() && !creating ? "pointer" : "default",
           opacity: title.trim() && !creating ? 1 : 0.4,

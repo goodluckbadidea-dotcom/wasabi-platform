@@ -590,7 +590,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                 fontWeight: 600,
                 fontFamily: FONT,
                 padding: "4px 10px",
-                borderRadius: RADIUS.md,
+                borderRadius: RADIUS.pill,
                 cursor: "pointer",
                 transition: "all 0.15s",
               }}
@@ -642,7 +642,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
             fontSize: 12,
             fontFamily: FONT,
             border: `1px solid ${C.darkBorder}`,
-            borderRadius: RADIUS.md,
+            borderRadius: RADIUS.pill,
             background: C.darkSurf,
             color: C.darkText,
             outline: "none",
@@ -655,7 +655,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
             onClick={() => setShowNewModal(true)}
             style={{
               background: "transparent", border: `1px dashed ${C.darkBorder}`,
-              borderRadius: RADIUS.md, padding: "3px 10px", color: C.darkMuted,
+              borderRadius: RADIUS.pill, padding: "3px 10px", color: C.darkMuted,
               fontSize: 11, cursor: "pointer", fontFamily: FONT, outline: "none",
               transition: "border-color 0.15s, color 0.15s",
             }}

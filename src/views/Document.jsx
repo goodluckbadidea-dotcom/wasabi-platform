@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
+import Spinner from "../components/Spinner.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { getBlocks } from "../notion/client.js";
 import DocumentEditor from "./DocumentEditor.jsx";
@@ -381,9 +382,9 @@ export default function Document({ config = {}, editable = false, pageConfig }) 
 
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: "center", color: C.darkMuted, fontSize: 14, fontFamily: FONT }}>
-        <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>&#x27F3;</span>
-        {" "}Loading document...
+      <div style={{ padding: 40, textAlign: "center", color: C.darkMuted, fontSize: 14, fontFamily: FONT, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+        <Spinner size={14} />
+        Loading document...
       </div>
     );
   }

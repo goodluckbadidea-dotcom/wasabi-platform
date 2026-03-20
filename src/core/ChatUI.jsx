@@ -216,7 +216,7 @@ export default function ChatUI({
                             gap: 6,
                             background: C.accent + "14",
                             border: `1px solid ${C.accent}44`,
-                            borderRadius: RADIUS.md,
+                            borderRadius: RADIUS.pill,
                             padding: "5px 12px",
                             fontSize: 11,
                             fontWeight: 500,
@@ -275,7 +275,7 @@ export default function ChatUI({
                             gap: 6,
                             background: C.accent,
                             border: "none",
-                            borderRadius: RADIUS.md,
+                            borderRadius: RADIUS.pill,
                             padding: "6px 14px",
                             fontSize: 11,
                             fontWeight: 600,
@@ -483,7 +483,7 @@ export default function ChatUI({
           {files.map((f, i) => (
             <div key={i} style={{
               background: C.darkSurf,
-              borderRadius: RADIUS.md,
+              borderRadius: RADIUS.pill,
               padding: "4px 10px",
               fontSize: 12,
               color: C.darkMuted,

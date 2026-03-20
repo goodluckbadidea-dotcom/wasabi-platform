@@ -178,7 +178,7 @@ export default function PageBuilder({ initialTemplate = null, WasabiFlameIcon = 
             onChange={(e) => setSelectedParent(e.target.value || null)}
             style={{
               background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-              borderRadius: RADIUS.md, padding: "5px 8px",
+              borderRadius: RADIUS.pill, padding: "5px 8px",
               fontSize: 11, fontFamily: FONT, color: C.darkText, outline: "none",
             }}
           >

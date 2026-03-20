@@ -154,7 +154,7 @@ export default function MentionInput({
     padding: "10px 14px",
     fontSize: 13,
     fontFamily: FONT,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.pill,
     width: "100%",
     boxSizing: "border-box",
     outline: "none",

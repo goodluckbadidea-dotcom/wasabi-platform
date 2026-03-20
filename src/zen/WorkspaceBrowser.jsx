@@ -82,7 +82,7 @@ function ConfirmDialog({ title, message, warning, onConfirm, onCancel }) {
             style={{
               padding: "7px 16px", fontSize: 13, fontFamily: FONT,
               background: "transparent", border: `1px solid ${C.darkBorder}`,
-              borderRadius: RADIUS.md, color: C.darkMuted, cursor: "pointer",
+              borderRadius: RADIUS.pill, color: C.darkMuted, cursor: "pointer",
             }}
           >
             Cancel
@@ -92,7 +92,7 @@ function ConfirmDialog({ title, message, warning, onConfirm, onCancel }) {
             style={{
               padding: "7px 16px", fontSize: 13, fontFamily: FONT, fontWeight: 600,
               background: "#c0392b", border: "none",
-              borderRadius: RADIUS.md, color: "#fff", cursor: "pointer",
+              borderRadius: RADIUS.pill, color: "#fff", cursor: "pointer",
             }}
           >
             Delete
@@ -649,7 +649,7 @@ export default function WorkspaceBrowser() {
     searchInput: {
       flex: 1, padding: "9px 12px 9px 34px",
       background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
-      borderRadius: RADIUS.lg, fontSize: 13, fontFamily: FONT,
+      borderRadius: RADIUS.pill, fontSize: 13, fontFamily: FONT,
       color: C.darkText, outline: "none", transition: "border-color 0.15s",
     },
     searchIcon: {

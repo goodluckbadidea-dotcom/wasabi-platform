@@ -49,14 +49,14 @@ const labelStyle = {
 const fieldStyle = {
   width: "100%", boxSizing: "border-box",
   background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-  borderRadius: RADIUS.md, padding: "8px 12px",
+  borderRadius: RADIUS.pill, padding: "8px 12px",
   color: C.darkText, fontFamily: FONT, fontSize: 13,
   outline: "none", transition: "border-color 0.15s",
 };
 
 const actionBtnStyle = {
   background: "none", border: `1px solid ${C.darkBorder}`,
-  color: C.darkText, padding: "6px 14px", borderRadius: RADIUS.md,
+  color: C.darkText, padding: "6px 14px", borderRadius: RADIUS.pill,
   cursor: "pointer", fontFamily: FONT, fontSize: 11, fontWeight: 500,
   outline: "none", transition: "all 0.12s",
 };
@@ -372,7 +372,7 @@ function Composer({ mode, replyMsg, threadId, onSent, onDiscard, onDraftStatusCh
           style={{
             background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
             border: "none", color: "#fff",
-            padding: "6px 18px", borderRadius: RADIUS.md,
+            padding: "6px 18px", borderRadius: RADIUS.pill,
             fontFamily: FONT, fontSize: 12, fontWeight: 600,
             outline: "none", cursor: sending ? "wait" : "pointer",
             opacity: sending || !to.trim() || !subject.trim() ? 0.5 : 1,
@@ -619,7 +619,7 @@ export default function EmailThreadDrawer({ email, onClose }) {
             style={{
               background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
               border: "none", color: "#fff",
-              padding: "6px 18px", borderRadius: RADIUS.md,
+              padding: "6px 18px", borderRadius: RADIUS.pill,
               fontFamily: FONT, fontSize: 12, fontWeight: 600,
               outline: "none", cursor: composeSending ? "wait" : "pointer",
               opacity: composeSending || !composeTo.trim() || !composeSubject.trim() ? 0.5 : 1,

@@ -282,7 +282,7 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
     searchWrap: { padding: "12px 20px", borderBottom: `1px solid ${C.darkBorder}` },
     searchInput: {
       width: "100%", background: C.dark, border: `1px solid ${C.darkBorder}`,
-      borderRadius: RADIUS.md, padding: "8px 12px 8px 32px", fontSize: 13,
+      borderRadius: RADIUS.pill, padding: "8px 12px 8px 32px", fontSize: 13,
       fontFamily: FONT, color: C.darkText, outline: "none",
     },
     panels: {
@@ -310,7 +310,7 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
       padding: "12px 20px", borderTop: `1px solid ${C.darkBorder}`,
     },
     btn: (primary) => ({
-      padding: "8px 18px", borderRadius: RADIUS.md, border: "none",
+      padding: "8px 18px", borderRadius: RADIUS.pill, border: "none",
       fontSize: 13, fontWeight: 500, fontFamily: FONT, cursor: "pointer",
       background: primary ? C.accent : C.darkSurf2,
       color: primary ? "#fff" : C.darkText,

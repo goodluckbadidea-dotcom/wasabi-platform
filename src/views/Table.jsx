@@ -112,7 +112,7 @@ const styles = {
     alignItems: "center",
     background: C.darkSurf2,
     border: `1px solid ${C.darkBorder}`,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.pill,
     padding: "0 10px",
     flex: "1 1 200px",
     maxWidth: 320,
@@ -142,7 +142,7 @@ const styles = {
   filterSelect: {
     background: C.darkSurf2,
     border: `1px solid ${C.darkBorder}`,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.pill,
     padding: "6px 10px",
     fontSize: 12,
     fontFamily: FONT,
@@ -164,7 +164,7 @@ const styles = {
     justifyContent: "center",
     width: 34,
     height: 34,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.pill,
     border: `1px solid ${C.darkBorder}`,
     background: C.darkSurf2,
     cursor: "pointer",
@@ -599,7 +599,7 @@ function CellEditor({ value, type, options, schemaOptions, onCommit, onCancel, i
         style={{
           background: C.darkSurf,
           border: `1px solid ${C.accent}`,
-          borderRadius: RADIUS.md,
+          borderRadius: RADIUS.pill,
           padding: 8,
           boxShadow: `0 0 0 2px ${C.accent}33`,
           display: "flex",
@@ -2659,7 +2659,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                         <div
                           style={{
                             display: "flex", alignItems: "center", justifyContent: "center",
-                            width: 26, height: 26, borderRadius: RADIUS.md,
+                            width: 26, height: 26, borderRadius: RADIUS.pill,
                             border: `1px dashed ${C.darkBorder}`,
                             cursor: "pointer", transition: "all 0.15s",
                             color: C.darkMuted, opacity: 0.65,
