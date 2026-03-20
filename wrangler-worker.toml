@@ -17,12 +17,17 @@ bucket_name = "wasabi-docs"
 
 [durable_objects]
 bindings = [
-  { name = "TABLE_ROOMS", class_name = "TableRoom" }
+  { name = "TABLE_ROOMS", class_name = "TableRoom" },
+  { name = "USER_ROOMS", class_name = "UserRoom" }
 ]
 
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["TableRoom"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["UserRoom"]
 
 [triggers]
 crons = ["*/2 * * * *"]

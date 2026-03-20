@@ -832,17 +832,29 @@ export async function checkFreeBusy(timeMin, timeMax) {
 
 // ─── Auth ───
 
+function getDeviceInfo() {
+  try {
+    const ua = navigator.userAgent || "";
+    if (/iPad|Tablet/i.test(ua)) return "iPad";
+    if (/iPhone|Android.*Mobile/i.test(ua)) return "Mobile";
+    if (/Mac/i.test(ua)) return "Mac";
+    if (/Windows/i.test(ua)) return "Windows";
+    if (/Linux/i.test(ua)) return "Linux";
+    return ua.slice(0, 100);
+  } catch { return ""; }
+}
+
 export async function authRegister(inviteCode, displayName, password) {
   return apiFetch("/auth/register", {
     method: "POST",
-    body: { invite_code: inviteCode, display_name: displayName, password },
+    body: { invite_code: inviteCode, display_name: displayName, password, _device_info: getDeviceInfo() },
   });
 }
 
 export async function authLogin(displayName, password) {
   return apiFetch("/auth/login", {
     method: "POST",
-    body: { display_name: displayName, password },
+    body: { display_name: displayName, password, _device_info: getDeviceInfo() },
   });
 }
 
@@ -852,6 +864,24 @@ export async function authMe() {
 
 export async function authRefresh() {
   return apiFetch("/auth/refresh", { method: "POST" });
+}
+
+// ─── Session Management (multi-device) ───
+
+export async function listSessions() {
+  return apiFetch("/sessions", { method: "GET" });
+}
+
+export async function revokeSession(sessionId) {
+  return apiFetch(`/sessions/${sessionId}`, { method: "DELETE" });
+}
+
+export async function logoutOtherSessions() {
+  return apiFetch("/sessions/logout-all", { method: "POST" });
+}
+
+export async function logoutAllDevices() {
+  return apiFetch("/sessions/logout-all-devices", { method: "POST" });
 }
 
 // ─── User Management ───

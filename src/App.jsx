@@ -11,6 +11,7 @@ import { NeuronsProvider } from "./neurons/NeuronsContext.jsx";
 import { RecordDrawerProvider } from "./zen/RecordDrawerContext.jsx";
 import { ColorMappingProvider } from "./context/ColorMappingContext.jsx";
 import { ThemeProvider, useTheme } from "./context/ThemeContext.jsx";
+import { UserSyncProvider, useUserSync } from "./context/UserSyncContext.jsx";
 import { injectAnimations, ANIM, TRANSITION } from "./design/animations.js";
 import { S } from "./design/styles.js";
 import { C } from "./design/tokens.js";
@@ -147,6 +148,42 @@ function AppContent() {
   useEffect(() => { try { localStorage.setItem("wasabi_sidebar_collapsed", JSON.stringify(sidebarCollapsed)); } catch {} }, [sidebarCollapsed]);
   useEffect(() => { try { localStorage.setItem("wasabi_panel_open", JSON.stringify(wasabiPanelOpen)); } catch {} }, [wasabiPanelOpen]);
   useEffect(() => { try { localStorage.setItem("wasabi_view_states", JSON.stringify(viewStates)); } catch {} }, [viewStates]);
+
+  // ── Multi-device sync: navigation + session revocation ──
+  const userSync = useUserSync();
+  const isRemoteNavRef = useRef(false);
+
+  // Listen for nav updates from other devices
+  useEffect(() => {
+    if (!userSync?.onNavUpdate) return;
+    return userSync.onNavUpdate((pageId, folderId) => {
+      if (pageId && pageId !== activePage) {
+        isRemoteNavRef.current = true;
+        setActivePage(pageId);
+        if (folderId) setActiveFolder(folderId);
+      }
+    });
+  }, [userSync, activePage, setActivePage, setActiveFolder]);
+
+  // Broadcast nav changes to other devices
+  useEffect(() => {
+    if (!userSync?.sendNavUpdate || !activePage) return;
+    if (isRemoteNavRef.current) {
+      isRemoteNavRef.current = false;
+      return;
+    }
+    userSync.sendNavUpdate(activePage, activeFolder);
+  }, [activePage, activeFolder, userSync]);
+
+  // Handle session revocation (logout from another device)
+  useEffect(() => {
+    if (!userSync?.onSessionRevoked) return;
+    return userSync.onSessionRevoked(() => {
+      // Clear auth and redirect to login
+      try { localStorage.removeItem("wasabi_jwt"); } catch {}
+      window.location.reload();
+    });
+  }, [userSync]);
 
   // ── Clear page controls when navigating away ──
   const prevActivePage = useRef(activePage);
@@ -579,17 +616,19 @@ export default function App() {
   return (
     <ThemeProvider>
       <PlatformProvider>
-        <ColorMappingProvider>
-          <LinksProvider>
-            <NeuronsProvider>
-              <RecordDrawerProvider>
-                <ErrorBoundary fallbackLabel="Wasabi Platform">
-                  <AppContent />
-                </ErrorBoundary>
-              </RecordDrawerProvider>
-            </NeuronsProvider>
-          </LinksProvider>
-        </ColorMappingProvider>
+        <UserSyncProvider>
+          <ColorMappingProvider>
+            <LinksProvider>
+              <NeuronsProvider>
+                <RecordDrawerProvider>
+                  <ErrorBoundary fallbackLabel="Wasabi Platform">
+                    <AppContent />
+                  </ErrorBoundary>
+                </RecordDrawerProvider>
+              </NeuronsProvider>
+            </LinksProvider>
+          </ColorMappingProvider>
+        </UserSyncProvider>
       </PlatformProvider>
     </ThemeProvider>
   );

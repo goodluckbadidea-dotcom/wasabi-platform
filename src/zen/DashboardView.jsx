@@ -9,6 +9,7 @@ import { ANIM } from "../design/animations.js";
 import WidgetGrid from "../components/WidgetGrid.jsx";
 import RecordDrawer from "./RecordDrawer.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
+import { useUserSync } from "../context/UserSyncContext.jsx";
 import { getUserDashboard, putUserDashboard } from "../lib/api.js";
 
 function storageKey(userId) {
@@ -30,11 +31,13 @@ function saveWidgetsLocal(key, widgets) {
 
 export default function DashboardView() {
   const { identity } = usePlatform();
+  const userSync = useUserSync();
   const key = storageKey(identity?.id);
   const [widgets, setWidgets] = useState(() => loadWidgetsLocal(key));
   const saveTimerRef = useRef(null);
   const hasLoadedFromD1 = useRef(false);
   const prevIdentityId = useRef(identity?.id);
+  const isRemoteUpdate = useRef(false);
 
   // ── Reload widgets when user changes ──
   useEffect(() => {
@@ -60,17 +63,39 @@ export default function DashboardView() {
       .catch(() => {}); // Fall back to localStorage
   }, [identity, key]);
 
-  // Persist on every change (localStorage immediate, D1 debounced)
+  // ── Listen for dashboard updates from other devices ──
+  useEffect(() => {
+    if (!userSync?.onDashboardUpdate) return;
+    return userSync.onDashboardUpdate((remoteWidgets) => {
+      if (remoteWidgets && Array.isArray(remoteWidgets)) {
+        isRemoteUpdate.current = true;
+        setWidgets(remoteWidgets);
+        saveWidgetsLocal(key, remoteWidgets);
+        // Don't save to D1 — the sending device already did
+      }
+    });
+  }, [userSync, key]);
+
+  // Persist on every change (localStorage immediate, D1 debounced, broadcast to other devices)
   const handleUpdateWidgets = useCallback((newWidgets) => {
     setWidgets(newWidgets);
     saveWidgetsLocal(key, newWidgets);
+
+    // If this was triggered by a remote update, skip D1 save and broadcast
+    if (isRemoteUpdate.current) {
+      isRemoteUpdate.current = false;
+      return;
+    }
+
+    // Broadcast to other devices via WebSocket
+    userSync?.sendDashboardUpdate(newWidgets);
 
     // Debounced D1 save
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       putUserDashboard(newWidgets).catch(() => {});
     }, 1000);
-  }, [key]);
+  }, [key, userSync]);
 
   return (
     <div style={{

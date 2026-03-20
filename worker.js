@@ -404,6 +404,7 @@ async function verifyJwt(token, env) {
 }
 
 // Extract user from JWT in Authorization header (returns null if no JWT)
+// Also validates session hasn't been revoked (multi-device session management)
 async function extractUser(request, env) {
   const authHeader = request.headers.get("Authorization") || "";
   const match = authHeader.match(/^Bearer\s+(.+)$/i);
@@ -411,7 +412,25 @@ async function extractUser(request, env) {
   const token = match[1];
   // Skip if it looks like a Notion API key (ntn_ prefix)
   if (token.startsWith("ntn_") || token.startsWith("secret_")) return null;
-  return verifyJwt(token, env);
+  const payload = await verifyJwt(token, env);
+  if (!payload) return null;
+  // Check session revocation (jti present = multi-device aware token)
+  if (payload.jti) {
+    try {
+      const session = await env.DB.prepare(
+        "SELECT revoked_at FROM active_sessions WHERE id = ?"
+      ).bind(payload.jti).first();
+      if (session?.revoked_at) return null; // Session revoked
+      // Debounced last_seen_at update (only if >60s since last update)
+      // Fire-and-forget to avoid blocking the request
+      env.DB.prepare(
+        "UPDATE active_sessions SET last_seen_at = datetime('now') WHERE id = ? AND last_seen_at < datetime('now', '-60 seconds')"
+      ).bind(payload.jti).run().catch(() => {});
+    } catch (_) {
+      // If active_sessions table doesn't exist yet (pre-migration), skip check
+    }
+  }
+  return payload;
 }
 
 // ─── Auth Middleware ───
@@ -468,6 +487,8 @@ const ROUTE_PERMISSIONS = [
   // PIN verify — any user, PIN set — admin
   { pattern: "/pin/verify", method: "POST", minRole: null, exact: true },
   { pattern: "/pin/set", method: "POST", minRole: "admin", exact: true },
+  // Sessions — own data, no role check
+  { pattern: /^\/sessions/, method: "*", minRole: null },
   // Per-user state — own data, no role check
   { pattern: /^\/user-state/, method: "*", minRole: null },
   { pattern: /^\/user-dashboard/, method: "*", minRole: null },
@@ -674,6 +695,10 @@ export default {
     ctx.waitUntil(
       env.DB.prepare("DELETE FROM pin_sessions WHERE expires_at < datetime('now')").run().catch(() => {})
     );
+    // Clean up stale sessions (revoked or inactive >30 days)
+    ctx.waitUntil(
+      env.DB.prepare("DELETE FROM active_sessions WHERE revoked_at IS NOT NULL OR last_seen_at < datetime('now', '-30 days')").run().catch(() => {})
+    );
   },
 
   async fetch(request, env, ctx) {
@@ -713,6 +738,29 @@ export default {
         const roomId = env.TABLE_ROOMS.idFromName(tableId);
         const room = env.TABLE_ROOMS.get(roomId);
         return room.fetch(request);
+      }
+
+      // ─── WebSocket Upgrade (multi-device user sync) ───
+      const wsUserMatch = path.match(/^\/ws\/user\/(.+)$/);
+      if (wsUserMatch && request.headers.get("Upgrade") === "websocket") {
+        const wsToken = url.searchParams.get("token");
+        const wsKey = url.searchParams.get("key");
+        if (!wsKey || wsKey !== env.WASABI_SECRET) {
+          if (!wsToken) return new Response("Unauthorized", { status: 401 });
+          const wsUser = await verifyJwt(wsToken, env);
+          if (!wsUser) return new Response("Unauthorized", { status: 401 });
+          // Only connect to own room
+          if (wsUser.sub !== wsUserMatch[1]) return new Response("Forbidden", { status: 403 });
+        }
+        const userId = wsUserMatch[1];
+        const roomId = env.USER_ROOMS.idFromName(`user:${userId}`);
+        const room = env.USER_ROOMS.get(roomId);
+        // Pass session ID and device info via query params
+        const wsUrl = new URL(request.url);
+        const wsUserPayload = wsToken ? await verifyJwt(wsToken, env) : null;
+        wsUrl.searchParams.set("sid", wsUserPayload?.jti || "");
+        wsUrl.searchParams.set("device", request.headers.get("User-Agent")?.slice(0, 100) || "");
+        return room.fetch(new Request(wsUrl.toString(), request));
       }
 
       // ─── Auth Gate ───
@@ -805,6 +853,25 @@ export default {
       if (path === "/pin/verify" && request.method === "POST") {
         const body = await request.json();
         return await handleVerifyPin(env, body, user);
+      }
+
+      // ─── Session Management (multi-device) ───
+      if (path === "/sessions" && request.method === "GET") {
+        if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
+        return await handleListSessions(env, user);
+      }
+      if (path.match(/^\/sessions\/[^/]+$/) && request.method === "DELETE") {
+        if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
+        const sessionId = path.split("/sessions/")[1];
+        return await handleRevokeSession(env, user, sessionId);
+      }
+      if (path === "/sessions/logout-all" && request.method === "POST") {
+        if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
+        return await handleLogoutOtherSessions(env, user);
+      }
+      if (path === "/sessions/logout-all-devices" && request.method === "POST") {
+        if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
+        return await handleLogoutAllDevices(env, user);
       }
 
       // ─── Per-User State ───
@@ -2082,6 +2149,9 @@ async function handleInit(env) {
       // Tier 3: Server-side PIN sessions
       "CREATE TABLE IF NOT EXISTS pin_sessions (token TEXT PRIMARY KEY, user_id TEXT NOT NULL, page_id TEXT NOT NULL, expires_at TEXT NOT NULL)",
       "CREATE INDEX IF NOT EXISTS idx_pin_sessions_page ON pin_sessions(page_id, user_id)",
+      // Multi-device sync: active sessions
+      "CREATE TABLE IF NOT EXISTS active_sessions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, device_info TEXT DEFAULT '', ip_address TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')), last_seen_at TEXT DEFAULT (datetime('now')), revoked_at TEXT DEFAULT NULL)",
+      "CREATE INDEX IF NOT EXISTS idx_sessions_user ON active_sessions(user_id)",
     ];
     for (const sql of migrations) {
       try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }
@@ -2221,8 +2291,16 @@ async function handleAuthRegister(env, body) {
       "UPDATE users SET display_name = ?, password_hash = ?, last_login_at = ?, invite_code = NULL WHERE id = ?"
     ).bind(display_name.trim(), passwordHash, now, invite.id).run();
 
-    // Generate JWT
-    const token = await signJwt({ sub: invite.id, role: invite.role, name: display_name.trim() }, env);
+    // Generate JWT with session ID
+    const sessionId = crypto.randomUUID();
+    const token = await signJwt({ sub: invite.id, role: invite.role, name: display_name.trim(), jti: sessionId }, env);
+    // Record session
+    try {
+      const deviceInfo = (body._device_info || "").slice(0, 200);
+      await env.DB.prepare(
+        "INSERT INTO active_sessions (id, user_id, device_info) VALUES (?, ?, ?)"
+      ).bind(sessionId, invite.id, deviceInfo).run();
+    } catch (_) {}
     return jsonResponse({ ok: true, token, user: { id: invite.id, display_name: display_name.trim(), role: invite.role } });
   } catch (err) {
     return jsonResponse({ _error: `Registration failed: ${err.message}` }, 500);
@@ -2256,7 +2334,15 @@ async function handleAuthLogin(env, body) {
     await env.DB.prepare("UPDATE users SET last_login_at = ? WHERE id = ?")
       .bind(new Date().toISOString(), user.id).run();
 
-    const token = await signJwt({ sub: user.id, role: user.role, name: user.display_name }, env);
+    const sessionId = crypto.randomUUID();
+    const token = await signJwt({ sub: user.id, role: user.role, name: user.display_name, jti: sessionId }, env);
+    // Record session
+    try {
+      const deviceInfo = (body._device_info || "").slice(0, 200);
+      await env.DB.prepare(
+        "INSERT INTO active_sessions (id, user_id, device_info) VALUES (?, ?, ?)"
+      ).bind(sessionId, user.id, deviceInfo).run();
+    } catch (_) {}
     return jsonResponse({ ok: true, token, user: { id: user.id, display_name: user.display_name, role: user.role } });
   } catch (err) {
     return jsonResponse({ _error: `Login failed: ${err.message}` }, 500);
@@ -2282,7 +2368,8 @@ async function handleAuthRefresh(env, jwtPayload) {
     ).bind(jwtPayload.sub).first();
     if (!user) return jsonResponse({ _error: "User not found" }, 404);
 
-    const token = await signJwt({ sub: user.id, role: user.role, name: user.display_name }, env);
+    // Preserve session ID (jti) across token refreshes — same session, new token
+    const token = await signJwt({ sub: user.id, role: user.role, name: user.display_name, jti: jwtPayload.jti || null }, env);
     return jsonResponse({ ok: true, token, user });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
@@ -2426,6 +2513,97 @@ async function handleUpdateUser(env, userId, body) {
   }
 }
 
+// ─── Session Management Handlers (multi-device sync) ───
+
+async function handleListSessions(env, user) {
+  try {
+    const rows = await env.DB.prepare(
+      "SELECT id, device_info, created_at, last_seen_at FROM active_sessions WHERE user_id = ? AND revoked_at IS NULL ORDER BY last_seen_at DESC"
+    ).bind(user.sub).all();
+    return jsonResponse({
+      sessions: (rows.results || []).map((s) => ({
+        ...s,
+        is_current: s.id === user.jti,
+      })),
+    });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleRevokeSession(env, user, sessionId) {
+  try {
+    // Only revoke own sessions
+    const session = await env.DB.prepare(
+      "SELECT user_id FROM active_sessions WHERE id = ? AND revoked_at IS NULL"
+    ).bind(sessionId).first();
+    if (!session || session.user_id !== user.sub) {
+      return jsonResponse({ _error: "Session not found" }, 404);
+    }
+    await env.DB.prepare(
+      "UPDATE active_sessions SET revoked_at = datetime('now') WHERE id = ?"
+    ).bind(sessionId).run();
+    // Broadcast session revocation via UserRoom DO
+    try {
+      const roomId = env.USER_ROOMS.idFromName(`user:${user.sub}`);
+      const room = env.USER_ROOMS.get(roomId);
+      await room.fetch(new Request("https://internal/broadcast", {
+        method: "POST",
+        body: JSON.stringify({ type: "session_revoked", sessionIds: [sessionId] }),
+      }));
+    } catch (_) {}
+    return jsonResponse({ ok: true });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleLogoutOtherSessions(env, user) {
+  try {
+    // Revoke all sessions except current
+    const revoked = await env.DB.prepare(
+      "UPDATE active_sessions SET revoked_at = datetime('now') WHERE user_id = ? AND id != ? AND revoked_at IS NULL"
+    ).bind(user.sub, user.jti || "").run();
+    // Get revoked session IDs for broadcast
+    const revokedSessions = await env.DB.prepare(
+      "SELECT id FROM active_sessions WHERE user_id = ? AND revoked_at IS NOT NULL AND id != ?"
+    ).bind(user.sub, user.jti || "").all();
+    const sessionIds = (revokedSessions.results || []).map((s) => s.id);
+    // Broadcast via UserRoom DO
+    try {
+      const roomId = env.USER_ROOMS.idFromName(`user:${user.sub}`);
+      const room = env.USER_ROOMS.get(roomId);
+      await room.fetch(new Request("https://internal/broadcast", {
+        method: "POST",
+        body: JSON.stringify({ type: "session_revoked", sessionIds }),
+      }));
+    } catch (_) {}
+    return jsonResponse({ ok: true, revoked_count: revoked.meta?.changes || 0 });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+async function handleLogoutAllDevices(env, user) {
+  try {
+    await env.DB.prepare(
+      "UPDATE active_sessions SET revoked_at = datetime('now') WHERE user_id = ? AND revoked_at IS NULL"
+    ).bind(user.sub).run();
+    // Broadcast to all connections
+    try {
+      const roomId = env.USER_ROOMS.idFromName(`user:${user.sub}`);
+      const room = env.USER_ROOMS.get(roomId);
+      await room.fetch(new Request("https://internal/broadcast", {
+        method: "POST",
+        body: JSON.stringify({ type: "session_revoked", sessionIds: ["*"] }),
+      }));
+    } catch (_) {}
+    return jsonResponse({ ok: true });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
 // ─── Per-User State Handlers ───
 
 async function handleGetUserState(env, user) {
@@ -2463,15 +2641,32 @@ async function handleGetUserDashboard(env, user) {
   try {
     const row = await env.DB.prepare("SELECT * FROM user_dashboards WHERE user_id = ?").bind(user.sub).first();
     const widgets = row?.widgets ? JSON.parse(row.widgets) : [];
-    return jsonResponse({ widgets });
+    return jsonResponse({ widgets, updated_at: row?.updated_at || null });
   } catch (err) {
-    return jsonResponse({ widgets: [] });
+    return jsonResponse({ widgets: [], updated_at: null });
   }
 }
 
 async function handlePutUserDashboard(env, user, body) {
   try {
     const widgetsJson = JSON.stringify(body.widgets || []);
+    // Conflict detection: if client sends if_match (updated_at), check it
+    if (body.if_match) {
+      const existing = await env.DB.prepare(
+        "SELECT updated_at FROM user_dashboards WHERE user_id = ?"
+      ).bind(user.sub).first();
+      if (existing && existing.updated_at > body.if_match) {
+        const currentWidgets = await env.DB.prepare(
+          "SELECT widgets FROM user_dashboards WHERE user_id = ?"
+        ).bind(user.sub).first();
+        return jsonResponse({
+          _error: "Conflict: dashboard was updated on another device",
+          conflict: true,
+          server_widgets: currentWidgets?.widgets ? JSON.parse(currentWidgets.widgets) : [],
+          server_updated_at: existing.updated_at,
+        }, 409);
+      }
+    }
     await env.DB.prepare(
       `INSERT INTO user_dashboards (user_id, widgets, updated_at)
        VALUES (?, ?, datetime('now'))
@@ -8845,6 +9040,126 @@ export class TableRoom {
     const data = JSON.stringify({ type: "presence", users });
     for (const [ws, session] of this.sessions) {
       if (!session.userId) continue;
+      try { ws.send(data); } catch {}
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// UserRoom — Durable Object for multi-device sync
+// One instance per user. Manages WebSocket connections across all devices.
+// Syncs dashboard layout, navigation state, and session revocation.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export class UserRoom {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+    this.sessions = new Map(); // ws → { sessionId, deviceInfo, connectedAt }
+  }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+
+    // HTTP broadcast endpoint (server-initiated messages, e.g., session revocation)
+    if (request.method === "POST" && url.pathname === "/broadcast") {
+      return this.handleBroadcast(request);
+    }
+
+    // WebSocket upgrade
+    const upgrade = request.headers.get("Upgrade");
+    if (!upgrade || upgrade.toLowerCase() !== "websocket") {
+      return new Response("Expected WebSocket upgrade", { status: 426 });
+    }
+
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+
+    const sessionId = url.searchParams.get("sid") || "";
+    const deviceInfo = url.searchParams.get("device") || "unknown";
+
+    server.accept();
+    this.sessions.set(server, { sessionId, deviceInfo, connectedAt: Date.now() });
+
+    server.addEventListener("message", (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        this.handleMessage(server, msg);
+      } catch {}
+    });
+
+    server.addEventListener("close", () => {
+      this.sessions.delete(server);
+      this.broadcastDeviceList();
+    });
+
+    server.addEventListener("error", () => {
+      this.sessions.delete(server);
+    });
+
+    // Send device list to all (including new connection)
+    this.broadcastDeviceList();
+
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  handleMessage(sender, msg) {
+    switch (msg.type) {
+      case "dashboard_update":
+      case "nav_update":
+        // Relay to all OTHER connections (not sender)
+        this.broadcast(msg, sender);
+        break;
+      case "ping":
+        this.sendTo(sender, { type: "pong" });
+        break;
+    }
+  }
+
+  async handleBroadcast(request) {
+    try {
+      const msg = await request.json();
+      if (msg.type === "session_revoked") {
+        const revokeAll = msg.sessionIds?.includes("*");
+        for (const [ws, session] of this.sessions) {
+          if (revokeAll || msg.sessionIds?.includes(session.sessionId)) {
+            this.sendTo(ws, msg);
+            try { ws.close(4001, "Session revoked"); } catch {}
+            this.sessions.delete(ws);
+          }
+        }
+      } else {
+        for (const [ws] of this.sessions) {
+          try { ws.send(JSON.stringify(msg)); } catch {}
+        }
+      }
+    } catch {}
+    return new Response("ok");
+  }
+
+  broadcast(msg, excludeWs) {
+    const data = JSON.stringify(msg);
+    for (const [ws] of this.sessions) {
+      if (ws === excludeWs) continue;
+      try { ws.send(data); } catch {}
+    }
+  }
+
+  sendTo(ws, msg) {
+    try { ws.send(JSON.stringify(msg)); } catch {}
+  }
+
+  broadcastDeviceList() {
+    const devices = [];
+    for (const [, session] of this.sessions) {
+      devices.push({
+        sessionId: session.sessionId,
+        deviceInfo: session.deviceInfo,
+        connectedAt: session.connectedAt,
+      });
+    }
+    const data = JSON.stringify({ type: "devices", devices });
+    for (const [ws] of this.sessions) {
       try { ws.send(data); } catch {}
     }
   }

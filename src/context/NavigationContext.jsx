@@ -25,10 +25,7 @@ export function NavigationProvider({ children }) {
 
   const [activePage, setActivePage] = useState(() => loadJSON("wasabi_active_page", null));
   const [activeFolder, setActiveFolder] = useState(() => loadJSON("wasabi_active_folder", null));
-  const [expandedNodes, setExpandedNodes] = useState(() => {
-    const saved = loadJSON("wasabi_expanded_nodes", null);
-    return saved ? new Set(saved) : new Set();
-  });
+  const [expandedNodes, setExpandedNodes] = useState(new Set());
 
   // Navigation signal for breadcrumb → ZenWorkspaces path sync
   const [targetFolderPath, setTargetFolderPath] = useState(null);
@@ -36,7 +33,8 @@ export function NavigationProvider({ children }) {
   // ── Persist to localStorage ──
   useEffect(() => { saveJSON("wasabi_active_page", activePage); }, [activePage]);
   useEffect(() => { saveJSON("wasabi_active_folder", activeFolder); }, [activeFolder]);
-  useEffect(() => { saveJSON("wasabi_expanded_nodes", [...expandedNodes]); }, [expandedNodes]);
+  // Clean up vestigial localStorage key (no longer used)
+  useEffect(() => { try { localStorage.removeItem("wasabi_expanded_nodes"); } catch {} }, []);
 
   // ── Restore per-user state from D1 on login ──
   const hasRestoredUserState = useRef(false);
