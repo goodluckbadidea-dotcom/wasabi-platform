@@ -431,6 +431,33 @@ function requireRole(user, minRole) {
   return (ROLE_LEVEL[user.role] || 0) >= (ROLE_LEVEL[minRole] || 99);
 }
 
+// ─── Record title resolution ───
+// Finds the display title from a row's cells by checking the schema's title column,
+// then falling back to common field name patterns.
+async function resolveRecordTitle(env, tableId, cells) {
+  if (!cells || typeof cells !== "object") return "";
+  // Try schema lookup — title column is first column or type === "title"
+  try {
+    const schema = await env.DB.prepare("SELECT columns FROM table_schemas WHERE id = ?").bind(tableId).first();
+    if (schema?.columns) {
+      const cols = JSON.parse(schema.columns);
+      const titleCol = cols.find((c) => c.type === "title") || cols[0];
+      if (titleCol?.name && cells[titleCol.name]) return String(cells[titleCol.name]);
+    }
+  } catch (_) {}
+  // Fallback: scan common field name patterns (case-insensitive)
+  const keys = Object.keys(cells);
+  for (const pattern of ["task", "title", "name", "project name", "project", "subject", "item"]) {
+    const match = keys.find((k) => k.toLowerCase() === pattern);
+    if (match && cells[match]) return String(cells[match]);
+  }
+  // Last resort: first non-empty string value
+  for (const k of keys) {
+    if (typeof cells[k] === "string" && cells[k].trim()) return cells[k];
+  }
+  return "";
+}
+
 // ─── Route Permission Map (first match wins) ───
 // minRole: "admin" | "editor" | "viewer" | null (null = no role check, any authenticated user)
 const ROUTE_PERMISSIONS = [
@@ -4008,7 +4035,7 @@ async function handleUpdateRow(env, tableId, rowId, body, user) {
           const statusFields = ["status", "Status", "stage", "Stage", "state", "State", "phase", "Phase"];
           for (const field of statusFields) {
             if (newCells[field] !== undefined && oldCells[field] !== undefined && newCells[field] !== oldCells[field]) {
-              const title = newCells.task || newCells.title || newCells.name || newCells.Task || newCells.Title || newCells.Name || "Record";
+              const title = await resolveRecordTitle(env, tableId, newCells) || "Record";
               const actorName = user.name || "Someone";
               const ownerUserIds = existing?.owner_user_id;
               if (ownerUserIds && ownerUserIds !== "default" && ownerUserIds !== "unassigned") {
@@ -4053,8 +4080,7 @@ async function handleUpdateRow(env, tableId, rowId, body, user) {
           }
           const newlyAssigned = newOwners.filter((id) => !oldOwners.includes(id));
           if (newlyAssigned.length > 0) {
-            const title = (body.cells ? (body.cells.task || body.cells.title || body.cells.name) : null)
-              || oldCells.task || oldCells.title || oldCells.name || oldCells.Task || oldCells.Title || oldCells.Name || "Record";
+            const title = await resolveRecordTitle(env, tableId, newCells) || "Record";
             const actorName = user.name || "Someone";
             for (const assigneeId of newlyAssigned) {
               if (assigneeId !== user.sub) {
@@ -4247,7 +4273,7 @@ async function handleCreateComment(env, recordId, body) {
       const rowData = await env.DB.prepare("SELECT cells, table_id FROM table_rows WHERE id = ?").bind(recordId).first();
       if (rowData?.cells) {
         const c = typeof rowData.cells === "string" ? JSON.parse(rowData.cells) : rowData.cells;
-        recordTitle = c.task || c.title || c.name || c.Task || c.Title || c.Name || "";
+        recordTitle = await resolveRecordTitle(env, rowData.table_id || "", c);
       }
       if (rowData?.table_id) {
         const pc = await env.DB.prepare("SELECT name FROM page_configs WHERE id = ?").bind(rowData.table_id).first();
