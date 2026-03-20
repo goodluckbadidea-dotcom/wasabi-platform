@@ -12,6 +12,17 @@ import React, { useState, useCallback, useEffect, useRef } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { listRecordComments, createRecordComment, deleteRecordComment } from "../lib/api.js";
 import { timeAgo } from "../utils/helpers.js";
+import MentionInput from "./MentionInput.jsx";
+
+function renderCommentContent(text) {
+  if (!text) return null;
+  const parts = text.split(/(@\w+)/g);
+  return parts.map((part, i) =>
+    part.startsWith("@") ? (
+      <span key={i} style={{ color: C.accent, fontWeight: 600 }}>{part}</span>
+    ) : part
+  );
+}
 
 export default function RecordComments({
   recordId,
@@ -107,7 +118,7 @@ export default function RecordComments({
                     {comment.created_at ? timeAgo(comment.created_at) : ""}
                   </span>
                 </div>
-                <div style={s.commentContent}>{comment.content}</div>
+                <div style={s.commentContent}>{renderCommentContent(comment.content)}</div>
               </div>
               {canDelete && (
                 <button
@@ -128,15 +139,15 @@ export default function RecordComments({
 
       {/* New comment input */}
       <div style={s.inputRow}>
-        <input
-          ref={inputRef}
-          type="text"
-          value={newComment}
-          onChange={(e) => setNewComment(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Add a comment..."
-          style={s.input}
-        />
+        <div style={{ flex: 1 }}>
+          <MentionInput
+            value={newComment}
+            onChange={setNewComment}
+            onKeyDown={handleKeyDown}
+            placeholder="Add a comment... (type @ to mention)"
+            style={s.input}
+          />
+        </div>
         <button
           onClick={handleSend}
           disabled={sending || !newComment.trim()}
