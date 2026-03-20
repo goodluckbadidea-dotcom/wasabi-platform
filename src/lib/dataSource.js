@@ -40,13 +40,13 @@ export function resolveSourceType(pageConfig) {
   const pt = pageConfig.page_type || pageConfig.pageType;
   if (pt === "database") return "d1";
   if (pt === "standalone_table") return "d1";
-  if (pt === "linked_notion") return "notion"; // REVERTED: D1 data format needs adapters before switching
+  if (pt === "linked_notion") return "d1"; // All data synced to D1 — Notion is sync layer, not read source
   if (pt === "linked_monday") return "monday";
   if (pt === "linked_sheet") return "linked_sheet";
   if (pt === "document") return "document";
   if (pt === "folder") return "folder";
-  // Legacy: pages with databaseIds are Notion-based
-  if (pageConfig.databaseIds?.length) return "notion"; // REVERTED: needs format adapters first
+  // Legacy: pages with databaseIds are D1-backed (data synced from Notion)
+  if (pageConfig.databaseIds?.length) return "d1";
   return "none";
 }
 
@@ -55,10 +55,16 @@ export function resolveSourceType(pageConfig) {
 async function fetchD1Table(pageConfig) {
   const tableId = pageConfig.id;
 
-  const [schemaRes, rowsRes] = await Promise.all([
-    getTableSchema(tableId),
-    listRows(tableId),
-  ]);
+  let schemaRes, rowsRes;
+  try {
+    [schemaRes, rowsRes] = await Promise.all([
+      getTableSchema(tableId).catch(() => ({ columns: [] })),
+      listRows(tableId).catch(() => ({ rows: [] })),
+    ]);
+  } catch {
+    schemaRes = { columns: [] };
+    rowsRes = { rows: [] };
+  }
 
   const columns = schemaRes.columns || [];
   const rows = rowsRes.rows || [];
@@ -539,7 +545,7 @@ function mapD1Type(d1Type) {
 function normalizeOptions(options) {
   if (!options) return [];
   return options.map((o) => ({
-    name: typeof o === "string" ? o : o.name,
+    name: typeof o === "string" ? o : (o.name || o.label),
     color: typeof o === "string" ? "default" : (o.color || "default"),
   }));
 }

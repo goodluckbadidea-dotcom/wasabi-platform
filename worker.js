@@ -3589,6 +3589,24 @@ async function handleCreatePage(env, body, user) {
       ).bind(id, r2Key).run();
     }
 
+    // Auto-bootstrap sync for linked_notion pages — populate D1 schema + rows
+    if (page_type === "linked_notion") {
+      const dbIds = config?.databaseIds || [];
+      if (dbIds.length > 0) {
+        try {
+          const notionKey = await getNotionKeyFromDB(env);
+          if (notionKey) {
+            const configBody = { notion_db_id: dbIds[0], direction: "bidirectional" };
+            await handleSyncConfigure(env, id, configBody, notionKey);
+            await handleSyncPull(env, id, notionKey, true);
+          }
+        } catch (err) {
+          console.error(`Auto-bootstrap sync failed for page ${id}:`, err.message);
+          // Non-fatal — page is created, sync can be retried later
+        }
+      }
+    }
+
     return jsonResponse({ ok: true, id }, 201);
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
@@ -7852,6 +7870,45 @@ async function handleSyncPull(env, tableId, notionKey, fullResync = false) {
     cursor = data.has_more ? data.next_cursor : null;
   } while (cursor);
 
+  // Refresh schema options from Notion DB metadata (keeps select/status options current)
+  try {
+    const dbMeta = await fetch(`${NOTION_API}/databases/${notionDbId}`, {
+      headers: { Authorization: `Bearer ${notionKey}`, "Notion-Version": NOTION_VERSION },
+    });
+    if (dbMeta.ok) {
+      const dbData = await dbMeta.json();
+      const freshColumns = notionPropsToD1Columns(dbData.properties || {});
+      // Merge: update options on existing columns, add new columns
+      const existingById = {};
+      for (const c of columns) existingById[c.id] = c;
+      for (const fc of freshColumns) {
+        if (existingById[fc.id]) {
+          // Update options and type if changed
+          existingById[fc.id].options = fc.options || existingById[fc.id].options;
+          existingById[fc.id].type = fc.type;
+        } else {
+          columns.push(fc);
+          existingById[fc.id] = fc;
+        }
+      }
+      await env.DB.prepare(
+        "UPDATE table_schemas SET columns = ?, updated_at = datetime('now') WHERE id = ?"
+      ).bind(JSON.stringify(columns), tableId).run();
+
+      // Also add new columns to field mapping
+      for (const fc of freshColumns) {
+        if (!fieldMapping[fc.id]) {
+          fieldMapping[fc.id] = { notion_property: fc.name, notion_type: fc.type };
+        }
+      }
+      await env.DB.prepare(
+        "UPDATE sync_configs SET field_mapping = ? WHERE table_id = ?"
+      ).bind(JSON.stringify(fieldMapping), tableId).run();
+    }
+  } catch (err) {
+    console.error(`Schema refresh failed for ${tableId}:`, err.message);
+  }
+
   let created = 0, updated = 0, archived = 0, errors = 0;
 
   // Reverse field mapping: notion_property → col_id
@@ -8036,8 +8093,8 @@ async function handleSyncBootstrap(env, notionKey) {
           continue;
         }
 
-        // Run full pull
-        const pullRes = await handleSyncPull(env, page.id, true, notionKey);
+        // Run full pull (fix: correct argument order)
+        const pullRes = await handleSyncPull(env, page.id, notionKey, true);
         const pullData = await pullRes.json().catch(() => ({}));
 
         if (pullData._error) {
@@ -8045,10 +8102,8 @@ async function handleSyncBootstrap(env, notionKey) {
           continue;
         }
 
-        // Update page_type to "database" so resolveSourceType returns "d1"
-        await env.DB.prepare(
-          "UPDATE page_configs SET page_type = 'database' WHERE id = ?"
-        ).bind(page.id).run();
+        // Keep page_type as "linked_notion" — the Notion connection is still active.
+        // resolveSourceType now returns "d1" for linked_notion pages.
 
         results.push({
           page_id: page.id,

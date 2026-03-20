@@ -1106,7 +1106,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const isNotionTable = sourceType === "notion";
 
   // ── Owner Column ──
-  const showOwnerColumn = !!(config.showOwnerColumn || pageConfig?.config?.showOwnerColumn) && isD1Table;
+  const showOwnerColumn = !!(config.showOwnerColumn || pageConfig?.config?.showOwnerColumn);
   const [teamUsers, setTeamUsers] = useState([]);
   const [ownerPickerRow, setOwnerPickerRow] = useState(null); // pageId of row being edited
   useEffect(() => {
