@@ -351,7 +351,7 @@ const OwnerPickerDropdown = React.forwardRef(function OwnerPickerDropdown({ owne
       ref={ref}
       onClick={(e) => e.stopPropagation()}
       style={{
-        position: "absolute", bottom: "100%", left: 0, zIndex: 200,
+        position: "absolute", top: "100%", left: 0, zIndex: 200,
         background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
         borderRadius: RADIUS.lg, boxShadow: SHADOW.dropdown,
         width: 240, maxHeight: 300, display: "flex", flexDirection: "column",
@@ -599,6 +599,67 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
         {activeTab === "properties" && (
           <>
             <div style={ds.body}>
+              {/* ── Owner Field (top of properties) ── */}
+              {teamUsers.length > 0 && (
+                <div
+                  className="prop-row-hover"
+                  style={{ ...ds.propRow, cursor: "pointer", position: "relative" }}
+                  onClick={() => setOwnerPickerOpen((v) => !v)}
+                >
+                  <div style={{ ...ds.propLabel, display: "flex", alignItems: "center", gap: 6 }}>
+                    <span>Owner</span>
+                    <span style={ds.propType}>People</span>
+                  </div>
+                  <div style={{ ...ds.propValue, position: "relative" }}>
+                    {ownerIds.length === 0 ? (
+                      <span style={{ color: C.darkMuted, opacity: 0.6, fontSize: 13 }}>Unassigned</span>
+                    ) : (
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+                        {ownerIds.map((uid) => {
+                          const u = teamUsers.find((t) => t.id === uid);
+                          const name = u?.display_name || uid.slice(0, 8);
+                          return (
+                            <span key={uid} style={{
+                              display: "inline-flex", alignItems: "center", gap: 4,
+                              background: C.accent + "18", border: `1px solid ${C.accent}33`,
+                              borderRadius: 12, padding: "1px 8px 1px 3px",
+                              fontSize: 11, fontWeight: 500, color: C.darkText, lineHeight: "20px",
+                            }}>
+                              <span style={{
+                                width: 16, height: 16, borderRadius: "50%",
+                                background: `linear-gradient(135deg, ${C.accent}, ${C.accent}88)`,
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                fontSize: 9, fontWeight: 700, color: "#fff", flexShrink: 0,
+                              }}>{name.charAt(0).toUpperCase()}</span>
+                              {name}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <IconEdit size={10} color={C.darkMuted + "66"} />
+                    {ownerPickerOpen && (
+                      <OwnerPickerDropdown
+                        ref={ownerPickerRef}
+                        ownerIds={ownerIds}
+                        users={teamUsers}
+                        onCommit={async (ids) => {
+                          setOwnerIds(ids);
+                          setOwnerPickerOpen(false);
+                          if (pageConfigId) {
+                            try {
+                              await updateRowOwner(pageConfigId, page.id, ids);
+                              if (onRefresh) setTimeout(onRefresh, 300);
+                            } catch (err) { console.error("Owner update failed:", err); }
+                          }
+                        }}
+                        onClose={() => setOwnerPickerOpen(false)}
+                      />
+                    )}
+                  </div>
+                </div>
+              )}
+
               {properties.map(([fieldName, prop]) => {
                 const isEditing = editingField === fieldName;
                 const isEditable = EDITABLE_TYPES.has(prop.type);
@@ -693,69 +754,6 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
                   </div>
                 );
               })}
-
-              {/* ── Owner Field ── */}
-              {teamUsers.length > 0 && (
-                <div
-                  className="prop-row-hover"
-                  style={{ ...ds.propRow, cursor: "pointer", position: "relative" }}
-                  onClick={() => setOwnerPickerOpen((v) => !v)}
-                >
-                  <div style={{ ...ds.propLabel, display: "flex", alignItems: "center", gap: 6 }}>
-                    <span>Owner</span>
-                    <span style={ds.propType}>People</span>
-                  </div>
-                  <div style={{ ...ds.propValue, position: "relative" }}>
-                    {ownerIds.length === 0 ? (
-                      <span style={{ color: C.darkMuted, opacity: 0.6, fontSize: 13 }}>Unassigned</span>
-                    ) : (
-                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
-                        {ownerIds.map((uid) => {
-                          const u = teamUsers.find((t) => t.id === uid);
-                          const name = u?.display_name || uid.slice(0, 8);
-                          return (
-                            <span key={uid} style={{
-                              display: "inline-flex", alignItems: "center", gap: 4,
-                              background: C.accent + "18", border: `1px solid ${C.accent}33`,
-                              borderRadius: 12, padding: "1px 8px 1px 3px",
-                              fontSize: 11, fontWeight: 500, color: C.darkText, lineHeight: "20px",
-                            }}>
-                              <span style={{
-                                width: 16, height: 16, borderRadius: "50%",
-                                background: `linear-gradient(135deg, ${C.accent}, ${C.accent}88)`,
-                                display: "flex", alignItems: "center", justifyContent: "center",
-                                fontSize: 9, fontWeight: 700, color: "#fff", flexShrink: 0,
-                              }}>{name.charAt(0).toUpperCase()}</span>
-                              {name}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    )}
-                    <IconEdit size={10} color={C.darkMuted + "66"} />
-
-                    {/* Owner Picker Dropdown */}
-                    {ownerPickerOpen && (
-                    <OwnerPickerDropdown
-                      ref={ownerPickerRef}
-                      ownerIds={ownerIds}
-                      users={teamUsers}
-                      onCommit={async (ids) => {
-                        setOwnerIds(ids);
-                        setOwnerPickerOpen(false);
-                        if (pageConfigId) {
-                          try {
-                            await updateRowOwner(pageConfigId, page.id, ids);
-                            if (onRefresh) setTimeout(onRefresh, 300);
-                          } catch (err) { console.error("Owner update failed:", err); }
-                        }
-                      }}
-                      onClose={() => setOwnerPickerOpen(false)}
-                    />
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Footer — only on Properties tab */}
