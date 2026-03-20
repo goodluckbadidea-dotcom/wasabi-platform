@@ -4,7 +4,7 @@
 // Sprint C: Record grouping, priority tiers, notification preferences.
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { C, FONT, RADIUS } from "../design/tokens.js";
+import { C, FONT, FONT_DISPLAY, RADIUS } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { useRecordDrawer } from "../zen/RecordDrawerContext.jsx";
@@ -574,7 +574,7 @@ export default function NotificationFeed() {
       <div style={{ flexShrink: 0, padding: "16px 32px 0", borderBottom: `1px solid ${C.edgeLine}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, animation: ANIM.snapUp(0.03) }}>
           <IconBell size={22} color={C.accent} />
-          <span style={{ fontSize: 18, fontWeight: 600, color: C.darkText, fontFamily: FONT }}>Inbox</span>
+          <span style={{ fontSize: 18, fontWeight: 600, color: C.darkText, fontFamily: FONT_DISPLAY }}>Inbox</span>
           <div style={{ flex: 1 }} />
           {/* Preferences toggle */}
           <button onClick={() => setShowPrefs((v) => !v)}

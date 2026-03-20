@@ -4,7 +4,7 @@
 // Supports: paragraph, heading_1/2/3, bulleted_list_item, numbered_list_item, code, divider.
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { C, FONT, MONO, RADIUS, SHADOW } from "../design/tokens.js";
+import { C, FONT, FONT_DISPLAY, MONO, RADIUS, SHADOW } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { getBlocks, appendBlocks, updateBlock, deleteBlock } from "../notion/client.js";
 import { getDocument, saveDocument } from "../lib/api.js";
@@ -352,11 +352,11 @@ function blockStyle(type) {
   };
   switch (type) {
     case "heading_1":
-      return { ...base, fontSize: 22, fontWeight: 700, margin: "20px 0 4px" };
+      return { ...base, fontFamily: FONT_DISPLAY, fontSize: 22, fontWeight: 700, margin: "20px 0 4px" };
     case "heading_2":
-      return { ...base, fontSize: 18, fontWeight: 600, margin: "16px 0 2px" };
+      return { ...base, fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 600, margin: "16px 0 2px" };
     case "heading_3":
-      return { ...base, fontSize: 15, fontWeight: 600, margin: "12px 0 2px" };
+      return { ...base, fontFamily: FONT_DISPLAY, fontSize: 15, fontWeight: 600, margin: "12px 0 2px" };
     case "bulleted_list_item":
     case "numbered_list_item":
       return { ...base, fontSize: 14, paddingLeft: 24 };

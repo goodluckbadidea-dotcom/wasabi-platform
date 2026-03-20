@@ -4,7 +4,7 @@
 // Supports creating and deleting events. No external CSS -- all inline.
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
+import { C, FONT, FONT_DISPLAY, RADIUS, SHADOW } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import {
   listCalendarEvents,
@@ -1064,7 +1064,7 @@ export default function CalendarView() {
               return (
                 <div key={i} style={S.weekColHeader(isToday_)}>
                   <div>{SHORT_DAYS[date.getDay()]}</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, marginTop: 2, color: isToday_ ? C.accent : C.darkText }}>
+                  <div style={{ fontSize: 18, fontWeight: 700, marginTop: 2, color: isToday_ ? C.accent : C.darkText, fontFamily: FONT_DISPLAY }}>
                     {date.getDate()}
                   </div>
                 </div>

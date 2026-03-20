@@ -4,7 +4,7 @@
 // No search, no label tabs, no star/unstar — keeps it simple.
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { C, FONT, RADIUS } from "../design/tokens.js";
+import { C, FONT, FONT_DISPLAY, RADIUS } from "../design/tokens.js";
 import { ANIM, TRANSITION } from "../design/animations.js";
 import { searchEmails, getEmail, sendEmail, modifyEmail } from "../lib/api.js";
 import { useRecordDrawer } from "./RecordDrawerContext.jsx";
@@ -436,7 +436,7 @@ export default function GmailView() {
           marginBottom: 10,
         }}>
           <div style={{
-            fontSize: 18, fontWeight: 600, fontFamily: FONT, color: C.darkText,
+            fontSize: 18, fontWeight: 600, fontFamily: FONT_DISPLAY, color: C.darkText,
             display: "flex", alignItems: "center", gap: 10,
           }}>
             <svg width="20" height="20" viewBox="0 0 16 16" fill="none">

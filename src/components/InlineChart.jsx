@@ -4,7 +4,7 @@
 // Rendered from wasabi-chart code blocks in markdown.
 
 import React from "react";
-import { C, FONT, RADIUS, SELECT_PALETTE } from "../design/tokens.js";
+import { C, FONT, FONT_DISPLAY, RADIUS, SELECT_PALETTE } from "../design/tokens.js";
 
 const CHART_MAX_W = 400;
 
@@ -282,7 +282,7 @@ function InlineMetric({ data }) {
             <div style={{ fontSize: 10, color: C.darkMuted, marginBottom: 4, fontWeight: 500 }}>
               {d.label}
             </div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: C.darkText, fontVariantNumeric: "tabular-nums" }}>
+            <div style={{ fontFamily: FONT_DISPLAY, fontSize: 22, fontWeight: 700, color: C.darkText, fontVariantNumeric: "tabular-nums" }}>
               {typeof val === "number"
                 ? (Number.isInteger(val) ? val.toLocaleString() : val.toFixed(1))
                 : val}

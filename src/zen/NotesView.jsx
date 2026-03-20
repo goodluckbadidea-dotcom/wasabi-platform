@@ -4,7 +4,7 @@
 // "Save to" copies the scratchpad into a new page.
 
 import React, { useState, useCallback, useMemo } from "react";
-import { C, FONT, RADIUS } from "../design/tokens.js";
+import { C, FONT, FONT_DISPLAY, RADIUS } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { getDocument, saveDocument } from "../lib/api.js";
@@ -93,7 +93,7 @@ export default function NotesView() {
         display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
         <div style={{
-          fontSize: 18, fontWeight: 600, fontFamily: FONT, color: C.darkText,
+          fontSize: 18, fontWeight: 600, fontFamily: FONT_DISPLAY, color: C.darkText,
           display: "flex", alignItems: "center", gap: 10,
           animation: ANIM.snapUp(0.03),
         }}>

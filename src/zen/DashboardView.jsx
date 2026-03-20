@@ -4,7 +4,7 @@
 // Users can pin views, shortcuts, text blocks, and plugin widgets.
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
-import { C, FONT, RADIUS } from "../design/tokens.js";
+import { C, FONT, FONT_DISPLAY, RADIUS } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import WidgetGrid from "../components/WidgetGrid.jsx";
 import RecordDrawer from "./RecordDrawer.jsx";
@@ -109,7 +109,7 @@ export default function DashboardView() {
         display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
         <div style={{
-          fontSize: 18, fontWeight: 600, fontFamily: FONT, color: C.darkText,
+          fontSize: 18, fontWeight: 600, fontFamily: FONT_DISPLAY, color: C.darkText,
           display: "flex", alignItems: "center", gap: 10,
           animation: ANIM.snapUp(0.03),
         }}>

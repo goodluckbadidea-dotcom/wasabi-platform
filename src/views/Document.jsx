@@ -4,7 +4,7 @@
 // Otherwise renders in read-only mode.
 
 import React, { useState, useEffect, useCallback } from "react";
-import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
+import { C, FONT, FONT_DISPLAY, MONO, RADIUS } from "../design/tokens.js";
 import Spinner from "../components/Spinner.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { getBlocks } from "../notion/client.js";
@@ -104,21 +104,21 @@ function BlockRenderer({ block, depth = 0 }) {
 
     case "heading_1":
       return (
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: C.darkText, margin: "24px 0 8px", lineHeight: 1.3 }}>
+        <h1 style={{ fontFamily: FONT_DISPLAY, fontSize: 22, fontWeight: 700, color: C.darkText, margin: "24px 0 8px", lineHeight: 1.3 }}>
           {text}
         </h1>
       );
 
     case "heading_2":
       return (
-        <h2 style={{ fontSize: 18, fontWeight: 600, color: C.darkText, margin: "20px 0 6px", lineHeight: 1.35 }}>
+        <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 600, color: C.darkText, margin: "20px 0 6px", lineHeight: 1.35 }}>
           {text}
         </h2>
       );
 
     case "heading_3":
       return (
-        <h3 style={{ fontSize: 15, fontWeight: 600, color: C.darkText, margin: "16px 0 4px", lineHeight: 1.4 }}>
+        <h3 style={{ fontFamily: FONT_DISPLAY, fontSize: 15, fontWeight: 600, color: C.darkText, margin: "16px 0 4px", lineHeight: 1.4 }}>
           {text}
         </h3>
       );

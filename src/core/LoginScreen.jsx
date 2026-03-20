@@ -4,7 +4,7 @@
 // Matches SetupWizard visual design: centered card, WasabiFlame, dark bg.
 
 import React, { useState, useCallback } from "react";
-import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
+import { C, FONT, FONT_DISPLAY, RADIUS, SHADOW } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
@@ -97,7 +97,7 @@ export default function LoginScreen() {
         {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           <div style={{ marginBottom: 12 }}><WasabiFlame size={72} /></div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: C.darkText, letterSpacing: "-0.02em" }}>
+          <h1 style={{ fontFamily: FONT_DISPLAY, fontSize: 24, fontWeight: 700, color: C.darkText, letterSpacing: "-0.02em" }}>
             Wasabi
           </h1>
           <p style={{ fontSize: 13, color: C.darkMuted, marginTop: 6 }}>

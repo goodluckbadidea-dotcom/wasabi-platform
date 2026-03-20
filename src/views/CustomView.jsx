@@ -4,7 +4,7 @@
 // Data sources: query (from parent data), function_result, static.
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { C, FONT, RADIUS, SHADOW, VIEW_PALETTE, getStatusColor } from "../design/tokens.js";
+import { C, FONT, FONT_DISPLAY, RADIUS, SHADOW, VIEW_PALETTE, getStatusColor } from "../design/tokens.js";
 import { ANIM, injectAnimations } from "../design/animations.js";
 import { readField, getFieldType, getFieldOptions, computeAggregation, resolveField } from "./_viewHelpers.js";
 import * as api from "../lib/api.js";
@@ -48,7 +48,7 @@ function MetricWidget({ widget, resolvedData, schema }) {
       padding: "28px 16px", textAlign: "center", minHeight: 100,
     }}>
       <span style={{
-        fontSize: 36, fontWeight: 700, color,
+        fontFamily: FONT_DISPLAY, fontSize: 36, fontWeight: 700, color,
         fontVariantNumeric: "tabular-nums", letterSpacing: "-0.02em",
       }}>
         {fmt(value)}
@@ -329,7 +329,7 @@ function ProgressWidget({ widget, resolvedData }) {
           borderRadius: RADIUS.pill, transition: "width 0.5s cubic-bezier(0.22, 1.2, 0.36, 1)",
         }} />
       </div>
-      <span style={{ fontSize: 20, fontWeight: 700, color: barColor, fontVariantNumeric: "tabular-nums" }}>
+      <span style={{ fontFamily: FONT_DISPLAY, fontSize: 20, fontWeight: 700, color: barColor, fontVariantNumeric: "tabular-nums" }}>
         {pct(ratio * 100)}
       </span>
       <span style={{ fontSize: 11, color: C.darkMuted }}>{fmt(current)} / {fmt(target)}</span>

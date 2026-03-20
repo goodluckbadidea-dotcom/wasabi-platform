@@ -1,7 +1,7 @@
 // ─── Wasabi Platform Shared Styles ───
 // Rebuildable style system — rebuilt on theme change via rebuildStyles().
 
-import { C, FONT, MONO, RADIUS, SHADOW } from "./tokens.js";
+import { C, FONT, FONT_DISPLAY, MONO, RADIUS, SHADOW } from "./tokens.js";
 // Note: SHADOW is mutable (rebuilt on theme change), same pattern as C.
 
 function buildStyles() {
@@ -212,7 +212,7 @@ function buildStyles() {
       padding: "8px 20px",
       fontSize: 13,
       fontWeight: 600,
-      fontFamily: FONT,
+      fontFamily: FONT_DISPLAY,
       cursor: "pointer",
       transition: "background 0.15s, transform 0.1s, box-shadow 0.15s",
       letterSpacing: "0.01em",
@@ -252,7 +252,7 @@ function buildStyles() {
       padding: "8px 18px",
       fontSize: 13,
       fontWeight: 600,
-      fontFamily: FONT,
+      fontFamily: FONT_DISPLAY,
       cursor: "pointer",
       transition: "all 0.15s",
       letterSpacing: "0.01em",
@@ -409,6 +409,7 @@ function buildStyles() {
 
     // ─── Typography ───
     h1: {
+      fontFamily: FONT_DISPLAY,
       fontSize: 26,
       fontWeight: 700,
       letterSpacing: "-0.03em",
@@ -417,6 +418,7 @@ function buildStyles() {
     },
 
     h2: {
+      fontFamily: FONT_DISPLAY,
       fontSize: 18,
       fontWeight: 600,
       letterSpacing: "-0.015em",
@@ -425,6 +427,7 @@ function buildStyles() {
     },
 
     h3: {
+      fontFamily: FONT_DISPLAY,
       fontSize: 14,
       fontWeight: 600,
       color: C.darkText,
@@ -432,6 +435,7 @@ function buildStyles() {
     },
 
     label: {
+      fontFamily: FONT_DISPLAY,
       fontSize: 11,
       fontWeight: 600,
       textTransform: "uppercase",

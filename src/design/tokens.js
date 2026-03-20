@@ -576,8 +576,9 @@ export function applyTheme(name, _mode) {
 }
 
 // Typography
-export const FONT = "'Satoshi','Outfit','DM Sans',sans-serif";
-export const MONO = "'DM Mono','Courier New',monospace";
+export const FONT         = "'Satoshi','Outfit','DM Sans',sans-serif";
+export const FONT_DISPLAY = "'Outfit','Satoshi','DM Sans',sans-serif";
+export const MONO         = "'DM Mono','Courier New',monospace";
 
 // Border radius
 export const RADIUS = {

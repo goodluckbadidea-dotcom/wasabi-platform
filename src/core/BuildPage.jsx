@@ -4,7 +4,7 @@
 // Each tab has a card-strip builder that hands off to Wasabi chat.
 
 import React, { useState, useEffect, useCallback } from "react";
-import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
+import { C, FONT, FONT_DISPLAY, MONO, RADIUS } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import {
@@ -738,7 +738,7 @@ export default function BuildPage({ onOpenChat }) {
         {activeTab === "views"
           ? <IconGrid size={22} color={C.accent} />
           : <IconBrain size={22} color={C.accent} />}
-        <h2 style={{ fontFamily: FONT, fontSize: 18, fontWeight: 600, color: C.darkText, margin: 0 }}>
+        <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 600, color: C.darkText, margin: 0 }}>
           Build
         </h2>
 

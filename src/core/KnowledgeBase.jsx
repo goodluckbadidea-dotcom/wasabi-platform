@@ -5,7 +5,7 @@
 // Context: manage KB entries injected into Wasabi's system prompt.
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
-import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
+import { C, FONT, FONT_DISPLAY, MONO, RADIUS } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { IconBrain, IconUpload, IconTrash, IconSearch } from "../design/icons.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
@@ -640,7 +640,7 @@ export default function KnowledgeBase({ automationEngine }) {
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, animation: ANIM.snapUp(0.03) }}>
           <IconBrain size={22} color={C.accent} />
-          <span style={{ fontSize: 18, fontWeight: 600, color: C.darkText, fontFamily: FONT }}>
+          <span style={{ fontSize: 18, fontWeight: 600, color: C.darkText, fontFamily: FONT_DISPLAY }}>
             Knowledge Base
           </span>
         </div>

@@ -3,7 +3,7 @@
 // Visual automation builder with drag-and-drop nodes and wire connections.
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
+import { C, FONT, FONT_DISPLAY, MONO, RADIUS } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { uuid, timeAgo } from "../utils/helpers.js";
 import NodeCanvas from "../views/NodeCanvas.jsx";
@@ -700,7 +700,7 @@ function EmptyState({ onNew }) {
       color: C.darkMuted,
     }}>
       <IconBolt size={40} color={C.darkBorder} />
-      <div style={{ fontSize: 18, fontWeight: 600, color: C.darkText }}>Node Automation Editor</div>
+      <div style={{ fontSize: 18, fontWeight: 600, color: C.darkText, fontFamily: FONT_DISPLAY }}>Node Automation Editor</div>
       <div style={{ fontSize: 13, color: C.darkMuted, textAlign: "center", maxWidth: 300, lineHeight: 1.6 }}>
         Create visual automation flows by connecting nodes together.
         Select a flow from the sidebar or create a new one.

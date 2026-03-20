@@ -4,7 +4,7 @@
 // Click card → opens Wasabi chat to run. "+ New" → opens builder.
 
 import React, { useState, useEffect, useCallback } from "react";
-import { C, FONT, MONO, RADIUS } from "../design/tokens.js";
+import { C, FONT, FONT_DISPLAY, MONO, RADIUS } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { IconFunction, IconPlus, IconSearch, IconTrash, IconPlay } from "../design/icons.jsx";
 import * as api from "../lib/api.js";
@@ -113,7 +113,7 @@ export default function FunctionsPanel({ onOpenChat }) {
       }}>
         <IconFunction size={22} color={C.accent} />
         <h2 style={{
-          fontFamily: FONT, fontSize: 18, fontWeight: 600,
+          fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 600,
           color: C.darkText, margin: 0, flex: 1,
         }}>
           Functions

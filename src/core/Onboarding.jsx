@@ -3,7 +3,7 @@
 // Full dark theme. No emojis — all SVG icons.
 
 import React, { useEffect } from "react";
-import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
+import { C, FONT, FONT_DISPLAY, RADIUS, SHADOW } from "../design/tokens.js";
 import { ANIM, injectAnimations } from "../design/animations.js";
 import { IconChart, IconHandshake, IconBox, IconBolt, IconDollar, IconCheck } from "../design/icons.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
@@ -55,6 +55,7 @@ export default function Onboarding({ WasabiFlame, onStartBlank, onStartTemplate 
 
       {/* Heading */}
       <h1 style={{
+        fontFamily: FONT_DISPLAY,
         fontSize: 28,
         fontWeight: 700,
         color: C.darkText,

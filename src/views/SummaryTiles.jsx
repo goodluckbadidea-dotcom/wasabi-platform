@@ -3,7 +3,7 @@
 // Aggregations: count, sum, avg, min, max, countWhere.
 
 import React, { useMemo } from "react";
-import { C, FONT, RADIUS, getStatusColor } from "../design/tokens.js";
+import { C, FONT, FONT_DISPLAY, RADIUS, getStatusColor } from "../design/tokens.js";
 import { readField, getFieldType, getFieldOptions, computeAggregation, resolveField } from "./_viewHelpers.js";
 
 /**
@@ -93,6 +93,7 @@ export default function SummaryTiles({ data = [], schema, config = {} }) {
             }}
           >
             <span style={{
+              fontFamily: FONT_DISPLAY,
               fontSize: 28,
               fontWeight: 700,
               color: numColor,
