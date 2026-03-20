@@ -14,6 +14,7 @@ import SavedViewsDropdown from "../components/SavedViewsDropdown.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
 import { useCollaboration } from "../context/CollaborationContext.jsx";
+import PresenceAvatars from "../components/PresenceAvatars.jsx";
 
 export default function Kanban({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, onViewConfigChange, pageConfig }) {
   const collab = useCollaboration();
@@ -488,6 +489,9 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
                   const isDragging = dragState?.pageId === page.id;
                   const othersOnCard = collab?.getUsersOnRecord?.(page.id) || [];
                   const cardPresenceColor = othersOnCard.length > 0 ? othersOnCard[0].color : null;
+                  const cardBorderStyle = othersOnCard.length > 1
+                    ? { border: "2px solid", borderImage: `linear-gradient(135deg, ${othersOnCard.map((u) => u.color).join(", ")}) 1` }
+                    : { border: `1px solid ${cardPresenceColor || C.darkBorder}` };
 
                   return (
                     <div
@@ -506,7 +510,7 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
                       }}
                       style={{
                         background: C.darkSurf2,
-                        border: `1px solid ${cardPresenceColor || C.darkBorder}`,
+                        ...cardBorderStyle,
                         borderRadius: RADIUS.lg,
                         padding: "10px 12px",
                         cursor: "grab",
@@ -545,17 +549,10 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
                         );
                       })}
 
-                      {/* Presence badge */}
+                      {/* Presence avatars */}
                       {othersOnCard.length > 0 && (
-                        <div style={{ display: "flex", gap: 4, marginTop: 6, alignItems: "center" }}>
-                          {othersOnCard.map((u) => (
-                            <span key={u.userId} style={{
-                              fontSize: 10, color: u.color, fontWeight: 600,
-                              background: u.color + "18", borderRadius: 4, padding: "1px 5px",
-                            }}>
-                              {u.userName || "User"}{u.isTyping ? " typing…" : ""}
-                            </span>
-                          ))}
+                        <div style={{ marginTop: 6 }}>
+                          <PresenceAvatars users={othersOnCard} size={20} maxVisible={3} />
                         </div>
                       )}
                     </div>

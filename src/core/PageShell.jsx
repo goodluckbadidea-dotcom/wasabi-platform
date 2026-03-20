@@ -20,9 +20,10 @@ import { ANIM } from "../design/animations.js";
 import SyncPanel from "../components/SyncPanel.jsx";
 import ViewSettingsPanel from "../components/ViewSettingsPanel.jsx";
 import ConflictToast from "../components/ConflictToast.jsx";
-import PinLockOverlay from "../components/PinLockOverlay.jsx";
+import PinLockOverlay, { getPinToken } from "../components/PinLockOverlay.jsx";
 import { useColorMapping } from "../context/ColorMappingContext.jsx";
 import { CollaborationProvider } from "../context/CollaborationContext.jsx";
+import useViewPrefs from "../hooks/useViewPrefs.js";
 
 const DEFAULT_REFRESH_MS = 30000;
 
@@ -34,12 +35,14 @@ export default function PageShell({
 }) {
   const { user, updatePageConfig, identity } = usePlatform();
   const { globalColorMapping, globalColorField } = useColorMapping();
+  const viewPrefs = useViewPrefs();
 
   const [data, setData] = useState([]);
   const [schema, setSchema] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pendingConflicts, setPendingConflicts] = useState([]);
+  const [pinRelockKey, setPinRelockKey] = useState(0);
   const refreshTimer = useRef(null);
   const [showAddDb, setShowAddDb] = useState(false);
   const [showViewPicker, setShowViewPicker] = useState(false);
@@ -139,20 +142,32 @@ export default function PageShell({
           // Find current record to get cell_versions for conflict detection
           const record = data.find((r) => r.id === pageId);
           const cellVersions = record?.cell_versions || null;
+          const pinToken = getPinToken(pageConfig?.id);
 
-          const result = await updateRecord(pageConfig, pageId, propertyName, propPayload, user, cellVersions);
+          const result = await updateRecord(pageConfig, pageId, propertyName, propPayload, user, cellVersions, { pinToken });
 
           // Check for conflicts in the response
           if (result?.conflicts) {
-            console.warn("[Collab] Conflict detected:", result.conflicts);
             const conflictList = Object.entries(result.conflicts).map(([field, info]) => ({
               recordId: pageId,
               field,
               yourValue: info.yourValue,
               currentValue: info.currentValue,
               currentVersion: info.currentVersion,
+              detectedAt: Date.now(),
             }));
-            setPendingConflicts((prev) => [...prev, ...conflictList]);
+            // Auto-resolve non-overlapping: if conflict is on a field the user didn't edit, silently accept theirs
+            const overlapping = conflictList.filter((c) => c.field === propertyName);
+            const nonOverlapping = conflictList.filter((c) => c.field !== propertyName);
+            if (nonOverlapping.length > 0) {
+              for (const c of nonOverlapping) {
+                updateRecord(pageConfig, c.recordId, c.field, c.currentValue, user).catch(() => {});
+              }
+            }
+            if (overlapping.length > 0) {
+              console.warn("[Collab] Conflict detected:", overlapping);
+              setPendingConflicts((prev) => [...prev, ...overlapping]);
+            }
           }
 
           // Update local state with new cell_versions from response
@@ -176,6 +191,11 @@ export default function PageShell({
         }
       } catch (err) {
         console.error("Update failed:", err);
+        if (err.data?.pin_required) {
+          // Clear expired/invalid PIN token and force overlay re-lock
+          try { sessionStorage.removeItem(`wasabi_pin_token_${pageConfig?.id}`); sessionStorage.removeItem(`wasabi_pin_expiry_${pageConfig?.id}`); } catch {}
+          setPinRelockKey((k) => k + 1);
+        }
       }
     },
     [pageConfig, user, data, fetchData]
@@ -184,10 +204,15 @@ export default function PageShell({
   const handleCreate = useCallback(
     async (databaseId, properties) => {
       try {
-        await createRecord(pageConfig, properties, user);
+        const pinToken = getPinToken(pageConfig?.id);
+        await createRecord(pageConfig, properties, user, { pinToken });
         await fetchData();
       } catch (err) {
         console.error("Create failed:", err);
+        if (err.data?.pin_required) {
+          try { sessionStorage.removeItem(`wasabi_pin_token_${pageConfig?.id}`); sessionStorage.removeItem(`wasabi_pin_expiry_${pageConfig?.id}`); } catch {}
+          setPinRelockKey((k) => k + 1);
+        }
         throw err;
       }
     },
@@ -198,10 +223,15 @@ export default function PageShell({
     async (pageIds) => {
       if (!pageIds?.length) return;
       try {
-        await deleteRecords(pageConfig, pageIds, user);
+        const pinToken = getPinToken(pageConfig?.id);
+        await deleteRecords(pageConfig, pageIds, user, { pinToken });
         await fetchData();
       } catch (err) {
         console.error("Bulk delete failed:", err);
+        if (err.data?.pin_required) {
+          try { sessionStorage.removeItem(`wasabi_pin_token_${pageConfig?.id}`); sessionStorage.removeItem(`wasabi_pin_expiry_${pageConfig?.id}`); } catch {}
+          setPinRelockKey((k) => k + 1);
+        }
       }
     },
     [pageConfig, user, fetchData]
@@ -238,7 +268,21 @@ export default function PageShell({
     onSetActiveView?.(updatedViews.length - 1);
   }, [pageConfig, updatePageConfig, onSetActiveView]);
 
+  // Per-user view config: writes to user_state, not shared pageConfig
   const handleViewConfigChange = useCallback((configUpdates) => {
+    if (identity?.id) {
+      viewPrefs.setUserViewConfig(pageConfig.id, activeViewIndex, configUpdates);
+    } else {
+      // Single-user fallback: write to shared pageConfig
+      const updatedViews = (pageConfig.views || []).map((v, i) =>
+        i === activeViewIndex ? { ...v, config: { ...v.config, ...configUpdates } } : v
+      );
+      updatePageConfig(pageConfig.id, { views: updatedViews });
+    }
+  }, [pageConfig, activeViewIndex, updatePageConfig, identity, viewPrefs]);
+
+  // Admin: push current view config to shared pageConfig (affects all users' defaults)
+  const handlePushViewToAll = useCallback((configUpdates) => {
     const updatedViews = (pageConfig.views || []).map((v, i) =>
       i === activeViewIndex
         ? { ...v, config: { ...v.config, ...configUpdates } }
@@ -342,7 +386,13 @@ export default function PageShell({
   }
 
   // ── Normal view rendering ──
-  const viewsToRender = activeView ? [activeView] : [];
+  // Merge per-user view preferences over shared config
+  const effectiveView = useMemo(() => {
+    if (!activeView || !identity?.id) return activeView;
+    const mergedConfig = viewPrefs.getEffectiveConfig(pageConfig.id, activeViewIndex, activeView.config || {});
+    return { ...activeView, config: mergedConfig };
+  }, [activeView, identity?.id, pageConfig.id, activeViewIndex, viewPrefs]);
+  const viewsToRender = effectiveView ? [effectiveView] : [];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -379,7 +429,7 @@ export default function PageShell({
       >
       <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
         {pageConfig.pin_protected && identity && identity.role !== "admin" ? (
-          <PinLockOverlay pageConfigId={pageConfig.id} userRole={identity.role}>
+          <PinLockOverlay key={pinRelockKey} pageConfigId={pageConfig.id} userRole={identity.role}>
             <ViewRenderer
               views={viewsToRender}
               data={data}
@@ -409,9 +459,9 @@ export default function PageShell({
         )}
 
         {/* View Settings slide-out */}
-        {showViewSettings && activeView && (
+        {showViewSettings && effectiveView && (
           <ViewSettingsPanel
-            viewConfig={activeView}
+            viewConfig={effectiveView}
             schema={schema}
             onConfigChange={handleViewConfigChange}
             onClose={() => setShowViewSettings(false)}

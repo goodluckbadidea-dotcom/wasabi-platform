@@ -177,7 +177,7 @@ async function fetchMondayBoard(pageConfig, user) {
 
 // ─── Update a record in any source ───
 
-export async function updateRecord(pageConfig, recordId, fieldName, propPayload, user, cellVersions) {
+export async function updateRecord(pageConfig, recordId, fieldName, propPayload, user, cellVersions, { pinToken } = {}) {
   const type = resolveSourceType(pageConfig);
 
   if (type === "d1") {
@@ -193,7 +193,7 @@ export async function updateRecord(pageConfig, recordId, fieldName, propPayload,
     if (cellVersions && cellVersions[col.id] !== undefined) {
       update.base_versions = { [col.id]: cellVersions[col.id] };
     }
-    const result = await updateRow(tableId, recordId, update);
+    const result = await updateRow(tableId, recordId, update, { pinToken });
     return result;
   }
 
@@ -213,7 +213,7 @@ export async function updateRecord(pageConfig, recordId, fieldName, propPayload,
 
 // ─── Create a record in any source ───
 
-export async function createRecord(pageConfig, properties, user) {
+export async function createRecord(pageConfig, properties, user, { pinToken } = {}) {
   const type = resolveSourceType(pageConfig);
 
   if (type === "d1") {
@@ -229,7 +229,7 @@ export async function createRecord(pageConfig, properties, user) {
       }
     }
 
-    const result = await createRows(tableId, { cells });
+    const result = await createRows(tableId, { cells }, { pinToken });
     return result.ids?.[0];
   }
 
@@ -251,13 +251,13 @@ export async function createRecord(pageConfig, properties, user) {
 
 // ─── Delete records in any source ───
 
-export async function deleteRecords(pageConfig, recordIds, user) {
+export async function deleteRecords(pageConfig, recordIds, user, { pinToken } = {}) {
   const type = resolveSourceType(pageConfig);
 
   if (type === "d1") {
     const tableId = pageConfig.id;
     for (const id of recordIds) {
-      await deleteRow(tableId, id);
+      await deleteRow(tableId, id, { pinToken });
     }
     return true;
   }

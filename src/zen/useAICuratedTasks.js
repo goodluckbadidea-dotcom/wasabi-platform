@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { usePlatform } from "../context/PlatformContext.jsx";
+import { useUserSync } from "../context/UserSyncContext.jsx";
 import {
   listRows, claudeProxy, getTableSchema, listTaskActivity, upsertTaskActivity,
   getRecordViews, listRecordComments, listTaskInteractions,
@@ -290,6 +291,7 @@ const TARGET_MAX = 25;
 
 export default function useAICuratedTasks({ dismissedIds, completedCount, zenTableId } = {}) {
   const { user, pages, identity } = usePlatform();
+  const userSync = useUserSync();
   const CACHE_KEY = cacheKeyForUser(identity?.id);
   const [aiTasks, setAiTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1045,6 +1047,12 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
 
   // Cleanup debounce timer on unmount
   useEffect(() => () => clearTimeout(debounceTimerRef.current), []);
+
+  // Cross-user cache invalidation via UserSocket
+  useEffect(() => {
+    if (!userSync?.onTaskCacheInvalidate) return;
+    return userSync.onTaskCacheInvalidate(() => debouncedRefresh());
+  }, [userSync, debouncedRefresh]);
 
   // Visibility-aware lazy polling: every 10 min, scan if visible + cache expired
   useEffect(() => {

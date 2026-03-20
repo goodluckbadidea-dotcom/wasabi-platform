@@ -62,6 +62,7 @@ async function apiFetch(path, options = {}) {
     "Content-Type": "application/json",
     ...(conn.secret ? { "X-Wasabi-Key": conn.secret } : {}),
     ...(jwt ? { "Authorization": `Bearer ${jwt}` } : {}),
+    ...(options.pinToken ? { "X-Wasabi-Pin-Token": options.pinToken } : {}),
     ...(options.headers || {}),
   };
 
@@ -160,20 +161,21 @@ export async function listRows(tableId, { limit, offset, archived } = {}) {
   return apiFetch(`/tables/${tableId}/rows${qs ? `?${qs}` : ""}`, { method: "GET" });
 }
 
-export async function createRows(tableId, rows) {
+export async function createRows(tableId, rows, { pinToken } = {}) {
   return apiFetch(`/tables/${tableId}/rows`, {
     method: "POST",
     body: { rows: Array.isArray(rows) ? rows : [rows] },
+    pinToken,
   });
 }
 
-export async function updateRow(tableId, rowId, updates) {
+export async function updateRow(tableId, rowId, updates, { pinToken } = {}) {
   // Default to merge mode for cell updates (partial cell updates)
   const body = { ...updates };
   if (body.cells && body.merge_cells === undefined) {
     body.merge_cells = true;
   }
-  return apiFetch(`/tables/${tableId}/rows/${rowId}`, { method: "PATCH", body });
+  return apiFetch(`/tables/${tableId}/rows/${rowId}`, { method: "PATCH", body, pinToken });
 }
 
 export async function updateRowOwner(tableId, rowId, ownerUserIds) {
@@ -183,8 +185,8 @@ export async function updateRowOwner(tableId, rowId, ownerUserIds) {
   });
 }
 
-export async function deleteRow(tableId, rowId) {
-  return apiFetch(`/tables/${tableId}/rows/${rowId}`, { method: "DELETE" });
+export async function deleteRow(tableId, rowId, { pinToken } = {}) {
+  return apiFetch(`/tables/${tableId}/rows/${rowId}`, { method: "DELETE", pinToken });
 }
 
 export async function queryTable(tableId, { filters, sorts, limit, offset } = {}) {

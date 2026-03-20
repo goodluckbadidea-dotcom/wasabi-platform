@@ -13,6 +13,7 @@ import RecordNotes from "../components/RecordNotes.jsx";
 import RecordComments from "../components/RecordComments.jsx";
 import RecordFiles from "../components/RecordFiles.jsx";
 import { useCollaboration } from "../context/CollaborationContext.jsx";
+import PresenceAvatars from "../components/PresenceAvatars.jsx";
 import { listUserDirectory, updateRowOwner } from "../lib/api.js";
 
 // ── Property type labels ──
@@ -561,15 +562,17 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
         {(() => {
           const others = collab?.getUsersOnRecord?.(page.id) || [];
           if (others.length === 0) return null;
+          const anyTyping = others.some((u) => u.isTyping);
           return (
             <div style={{
               padding: "6px 16px", background: C.accent + "12",
               borderBottom: `1px solid ${C.accent}22`,
-              fontSize: 11, color: C.accent, display: "flex", alignItems: "center", gap: 6,
+              fontSize: 11, color: C.accent, display: "flex", alignItems: "center", gap: 8,
             }}>
-              <span style={{ fontSize: 12 }}>👥</span>
-              {others.map((u) => u.userName || "User").join(", ")} also {others.some((u) => u.isTyping) ? "editing" : "viewing"}.
-              Changes merge automatically.
+              <PresenceAvatars users={others} size={22} maxVisible={4} />
+              <span>
+                {others.length} collaborator{others.length !== 1 ? "s" : ""} {anyTyping ? "editing" : "viewing"} — changes merge automatically
+              </span>
             </div>
           );
         })()}
@@ -666,6 +669,7 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
                 const cellKey = `${page.id}:${fieldName}`;
                 const linkData = resolvedLinks?.get(cellKey);
                 const isLinked = !!linkData;
+                const hasConflict = collab?.pendingConflicts?.some((c) => c.field === fieldName && c.recordId === page.id);
 
                 return (
                   <div
@@ -673,8 +677,8 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
                     className="prop-row-hover"
                     style={{
                       ...ds.propRow,
-                      background: hasPending ? `${C.accent}08` : "transparent",
-                      borderLeft: isLinked ? `3px solid ${linkData.stale ? "#FF6B3D" : C.accent}` : "3px solid transparent",
+                      background: hasConflict ? "#c9822a08" : hasPending ? `${C.accent}08` : "transparent",
+                      borderLeft: hasConflict ? "3px solid #c9822a" : isLinked ? `3px solid ${linkData.stale ? "#FF6B3D" : C.accent}` : "3px solid transparent",
                       cursor: isEditable ? "pointer" : "default",
                       position: "relative",
                     }}
@@ -750,6 +754,24 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
                         <IconEdit size={10} color={C.darkMuted + "66"} />
                       )}
                     </div>
+                    {/* Per-field typing indicator */}
+                    {(() => {
+                      const others = collab?.getUsersOnRecord?.(page.id) || [];
+                      const typingHere = others.filter((u) => u.isTyping && u.typingField === fieldName);
+                      if (typingHere.length === 0) return null;
+                      return (
+                        <div style={{
+                          fontSize: 10, color: typingHere[0].color, padding: "1px 0 0 0",
+                          display: "flex", alignItems: "center", gap: 4, gridColumn: "1 / -1",
+                        }}>
+                          <span style={{
+                            width: 6, height: 6, borderRadius: "50%", background: typingHere[0].color,
+                            animation: "presence-pulse 1.5s ease-in-out infinite",
+                          }} />
+                          {typingHere.map((u) => u.userName || "User").join(", ")} typing...
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}

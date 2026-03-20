@@ -103,7 +103,7 @@ export function CollaborationProvider({ tableId, userId, userName, role, childre
         case "conflict": {
           setPendingConflicts((prev) => [
             ...prev.filter((c) => !(c.recordId === msg.recordId && c.field === msg.field)),
-            { recordId: msg.recordId, field: msg.field, yourValue: msg.yourValue, theirValue: msg.theirValue },
+            { recordId: msg.recordId, field: msg.field, yourValue: msg.yourValue, theirValue: msg.theirValue, detectedAt: Date.now() },
           ]);
           break;
         }

@@ -27,6 +27,7 @@ import SelectPicker from "../components/SelectPicker.jsx";
 import MultiSelectPicker from "../components/MultiSelectPicker.jsx";
 import SavedViewsDropdown from "../components/SavedViewsDropdown.jsx";
 import { useCollaboration } from "../context/CollaborationContext.jsx";
+import PresenceAvatars from "../components/PresenceAvatars.jsx";
 
 // ─── Owner Column Constants ───
 const OWNER_COL_NAME = "Owner";
@@ -2361,6 +2362,10 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           </button>
         )}
 
+        <div style={{ flex: 1 }} />
+        {collab?.activeUsers?.size > 0 && (
+          <PresenceAvatars users={[...collab.activeUsers.values()]} size={24} />
+        )}
         <span style={styles.countLabel}>
           {processedData.length === data.length
             ? `${data.length} record${data.length !== 1 ? "s" : ""}`
@@ -2707,6 +2712,9 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                           const cardBg = isSelected ? C.accent + "10" : isHovered ? C.darkSurf2 : C.darkSurf;
                           const othersOnRow = collab?.getUsersOnRecord?.(pageId) || [];
                           const presenceColor = othersOnRow.length > 0 ? othersOnRow[0].color : null;
+                          const presenceBorder = othersOnRow.length > 1
+                            ? { borderLeft: "3px solid", borderImage: `linear-gradient(to bottom, ${othersOnRow.map((u) => u.color).join(", ")}) 1` }
+                            : presenceColor ? { borderLeft: `3px solid ${presenceColor}` } : {};
 
                           return (
                             <div
@@ -2718,7 +2726,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                 height: ROW_HEIGHT,
                                 background: cardBg,
                                 ...(isHovered ? { boxShadow: `0 1px 4px rgba(0,0,0,0.08)` } : {}),
-                                ...(presenceColor ? { borderLeft: `3px solid ${presenceColor}` } : {}),
+                                ...presenceBorder,
                                 animation: ANIM.scrollReveal(localIdx),
                               }}
                               onMouseEnter={() => setHoveredRow(pageId)}
@@ -2763,8 +2771,12 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                 const cellKey = `${pageId}:${col}`;
                                 const linkData = resolvedLinks.get(cellKey);
 
+                                const cellTyping = othersOnRow.find((u) => u.isTyping && u.typingField === col);
                                 return (
-                                  <div key={col} style={{ ...styles.gridCell, padding: "4px 8px" }}>
+                                  <div key={col} style={{
+                                    ...styles.gridCell, padding: "4px 8px",
+                                    ...(cellTyping ? { boxShadow: `inset 0 -2px 0 ${cellTyping.color}` } : {}),
+                                  }}>
                                     <CellDisplay
                                       value={value}
                                       type={type}

@@ -13,7 +13,7 @@ import { verifyPin } from "../lib/api.js";
 const PIN_TOKEN_KEY = "wasabi_pin_token";
 const PIN_EXPIRY_KEY = "wasabi_pin_expiry";
 
-function getPinToken(pageId) {
+export function getPinToken(pageId) {
   try {
     const key = `${PIN_TOKEN_KEY}_${pageId}`;
     const token = sessionStorage.getItem(key);

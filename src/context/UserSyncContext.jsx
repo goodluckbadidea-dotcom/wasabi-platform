@@ -17,6 +17,7 @@ export function UserSyncProvider({ children }) {
   const dashboardHandlers = useRef(new Set());
   const navHandlers = useRef(new Set());
   const sessionRevokedHandlers = useRef(new Set());
+  const taskCacheHandlers = useRef(new Set());
 
   useEffect(() => {
     if (!identity?.id) return;
@@ -45,6 +46,12 @@ export function UserSyncProvider({ children }) {
         case "session_revoked":
           for (const handler of sessionRevokedHandlers.current) {
             handler(msg.sessionIds);
+          }
+          break;
+
+        case "task_cache_invalidate":
+          for (const handler of taskCacheHandlers.current) {
+            handler(msg.tableId);
           }
           break;
       }
@@ -89,6 +96,11 @@ export function UserSyncProvider({ children }) {
     return () => sessionRevokedHandlers.current.delete(handler);
   }, []);
 
+  const onTaskCacheInvalidate = useCallback((handler) => {
+    taskCacheHandlers.current.add(handler);
+    return () => taskCacheHandlers.current.delete(handler);
+  }, []);
+
   const value = {
     isConnected,
     connectedDevices,
@@ -97,6 +109,7 @@ export function UserSyncProvider({ children }) {
     onDashboardUpdate,
     onNavUpdate,
     onSessionRevoked,
+    onTaskCacheInvalidate,
   };
 
   return (

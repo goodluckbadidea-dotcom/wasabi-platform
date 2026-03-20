@@ -636,6 +636,24 @@ async function checkPagePermission(env, user, pageId, requiredLevel) {
   return (PERM_LEVEL[user.role] || 0) >= (PERM_LEVEL[requiredLevel] || 99);
 }
 
+// ─── Tier 2b: PIN Protection Check ───
+// Enforces server-side PIN verification for protected pages.
+// Admin bypasses, non-protected pages pass, otherwise requires valid pin_sessions token.
+async function checkPinProtection(env, user, request, tableId) {
+  if (!user) return true;                      // single-user / MCP — no PIN needed
+  if (user.role === "admin") return true;       // admin bypasses PIN
+  const page = await env.DB.prepare(
+    "SELECT pin_protected FROM page_configs WHERE id = ?"
+  ).bind(tableId).first();
+  if (!page || !page.pin_protected) return true; // not protected
+  const token = request.headers.get("X-Wasabi-Pin-Token");
+  if (!token) return false;
+  const session = await env.DB.prepare(
+    "SELECT 1 FROM pin_sessions WHERE token = ? AND user_id = ? AND page_id = ? AND expires_at > datetime('now')"
+  ).bind(token, user.sub, tableId).first();
+  return !!session;
+}
+
 // ─── Tier 3: Audit Logger ───
 async function auditLog(env, user, action, resourceType, resourceId, details) {
   try {
@@ -1069,12 +1087,18 @@ export default {
           if (!await checkPagePermission(env, user, tableId, "editor")) {
             return jsonResponse({ _error: "You don't have permission to edit rows in this table" }, 403);
           }
+          if (!await checkPinProtection(env, user, request, tableId)) {
+            return jsonResponse({ _error: "PIN verification required", pin_required: true }, 403);
+          }
           const body = await request.json();
           return await handleUpdateRow(env, tableId, rowId, body, user);
         }
         if (request.method === "DELETE") {
           if (!await checkPagePermission(env, user, tableId, "editor")) {
             return jsonResponse({ _error: "You don't have permission to delete rows in this table" }, 403);
+          }
+          if (!await checkPinProtection(env, user, request, tableId)) {
+            return jsonResponse({ _error: "PIN verification required", pin_required: true }, 403);
           }
           return await handleDeleteRow(env, tableId, rowId);
         }
@@ -1092,6 +1116,9 @@ export default {
         if (request.method === "POST") {
           if (!await checkPagePermission(env, user, tableId, "editor")) {
             return jsonResponse({ _error: "You don't have permission to add rows to this table" }, 403);
+          }
+          if (!await checkPinProtection(env, user, request, tableId)) {
+            return jsonResponse({ _error: "PIN verification required", pin_required: true }, 403);
           }
           const body = await request.json();
           return await handleCreateRows(env, tableId, body, user);
@@ -2138,6 +2165,8 @@ async function handleInit(env) {
       "ALTER TABLE cell_links ADD COLUMN target_field_type TEXT DEFAULT ''",
       "CREATE INDEX IF NOT EXISTS idx_cell_links_target ON cell_links(target_page_id, target_view_idx)",
       "CREATE INDEX IF NOT EXISTS idx_cell_links_source ON cell_links(source_page_id)",
+      // Per-user view preferences (stored as JSON blob)
+      "ALTER TABLE user_state ADD COLUMN view_prefs TEXT DEFAULT '{}'",
       // Record model: file-per-record support
       "ALTER TABLE files ADD COLUMN record_id TEXT DEFAULT ''",
       "CREATE INDEX IF NOT EXISTS idx_files_record ON files(record_id)",
@@ -2616,9 +2645,13 @@ async function handleLogoutAllDevices(env, user) {
 async function handleGetUserState(env, user) {
   try {
     const row = await env.DB.prepare("SELECT * FROM user_state WHERE user_id = ?").bind(user.sub).first();
-    return jsonResponse({ state: row || { user_id: user.sub, last_page: null, zen_tasks_table_id: null } });
+    if (row) {
+      // Parse view_prefs JSON if present
+      try { row.view_prefs = JSON.parse(row.view_prefs || "{}"); } catch { row.view_prefs = {}; }
+    }
+    return jsonResponse({ state: row || { user_id: user.sub, last_page: null, zen_tasks_table_id: null, view_prefs: {} } });
   } catch (err) {
-    return jsonResponse({ state: { user_id: user.sub, last_page: null, zen_tasks_table_id: null } });
+    return jsonResponse({ state: { user_id: user.sub, last_page: null, zen_tasks_table_id: null, view_prefs: {} } });
   }
 }
 
@@ -2628,13 +2661,14 @@ async function handlePutUserState(env, user, body) {
     const binds = [];
     if (body.last_page !== undefined) { sets.push("last_page = ?"); binds.push(body.last_page); }
     if (body.zen_tasks_table_id !== undefined) { sets.push("zen_tasks_table_id = ?"); binds.push(body.zen_tasks_table_id); }
+    if (body.view_prefs !== undefined) { sets.push("view_prefs = ?"); binds.push(JSON.stringify(body.view_prefs)); }
 
     // Upsert
     await env.DB.prepare(
-      `INSERT INTO user_state (user_id, last_page, zen_tasks_table_id, updated_at)
-       VALUES (?, ?, ?, datetime('now'))
+      `INSERT INTO user_state (user_id, last_page, zen_tasks_table_id, view_prefs, updated_at)
+       VALUES (?, ?, ?, ?, datetime('now'))
        ON CONFLICT(user_id) DO UPDATE SET ${sets.join(", ")}`
-    ).bind(user.sub, body.last_page || null, body.zen_tasks_table_id || null, ...binds).run();
+    ).bind(user.sub, body.last_page || null, body.zen_tasks_table_id || null, JSON.stringify(body.view_prefs || {}), ...binds).run();
 
     return jsonResponse({ ok: true });
   } catch (err) {
@@ -4254,6 +4288,38 @@ async function handleUpdateRow(env, tableId, rowId, body, user) {
           }
         } catch (_) {}
       })();
+    }
+
+    // ── Task cache invalidation broadcast (cross-user) ──
+    // When a status/done field changes, notify all users to refresh their task caches
+    if (body.cells !== undefined && !body._fromSync) {
+      const STATUS_FIELDS = ["status", "stage", "state", "phase", "done", "complete", "completed"];
+      const schema = await env.DB.prepare("SELECT columns FROM table_schemas WHERE table_id = ?").bind(tableId).first();
+      const cols = schema ? JSON.parse(schema.columns || "[]") : [];
+      const colMap = Object.fromEntries(cols.map((c) => [c.id, c]));
+      const changedStatusField = Object.keys(body.cells).some((colId) => {
+        const col = colMap[colId];
+        if (!col) return false;
+        const colName = (col.name || "").toLowerCase();
+        return col.type === "status" || col.type === "checkbox" || STATUS_FIELDS.some((s) => colName.includes(s));
+      });
+      if (changedStatusField) {
+        (async () => {
+          try {
+            const allUsers = await env.DB.prepare("SELECT id FROM users WHERE deleted_at IS NULL").all();
+            for (const u of (allUsers.results || [])) {
+              try {
+                const roomId = env.USER_ROOMS.idFromName(`user:${u.id}`);
+                const room = env.USER_ROOMS.get(roomId);
+                await room.fetch(new Request("https://internal/broadcast", {
+                  method: "POST",
+                  body: JSON.stringify({ type: "task_cache_invalidate", tableId }),
+                }));
+              } catch (_) {}
+            }
+          } catch (_) {}
+        })();
+      }
     }
 
     // ── Assignment change notifications (Sprint 11B) ──
@@ -9104,6 +9170,7 @@ export class UserRoom {
     switch (msg.type) {
       case "dashboard_update":
       case "nav_update":
+      case "task_cache_invalidate":
         // Relay to all OTHER connections (not sender)
         this.broadcast(msg, sender);
         break;
