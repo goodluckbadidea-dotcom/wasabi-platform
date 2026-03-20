@@ -20,7 +20,7 @@ import { useLinks } from "../context/LinksContext.jsx";
 import LinkPicker from "../core/LinkPicker.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
-import { updateTableSchema, getTableSchema, listUsers, updateRowOwner, notionProxy, getRecordBadgeCounts } from "../lib/api.js";
+import { updateTableSchema, getTableSchema, listUserDirectory, updateRowOwner, notionProxy, getRecordBadgeCounts } from "../lib/api.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { updateDatabase, searchDatabases } from "../notion/client.js";
 import SelectPicker from "../components/SelectPicker.jsx";
@@ -1111,9 +1111,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const [ownerPickerRow, setOwnerPickerRow] = useState(null); // pageId of row being edited
   useEffect(() => {
     if (!showOwnerColumn) return;
-    listUsers().then((res) => {
-      const active = (res.users || res || []).filter((u) => !u.deleted_at && !u.invite_code);
-      setTeamUsers(active);
+    listUserDirectory().then((res) => {
+      setTeamUsers(res.users || []);
     }).catch(() => {});
   }, [showOwnerColumn]);
 

@@ -867,6 +867,10 @@ export async function listUsers() {
   return apiFetch("/users", { method: "GET" });
 }
 
+export async function listUserDirectory() {
+  return apiFetch("/users/directory", { method: "GET" });
+}
+
 export async function updateUser(id, updates) {
   return apiFetch(`/users/${id}`, { method: "PATCH", body: updates });
 }

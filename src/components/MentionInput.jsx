@@ -6,7 +6,7 @@
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
-import { listUsers } from "../lib/api.js";
+import { listUserDirectory } from "../lib/api.js";
 
 // Cache users across instances (refreshed every 60s)
 let cachedUsers = null;
@@ -17,8 +17,8 @@ async function fetchUsers() {
   const now = Date.now();
   if (cachedUsers && now - cacheTime < CACHE_TTL) return cachedUsers;
   try {
-    const { users } = await listUsers();
-    cachedUsers = (users || []).filter((u) => !u.deleted_at);
+    const { users } = await listUserDirectory();
+    cachedUsers = users || [];
     cacheTime = now;
     return cachedUsers;
   } catch {

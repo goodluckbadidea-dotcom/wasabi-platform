@@ -448,6 +448,8 @@ const ROUTE_PERMISSIONS = [
   { pattern: /^\/d1\/notifications\/preferences/, method: "*", minRole: null },
   { pattern: /^\/d1\/notifications\/unread-count$/, method: "GET", minRole: null },
   { pattern: /^\/d1\/notifications\/mark-all-read$/, method: "POST", minRole: null },
+  // User directory — any authenticated user (lightweight, read-only)
+  { pattern: "/users/directory", method: "GET", minRole: null, exact: true },
   // User management — admin only
   { pattern: /^\/users/, method: "*", minRole: "admin" },
   // Connections — admin for mutations, open for reads
@@ -718,6 +720,11 @@ export default {
       if (path === "/auth/refresh" && request.method === "POST") {
         if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
         return await handleAuthRefresh(env, user);
+      }
+
+      // ─── User Directory (any authenticated user) ───
+      if (path === "/users/directory" && request.method === "GET") {
+        return await handleUserDirectory(env);
       }
 
       // ─── User Management (admin only — role enforced by middleware) ───
@@ -2275,6 +2282,17 @@ async function handleCreateInvite(env, body) {
     return jsonResponse({ ok: true, invite: { id, invite_code: code, role, display_name } });
   } catch (err) {
     return jsonResponse({ _error: `Failed to create invite: ${err.message}` }, 500);
+  }
+}
+
+async function handleUserDirectory(env) {
+  try {
+    const rows = await env.DB.prepare(
+      "SELECT id, display_name, role FROM users WHERE deleted_at IS NULL AND password_hash IS NOT NULL ORDER BY display_name"
+    ).all();
+    return jsonResponse({ users: rows.results });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
   }
 }
 

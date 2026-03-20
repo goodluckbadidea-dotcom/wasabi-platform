@@ -548,23 +548,17 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
         } catch {}
       }
 
-      // No filtering — all non-terminal tasks go to AI scorer for ranking.
-      // Terminal tasks (done/complete) are already excluded during normalization.
-      // We only annotate tasks with signals here.
-      const filteredTasks = allTasks;
-      for (const task of filteredTasks) {
+      // Annotate all tasks with staleness/overdue signals
+      for (const task of allTasks) {
         const lastActivity = activityMap.get(task.id) || null;
         const nearest = task.nearestDate || task.due;
         const lastInteractionType = interactionTypeMap.get(task.id) || null;
 
-        // Annotate for AI prompt (signals for scoring, not for filtering)
         task._isOverdue = isSmartOverdue(nearest, lastActivity);
         task._isStale = shouldIncludeTask(nearest, lastActivity, lastInteractionType);
       }
 
-      console.log(`[AICurated] All ${filteredTasks.length} non-terminal tasks passed to AI scorer`);
-
-      // Step 2.7: Enrich tasks with per-user signals
+      // Step 2.7: Enrich tasks with per-user signals + comment fetching
       if (identity?.id) {
         try {
           // Fetch record views for "last viewed" / "unread" detection
@@ -574,11 +568,38 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
             viewMap.set(v.record_id, v.last_viewed_at);
           }
 
+          // Fetch comments for all D1 tasks (batched by source table)
+          // This populates task._comments so @mention detection works
+          try {
+            const commentPromises = [];
+            for (const task of allTasks) {
+              if (!task.source) continue;
+              const [sourceType, sourceId] = task.source.split(":");
+              if (sourceType === "d1" && sourceId) {
+                commentPromises.push(
+                  listRecordComments(task.id, sourceId)
+                    .then((res) => ({ taskId: task.id, comments: res.comments || [] }))
+                    .catch(() => ({ taskId: task.id, comments: [] }))
+                );
+              }
+            }
+            if (commentPromises.length > 0) {
+              const commentResults = await Promise.allSettled(commentPromises);
+              for (const r of commentResults) {
+                if (r.status !== "fulfilled" || !r.value.comments.length) continue;
+                const task = allTasks.find((t) => t.id === r.value.taskId);
+                if (task) task._comments = r.value.comments;
+              }
+            }
+          } catch (err) {
+            console.warn("[AICurated] Comment fetching failed:", err.message);
+          }
+
           const userName = identity.display_name?.toLowerCase() || "";
           const userId = identity.id;
           const now = Date.now();
 
-          for (const task of filteredTasks) {
+          for (const task of allTasks) {
             // Ownership: owner_user_id includes current user
             if (task._ownerUserIds && Array.isArray(task._ownerUserIds)) {
               task._isOwned = task._ownerUserIds.includes(userId);
@@ -597,10 +618,10 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
             }
 
             // @mention detection: check if user was mentioned in task comments
-            // (lightweight — only check comment text from task metadata if available)
             if (task._comments) {
               for (const c of task._comments) {
-                if (c.content && c.content.toLowerCase().includes(`@${userName}`)) {
+                const body = (c.content || c.body || "").toLowerCase();
+                if (body.includes(`@${userName}`)) {
                   task._isMentioned = true;
                   // Unread if mentioned after last view
                   if (!lastViewed || new Date(c.created_at) > new Date(lastViewed)) {
@@ -614,6 +635,19 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
         } catch (err) {
           console.warn("[AICurated] Per-user signal enrichment failed:", err.message);
         }
+      }
+
+      // Step 2.75: Role-based task filtering
+      // Non-admins: ONLY see tasks they own or are mentioned in
+      // Admins: see all tasks (ownership influences AI scoring weight)
+      const isAdmin = identity?.role === "admin" || !identity;
+      let filteredTasks;
+      if (isAdmin) {
+        filteredTasks = allTasks;
+        console.log(`[AICurated] Admin/single-user: all ${filteredTasks.length} tasks passed to scorer`);
+      } else {
+        filteredTasks = allTasks.filter((t) => t._isOwned || t._isMentioned || t._isAssigned);
+        console.log(`[AICurated] Non-admin filter: ${filteredTasks.length}/${allTasks.length} tasks (owned/mentioned/assigned)`);
       }
 
       // Step 2.8: Dependency awareness (Phase 1 — implicit keyword scanning)
@@ -805,8 +839,15 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
             dbSummaries[name].push(compressTask(task));
           }
 
+          const ownershipGuidance = isAdmin
+            ? `\nIMPORTANT: This user is an admin and sees ALL tasks. Ownership is a MAJOR scoring factor:
+- Tasks owned by this user: boost score by +2 (owned tasks should almost always appear near the top)
+- Tasks NOT owned by this user: reduce base score by -1 (only surface unowned tasks if they are truly urgent — overdue, blocking, or high priority)
+- The admin's owned tasks should dominate the list unless an unowned task is critically urgent\n`
+            : "";
+
           const userContext = identity?.display_name
-            ? `\nYou are prioritizing for user "${identity.display_name}". Per-user signals are included when available:
+            ? `\nYou are prioritizing for user "${identity.display_name}" (role: ${identity.role}). Per-user signals are included when available:
 - ownedByUser: this user owns the task
 - assignedToUser: this user is assigned to the task
 - hasUnreadComments: comments exist that this user hasn't seen
@@ -819,7 +860,8 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
 - lastInteraction: type of this user's most recent interaction (comment, status_change, field_edit, view)
 - lastInteractionAgo: human-readable time since last interaction (e.g., "2h ago")
 - interactionGap: describes incomplete workflows (e.g., "commented but status unchanged" — user acknowledged but didn't progress)
-- otherUserActions: recent interactions by other team members (shared signals)\n`
+- otherUserActions: recent interactions by other team members (shared signals)
+${ownershipGuidance}`
             : "";
 
           const prompt = `You are a smart task prioritizer and workspace advisor. You are ranking ALL active (non-complete) tasks from the user's databases. Your job is to score and rank them so the most important surface first.
@@ -844,7 +886,7 @@ Priority rules:
 - Stale items approaching deadlines (score 3-4)
 - High priority or urgent status (score 3-4)
 - In-progress items approaching dates (score 2-3)
-- Tasks owned by or assigned to this user get a slight boost
+- Tasks owned by or assigned to this user get a STRONG boost (+2) — ownership is a primary signal
 - Tasks with neuronSiblingUrgent=true belong to a campaign where another task is already overdue — boost score by +1 (cascading urgency)
 - interactionGap="commented but status unchanged" — this user acknowledged the task but didn't progress it. BOOST score +1 (needs follow-through)
 - lastInteraction="comment" with no status_change — task is not resolved, should resurface

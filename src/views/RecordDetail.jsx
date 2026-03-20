@@ -13,7 +13,7 @@ import RecordNotes from "../components/RecordNotes.jsx";
 import RecordComments from "../components/RecordComments.jsx";
 import RecordFiles from "../components/RecordFiles.jsx";
 import { useCollaboration } from "../context/CollaborationContext.jsx";
-import { listUsers, updateRowOwner } from "../lib/api.js";
+import { listUserDirectory, updateRowOwner } from "../lib/api.js";
 
 // ── Property type labels ──
 const TYPE_LABELS = {
@@ -432,10 +432,9 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
   useEffect(() => { setOwnerIds(page?._ownerUserIds || []); }, [page?.id]);
 
   useEffect(() => {
-    listUsers()
+    listUserDirectory()
       .then((res) => {
-        const active = (res.users || res || []).filter((u) => !u.deleted_at && !u.invite_code);
-        setTeamUsers(active);
+        setTeamUsers(res.users || []);
       })
       .catch(() => {});
   }, []);

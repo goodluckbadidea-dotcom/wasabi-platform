@@ -6,7 +6,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { getPagePermissions, setPagePermission, removePagePermission } from "../lib/api.js";
-import { listUsers } from "../lib/api.js";
+import { listUserDirectory } from "../lib/api.js";
 
 const PERM_ORDER = ["owner", "editor", "viewer", "none"];
 const PERM_COLORS = {
@@ -27,10 +27,10 @@ export default function PagePermissionsPanel({ pageId }) {
     try {
       const [permRes, userRes] = await Promise.all([
         getPagePermissions(pageId),
-        listUsers(),
+        listUserDirectory(),
       ]);
       setPermissions(permRes.permissions || []);
-      setUsers((userRes.users || []).filter((u) => !u.deleted_at));
+      setUsers(userRes.users || []);
     } catch (_) {}
     setLoading(false);
   }, [pageId]);
