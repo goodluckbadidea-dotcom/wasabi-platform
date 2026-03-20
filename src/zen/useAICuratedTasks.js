@@ -322,7 +322,8 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
       }
     } catch {}
 
-    // Load cached results with proper role filtering
+    // Load cached results with proper role filtering — skip if identity not yet loaded
+    if (!identity?.id) return;
     const cached = getCached(CACHE_KEY, CACHE_TTL);
     if (cached) {
       let filtered = zenTableId
@@ -343,6 +344,8 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
       setLoading(false);
       return;
     }
+    // Never scan without identity — role filter treats null identity as admin
+    if (!identity?.id) return;
     if (scanningRef.current) return;
 
     // Force refresh: clear stale cache so results aren't served from old data
@@ -1011,10 +1014,12 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
       setRefreshing(false);
       scanningRef.current = false;
     }
-  }, [user, pages]);
+  }, [user, pages, identity]);
 
   // Auto-scan on mount (after brief delay for cached results to render)
+  // Waits for identity to be available — all per-user scoped UI must wait for identity
   useEffect(() => {
+    if (!identity?.id) return; // Don't scan until we know who the user is
     const cached = getCached(CACHE_KEY, CACHE_TTL);
     if (cached && cached.length > 0) {
       // Cache is fresh and has results — don't re-scan
@@ -1025,7 +1030,7 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
     const delay = pages.length === 0 ? 1500 : 500;
     const timer = setTimeout(() => scan(), delay);
     return () => clearTimeout(timer);
-  }, [scan, pages.length]);
+  }, [scan, pages.length, identity?.id]);
 
   // Force refresh clears cache and rescans
   const forceRefresh = useCallback(() => scan(true), [scan]);
