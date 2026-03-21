@@ -354,6 +354,26 @@ const ctxItem = {
   fontFamily: FONT,
 };
 
+// ── Reusable hover handlers ──
+const hoverBg = (bg = C.darkSurf2, reset = "transparent") => ({
+  onMouseEnter: (e) => { e.currentTarget.style.background = bg; },
+  onMouseLeave: (e) => { e.currentTarget.style.background = reset; },
+});
+
+// ── Shared input field style ──
+const inputFieldStyle = {
+  border: `1px solid ${C.darkBorder}`,
+  borderRadius: RADIUS.sm,
+  background: C.darkSurf2,
+  color: C.darkText,
+  fontFamily: FONT,
+  fontSize: 12,
+  padding: "6px 10px",
+  outline: "none",
+  width: "100%",
+  boxSizing: "border-box",
+};
+
 // ─── Helpers ───
 
 /** Resolve column list from schema when not provided in config.
@@ -2137,14 +2157,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           })()}
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
             {onRefresh && (
-              <button
-                style={S.btnSecondary}
-                onClick={onRefresh}
-                onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-              >
-                Refresh
-              </button>
+              <button style={S.btnSecondary} onClick={onRefresh} {...hoverBg()}>Refresh</button>
             )}
           </div>
         </div>
@@ -2311,8 +2324,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                       color: visible ? C.darkText : C.darkMuted,
                       transition: "background 0.12s",
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    {...hoverBg()}
                   >
                     <span style={{
                       width: 14,
@@ -2602,11 +2614,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                   searchRelationDbs(e.target.value);
                                 }}
                                 onFocus={() => { if (!dbSearchResults.length) searchRelationDbs(""); }}
-                                style={{
-                                  border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
-                                  background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 12,
-                                  padding: "6px 10px", outline: "none", width: "100%", boxSizing: "border-box",
-                                }}
+                                style={inputFieldStyle}
                               />
                               <div style={{ maxHeight: 120, overflowY: "auto" }}>
                                 {dbSearchResults.map((db) => (
@@ -2650,11 +2658,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                       placeholder="Backlink column name..."
                                       value={addColSyncedName}
                                       onChange={(e) => setAddColSyncedName(e.target.value)}
-                                      style={{
-                                        border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
-                                        background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 12,
-                                        padding: "6px 10px", outline: "none", width: "100%", boxSizing: "border-box",
-                                      }}
+                                      style={inputFieldStyle}
                                     />
                                   )}
                                 </>
@@ -2993,36 +2997,12 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
             }}
             onMouseDown={(e) => e.stopPropagation()}
           >
-            {/* Sort Asc */}
-            <div
-              style={ctxItem}
-              onClick={() => { setSortField(colCtxMenu.col); setSortDir("asc"); setColCtxMenu(null); }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-            >{"\u25B2"} Sort Ascending</div>
-            {/* Sort Desc */}
-            <div
-              style={ctxItem}
-              onClick={() => { setSortField(colCtxMenu.col); setSortDir("desc"); setColCtxMenu(null); }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-            >{"\u25BC"} Sort Descending</div>
+            <div style={ctxItem} onClick={() => { setSortField(colCtxMenu.col); setSortDir("asc"); setColCtxMenu(null); }} {...hoverBg()}>{"\u25B2"} Sort Ascending</div>
+            <div style={ctxItem} onClick={() => { setSortField(colCtxMenu.col); setSortDir("desc"); setColCtxMenu(null); }} {...hoverBg()}>{"\u25BC"} Sort Descending</div>
             <div style={{ borderTop: `1px solid ${C.edgeLine}`, margin: "2px 0" }} />
-            {/* Hide */}
-            <div
-              style={ctxItem}
-              onClick={() => handleHideCol(colCtxMenu.col)}
-              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-            >{"\uD83D\uDC41\uFE0F"} Hide Column</div>
-            {/* Rename (D1 + Notion) */}
+            <div style={ctxItem} onClick={() => handleHideCol(colCtxMenu.col)} {...hoverBg()}>{"\uD83D\uDC41\uFE0F"} Hide Column</div>
             {canEditSchema && (
-              <div
-                style={ctxItem}
-                onClick={() => { setRenamingCol(colCtxMenu.col); setRenameValue(colCtxMenu.col); setColCtxMenu(null); }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-              >{"\u270F\uFE0F"} Rename</div>
+              <div style={ctxItem} onClick={() => { setRenamingCol(colCtxMenu.col); setRenameValue(colCtxMenu.col); setColCtxMenu(null); }} {...hoverBg()}>{"\u270F\uFE0F"} Rename</div>
             )}
             {/* Type Change (D1 only — Notion type changes are restricted) */}
             {isD1Table && (
@@ -3062,12 +3042,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
             {canEditSchema && (
               <>
                 <div style={{ borderTop: `1px solid ${C.edgeLine}`, margin: "2px 0" }} />
-                <div
-                  style={{ ...ctxItem, color: "#FF6B3D" }}
-                  onClick={() => { if (confirm(`Delete column "${colCtxMenu.col}"?`)) handleDeleteCol(colCtxMenu.col); }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = "#FF6B3D10"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                >{"\uD83D\uDDD1"} Delete Column</div>
+                <div style={{ ...ctxItem, color: "#FF6B3D" }} onClick={() => { if (confirm(`Delete column "${colCtxMenu.col}"?`)) handleDeleteCol(colCtxMenu.col); }} {...hoverBg("#FF6B3D10")}>{"\uD83D\uDDD1"} Delete Column</div>
               </>
             )}
           </div>
