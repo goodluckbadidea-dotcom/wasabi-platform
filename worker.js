@@ -472,28 +472,31 @@ async function extractUser(request, env) {
 }
 
 // ─── Rate Limiting (in-memory, resets on cold start) ───
-const _rateLimitMap = new Map(); // key -> [timestamp, ...]
-
-function checkRateLimit(key, maxAttempts = 5, windowSecs = 900) {
-  const now = Date.now();
-  const windowMs = windowSecs * 1000;
-  let timestamps = _rateLimitMap.get(key) || [];
-  // Prune expired entries
-  timestamps = timestamps.filter((t) => now - t < windowMs);
-  if (timestamps.length >= maxAttempts) {
-    const oldestInWindow = timestamps[0];
-    const retryAfter = Math.ceil((oldestInWindow + windowMs - now) / 1000);
-    return { limited: true, retryAfter };
-  }
-  timestamps.push(now);
-  _rateLimitMap.set(key, timestamps);
-  // Periodic cleanup: remove stale keys every 100 checks
-  if (_rateLimitMap.size > 1000) {
-    for (const [k, v] of _rateLimitMap) {
-      if (v.every((t) => now - t >= windowMs)) _rateLimitMap.delete(k);
+/**
+ * D1-backed rate limiter — persists across worker isolates.
+ * Stores individual timestamps in `rate_limits` table so we can count
+ * attempts within a sliding window.
+ */
+async function checkRateLimit(db, key, maxAttempts = 5, windowSecs = 900) {
+  const nowSecs = Math.floor(Date.now() / 1000);
+  const windowStart = nowSecs - windowSecs;
+  try {
+    const { results } = await db
+      .prepare("SELECT ts FROM rate_limits WHERE key = ? AND ts > ? ORDER BY ts ASC")
+      .bind(key, windowStart)
+      .all();
+    if (results.length >= maxAttempts) {
+      const oldestInWindow = results[0].ts;
+      const retryAfter = oldestInWindow + windowSecs - nowSecs;
+      return { limited: true, retryAfter: Math.max(retryAfter, 1) };
     }
+    // Record this attempt
+    await db.prepare("INSERT INTO rate_limits (key, ts) VALUES (?, ?)").bind(key, nowSecs).run();
+    return { limited: false };
+  } catch (_) {
+    // If the table doesn't exist yet (pre-migration), allow the request
+    return { limited: false };
   }
-  return { limited: false };
 }
 
 // ─── Auth Middleware ───
@@ -829,6 +832,10 @@ export default {
     ctx.waitUntil(
       env.DB.prepare("DELETE FROM active_sessions WHERE revoked_at IS NOT NULL OR last_seen_at < datetime('now', '-30 days')").run().catch(() => {})
     );
+    // Clean up expired rate limit entries (older than 15 min)
+    ctx.waitUntil(
+      env.DB.prepare("DELETE FROM rate_limits WHERE ts < ?").bind(Math.floor(Date.now() / 1000) - 900).run().catch(() => {})
+    );
   },
 
   async fetch(request, env, ctx) {
@@ -896,26 +903,18 @@ export default {
         return room.fetch(new Request(wsUrl.toString(), request));
       }
 
-      // ─── Auth Gate ───
-      if (!authenticate(request, env)) {
-        return jsonResponse({ _error: "Unauthorized" }, 401);
-      }
-
-      // ─── Role Gate (centralized permission check) ───
-      const user = await extractUser(request, env);
-      if (!checkRoutePermission(path, request.method, user)) {
-        return jsonResponse({ _error: "Insufficient permissions" }, 403);
-      }
-
-      // ─── D1 Bootstrap ───
+      // ─── D1 Bootstrap (before auth gate — needed for first-time setup) ───
       if (path === "/init" && request.method === "POST") {
+        if (!authenticate(request, env)) {
+          return jsonResponse({ _error: "Unauthorized" }, 401);
+        }
         return await handleInit(env);
       }
 
-      // ─── Auth Endpoints (rate-limited) ───
+      // ─── Auth Endpoints (before auth gate — users can't auth to reach auth) ───
       if ((path === "/auth/register" || path === "/auth/login") && request.method === "POST") {
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-        const rl = checkRateLimit(`auth:${ip}`);
+        const rl = await checkRateLimit(env.DB, `auth:${ip}`);
         if (rl.limited) {
           return jsonResponse(
             { _error: "Too many attempts. Please try again later." },
@@ -926,6 +925,17 @@ export default {
         const body = await request.json();
         if (path === "/auth/register") return await handleAuthRegister(env, body);
         return await handleAuthLogin(env, body);
+      }
+
+      // ─── Auth Gate ───
+      if (!authenticate(request, env)) {
+        return jsonResponse({ _error: "Unauthorized" }, 401);
+      }
+
+      // ─── Role Gate (centralized permission check) ───
+      const user = await extractUser(request, env);
+      if (!checkRoutePermission(path, request.method, user)) {
+        return jsonResponse({ _error: "Insufficient permissions" }, 403);
       }
       if (path === "/auth/me" && request.method === "GET") {
         if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
@@ -2306,6 +2316,9 @@ async function handleInit(env) {
       "CREATE INDEX IF NOT EXISTS idx_sessions_user ON active_sessions(user_id)",
       // Phase 2C: Invite code expiration
       "ALTER TABLE users ADD COLUMN invite_expires_at TEXT",
+      // D1-backed rate limiting (persists across worker isolates)
+      "CREATE TABLE IF NOT EXISTS rate_limits (key TEXT NOT NULL, ts INTEGER NOT NULL)",
+      "CREATE INDEX IF NOT EXISTS idx_rate_limits_key_ts ON rate_limits(key, ts)",
     ];
     for (const sql of migrations) {
       try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }
