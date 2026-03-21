@@ -12,6 +12,7 @@ import { RecordDrawerProvider } from "./zen/RecordDrawerContext.jsx";
 import { ColorMappingProvider } from "./context/ColorMappingContext.jsx";
 import { ThemeProvider, useTheme } from "./context/ThemeContext.jsx";
 import { UserSyncProvider, useUserSync } from "./context/UserSyncContext.jsx";
+import { ViewportProvider, useViewport } from "./context/ViewportContext.jsx";
 import { injectAnimations, injectInteractionStyles, injectScrollbarStyles, updateCSSCustomProperties, ANIM, TRANSITION } from "./design/animations.js";
 import { S } from "./design/styles.js";
 import { C, Z } from "./design/tokens.js";
@@ -135,17 +136,13 @@ function AppContent() {
   const [activePageData, setActivePageData] = useState(null); // { data, schema } from PageShell for WasabiPanel chat
   const [pendingChatMessage, setPendingChatMessage] = useState(null); // Scaffold from FunctionBuilder → WasabiPanel
 
-  // ── Narrow viewport detection (tablet / iPad) ──
-  const [isNarrow, setIsNarrow] = useState(() => typeof window !== "undefined" && window.innerWidth < 1024);
+  // ── Viewport detection (shared context) ──
+  const { isNarrow, isTablet } = useViewport();
+
+  // Auto-collapse sidebar when viewport shrinks to phone size
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 1023px)");
-    const handler = (e) => {
-      setIsNarrow(e.matches);
-      if (e.matches) setSidebarCollapsed(true);
-    };
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
+    if (isNarrow) setSidebarCollapsed(true);
+  }, [isNarrow]);
 
   // ── Persist UI state to localStorage ──
   useEffect(() => { try { localStorage.setItem("wasabi_sidebar_collapsed", JSON.stringify(sidebarCollapsed)); } catch {} }, [sidebarCollapsed]);
@@ -617,22 +614,24 @@ function AppContent() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <PlatformProvider>
-        <UserSyncProvider>
-          <ColorMappingProvider>
-            <LinksProvider>
-              <NeuronsProvider>
-                <RecordDrawerProvider>
-                  <ErrorBoundary fallbackLabel="Wasabi Platform">
-                    <AppContent />
-                  </ErrorBoundary>
-                </RecordDrawerProvider>
-              </NeuronsProvider>
-            </LinksProvider>
-          </ColorMappingProvider>
-        </UserSyncProvider>
-      </PlatformProvider>
-    </ThemeProvider>
+    <ViewportProvider>
+      <ThemeProvider>
+        <PlatformProvider>
+          <UserSyncProvider>
+            <ColorMappingProvider>
+              <LinksProvider>
+                <NeuronsProvider>
+                  <RecordDrawerProvider>
+                    <ErrorBoundary fallbackLabel="Wasabi Platform">
+                      <AppContent />
+                    </ErrorBoundary>
+                  </RecordDrawerProvider>
+                </NeuronsProvider>
+              </LinksProvider>
+            </ColorMappingProvider>
+          </UserSyncProvider>
+        </PlatformProvider>
+      </ThemeProvider>
+    </ViewportProvider>
   );
 }

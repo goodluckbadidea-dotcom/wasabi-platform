@@ -6,6 +6,7 @@ import React, { useMemo, useCallback } from "react";
 import { C, FONT } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { useNavigation } from "../context/NavigationContext.jsx";
+import { useViewport } from "../context/ViewportContext.jsx";
 // Special page labels
 const SPECIAL_PAGES = {
   system: "System",
@@ -28,6 +29,7 @@ function Chevron() {
 export default function Breadcrumb() {
   const { activePage, pages, setActivePage } = usePlatform();
   const { setTargetFolderPath } = useNavigation();
+  const { isNarrow, isTablet } = useViewport();
   const segments = useMemo(() => {
     // No active page → Home
     if (!activePage) return [];
@@ -72,7 +74,7 @@ export default function Breadcrumb() {
     return chain;
   }, [activePage, pages]);
 
-  if (segments.length === 0) return null;
+  if (segments.length === 0 || isNarrow) return null;
 
   return (
     <div
@@ -122,7 +124,7 @@ export default function Breadcrumb() {
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
-              maxWidth: seg.isCurrent ? 200 : 140,
+              maxWidth: seg.isCurrent ? (isTablet ? 140 : 200) : (isTablet ? 100 : 140),
               outline: "none",
               transition: "color 0.12s, background 0.12s",
             }}

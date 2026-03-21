@@ -4,6 +4,7 @@
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
+import { useViewport } from "../context/ViewportContext.jsx";
 import { ANIM, TRANSITION } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { useNavigation } from "../context/NavigationContext.jsx";
@@ -39,6 +40,7 @@ export default function Navigation({
     identity,
   } = usePlatform();
   const { setTargetFolderPath } = useNavigation();
+  const { isTouch } = useViewport();
 
   const zenInsight = useInsight();
 
@@ -121,7 +123,7 @@ export default function Navigation({
   // Active view index (from App.jsx viewStates)
   const activeViewIndex = viewStates?.[activePage] ?? 0;
 
-  const SIDEBAR_W = collapsed ? 62 : 220;
+  const SIDEBAR_W = collapsed ? (isTouch ? 68 : 62) : 220;
 
   // ── Debounced database entry search ──
   useEffect(() => {
@@ -276,8 +278,8 @@ export default function Navigation({
     display: "flex",
     alignItems: "center",
     gap: collapsed ? 0 : 10,
-    padding: collapsed ? "10px 8px" : "10px 14px",
-    minHeight: 44, // touch-friendly minimum (Apple HIG: 44pt)
+    padding: collapsed ? (isTouch ? "12px 10px" : "10px 8px") : "10px 14px",
+    minHeight: isTouch ? 48 : 44,
     borderRadius: RADIUS.lg,
     transition: "background 0.15s, transform 0.12s",
     outline: "none",

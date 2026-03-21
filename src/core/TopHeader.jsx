@@ -10,12 +10,15 @@ import { usePages } from "../context/PagesContext.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { isAdmin } from "../lib/roles.js";
 import Breadcrumb from "../components/Breadcrumb.jsx";
+import { useViewport } from "../context/ViewportContext.jsx";
 
 export default function TopHeader() {
   const { themeName, toggleMode } = useTheme();
   const { overlayActive, toggleOverlay, selection } = useNeurons();
   const { saveStatus } = usePages();
   const { identity, logout, setActivePage } = usePlatform();
+  const { isNarrow, isTablet } = useViewport();
+  const compact = isNarrow || isTablet;
 
   // User dropdown
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -52,7 +55,7 @@ export default function TopHeader() {
         borderImage: `linear-gradient(90deg, ${C.edgeLine}, ${C.accent}22, ${C.accent}33, ${C.accent}22, ${C.edgeLine}) 1`,
         display: "flex",
         alignItems: "center",
-        padding: "env(safe-area-inset-top, 0px) 24px 0",
+        padding: `env(safe-area-inset-top, 0px) ${compact ? 12 : 24}px 0`,
         position: "relative",
         zIndex: Z.header,
       }}
@@ -98,7 +101,7 @@ export default function TopHeader() {
       )}
 
       {/* Right: Refresh + Neurons toggle + Theme cycle + User pill */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: compact ? 6 : 10, flexShrink: 0 }}>
         {/* Hard refresh */}
         <button
           onClick={() => {
@@ -184,7 +187,7 @@ export default function TopHeader() {
             <line x1="4" y1="4" x2="8" y2="12" stroke={overlayActive ? "url(#neuron-grad)" : C.darkMuted} strokeWidth="1" />
             <line x1="12" y1="4" x2="8" y2="12" stroke={overlayActive ? "url(#neuron-grad)" : C.darkMuted} strokeWidth="1" />
           </svg>
-          Neurons
+          {!compact && "Neurons"}
           {overlayActive && selection.length > 0 && (
             <span
               style={{
@@ -234,7 +237,7 @@ export default function TopHeader() {
           }}
         >
           <span style={{ width: 12, height: 12, borderRadius: "50%", background: C.accent, flexShrink: 0 }} />
-          {themeName.charAt(0).toUpperCase() + themeName.slice(1)}
+          {!compact && (themeName.charAt(0).toUpperCase() + themeName.slice(1))}
         </button>
 
         {/* User identity pill */}
@@ -288,18 +291,22 @@ export default function TopHeader() {
               }}>
                 {(identity.display_name || "U").charAt(0).toUpperCase()}
               </span>
-              <span style={{ color: C.darkText, fontWeight: 500 }}>
-                {identity.display_name}
-              </span>
-              <span style={{
-                fontSize: 9,
-                color: C.darkMuted,
-                textTransform: "uppercase",
-                letterSpacing: "0.04em",
-                fontWeight: 600,
-              }}>
-                {identity.role}
-              </span>
+              {!isNarrow && (
+                <span style={{ color: C.darkText, fontWeight: 500 }}>
+                  {identity.display_name}
+                </span>
+              )}
+              {!compact && (
+                <span style={{
+                  fontSize: 9,
+                  color: C.darkMuted,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                  fontWeight: 600,
+                }}>
+                  {identity.role}
+                </span>
+              )}
             </button>
 
             {/* Dropdown */}

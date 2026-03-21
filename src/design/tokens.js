@@ -634,8 +634,8 @@ function _rebuildShadows() {
 
 // Responsive breakpoints
 export const BP = {
-  mobile: 640,
-  tablet: 1024,
+  mobile: 768,    // below = phone
+  tablet: 1194,   // mobile..tablet = iPad (covers iPad Air landscape 1180px, Pro 11" 1194px)
 };
 
 // ── Z-Index Scale ──
