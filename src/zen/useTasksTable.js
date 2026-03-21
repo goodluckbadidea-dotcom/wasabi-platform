@@ -40,19 +40,22 @@ export default function useTasksTable() {
         try {
           const { state } = await getUserState();
           if (state?.zen_tasks_table_id) {
-            if (!cancelled) setTableId(state.zen_tasks_table_id);
-            return;
+            // Verify ownership: the saved table must belong to THIS user.
+            // Check that the page exists in pages and its name matches this user.
+            const expectedSuffix = identity.display_name ? `(${identity.display_name})` : null;
+            const page = pages.find((p) => p.id === state.zen_tasks_table_id);
+            if (page && (!expectedSuffix || (page.name && page.name.includes(expectedSuffix)))) {
+              if (!cancelled) setTableId(state.zen_tasks_table_id);
+              return;
+            }
+            // Stale or mismatched table — clear it and provision a new one
+            console.warn("[useTasksTable] Stale zen_tasks_table_id detected, provisioning new table");
+            putUserState({ zen_tasks_table_id: null }).catch(() => {});
           }
         } catch (err) { console.warn("[useTasksTable] getUserState:", err.message || err); }
 
-        // Fallback: search pages for existing zen table (may exist from before user_state was set)
-        const existing = pages.find((p) => p._systemInternal || (p.name && p.name.startsWith("Zen Tasks")));
-        if (existing) {
-          if (!cancelled) setTableId(existing.id);
-          // Persist to user_state so we find it next time
-          putUserState({ zen_tasks_table_id: existing.id }).catch(err => console.warn("[useTasksTable] putUserState:", err.message || err));
-          return;
-        }
+        // No fallback to shared pages — each user must get their own table.
+        // Falling through to auto-provision below.
       }
 
       // 2. Fallback for single-user mode: check localStorage
@@ -171,25 +174,36 @@ export default function useTasksTable() {
   }, [tableId]);
 
   // ── Toggle task done state ──
+  // Marking a personal task as done deletes it (ephemeral to-do items).
+  // Unchecking is a no-op since completed tasks are removed.
   const toggleTask = useCallback(async (taskId) => {
     const task = tasks.find((t) => t.id === taskId);
     if (!task || !tableId) return;
 
     const newDone = !task.done;
 
-    // Optimistic update
-    setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, done: newDone } : t))
-    );
-
-    try {
-      await updateRow(tableId, taskId, { cells: { done: newDone } });
-    } catch (err) {
-      console.error("[ZenTasks] Failed to toggle:", err);
-      // Revert
+    if (newDone) {
+      // Completing → delete the row (optimistic)
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      try {
+        await deleteRow(tableId, taskId);
+      } catch (err) {
+        console.error("[ZenTasks] Failed to complete/delete:", err);
+        setTasks((prev) => [...prev, task]); // Restore on failure
+      }
+    } else {
+      // Unchecking (shouldn't happen since completed tasks are deleted, but handle gracefully)
       setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, done: !newDone } : t))
+        prev.map((t) => (t.id === taskId ? { ...t, done: false } : t))
       );
+      try {
+        await updateRow(tableId, taskId, { cells: { done: false } });
+      } catch (err) {
+        console.error("[ZenTasks] Failed to uncheck:", err);
+        setTasks((prev) =>
+          prev.map((t) => (t.id === taskId ? { ...t, done: true } : t))
+        );
+      }
     }
   }, [tasks, tableId]);
 
