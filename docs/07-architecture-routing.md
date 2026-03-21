@@ -1,318 +1,143 @@
 # Application Architecture & Routing
 
-## Overview
+## Product Context
 
-Wasabi uses **state-based routing** (no react-router) with a layered provider composition pattern. The app is structured as:
-
-```
-main.jsx → App → [Providers] → AppContent → PageShell/Views
-```
-
-This document outlines the component hierarchy, provider nesting, routing system, and layout behavior.
+Wasabi is an AI-native workspace where users build persistent semantic scaffolding — structured data, relationships, and domain knowledge — that makes AI interactions more accurate over time. The frontend is a React 18 SPA with no external routing library; navigation is driven entirely by state.
 
 ---
 
 ## Component Hierarchy
 
-### Entry Point: main.jsx
+### Entry Point
 
-```javascript
-ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+```
+main.jsx → ReactDOM.createRoot() → <React.StrictMode> → <App />
 ```
 
-### Root Component: App.jsx
+### App.jsx Structure
 
-`App` is the root component that wraps everything in provider layers:
+App.jsx is the root component. It wraps the entire application in a layered provider composition, then renders `AppContent` which contains the layout shell.
 
 ```
 App
-├── ThemeProvider
-│   ├── PlatformProvider
-│   │   ├── AuthProvider
-│   │   ├── PagesProvider
-│   │   └── NavigationProvider
-│   ├── UserSyncProvider
-│   ├── ColorMappingProvider
-│   ├── LinksProvider
-│   ├── NeuronsProvider
-│   └── RecordDrawerProvider
-│       └── ErrorBoundary
-│           └── AppContent
+ └── ThemeProvider
+      └── ViewportProvider
+           └── PlatformProvider
+                │   (internally wraps: AuthProvider → PagesProvider → NavigationProvider)
+                └── ToastProvider
+                     └── AuthProvider (re-export gate)
+                          └── PagesProvider
+                               └── NavigationProvider
+                                    └── UserSyncProvider
+                                         └── CollaborationProvider
+                                              └── ColorMappingProvider
+                                                   └── LinksProvider
+                                                        └── NeuronsProvider
+                                                             └── RecordDrawerProvider
+                                                                  └── ErrorBoundary
+                                                                       └── AppContent
 ```
 
-### AppContent Component
+### AppContent Renders
 
-`AppContent` is the main application layout. It renders:
-
-1. **Command Palette** (conditional overlay)
-2. **TopHeader** (fixed top bar with page controls)
-3. **NeuronOverlay + NeuronLines** (selection mode UI)
-4. **Main Row Layout:**
-   - **Wasabi Panel** (optional left chat panel, 320px when open)
-   - **Navigation** (left sidebar, 54px collapsed / 220px expanded)
-   - **Content Area** (main view, flex: 1)
+1. **CommandPalette** — Cmd+K overlay for searching pages, shortcuts, and actions
+2. **TopHeader** — fixed 52px top bar with theme toggle, command palette trigger, user menu
+3. **NeuronOverlay + NeuronLines** — conditional Neuron selection mode UI
+4. **Main row layout:**
+   - WasabiPanel (optional left chat panel)
+   - Navigation (left sidebar)
+   - Content area (flex: 1, renders active page/view)
 
 ---
 
-## Provider Composition & Order
+## Provider Wrapping Order
 
-Providers are applied in specific nesting order to ensure data availability:
+Providers are nested in a specific order so that inner providers can consume outer ones. The actual wrapping order in App.jsx is:
 
-### 1. ThemeProvider
-**File:** `src/context/ThemeContext.jsx`
+| Order | Provider | Purpose |
+|-------|----------|---------|
+| 1 | ThemeProvider | Design tokens (C, SHADOW), theme name, applyTheme() |
+| 2 | ViewportProvider | isNarrow, isTablet, isTouch, viewport width |
+| 3 | PlatformProvider | Composes Auth + Pages + Navigation; exposes workerConnection, pages CRUD, feature flags |
+| 4 | ToastProvider | showToast(msg, type), globalToast() for non-component code |
+| 5 | AuthProvider | identity, login/register/logout, bootstrap state machine |
+| 6 | PagesProvider | pages array, activePage, CRUD with toast feedback |
+| 7 | NavigationProvider | sidebar state, search, folder navigation |
 
-Manages theme state (light/dark) and CSS custom properties.
+Additional providers nested after the core seven: UserSyncProvider, CollaborationProvider, ColorMappingProvider, LinksProvider, NeuronsProvider, RecordDrawerProvider.
 
-**State:**
-- `theme` - current theme object
-- `themeName` - "light" | "dark"
-- `toggleTheme()` - switch theme
-
-### 2. PlatformProvider (Composition Layer)
-**File:** `src/context/PlatformContext.jsx`
-
-Thin wrapper that composes three sub-providers for backward compatibility:
-
-```javascript
-export function PlatformProvider({ children }) {
-  return (
-    <AuthProvider>
-      <PagesProvider>
-        <NavigationProvider>
-          {children}
-        </NavigationProvider>
-      </PagesProvider>
-    </AuthProvider>
-  );
-}
-```
-
-Merges outputs into single `usePlatform()` hook.
-
-### 3. AuthProvider
-**File:** `src/context/AuthContext.jsx`
-
-Authentication and worker connection state.
-
-**State:**
-- `user` - { workerUrl, notionKey, claudeKey, mondayKey, ... }
-- `isAuthenticated` - boolean
-- `isSetup` - boolean
-- `workerConnection` - { workerUrl, secret }
-- `identity` - { id, display_name, role } (multi-user mode)
-- `multiUserEnabled` - boolean
-- `platformIds` - { databaseId, tableId, ... }
-
-**Functions:**
-- `setUserKeys(keys)` - save user credentials
-- `updateConnectionKey(key, value)` - update individual connection
-- `completeSetup()` - finish initial setup
-- `login(email, password)` - multi-user login
-- `register(email, password, inviteCode)` - multi-user registration
-- `logout()` - clear identity
-
-### 4. PagesProvider
-**File:** `src/context/PagesContext.jsx`
-
-Page configuration and hierarchy management.
-
-**State:**
-- `pages` - array of page configs
-- `pageTree` - nested hierarchy with folders/views
-- `folders` - computed list of folder pages
-- `globalDashboard` - auto-created global dashboard config
-- `batchQueue` - operation log for undo/batch handling
-- `saveStatus` - "idle" | "saving" | "saved" | "error"
-
-**Functions:**
-- `addPage(config)` - create new page
-- `updatePageConfig(id, updates)` - modify page settings
-- `removePage(id)` - delete page
-- `getFolderPages(folderId)` - list pages in folder
-- `addToQueue(op)`, `updateQueueItem(id, changes)`, etc. - batch operations
-
-### 5. NavigationProvider
-**File:** `src/context/NavigationContext.jsx`
-
-Current page/folder selection state.
-
-**State:**
-- `activePage` - currently selected page ID (or system route like "system", "dashboard", etc.)
-- `activeFolder` - currently selected folder ID
-- `expandedNodes` - Set of node IDs expanded in sidebar tree
-
-**Functions:**
-- `setActivePage(id)` - navigate to page
-- `setActiveFolder(id)` - navigate to folder
-- `toggleExpand(nodeId)` - expand/collapse sidebar node
-
-### 6. UserSyncProvider
-**File:** `src/context/UserSyncContext.jsx`
-
-Multi-device synchronization (WebSocket user room).
-
-**Functions:**
-- `onNavUpdate(callback)` - listen for navigation changes from other devices
-- `sendNavUpdate(pageId, folderId)` - broadcast nav to other devices
-- `onSessionRevoked(callback)` - listen for logout on another device
-
-### 7. ColorMappingProvider
-**File:** `src/context/ColorMappingContext.jsx`
-
-Global color field mapping for table views.
-
-**State:**
-- `globalColorMapping` - { [fieldName]: colorValue }
-- `globalColorField` - primary field used for colors
-
-**Functions:**
-- `setGlobalColorField(fieldName)` - set which field drives row colors
-- `setGlobalColorMapping(mapping)` - update color values
-
-### 8. LinksProvider
-**File:** `src/context/LinksContext.jsx`
-
-Manages neural relationships (Neurons) between records and pages.
-
-**Functions:**
-- Link/unlink records across tables
-- Query relationship graph
-
-### 9. NeuronsProvider
-**File:** `src/neurons/NeuronsContext.jsx`
-
-Manages Neuron overlay state and selection.
-
-**Functions:**
-- `toggleOverlay()` - show/hide Neuron selection mode
-
-### 10. RecordDrawerProvider
-**File:** `src/zen/RecordDrawerContext.jsx`
-
-Opens drawer for detailed record editing.
-
-**State:**
-- `recordId` - currently open record
-- `pageId` - page containing record
+PlatformProvider is a composition layer that internally nests AuthProvider, PagesProvider, and NavigationProvider, then merges their outputs into a single `usePlatform()` hook for backward compatibility.
 
 ---
 
-## Routing System (State-Based)
+## Routing: State-Based, No React Router
 
-Wasabi does **not use react-router**. Routing is managed via `activePage` state in NavigationContext.
+Wasabi does not use react-router or any URL-based routing library. Navigation is controlled by the `activePage` string stored in NavigationContext.
 
 ### Route Identifiers
 
-Route identifier is stored in `activePage` (from `useNavigation()` or `usePlatform().activePage`):
+The `activePage` value is either a system string or a page UUID:
 
-| Route ID | Component | Description |
-|----------|-----------|-------------|
-| `null` | TasksView | Home: Tasks split view (To-Do + Calendar) |
-| `"system"` | SystemManager | System settings & admin panel |
-| `"wasabi"` | PageBuilder | Create new page (builder modal) |
+| activePage value | Component | Description |
+|-----------------|-----------|-------------|
+| `"tasks"` or `null` | TasksView | Home: personal tasks + calendar |
 | `"notes"` | NotesView | Notes scratchpad |
-| `"dashboard"` | DashboardView | Dashboard with widgets |
-| `"gmail"` | GmailView | Gmail integration view |
-| `"workspaces"` | WorkspaceBrowser | Browse connected workspaces |
-| `"knowledge"` | KnowledgeHub | Knowledge base, automations, functions, build |
-| `"notifications"` | NotificationFeed | Notification list |
-| `{page_id}` | PageShell | User-created page (renders selected view) |
+| `"dashboard"` | DashboardView | Customizable widget dashboard |
+| `"gmail"` | GmailView | Gmail inbox/compose/reply |
+| `"workspaces"` | WorkspaceBrowser | Folder-based page navigation |
+| `"notifications"` | NotificationFeed | Notification inbox |
+| `"knowledge-base"` | KnowledgeHub | Knowledge base management |
+| `"automations"` | KnowledgeHub (tab) | Automation rules |
+| `"functions"` | KnowledgeHub (tab) | Custom functions |
+| `"build"` | KnowledgeHub (tab) | Plugin builder |
+| `"system"` | SystemManager | Admin settings panel |
+| `{page UUID}` | PageShell | User-created page (renders active view) |
 
-### Navigation Flow
+### renderContent() Switch
 
-```javascript
-// In AppContent, navigate via:
-setActivePage("system")           // Go to system settings
-setActivePage(pageId)             // Go to user page
-setActivePage(null)               // Go to home (Tasks)
-
-// Associated folder navigation:
-setActiveFolder(folderId)         // Select folder context
-```
-
-### Rendering Logic (AppContent.renderContent)
+In `AppContent`, the `renderContent()` function matches `activePage` against known string identifiers. If no string matches, it looks up the value as a page UUID in the `pages` array and renders `<PageShell>`. If nothing matches, it falls back to `<TasksView>`.
 
 ```javascript
 const renderContent = () => {
   if (activePage === "system") return <SystemManager />;
-  if (activePage === "wasabi") return <PageBuilder />;
-  if (activePage === "notes") return <NotesView />;
   if (activePage === "dashboard") return <DashboardView />;
   if (activePage === "gmail") return <GmailView />;
-  if (activePage === "workspaces") return <WorkspaceBrowser />;
-  if (activePage === "knowledge") return <KnowledgeHub />;
-  if (activePage === "notifications") return <NotificationFeed />;
+  // ... other system routes ...
 
-  // User page routing
-  const activePageConfig = pages.find((p) => p.id === activePage);
-  if (activePageConfig) {
-    return <PageShell pageConfig={activePageConfig} ... />;
-  }
+  const pageConfig = pages.find(p => p.id === activePage);
+  if (pageConfig) return <PageShell pageConfig={pageConfig} />;
 
-  // Default fallback
-  return <TasksView />;
+  return <TasksView />;  // fallback
 };
 ```
 
----
-
-## Layout Structure
-
-### Top Layout: Responsive Row
+### Navigation Flow
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    TopHeader                        │
-├─────────────────────────────────────────────────────┤
-│  [WasabiPanel] [Sidebar] [    Main Content Area    ]│
-│                                                      │
-│  - WasabiPanel: 320px (optional, left)              │
-│  - Sidebar: 54px (collapsed) or 220px (expanded)    │
-│  - Content: flex: 1 (fills remaining)               │
-└─────────────────────────────────────────────────────┘
+User clicks sidebar item
+  → setActivePage(id) via NavigationContext
+  → AppContent re-renders
+  → renderContent() matches activePage value
+  → Component renders with contentSwap animation
 ```
-
-### Sidebar (Navigation)
-**File:** `src/core/Navigation.jsx`
-
-- Left column: collapsible icon bar + expandable text menu
-- Lists pages, folders, system routes
-- Stores collapse state in localStorage: `wasabi_sidebar_collapsed`
-
-### Wasabi Panel (Chat)
-**File:** `src/zen/ChatPanel.jsx` (lazy-loaded)
-
-- Left side overlay/inline panel for AI chat
-- Width: 320px
-- Can be hidden on narrow viewports (mobile)
-- Stores open state in localStorage: `wasabi_panel_open`
-- Toggle via Cmd+. keyboard shortcut
-
-### Main Content Area
-
-Renders current view (PageShell, Views, SystemManager, etc.) based on active route.
 
 ---
 
-## Lazy Loading & Code Splitting
+## Lazy Loading: lazyWithRetry()
 
-Components loaded with `lazyWithRetry()` to handle stale chunk errors after deploys:
+All view components are loaded via `lazyWithRetry()`, a wrapper around `React.lazy()` that adds exponential backoff retry logic. This handles stale chunk errors that occur after deployments — when the browser has cached an old `index.html` that references chunk files that no longer exist on the server.
 
 ```javascript
 const ChatPanel = lazyWithRetry(() => import("./zen/ChatPanel.jsx"));
 const TasksView = lazyWithRetry(() => import("./zen/TasksView.jsx"));
-const NotesView = lazyWithRetry(() => import("./zen/NotesView.jsx"));
 const DashboardView = lazyWithRetry(() => import("./zen/DashboardView.jsx"));
 const GmailView = lazyWithRetry(() => import("./zen/GmailView.jsx"));
 const WorkspaceBrowser = lazyWithRetry(() => import("./zen/WorkspaceBrowser.jsx"));
 const KnowledgeHub = lazyWithRetry(() => import("./zen/KnowledgeHub.jsx"));
+// ... etc.
 ```
 
-Each lazy view is wrapped in ErrorBoundary + Suspense:
+Each lazy view is wrapped in `ErrorBoundary` + `React.Suspense`:
 
 ```javascript
 <ErrorBoundary fallbackLabel="Tasks">
@@ -324,34 +149,121 @@ Each lazy view is wrapped in ErrorBoundary + Suspense:
 
 ---
 
-## Auth Gates & Setup Flow
+## localStorage Migration System
 
-### Three-Tier Authentication
+App.jsx (lines ~77-99) contains a migration system that runs on mount. It renames legacy `zen_` prefixed localStorage keys to `wasabi_` prefixed keys. This is a one-time migration that fires on first load after the rename, ensuring users do not lose their saved preferences.
 
-1. **Setup Wizard** - First boot, no worker URL configured
-2. **Login Screen** - Multi-user enabled, user not logged in (JWT missing/invalid)
-3. **App** - Authenticated user with credentials
+Migrated keys include sidebar state, panel open state, active page, and theme. After migration, the old `zen_` keys are removed from localStorage.
 
-```javascript
-if (!isSetup) {
-  return <SetupWizard />;
-}
-if (multiUserEnabled && !identity && !identityLoading) {
-  return <LoginScreen />;
-}
-if (!isAuthenticated) {
-  return <SetupWizard />;
-}
-// Render app...
+---
+
+## Layout Structure
+
+### Vertical Layout
+
+```
+┌──────────────────────────────────────────────┐
+│              TopHeader (52px fixed)           │
+├──────────────────────────────────────────────┤
+│ [WasabiPanel] │ [Sidebar] │ [Content Area]   │
+│   320px       │  56/220px │   flex: 1        │
+│  (optional)   │           │                  │
+└──────────────────────────────────────────────┘
 ```
 
-### Setup Initialization
+### TopHeader
 
-Auth bootstrap (AuthContext) runs:
+- Fixed height: 52px
+- Contains: theme toggle, Cmd+K command palette trigger, user menu, page title breadcrumb
+- Always visible, sits above the main row
 
-1. Call `initDatabase()` to create D1 tables and detect multi-user mode
-2. If JWT exists, call `authMe()` to validate and restore identity
-3. Load connection keys (Notion, Claude, Monday) from D1
+### Sidebar (Navigation)
+
+**File:** `src/core/Navigation.jsx`
+
+Two states controlled by `wasabi_sidebar_collapsed` in localStorage:
+
+| State | Width | Content |
+|-------|-------|---------|
+| Collapsed | 56px | Icon-only buttons for pages and system routes |
+| Expanded | 220px | Full text labels, search field, folder tree |
+
+Transition between states is animated. Toggle via Cmd+B keyboard shortcut.
+
+The sidebar lists user pages, folders, and system navigation items (Tasks, Dashboard, Gmail, Knowledge Base, Notifications, System).
+
+### WasabiPanel (Chat)
+
+**File:** `src/zen/ChatPanel.jsx` (lazy-loaded)
+
+- Width: 320px
+- **Desktop (wide viewports):** renders inline to the left of the sidebar, pushing content right
+- **Narrow viewports (isNarrow from ViewportContext):** renders as an overlay with backdrop, fixed position, up to 85vw width
+- Open state stored in localStorage: `wasabi_panel_open`
+- Toggle via Cmd+. keyboard shortcut
+
+### Content Area
+
+The remaining horizontal space (flex: 1) renders the output of `renderContent()` — whichever component matches the current `activePage`.
+
+---
+
+## PageShell: View Orchestrator
+
+**File:** `src/core/PageShell.jsx`
+
+PageShell is the orchestrator for user-created pages. It receives a `pageConfig` and:
+
+1. **Loads page configuration** — reads columns, view configs, and page type
+2. **Fetches data** — queries D1 (or Notion/Monday for linked pages) via the worker API
+3. **Determines active view** — reads the user's selected view from the page's viewConfigs
+4. **Renders the active view** — switches on `viewType` to render the appropriate component
+
+### View Type Switch
+
+PageShell (or its internal ViewRenderer) selects a view component based on the active viewConfig's `type`:
+
+| viewType | Component | Description |
+|----------|-----------|-------------|
+| `table` | Table | Spreadsheet-like grid |
+| `kanban` | Kanban | Card board grouped by status/select |
+| `gantt` | Gantt | Timeline bar chart |
+| `calendar` | Calendar | Date-based calendar |
+| `form` | Form | Data collection form |
+| `sheet` | Sheet | Linked Google Sheets viewer |
+| `document` | DocumentEditor | Rich text block editor |
+| `custom` | CustomView | User-authored HTML/JS |
+| `network` | NetworkGraph | Visual relationship graph |
+| `activity` | ActivityFeed | Activity/audit log |
+| `summary` | SummaryTiles | Aggregate metric tiles |
+| `cardgrid` | CardGrid | Card grid layout |
+| `charts` | Charts | Data visualization charts |
+
+### ViewErrorBoundary
+
+Each view rendered by PageShell is wrapped in a `ViewErrorBoundary`, a per-view error boundary that catches rendering errors and displays a fallback UI specific to that view. This prevents a single broken view from crashing the entire application.
+
+---
+
+## RecordDrawerContext
+
+**File:** `src/zen/RecordDrawerContext.jsx`
+
+RecordDrawerContext provides `notifySaved` and `notifyDeleted` callback refs that enable the RecordDrawer (the slide-out record editor) to notify the parent view when a record has been saved or deleted.
+
+This is consumed by PageShell, which registers callbacks so that when a user saves or deletes a record in the drawer, the underlying table/view data is refreshed without a full page reload. This is the primary mechanism for drawer-to-view data synchronization.
+
+---
+
+## Auth Gates & Setup Flow
+
+AppContent checks authentication state before rendering the main layout:
+
+1. **No worker connection** (`!isSetup`) → render `<SetupWizard />`
+2. **Multi-user enabled, no identity** → render `<LoginScreen />`
+3. **Authenticated** → render full app layout
+
+The AuthContext bootstrap state machine follows: `idle → booting → ready`. During `booting`, it calls `initDatabase()` to create D1 tables (if needed) and detect multi-user mode, then validates any existing JWT via `authMe()`.
 
 ---
 
@@ -362,180 +274,58 @@ Registered in AppContent via `useKeyboardShortcuts()`:
 | Shortcut | Action |
 |----------|--------|
 | Cmd+K | Toggle command palette |
-| Cmd+N | New page |
-| Cmd+B | Toggle sidebar |
-| Cmd+. | Toggle Wasabi panel |
-| Cmd+I | Go to Inbox |
-| Escape | Close Wasabi panel |
+| Cmd+B | Toggle sidebar collapsed/expanded |
+| Cmd+Shift+T | Cycle theme (Shoji → Obsidian → Hinoki → Kori → Sumi) |
+| Cmd+. | Toggle WasabiPanel |
+| Cmd+N | Create new page |
+| Cmd+I | Go to Inbox/Notifications |
+| Cmd+H | Go to Home (Tasks) |
 | Cmd+J | Toggle Neurons overlay |
-| Cmd+H | Go to home |
-| Cmd+↑ | Previous page |
-| Cmd+↓ | Next page |
+| Cmd+Up | Previous page |
+| Cmd+Down | Next page |
+| Escape | Close WasabiPanel |
 
 ---
 
-## View Rendering (PageShell)
+## SystemManager
 
-User pages render through `PageShell` component:
+**Location:** `src/core/SystemManager/` (refactored into folder, 9 files)
 
-**File:** `src/core/PageShell.jsx`
+| File | Purpose |
+|------|---------|
+| `index.js` | Re-exports |
+| `SystemManager.jsx` | Tab container and routing |
+| `OverviewTab.jsx` | System health, stats |
+| `ConnectionsTab.jsx` | API key management (Notion, Claude, Google) |
+| `SettingsTab.jsx` | Workspace settings |
+| `UsersTab.jsx` | User management, invites, roles |
+| `AuditLogTab.jsx` | Activity audit log |
+| `components/` | Shared sub-components |
 
-1. Determines page type (database, document, linked_sheet, etc.)
-2. Fetches data from source (D1, Notion, Monday, linked sheets)
-3. Renders **ViewRenderer** which picks appropriate view component based on active view type
-
-**Page Types:**
-- `database` / `standalone_table` - D1-backed table
-- `linked_notion` - Notion database (data synced to D1)
-- `linked_monday` - Monday.com board
-- `document` - Rich text document editor
-- `linked_sheet` - Google Sheets
-- `worksheet` - Wasabi native sheet editor
-- `dashboard` - Dashboard with widgets
+Accessed via `activePage === "system"`. Admin-only for most tabs.
 
 ---
 
-## Known Issues & Gaps
-
-### 1. Missing CollaborationContext Documentation
-- CollaborationProvider exists but not fully documented in this architecture
-- Used to wrap TableShell for real-time presence/conflicts
-- Integration points with PageShell unclear in current implementation
-
-### 2. Route Naming Inconsistencies
-- System routes like "system", "wasabi", "gmail" lack formal route registry
-- Page IDs are strings (UUIDs) but system routes use semantic names
-- No single place defines all valid routes — scattered in renderContent()
-
-### 3. No Explicit Route Guards
-- Auth gates are checked at AppContent level but no formal route protection system
-- Some system routes (e.g., "system") may be accessible without proper role/permissions
-
-### 4. Sidebar State Not Synced Across Devices
-- `setSidebarCollapsed()` only persists locally to localStorage
-- Opening sidebar on device A doesn't sync to device B
-- NavUpdate only syncs page/folder selection, not sidebar state
-
-### 5. ErrorBoundary Granularity
-- Each lazy view has ErrorBoundary but main content layout does not
-- Layout errors (sidebar, header) are not caught
-- Top-level ErrorBoundary might be too broad
-
-### 6. Suspense Fallbacks Inconsistent
-- Some views show "Loading..." text, others don't
-- No unified loading state (spinner component) across async views
-
----
-
-## Best Practices for Adding New Routes
-
-1. Add route ID to Route Identifiers table above
-2. Add case in `renderContent()` to handle the route
-3. If rendering a lazy component, wrap in ErrorBoundary + Suspense
-4. Document state dependencies (which contexts the route needs)
-5. Add keyboard shortcut if user-facing (via useKeyboardShortcuts)
-
-Example:
-
-```javascript
-// src/App.jsx
-const MyView = lazyWithRetry(() => import("./views/MyView.jsx"));
-
-// In renderContent():
-if (activePage === "myview") {
-  return (
-    <ErrorBoundary fallbackLabel="My View">
-      <React.Suspense fallback={<LoadingSpinner />}>
-        <MyView />
-      </React.Suspense>
-    </ErrorBoundary>
-  );
-}
-```
-
-1. User clicks sidebar item → `setActivePage(id)` via `NavigationContext`
-2. `AppContent` re-renders → `renderContent()` matches `activePage` value
-3. Component renders with `contentSwap` animation
-
-## Lazy Loading
-
-Components loaded via `React.lazy()` in `src/App.jsx`:
-
-```js
-const ZenTasksView = React.lazy(() => import("./zen/ZenTasksView.jsx"));
-const ZenNotes = React.lazy(() => import("./zen/ZenNotes.jsx"));
-const ZenDashboard = React.lazy(() => import("./zen/ZenDashboard.jsx"));
-const ZenGmail = React.lazy(() => import("./zen/ZenGmail.jsx"));
-const ZenWorkspaces = React.lazy(() => import("./zen/ZenWorkspaces.jsx"));
-const ZenKnowledgeHub = React.lazy(() => import("./zen/ZenKnowledgeHub.jsx"));
-const SashimiChatPanel = React.lazy(() => import("./zen/SashimiChatPanel.jsx"));
-```
-
-All wrapped in `<React.Suspense>` with loading fallbacks.
-
-## Layout Behavior
-
-### Desktop (width > 1024px)
-- Sidebar: inline, collapsible (54px ↔ 220px)
-- SashimiChatPanel: inline left panel (~320px)
-- Content: fills remaining space
-
-### Tablet/Narrow (width ≤ 1024px)
-- SashimiChatPanel: overlay with backdrop (fixed position, 85vw max)
-- Sidebar: may auto-collapse
-- Content: full width
-
-### iPad Detection
-```js
-const isNarrow = window.innerWidth < 1024;
-```
-- Chat panel renders as overlay when `isNarrow`
-- Sidebar collapsed by default
-
-## File Structure
+## File Organization Reference
 
 ```
 src/
-├── App.jsx                 — Root component, routing, layout
-├── main.jsx                — React DOM entry point
-├── agent/                  — AI agent system
-├── components/             — Shared UI components
-├── config/                 — Configuration utilities
-├── context/                — React contexts (auth, pages, nav)
-├── core/                   — Core app components (shell, nav, panels)
-├── design/                 — Design system (tokens, animations, icons)
-├── google/                 — Google integration utilities
-├── hooks/                  — Custom React hooks
-├── lib/                    — API client
-├── monday/                 — Monday.com integration (unused?)
-├── neurons/                — Neuron linking system
-├── notion/                 — Notion integration
-├── sheets/                 — Google Sheets integration
-├── utils/                  — General utilities
-├── views/                  — View components (table, kanban, etc.)
-└── zen/                    — Zen mode components
-    └── calendar/           — Calendar sub-components
+├── App.jsx              → Root component, providers, routing, layout
+├── main.jsx             → ReactDOM entry point
+├── core/                → Shell: TopHeader, Navigation, PageShell, SystemManager/
+├── views/               → Database view components (Table, Kanban, Gantt, etc.)
+├── zen/                 → Personal productivity (Tasks, Gmail, Dashboard, RecordDrawer)
+├── context/             → 11 React context providers
+├── design/              → Design tokens (C, Z, FONT, RADIUS, SHADOW), animations, icons
+├── agent/               → AI agent system (runAgent, toolExecutor, queryClassifier)
+├── components/          → Shared UI (ColumnBuilder, MultiSelectPicker, StateIndicators)
+├── neurons/             → Relationship mapping (NeuronsContext, NeuronLines, NeuronOverlay)
+├── hooks/               → Custom hooks (useViewPrefs, useKeyboardShortcuts)
+└── lib/                 → Utilities (api.js, iframeHelpers, tableSocket)
 ```
 
----
+### views/ vs zen/ Pattern
 
-## views/ vs zen/ Pattern
+- **`src/views/`** — Database-bound view components. Each renders a specific view type for a database page. Loaded by PageShell/ViewRenderer based on the active viewConfig type. Views receive `data`, `schema`, `onUpdate`, `onRefresh` props from PageShell.
 
-- **`src/views/`** — Database-bound view components. Each renders a specific view type
-  (Table, Calendar, Kanban, Gantt, CardGrid, Form, etc.) for a database page. These are
-  loaded by `ViewRenderer.jsx` based on the page config's active view type. Views receive
-  `data`, `schema`, `onUpdate`, `onRefresh` props from `PageShell.jsx`.
-
-- **`src/zen/`** — Standalone workspace panels and personal productivity views.
-  These are top-level screens not tied to a specific database: `TasksView` (unified
-  to-do + calendar), `GmailView` (email client), `NotesView`, `DashboardView`,
-  `KnowledgeHub`, `WorkspaceBrowser`, `ChatPanel`, and the `RecordDrawer` system.
-  Zen views manage their own data fetching and state.
-
-**Naming convention:** If a component renders database data through the view system,
-it belongs in `views/`. If it is a standalone panel or personal workspace feature,
-it belongs in `zen/`.
-
-**Shared components:** Some components exist in both directories with different
-implementations (e.g., `CalendarView`). The `zen/` version is the primary one used
-by the app; `views/` versions may be legacy or database-specific variants.
+- **`src/zen/`** — Standalone workspace panels and personal productivity views. These are top-level screens not tied to a specific database: TasksView, GmailView, NotesView, DashboardView, KnowledgeHub, WorkspaceBrowser, ChatPanel, and the RecordDrawer system. Zen views manage their own data fetching.

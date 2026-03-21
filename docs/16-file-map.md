@@ -1,1299 +1,414 @@
-# Wasabi Platform: Comprehensive File Map
+# File Map
 
-**Last Updated:** 2026-03-20
+**Last Updated:** 2026-03-21
 
-This document maps every source file in the Wasabi codebase (excluding `node_modules/`, `dist/`, and `.git/`). Each entry includes:
-- **File path** (relative to repo root)
-- **Purpose** (1-2 sentences)
-- **Key exports** (functions, components, constants)
-- **Dependencies** (imports from other project files)
-- **Line count** (approximate)
+Complete source file listing for the Wasabi platform. Excludes `node_modules/`, `dist/`, and `.git/`.
 
 ---
 
 ## Root Files
 
-### `worker.js`
-- **Purpose:** Cloudflare Worker backend. Handles all API routes for D1 storage, Notion proxy, Claude integration, real-time collaboration, and file upload.
-- **Key exports:** Not a module — service worker entry point. Exports route handlers via `export default { fetch(...), ... }`.
-- **Line count:** ~3,500 (partial read)
-- **Key routes:** `/page`, `/pages`, `/database`, `/sync`, `/automations`, `/flows`, `/functions`, `/neurons`, `/notifications`, `/files`, `/user`, `/chat`
-- **Dependencies:** External (Cloudflare SDK), Notion API, Claude API
-
-### `index.html`
-- **Purpose:** HTML shell for the React app. Loads fonts (DM Sans, DM Mono, Outfit), sets viewport, and mounts React into `#root`.
-- **Key exports:** None (static HTML)
-- **Line count:** 22
-
-### `package.json`
-- **Purpose:** npm manifest. Declares React 18, Vite build tooling, jsPDF for export.
-- **Key exports:** None (configuration)
-- **Dependencies:** react, react-dom, jspdf
-
-### `vite.config.js`
-- **Purpose:** Vite build configuration. Dev server on 0.0.0.0:5173, React plugin, dist output.
-- **Key exports:** `default` (Vite config object)
-- **Line count:** 14
-
-### `wrangler.toml`
-- **Purpose:** Wrangler configuration for Cloudflare. Defines D1 bindings, R2 buckets, environment variables.
-- **Key exports:** None (configuration)
-
-### `wrangler-worker.toml`
-- **Purpose:** Alternative Wrangler config (possibly for local worker testing).
-- **Key exports:** None (configuration)
+| File | Purpose |
+|------|---------|
+| `worker.js` | Cloudflare Worker backend (~9533 lines). All API routes, auth, WebSocket upgrade, cron, OAuth, Durable Objects (TableRoom, UserRoom). |
+| `index.html` | HTML shell for React SPA. Loads fonts (DM Sans, DM Mono, Outfit), mounts into `#root`. |
+| `package.json` | npm manifest. React 18, Vite 5, vitest, jsPDF. |
+| `vite.config.js` | Vite build config. Dev server on 0.0.0.0:5173, React plugin. |
+| `wrangler.toml` | Wrangler config for Cloudflare. D1 bindings, R2 buckets, env vars. |
+| `wrangler-worker.toml` | Alternative Wrangler config (worker-specific deployment). |
 
 ---
 
-## `src/` - Main Application
+## src/
 
-### `main.jsx`
-- **Purpose:** React entry point. Renders App component into the DOM.
-- **Key exports:** None (side effects only)
-- **Dependencies:** React, React DOM, App.jsx
-- **Line count:** 9
+### Entry Points
 
-### `App.jsx`
-- **Purpose:** Root component and app shell. Provides all context providers (Platform, Links, Neurons, Theme, UserSync). Routes between login, setup, and main UI. Manages page navigation, keyboard shortcuts, and notification system.
-- **Key exports:** `default` (App component)
-- **Key re-exports:** ChatPanel, TasksView, NotesView, DashboardView, GmailView, WorkspaceBrowser, KnowledgeHub (lazy-loaded)
-- **Dependencies:** All context providers, core components (TopHeader, Navigation, PageShell), agent (automations), Google integration, neurons
-- **Line count:** ~700+
-- **Known patterns:** Lazy-load retry wrapper for stale chunk recovery; localStorage key migration for renamed features
+| File | Purpose |
+|------|---------|
+| `src/main.jsx` | React entry point. Renders App into DOM. |
+| `src/App.jsx` | Root component. Context providers, routing (login/setup/main), lazy loading, keyboard shortcuts. |
 
 ---
 
-## `src/agent/` - AI/Agentic System
+## src/core/ (36 files + SystemManager/)
 
-### `aiRouter.js`
-- **Purpose:** Multi-tier model routing. Routes prompts to Haiku (cheap, fast) or Sonnet (powerful reasoning) based on complexity scoring.
-- **Key exports:** `SONNET`, `HAIKU`, `routeModel()`, `shouldEscalate()`
-- **Line count:** ~120+
-- **Routing logic:** Scores complexity factors (long prompt, keywords, multi-step, conversation depth, tool count, data analysis). Requires ≥2 factors to escalate to Sonnet.
+App shell, navigation, settings. Loaded eagerly.
 
-### `automations.js`
-- **Purpose:** Automation execution engine. Browser-only polling system that queries D1 `automation_rules` and executes on trigger conditions (schedule, status_change, field_change, page_created, manual).
-- **Key exports:** `expandTemplate()`, `parseD1Rule()`, `evaluateTrigger()`, `createAutomationEngine()`
-- **Dependencies:** api.js, notion client/pagination, helpers
-- **Line count:** ~800+
-- **Known patterns:** 5-minute default poll; 30-minute backoff; max 3 concurrent executions per tick
+| File | Purpose |
+|------|---------|
+| `AutomationBuilder.jsx` | UI for creating/editing automation rules |
+| `AutomationPage.jsx` | Page-level automation management view |
+| `BatchQueue.jsx` | Batch operation queue display |
+| `BuildPage.jsx` | Page creation/configuration builder |
+| `ChatUI.jsx` | Chat interface container component |
+| `CommandPalette.jsx` | Cmd+K searchable overlay for pages, shortcuts, actions |
+| `ConfirmDialog.jsx` | Reusable confirmation modal for destructive actions |
+| `ContextMenu.jsx` | Right-click context menu component |
+| `CreateMenu.jsx` | New page/item creation menu |
+| `DashboardWidget.jsx` | Individual widget renderer for dashboards |
+| `DatabaseBrowser.jsx` | Database exploration/navigation UI |
+| `Drawer.jsx` | Slide-out drawer container |
+| `ErrorBoundary.jsx` | React error boundary with fallback UI |
+| `FolderDropdown.jsx` | Folder picker dropdown for page organization |
+| `FunctionBuilder.jsx` | UI for creating/editing custom functions |
+| `FunctionsPanel.jsx` | Functions management panel |
+| `InlineEdit.jsx` | Inline text editing component |
+| `KnowledgeBase.jsx` | Knowledge base management UI |
+| `LinkPicker.jsx` | Link/relation picker for connecting records |
+| `LoginScreen.jsx` | Multi-user login with password |
+| `MiniView.jsx` | Compact/minimal view renderer |
+| `Navigation.jsx` | Left sidebar: page list, search, system nav |
+| `NodeEditor.jsx` | Visual node editor for automation flows |
+| `Onboarding.jsx` | First-time user onboarding flow |
+| `PageBuilder.jsx` | Page layout builder |
+| `PageShell.jsx` | Orchestrator: loads page config, fetches data, renders active view |
+| `PluginWidget.jsx` | Sandboxed iframe plugin renderer |
+| `SetupWizard.jsx` | First-run setup: worker URL, secret, admin creation |
+| `SheetUrlDialog.jsx` | Google Sheets URL input dialog |
+| `SubPageNav.jsx` | Sub-page navigation tabs |
+| `TopHeader.jsx` | Top bar: theme toggle, command palette (Cmd+K), user menu |
+| `ViewTypePicker.jsx` | View type selection dropdown |
+| `VisualPageBuilder.jsx` | Drag-and-drop page layout builder |
+| `WasabiFlame.jsx` | Animated flame logo component |
+| `WasabiOrb.jsx` | Animated orb logo component |
+| `WasabiPanel.jsx` | Wasabi branding/info panel |
 
-### `dataSummary.js`
-- **Purpose:** Summarizes table/view data for agent context. Extracts row counts, column info, and key statistics for brief workspace summaries.
-- **Key exports:** `summarizeDatabase()`, `summarizeView()`
-- **Dependencies:** api.js, notion properties
-- **Line count:** ~200+
+### src/core/SystemManager/ (9 files)
 
-### `flowExecutor.js`
-- **Purpose:** Executes node-based automation flows. Traverses a graph of connected action nodes, evaluating conditions and executing tools.
-- **Key exports:** `executeFlow()`
-- **Dependencies:** toolExecutor, helpers
-- **Line count:** ~400+
-- **Known patterns:** Node graph with edges; condition evaluation; tool delegation
+Settings panel with tabbed interface.
 
-### `memory.js`
-- **Purpose:** Persistent conversation memory for agents. Stores/retrieves agent chat history in D1 or localStorage.
-- **Key exports:** `saveAgentMemory()`, `loadAgentMemory()`, `clearAgentMemory()`
-- **Dependencies:** api.js, helpers
-- **Line count:** ~200+
-
-### `queryClassifier.js`
-- **Purpose:** Classifies user queries into intent categories (search, create, update, analyze, navigate). Used to optimize tool selection and response strategy.
-- **Key exports:** `classifyQuery()`
-- **Dependencies:** None (pure logic)
-- **Line count:** ~150+
-
-### `runAgent.js`
-- **Purpose:** Core agentic loop. Sends messages to Claude, executes tool calls, handles backoff/retries. Parameterized — used by Wasabi, page agents, and automation agents.
-- **Key exports:** `trimHistory()`, `runAgent()`
-- **Dependencies:** helpers, costTracker, api.js
-- **Line count:** ~600+
-- **Key features:** History trimming to prevent stale data anchoring; write tool approval gate; live status callbacks; backoff on rate limits
-
-### `toolExecutor.js`
-- **Purpose:** Executes tool calls from Claude. Routes to appropriate API methods (query_database, create_page, update_page, post_notification, etc.). Handles Notion, D1, Gmail, calendar, and file tools.
-- **Key exports:** `executeWasabiTool()`, `executeToolCall()`
-- **Dependencies:** api.js, notion client, sheets client, Monday client, helpers
-- **Line count:** ~2,153 (largest agent file)
-- **Key tool routing:** Database queries, CRUD, aggregations, automations, flows, neurons, KB, reports, email, calendar, Google Sheets, Monday.com, files
-
-### `tools.js`
-- **Purpose:** Tool definitions (schemas) for Claude's tool_use. Organized by tool type: database, CRUD, analytics, automations, integrations, etc.
-- **Key exports:** `QUERY_DATABASE`, `CREATE_PAGE`, `UPDATE_PAGE`, `POST_NOTIFICATION`, `SEND_EMAIL`, `QUERY_ANALYTICS`, `ZEN_TOOLS_ADMIN`, `ZEN_TOOLS_EDITOR`, `ZEN_TOOLS_VIEWER`, etc.
-- **Line count:** ~1,064
-- **Total tools:** 50+ shared tools across admin/editor/viewer roles
-
-### `wasabiPrompt.js`
-- **Purpose:** System prompt generation for the main Wasabi agent. Builds prompt with role info, workspace summary, available tools, and usage guidelines.
-- **Key exports:** `buildWasabiSystemPrompt()`
-- **Dependencies:** dataSummary, helpers
-- **Line count:** ~150+
+| File | Purpose |
+|------|---------|
+| `index.js` | Barrel export |
+| `SystemManager.jsx` | Main settings container with tab navigation |
+| `OverviewTab.jsx` | System overview: stats, health, version |
+| `ConnectionsTab.jsx` | External service connections (Notion, Google, Claude) |
+| `SettingsTab.jsx` | General settings configuration |
+| `UsersTab.jsx` | User management: invite, roles, sessions |
+| `AuditLogTab.jsx` | Activity audit log viewer |
+| `components/ConnectionRow.jsx` | Single connection row component |
+| `components/GoogleConnectionRow.jsx` | Google-specific connection row |
+| `components/IdRow.jsx` | ID display row component |
+| `components/StatCard.jsx` | Statistics card component |
 
 ---
 
-## `src/components/` - Shared UI Components
+## src/views/ (28 files)
 
-All components are React functional components (JSX). This directory contains reusable UI primitives used across views and pages.
+Database view components. Lazy-loaded by PageShell.
 
-### `Breadcrumb.jsx`
-- **Purpose:** Navigation breadcrumb. Shows current page path with clickable ancestors.
-- **Key exports:** `default` (Breadcrumb component)
-- **Dependencies:** NavigationContext
+| File | Purpose |
+|------|---------|
+| `ActivityFeed.jsx` | Activity/changelog feed view |
+| `Calendar.jsx` | Calendar view of date-based records |
+| `CardGrid.jsx` | Card grid gallery view |
+| `Charts.jsx` | Chart visualization view |
+| `ChatPanel.jsx` | Chat panel integrated with views |
+| `ConnectionRenderer.jsx` | Renders connection/relation visualizations |
+| `CustomView.jsx` | User-authored HTML/JS custom views |
+| `Document.jsx` | Document page component |
+| `DocumentEditor.jsx` | Rich text document editor with blocks |
+| `FilterChips.jsx` | Filter chip bar for view filtering |
+| `Form.jsx` | Public/private form for data collection |
+| `Gantt.jsx` | Timeline bar chart for date-range records |
+| `Kanban.jsx` | Card-based board grouped by status/select columns |
+| `LinkedSheet.jsx` | Linked Google Sheets viewer |
+| `NetworkGraph.jsx` | Visual graph of record relationships |
+| `NewRecordModal.jsx` | Modal for creating new records |
+| `NodeCanvas.jsx` | Canvas for node-based flow editor |
+| `NodeConfigPanel.jsx` | Configuration panel for flow nodes |
+| `NodeRenderer.jsx` | Individual node renderer for flow editor |
+| `NotificationFeed.jsx` | Notification inbox with filtering |
+| `RecordDetail.jsx` | Record detail/expanded view |
+| `Sheet.jsx` | Spreadsheet-like sheet view |
+| `SummaryTiles.jsx` | Summary tiles/metrics view |
+| `Table.jsx` | Primary table/grid view |
+| `ViewRenderer.jsx` | View type router/dispatcher |
+| `WorkspaceSettings.jsx` | Workspace settings view |
+| `_CellComponents.jsx` | Shared cell renderer components |
+| `_viewHelpers.js` | Shared view utility functions |
 
-### `ColumnBuilder.jsx`
-- **Purpose:** UI for adding/editing table columns. Shows column type picker and property config.
-- **Key exports:** `default` (ColumnBuilder component)
-- **Dependencies:** design/tokens, components
-
-### `ConflictToast.jsx`
-- **Purpose:** Toast notification for real-time sync conflicts (e.g., two users editing the same cell).
-- **Key exports:** `default` (ConflictToast component)
-- **Line count:** ~100
-
-### `EmptyState.jsx`
-- **Purpose:** Empty state placeholder. Renders icon, title, and CTA when a view/table is empty.
-- **Key exports:** `default` (EmptyState component)
-- **Line count:** ~80
-
-### `FormulaBar.jsx`
-- **Purpose:** Spreadsheet formula editor. Shows/edits cell formula with syntax highlighting.
-- **Key exports:** `default` (FormulaBar component)
-- **Dependencies:** design/tokens, Sheet view context
-
-### `InlineChart.jsx`
-- **Purpose:** Mini chart widget. Renders bar, line, or pie charts from row data for dashboard cards.
-- **Key exports:** `default` (InlineChart component)
-- **Line count:** ~200+
-
-### `MentionInput.jsx`
-- **Purpose:** Text input with @mention completion. Used in comments and chat interfaces.
-- **Key exports:** `default` (MentionInput component)
-- **Dependencies:** api.js (for user list), helpers
-
-### `MultiSelectPicker.jsx`
-- **Purpose:** Multi-select dropdown picker. Used for multi_select property cells and filters.
-- **Key exports:** `default` (MultiSelectPicker component)
-- **Line count:** ~200+
-
-### `PagePermissionsPanel.jsx`
-- **Purpose:** Role-based access control UI. Shows/edits read/edit/admin roles for a page.
-- **Key exports:** `default` (PagePermissionsPanel component)
-- **Dependencies:** AuthContext, api.js
-
-### `PinLockOverlay.jsx`
-- **Purpose:** PIN entry dialog for restricted pages/records. Used in role-based access.
-- **Key exports:** `default` (PinLockOverlay component)
-- **Line count:** ~150
-
-### `PresenceAvatars.jsx`
-- **Purpose:** Shows avatars of users currently viewing/editing a page. Updates via CollaborationContext.
-- **Key exports:** `default` (PresenceAvatars component)
-- **Dependencies:** CollaborationContext
-
-### `RecordComments.jsx`
-- **Purpose:** Comments panel for a record. Shows threaded comments with @mentions.
-- **Key exports:** `default` (RecordComments component)
-- **Dependencies:** api.js, MentionInput
-
-### `RecordDetailPortals.jsx`
-- **Purpose:** React portals for record detail panels (notes, files, comments, activity). Used by RecordDetail and Zen RecordDrawer.
-- **Key exports:** `default` (RecordDetailPortals component)
-- **Line count:** ~300+
-
-### `RecordFiles.jsx`
-- **Purpose:** File list for a record. Shows uploaded files, download buttons, and delete actions.
-- **Key exports:** `default` (RecordFiles component)
-- **Dependencies:** api.js, files utility
-
-### `RecordNotes.jsx`
-- **Purpose:** Notes panel for a record. Markdown editor with save/edit.
-- **Key exports:** `default` (RecordNotes component)
-- **Dependencies:** api.js, markdown utility
-
-### `SavedViewsDropdown.jsx`
-- **Purpose:** Dropdown to switch between saved views of a table.
-- **Key exports:** `default` (SavedViewsDropdown component)
-- **Dependencies:** PagesContext
-
-### `SelectPicker.jsx`
-- **Purpose:** Single-select dropdown picker. Used for select property cells and status fields.
-- **Key exports:** `default` (SelectPicker component)
-- **Line count:** ~180
-
-### `SheetToolbar.jsx`
-- **Purpose:** Toolbar for Sheet view. Insert/delete rows/columns, resize, freeze, export.
-- **Key exports:** `default` (SheetToolbar component)
-- **Dependencies:** Sheet view
-
-### `Spinner.jsx`
-- **Purpose:** Loading spinner component. Used during data fetches.
-- **Key exports:** `default` (Spinner component)
-- **Line count:** ~40
-
-### `SyncPanel.jsx`
-- **Purpose:** Notion sync UI. Shows sync status, triggers manual pull/push, configures bidirectional sync.
-- **Key exports:** `default` (SyncPanel component)
-- **Dependencies:** api.js, PagesContext
-
-### `ViewSettingsPanel.jsx`
-- **Purpose:** View configuration panel. Filters, sorts, grouping, column visibility, aggregations.
-- **Key exports:** `default` (ViewSettingsPanel component)
-- **Dependencies:** design/tokens, api.js
-- **Line count:** ~1,005
-
-### `ViewToolbar.jsx`
-- **Purpose:** Top toolbar for table/view. Filter chips, view type picker, column builder, export.
-- **Key exports:** `default` (ViewToolbar component)
-- **Dependencies:** FilterChips, ViewSettingsPanel, ColumnBuilder
-
-### `WidgetGrid.jsx`
-- **Purpose:** Dashboard grid layout. Renders widgets (charts, summaries, cards) in a responsive grid.
-- **Key exports:** `default` (WidgetGrid component)
-- **Dependencies:** design/tokens, InlineChart, DashboardWidget
+Note: `CalendarView.jsx` was deleted (dead code).
 
 ---
 
-## `src/config/` - Configuration & Templating
+## src/zen/ (21 files)
 
-### `flowStorage.js`
-- **Purpose:** D1 storage for automation flows. CRUD operations for node-based flows.
-- **Key exports:** `createFlow()`, `updateFlow()`, `deleteFlow()`, `listFlows()`, `loadFlow()`
-- **Dependencies:** api.js, helpers
-- **Line count:** ~200+
+Personal productivity surface. User-scoped data. Lazy-loaded.
 
-### `linkStorage.js`
-- **Purpose:** Manages link (neuron node) definitions. CRUD for linking records, pages, and fields.
-- **Key exports:** `createLink()`, `updateLink()`, `deleteLink()`, `loadLinks()`
-- **Dependencies:** api.js
-- **Line count:** ~150+
+### Root Files (14)
 
-### `linkTypeCompat.js`
-- **Purpose:** Link type compatibility matrix. Defines which record types can be linked together.
-- **Key exports:** `isCompatible()`, `LINK_TYPES`
-- **Line count:** ~80
+| File | Purpose |
+|------|---------|
+| `CalendarView.jsx` | Day/week/month calendar with Google Calendar sync |
+| `ChatPanel.jsx` | Zen-mode AI chat panel |
+| `DashboardView.jsx` | Customizable widget dashboard |
+| `EmailThreadDrawer.jsx` | Email thread slide-out viewer |
+| `GmailView.jsx` | Gmail inbox, read, compose, reply |
+| `KnowledgeHub.jsx` | Knowledge base browser |
+| `NotesView.jsx` | Personal notes view |
+| `RecordDrawer.jsx` | Slide-out record editor (primary edit surface for all views) |
+| `RecordDrawerContext.jsx` | Context provider for RecordDrawer state |
+| `TaskList.jsx` | Task list rendering component |
+| `TasksView.jsx` | Personal task list with calendar integration |
+| `WorkspaceBrowser.jsx` | Folder-based page navigation |
+| `ZenChatPanel.jsx` | Zen-specific chat panel variant |
+| `taskHelpers.js` | Task utility functions |
 
-### `pageConfig.js`
-- **Purpose:** Page configuration schema and helpers. Defaults for new pages, type-specific configs.
-- **Key exports:** `defaultPageConfig()`, `validatePageConfig()`, `getPageIcon()`
-- **Line count:** ~200+
+### Hook Files (5)
 
-### `setup.js`
-- **Purpose:** Initial setup wizard flow. Guides new users through auth, worker connection, first database.
-- **Key exports:** `setupSteps`, `validateSetup()`
-- **Line count:** ~150+
+| File | Purpose |
+|------|---------|
+| `useAICuratedTasks.js` | AI-powered task curation/prioritization hook |
+| `useDismissedTasks.js` | Dismissed task state management hook |
+| `useInsight.js` | AI insight generation hook |
+| `useTasksTable.js` | Task table data fetching/management hook |
 
-### `templates.js`
-- **Purpose:** Template definitions for new pages (table, sheet, dashboard, form, etc.). Pre-built configs.
-- **Key exports:** `TABLE_TEMPLATE`, `SHEET_TEMPLATE`, `DASHBOARD_TEMPLATE`, `getTemplate()`
-- **Line count:** ~250+
+### calendar/ Subdirectory (7)
 
----
-
-## `src/context/` - React Context Providers
-
-All files export a Provider component and a custom hook. Centralized state management.
-
-### `AuthContext.jsx`
-- **Purpose:** Authentication state. User identity, JWT tokens, multi-user roles (admin/editor/viewer), API keys for integrations.
-- **Key exports:** `AuthProvider`, `useAuth()`
-- **Line count:** ~400+
-
-### `CollaborationContext.jsx`
-- **Purpose:** Real-time collaboration state. User presence (who's viewing/editing), cursor positions, conflict resolution.
-- **Key exports:** `CollaborationProvider`, `useCollaboration()`
-- **Dependencies:** lib/tableSocket, lib/userSocket
-- **Line count:** ~300+
-
-### `ColorMappingContext.jsx`
-- **Purpose:** Select field color palette mappings. Stores custom colors for status/select options.
-- **Key exports:** `ColorMappingProvider`, `useColorMapping()`
-- **Line count:** ~150
-
-### `LinksContext.jsx`
-- **Purpose:** Knowledge graph (neurons) state. Active neuron, selected nodes, link data.
-- **Key exports:** `LinksProvider`, `useLinks()`
-- **Dependencies:** neurons/neuronStorage
-- **Line count:** ~200+
-
-### `NavigationContext.jsx`
-- **Purpose:** Page navigation state. Active page, active folder, breadcrumb trail.
-- **Key exports:** `NavigationProvider`, `useNavigation()`
-- **Line count:** ~180
-
-### `PagesContext.jsx`
-- **Purpose:** Page library state. List of all pages, folders, databases. CRUD operations.
-- **Key exports:** `PagesProvider`, `usePages()`
-- **Dependencies:** api.js
-- **Line count:** ~300+
-
-### `PlatformContext.jsx`
-- **Purpose:** Thin composition layer. Merges Auth, Pages, and Navigation contexts. Backward compatibility.
-- **Key exports:** `PlatformProvider`, `usePlatform()`
-- **Dependencies:** AuthContext, PagesContext, NavigationContext
-- **Line count:** ~150+
-
-### `ThemeContext.jsx`
-- **Purpose:** Theme state (dark/light mode). Provides color tokens and rebuild theme function.
-- **Key exports:** `ThemeProvider`, `useTheme()`
-- **Dependencies:** design/tokens
-- **Line count:** ~200+
-
-### `UserSyncContext.jsx`
-- **Purpose:** Multi-user identity sync. Syncs user list, roles, and presence across tabs.
-- **Key exports:** `UserSyncProvider`, `useUserSync()`
-- **Dependencies:** api.js, AuthContext
-- **Line count:** ~250+
+| File | Purpose |
+|------|---------|
+| `CalendarEventBlock.jsx` | Calendar event block renderer |
+| `CalendarFilterDropdown.jsx` | Calendar filter dropdown |
+| `CalendarTaskBlock.jsx` | Calendar task block renderer |
+| `DayColumn.jsx` | Day column component |
+| `MonthGrid.jsx` | Month grid layout |
+| `QuickCreateBar.jsx` | Quick event/task creation bar |
+| `WeekListView.jsx` | Week list view layout |
 
 ---
 
-## `src/core/` - Core UI Components
+## src/components/ (24 files)
 
-Large, complex components that form the application shell and major features.
+Shared UI components used across views.
 
-### `AutomationBuilder.jsx`
-- **Purpose:** Visual builder for automation rules. Drag-and-drop trigger/action pairing.
-- **Key exports:** `default` (AutomationBuilder component)
-- **Dependencies:** design/tokens, api.js
-- **Line count:** ~500+
-
-### `AutomationPage.jsx`
-- **Purpose:** Page wrapper for automation list and builder. Shows all rules, create/edit/delete.
-- **Key exports:** `default` (AutomationPage component)
-- **Dependencies:** AutomationBuilder, api.js
-
-### `BatchQueue.jsx`
-- **Purpose:** Batch operation queue UI. Shows progress for bulk inserts, updates, deletes.
-- **Key exports:** `default` (BatchQueue component)
-- **Line count:** ~300+
-
-### `BuildPage.jsx`
-- **Purpose:** Page builder UI. Drag-and-drop page layout, add/remove components, configure properties.
-- **Key exports:** `default` (BuildPage component)
-- **Dependencies:** VisualPageBuilder, design/tokens, api.js
-- **Line count:** ~819
-
-### `ChatUI.jsx`
-- **Purpose:** Reusable chat interface component. Message history, markdown rendering, file upload, choices.
-- **Key exports:** `default` (ChatUI component)
-- **Dependencies:** markdown utility, files utility, reportGenerator
-- **Line count:** ~400+
-- **Used by:** Wasabi agent, page agents, system manager, automation builder
-
-### `CommandPalette.jsx`
-- **Purpose:** Command palette (Cmd+K). Quick navigation, search pages, run automations, execute tools.
-- **Key exports:** `default` (CommandPalette component)
-- **Dependencies:** PlatformContext, api.js
-- **Line count:** ~400+
-
-### `ConfirmDialog.jsx`
-- **Purpose:** Modal confirmation dialog. Used for destructive actions (delete, archive).
-- **Key exports:** `default` (ConfirmDialog component)
-- **Line count:** ~120
-
-### `ContextMenu.jsx`
-- **Purpose:** Right-click context menu. Shows actions for records, cells, etc.
-- **Key exports:** `default` (ContextMenu component)
-- **Line count:** ~180
-
-### `CreateMenu.jsx`
-- **Purpose:** Quick create menu. New page, database, sheet, document, etc.
-- **Key exports:** `default` (CreateMenu component)
-- **Dependencies:** pageConfig, api.js, PlatformContext
-- **Line count:** ~300+
-
-### `DashboardWidget.jsx`
-- **Purpose:** Dashboard widget card. Renders chart, summary tile, or custom widget.
-- **Key exports:** `default` (DashboardWidget component)
-- **Dependencies:** InlineChart, design/tokens
-
-### `DatabaseBrowser.jsx`
-- **Purpose:** Modal to browse and link to Notion databases. Shows Notion workspace structure.
-- **Key exports:** `default` (DatabaseBrowser component)
-- **Dependencies:** notion/client, api.js, design/tokens
-- **Line count:** ~1,640
-
-### `Drawer.jsx`
-- **Purpose:** Side drawer panel. Used for record detail, settings, etc.
-- **Key exports:** `default` (Drawer component)
-- **Line count:** ~150
-
-### `ErrorBoundary.jsx`
-- **Purpose:** React error boundary. Catches render errors, shows fallback UI, logs to console.
-- **Key exports:** `default` (ErrorBoundary component)
-- **Line count:** ~80
-
-### `FolderDropdown.jsx`
-- **Purpose:** Dropdown to select/navigate folders. Used in breadcrumb and page pickers.
-- **Key exports:** `default` (FolderDropdown component)
-- **Dependencies:** PagesContext
-
-### `FunctionBuilder.jsx`
-- **Purpose:** Custom function/formula editor. JavaScript code editor with syntax highlighting.
-- **Key exports:** `default` (FunctionBuilder component)
-- **Dependencies:** design/tokens, api.js
-- **Line count:** ~684
-
-### `FunctionsPanel.jsx`
-- **Purpose:** List of custom functions (transforms, aggregations, formulas). CRUD operations.
-- **Key exports:** `default` (FunctionsPanel component)
-- **Dependencies:** FunctionBuilder, api.js
-- **Line count:** ~400+
-
-### `InlineEdit.jsx`
-- **Purpose:** Inline text editing. Used for quick rename of pages, fields, etc.
-- **Key exports:** `default` (InlineEdit component)
-- **Line count:** ~100
-
-### `KnowledgeBase.jsx`
-- **Purpose:** Knowledge base management UI. View/edit KB entries, organize by category.
-- **Key exports:** `default` (KnowledgeBase component)
-- **Dependencies:** api.js
-- **Line count:** ~500+
-
-### `LinkPicker.jsx`
-- **Purpose:** Modal to pick a linked record. Search and select related records.
-- **Key exports:** `default` (LinkPicker component)
-- **Dependencies:** api.js, design/tokens
-- **Line count:** ~300+
-
-### `LoginScreen.jsx`
-- **Purpose:** Auth UI. Login/register/multi-user selection. Handles JWT flow.
-- **Key exports:** `default` (LoginScreen component)
-- **Dependencies:** AuthContext, api.js
-- **Line count:** ~400+
-
-### `MiniView.jsx`
-- **Purpose:** Embedded view renderer. Render a table/chart/form inside a widget or modal.
-- **Key exports:** `default` (MiniView component)
-- **Dependencies:** ViewRenderer
-
-### `Navigation.jsx`
-- **Purpose:** Sidebar navigation. Icon bar + expandable page tree. Active page highlighting.
-- **Key exports:** `default` (Navigation component)
-- **Dependencies:** PlatformContext, NavigationContext, design/icons
-- **Line count:** ~739
-
-### `NodeEditor.jsx`
-- **Purpose:** Flow node editor. Edit node properties (condition, instruction, tool). Used in AutomationBuilder and FlowBuilder.
-- **Key exports:** `default` (NodeEditor component)
-- **Dependencies:** design/tokens, api.js
-- **Line count:** ~1,411
-
-### `Onboarding.jsx`
-- **Purpose:** Onboarding tutorial. Guided walkthrough for new users.
-- **Key exports:** `default` (Onboarding component)
-- **Dependencies:** PlatformContext
-
-### `PageBuilder.jsx`
-- **Purpose:** Visual page layout builder. Drag-and-drop zones, add sections, configure layout.
-- **Key exports:** `default` (PageBuilder component)
-- **Dependencies:** design/tokens, api.js
-- **Line count:** ~300+
-
-### `PageShell.jsx`
-- **Purpose:** Page wrapper component. Routes to correct view type (Table, Sheet, Dashboard, etc.) based on page config.
-- **Key exports:** `default` (PageShell component)
-- **Dependencies:** ViewRenderer, all views
-- **Line count:** ~200+
-
-### `PluginWidget.jsx`
-- **Purpose:** Renders a plugin widget from plugin manifest. Sandboxed iframe for custom UIs.
-- **Key exports:** `default` (PluginWidget component)
-- **Dependencies:** lib/iframeHelpers
-
-### `SetupWizard.jsx`
-- **Purpose:** Initial setup flow. Connect to Cloudflare Worker, add API keys, create first database.
-- **Key exports:** `default` (SetupWizard component)
-- **Dependencies:** setup config, api.js
-- **Line count:** ~500+
-
-### `SheetUrlDialog.jsx`
-- **Purpose:** Modal to paste/configure Google Sheets URL for linking.
-- **Key exports:** `default` (SheetUrlDialog component)
-- **Dependencies:** api.js
-
-### `SubPageNav.jsx`
-- **Purpose:** Sub-page navigation. Shows child pages of a folder.
-- **Key exports:** `default` (SubPageNav component)
-- **Dependencies:** PagesContext
-
-### `SystemManager.jsx`
-- **Purpose:** Admin panel for system settings, user management, integration config, cost tracking.
-- **Key exports:** `default` (SystemManager component)
-- **Dependencies:** api.js, AuthContext, design/tokens
-- **Line count:** ~2,281 (large admin interface)
-
-### `TopHeader.jsx`
-- **Purpose:** Top header bar. Shows page title, breadcrumb, right-side controls (Wasabi agent, settings, user menu).
-- **Key exports:** `default` (TopHeader component)
-- **Dependencies:** PlatformContext, design/icons, WasabiPanel
-
-### `ViewTypePicker.jsx`
-- **Purpose:** Modal to select view type for a page (Table, Sheet, Calendar, Form, etc.).
-- **Key exports:** `default` (ViewTypePicker component)
-- **Dependencies:** design/tokens
-
-### `VisualPageBuilder.jsx`
-- **Purpose:** Advanced page builder with drag-and-drop zones and layout grid.
-- **Key exports:** `default` (VisualPageBuilder component)
-- **Dependencies:** design/tokens, api.js
-- **Line count:** ~1,345
-
-### `WasabiFlame.jsx`
-- **Purpose:** Animated logo component. Used as icon in UI.
-- **Key exports:** `default` (WasabiFlame component)
-- **Line count:** ~100
-
-### `WasabiOrb.jsx`
-- **Purpose:** Animated orb component (visual element). Used as loading indicator or accent.
-- **Key exports:** `default` (WasabiOrb component)
-- **Line count:** ~80
-
-### `WasabiPanel.jsx`
-- **Purpose:** Main Wasabi agent chat panel. Docked on right side, draggable, resizable.
-- **Key exports:** `default` (WasabiPanel component)
-- **Dependencies:** ChatUI, runAgent, tools, design/tokens
-- **Line count:** ~690
+| File | Purpose |
+|------|---------|
+| `Breadcrumb.jsx` | Navigation breadcrumb with clickable ancestors |
+| `ColumnBuilder.jsx` | Column type picker and property config |
+| `ConflictToast.jsx` | Real-time sync conflict notification |
+| `EmptyState.jsx` | Empty state placeholder component (new) |
+| `FormulaBar.jsx` | Formula input bar for computed columns |
+| `InlineChart.jsx` | Inline sparkline/mini chart component |
+| `MentionInput.jsx` | @-mention input with user autocomplete |
+| `MultiSelectPicker.jsx` | Multi-select tag picker |
+| `PagePermissionsPanel.jsx` | Page-level permission management |
+| `PinLockOverlay.jsx` | PIN lock overlay for secure pages |
+| `PresenceAvatars.jsx` | Active user avatar display |
+| `RecordComments.jsx` | Record-level comment thread |
+| `RecordDetailPortals.jsx` | Portal components for record detail overlays |
+| `RecordFiles.jsx` | File attachment management for records |
+| `RecordNotes.jsx` | Record-level notes editor |
+| `SavedViewsDropdown.jsx` | Saved views selector dropdown |
+| `SelectPicker.jsx` | Single-select picker |
+| `SheetToolbar.jsx` | Sheet view toolbar |
+| `Spinner.jsx` | Loading spinner component |
+| `StateIndicators.jsx` | Loading/error/empty state indicators (new) |
+| `SyncPanel.jsx` | Notion sync status and controls panel |
+| `ViewSettingsPanel.jsx` | View settings/configuration panel |
+| `ViewToolbar.jsx` | View-level toolbar (filters, sorts, group by) |
+| `WidgetGrid.jsx` | Dashboard widget grid layout |
 
 ---
 
-## `src/design/` - Design System
+## src/context/ (11 files)
 
-### `animations.js`
-- **Purpose:** CSS animation definitions and injection. Global animation library (fade, slide, pulse, spin).
-- **Key exports:** `ANIM` (animation object), `injectAnimations()`, `injectInteractionStyles()`, `injectScrollbarStyles()`, `updateCSSCustomProperties()`
-- **Line count:** ~500+
+React context providers. Wrap the app in App.jsx.
 
-### `icons.jsx`
-- **Purpose:** SVG icon library. 80+ icons (IconTrash, IconPlus, IconUser, etc.).
-- **Key exports:** `Icon*` components (all exported as named exports)
-- **Line count:** ~753
-
-### `styles.js`
-- **Purpose:** Shared style objects (rebuildable on theme change). Used by styled-components pattern.
-- **Key exports:** `S` (styles object), `rebuildStyles()`
-- **Dependencies:** tokens.js
-- **Line count:** ~600+
-
-### `tokens.js`
-- **Purpose:** Design tokens (colors, typography, spacing, shadows, radii). Mutable and rebuildable on theme change.
-- **Key exports:** `C` (color tokens), `FONT`, `MONO`, `RADIUS`, `SHADOW`, `getStatusColor()`, `getSolidPillColor()`
-- **Line count:** ~250+
-- **Color scheme:** Dark-first design; accent is green (#7DC143); semantic colors (success, warning, error)
+| File | Purpose |
+|------|---------|
+| `AuthContext.jsx` | Authentication state, login/logout, token management |
+| `CollaborationContext.jsx` | Real-time collaboration: presence, typing, conflict detection |
+| `ColorMappingContext.jsx` | Deterministic color assignment for users/categories |
+| `LinksContext.jsx` | Link/relation management between records |
+| `NavigationContext.jsx` | Page navigation state and history |
+| `PagesContext.jsx` | Page configs, CRUD operations, page list |
+| `PlatformContext.jsx` | Platform settings, worker URL, feature flags |
+| `ThemeContext.jsx` | Theme state (5 themes), design token switching |
+| `ToastContext.jsx` | Toast notification system (new) |
+| `UserSyncContext.jsx` | Cross-device sync via UserRoom WebSocket |
+| `ViewportContext.jsx` | Responsive breakpoint detection (new) |
 
 ---
 
-## `src/google/` - Google Integration
+## src/agent/ (10 files)
 
-### `googleContext.js`
-- **Purpose:** Fetch Google Sheets and Gmail context for agent. Builds summaries of sheets and recent emails.
-- **Key exports:** `fetchGoogleContext()`
-- **Dependencies:** api.js, helpers
-- **Line count:** ~150+
+AI agent system. Lazy-loaded.
 
-### `googleNeuronCleanup.js`
-- **Purpose:** Cleanup routine for Gmail → Neuron nodes. Removes stale nodes when emails are deleted.
-- **Key exports:** `cleanupGoogleNeuronNodes()`
-- **Dependencies:** api.js, neurons
-- **Line count:** ~100+
-
----
-
-## `src/hooks/` - Custom React Hooks
-
-### `useRecordDetail.js`
-- **Purpose:** Hook for record detail panel state. Loads record data, manages edit mode, handles save/discard.
-- **Key exports:** `useRecordDetail()`
-- **Dependencies:** api.js
-- **Line count:** ~200+
-
-### `useViewPrefs.js`
-- **Purpose:** Hook for view-specific preferences (column order, widths, hidden columns). Stores in localStorage.
-- **Key exports:** `useViewPrefs()`
-- **Line count:** ~150+
+| File | Purpose |
+|------|---------|
+| `aiRouter.js` | Multi-tier model routing (Haiku for fast/cheap, Sonnet for complex) |
+| `automations.js` | Automation execution engine: evaluates triggers, executes actions |
+| `dataSummary.js` | Builds data context summaries for AI within token budget |
+| `flowExecutor.js` | DAG-based flow execution: trigger, conditions, actions, delays |
+| `memory.js` | Persistent conversation memory for agents |
+| `queryClassifier.js` | Query intent classification for tool selection and routing |
+| `runAgent.js` | Core agent loop: prompt, classify, route, execute tools, respond |
+| `toolExecutor.js` | 50+ tool implementations: CRUD, email, calendar, automations |
+| `tools.js` | Tool definitions (schemas) for Claude's tool_use |
+| `wasabiPrompt.js` | System prompt generation for the main Wasabi agent |
 
 ---
 
-## `src/lib/` - Utilities & Libraries
+## src/neurons/ (5 files)
 
-### `api.js`
-- **Purpose:** Centralized API client. All backend calls go through here. Handles auth (X-Wasabi-Key, JWT), error handling, connection state.
-- **Key exports:** `apiFetch()`, `getConnection()`, `saveConnection()`, `getJwt()`, `saveJwt()`, `queryDatabase()`, `createPage()`, `updatePage()`, `updateTableSchema()`, `getTableSchema()`, `createAutomationRule()`, `listFunctions()`, `createFunction()`, `listNeurons()`, `createNeuron()`, `postNotification()`, `getGoogleStatus()`, `sheetFormula()`, `queryAnalytics()`, `queryRecords()`, `bulk operations`, `Gmail/calendar operations`, `Monday.com operations`, `file operations`, `sync operations`
-- **Line count:** ~996 (second largest file — hub of all API interaction)
-- **Dependencies:** helpers.js
-- **Key pattern:** All endpoints prefixed with `/` (routed through Worker)
+Relationship mapping system.
 
-### `dataSource.js`
-- **Purpose:** D1 data source abstraction. Schema validation, type conversion, query building.
-- **Key exports:** `DataSource` class, `query()`, `queryOne()`, `create()`, `update()`, `delete()`, `bulkCreate()`
-- **Dependencies:** helpers
-- **Line count:** ~300+
-
-### `iframeHelpers.js`
-- **Purpose:** Utilities for plugin iframe communication. PostMessage wrapper, timeout handling.
-- **Key exports:** `sendToFrame()`, `onFrameMessage()`, `initFrameHandshake()`
-- **Line count:** ~100+
-
-### `roles.js`
-- **Purpose:** Role-based access control helpers. Permission checking (canRead, canEdit, canAdmin).
-- **Key exports:** `canRead()`, `canEdit()`, `canAdmin()`, `getRoleLevel()`
-- **Line count:** ~100
-
-### `tableSocket.js`
-- **Purpose:** WebSocket connection for real-time table updates. Subscribes to cell changes, row insertions, deletions.
-- **Key exports:** `TableSocket` class, `subscribe()`, `unsubscribe()`, `send()`
-- **Dependencies:** helpers
-- **Line count:** ~250+
-
-### `userSocket.js`
-- **Purpose:** WebSocket connection for user presence and cursor tracking. Broadcasts user state across tabs.
-- **Key exports:** `UserSocket` class, `broadcastPresence()`, `trackCursor()`
-- **Dependencies:** helpers
-- **Line count:** ~200+
+| File | Purpose |
+|------|---------|
+| `NeuronBadge.jsx` | Badge showing neuron connection count |
+| `NeuronLines.jsx` | SVG line renderer connecting neuron nodes |
+| `NeuronOverlay.jsx` | Full-screen neuron visualization overlay |
+| `NeuronsContext.jsx` | Context provider for neuron state and operations |
+| `neuronStorage.js` | Neuron persistence and D1 sync utilities |
 
 ---
 
-## `src/monday/` - Monday.com Integration
+## src/design/ (5 files)
 
-### `client.js`
-- **Purpose:** Monday.com GraphQL client. Proxied through Worker. Queries boards, items, columns.
-- **Key exports:** `queryBoard()`, `queryItem()`, `updateItem()`, `createItem()`, `deleteItem()`
-- **Dependencies:** api.js
-- **Line count:** ~250+
+Design system: tokens, animations, icons, styles.
 
-### `schema.js`
-- **Purpose:** Monday.com schema mapping. Converts Monday column types to Notion property types.
-- **Key exports:** `MONDAY_TYPE_MAP`, `mapMondayToNotion()`, `mapNotionToMonday()`
-- **Line count:** ~150+
-
----
-
-## `src/neurons/` - Knowledge Graph System
-
-### `NeuronBadge.jsx`
-- **Purpose:** Visual badge showing a record is part of a neuron. Click to view connections.
-- **Key exports:** `default` (NeuronBadge component)
-- **Dependencies:** NeuronsContext, design/tokens
-
-### `NeuronLines.jsx`
-- **Purpose:** SVG lines between connected nodes. Renders the visual graph overlay.
-- **Key exports:** `default` (NeuronLines component)
-- **Dependencies:** NeuronsContext
-
-### `NeuronOverlay.jsx`
-- **Purpose:** Modal overlay showing neuron graph visualization. Interactive node selection and editing.
-- **Key exports:** `default` (NeuronOverlay component)
-- **Dependencies:** NeuronsContext, design/tokens
-- **Line count:** ~400+
-
-### `NeuronsContext.jsx`
-- **Purpose:** Global neurons (knowledge graph) state. Manages neurons, nodes, graph indexing, badge lookups.
-- **Key exports:** `NeuronsProvider`, `useNeurons()`, `isNeuronsMode()`, `dispatchNeuronSelect()`
-- **Dependencies:** neuronStorage.js
-- **Line count:** ~500+
-- **Key pattern:** O(1) badge lookup via graph indexing; window events for cross-component selection
-
-### `neuronStorage.js`
-- **Purpose:** D1 storage for neurons. CRUD for neurons and nodes. Graph indexing.
-- **Key exports:** `loadNeurons()`, `loadNeuron()`, `createNeuron()`, `deleteNeuron()`, `addNode()`, `removeNode()`, `loadNeuronGraph()`, `loadCachedNeurons()`
-- **Dependencies:** api.js, helpers
-- **Line count:** ~400+
+| File | Purpose |
+|------|---------|
+| `tokens.js` | Design tokens: C (colors), Z (z-index), BP (breakpoints), RADIUS, SHADOW, FONT, ANIM |
+| `animations.js` | Keyframe animation definitions |
+| `icons.jsx` | 65+ SVG icon components |
+| `styles.js` | Shared style objects and mixins |
+| `interactions.js` | Interaction style helpers (hover, press states) |
 
 ---
 
-## `src/notion/` - Notion API Integration
+## src/lib/ (6 files)
 
-### `client.js`
-- **Purpose:** Notion API client. All calls routed through Worker proxy. No globals.
-- **Key exports:** `queryAll()`, `queryLimited()`, `getPage()`, `createPage()`, `updatePage()`, `getDatabase()`, `updateDatabase()`, `searchDatabases()`, `getUser()`, `listUsers()`
-- **Dependencies:** pagination.js, properties.js, api.js
-- **Line count:** ~350+
+Utility functions, API client, WebSocket helpers.
 
-### `pagination.js`
-- **Purpose:** Notion pagination helpers. Handles cursor-based pagination for large result sets.
-- **Key exports:** `queryAll()`, `queryLimited()`
-- **Line count:** ~150+
-
-### `properties.js`
-- **Purpose:** Notion property type conversions. Read/build property values for all property types (text, select, date, relation, etc.).
-- **Key exports:** `readProp()`, `buildProp()`, `extractProperties()`, `getPageTitle()`
-- **Dependencies:** helpers
-- **Line count:** ~600+
-
-### `schema.js`
-- **Purpose:** Notion schema mapping. Maps Notion property types to internal representation.
-- **Key exports:** `NOTION_TYPE_MAP`, `mapNotionToInternal()`, `mapInternalToNotion()`
-- **Line count:** ~200+
+| File | Purpose |
+|------|---------|
+| `api.js` | Fetch wrapper: auth headers, auto-refresh, error handling |
+| `dataSource.js` | Data source abstraction layer (D1, Notion, Monday normalization) |
+| `iframeHelpers.js` | Iframe sandbox helpers, escapeHtml, auto-execute code |
+| `roles.js` | Role constants and permission utilities |
+| `tableSocket.js` | WebSocket client for table collaboration (TableRoom) |
+| `userSocket.js` | WebSocket client for user sync (UserRoom) |
 
 ---
 
-## `src/sheets/` - Google Sheets Integration
+## src/hooks/ (2 files)
 
-### `sheetClient.js`
-- **Purpose:** Google Sheets API client (via Worker proxy). Read/write sheets.
-- **Key exports:** `readSheet()`, `writeSheet()`, `appendSheet()`, `updateSheetMetadata()`, `getSheetStructure()`
-- **Dependencies:** api.js
-- **Line count:** ~300+
+Custom React hooks.
 
----
-
-## `src/utils/` - Utility Functions
-
-### `costTracker.js`
-- **Purpose:** Usage tracking and cost estimation. Logs API calls, token counts, calculates spend.
-- **Key exports:** `recordUsage()`, `getCostSummary()`, `trackModelUsage()`
-- **Dependencies:** helpers
-- **Line count:** ~150+
-
-### `fileProcessing.js`
-- **Purpose:** File upload and processing. Handles file type validation, size limits, chunking for large files.
-- **Key exports:** `validateFile()`, `processFile()`, `chunkFile()`
-- **Line count:** ~250+
-
-### `files.js`
-- **Purpose:** File utility helpers. Parse, validate, format file metadata.
-- **Key exports:** `parseFile()`, `formatFileSize()`, `getFileIcon()`
-- **Dependencies:** helpers
-- **Line count:** ~150+
-
-### `helpers.js`
-- **Purpose:** General utilities. UUID, debounce, throttle, formatDate, truncate, safeJSON, etc.
-- **Key exports:** `uuid()`, `debounce()`, `throttle()`, `formatDate()`, `formatTime()`, `truncate()`, `safeJSON()`, `sleep()`, `pluralize()`
-- **Line count:** ~400+
-
-### `markdown.js`
-- **Purpose:** Markdown rendering to HTML. Supports GFM, syntax highlighting, embeds.
-- **Key exports:** `renderMarkdown()`, `escapeHtml()`
-- **Line count:** ~200+
-
-### `reportExport.js`
-- **Purpose:** Report export to PDF/Excel. Formats data, applies styling, generates file.
-- **Key exports:** `exportToPDF()`, `exportToExcel()`, `formatReportData()`
-- **Dependencies:** jsPDF, file utilities
-- **Line count:** ~300+
-
-### `reportGenerator.js`
-- **Purpose:** Report generation from table/chart data. Summaries, statistics, formatted output.
-- **Key exports:** `generateReport()`, `downloadReport()`, `hasReportableContent()`, `formatReportOutput()`
-- **Dependencies:** markdown.js, reportExport.js
-- **Line count:** ~855
-
-### `useKeyboardShortcuts.js`
-- **Purpose:** Keyboard shortcut hook. Globally registers Cmd+K (command palette), Cmd+J (Wasabi), etc.
-- **Key exports:** `useKeyboardShortcuts()`
-- **Dependencies:** helpers
-- **Line count:** ~150+
+| File | Purpose |
+|------|---------|
+| `useViewPrefs.js` | View preferences persistence (filters, sorts, column widths) |
+| `useRecordDetail.js` | Record detail data fetching and state management |
 
 ---
 
-## `src/views/` - View Components (Data Display)
+## src/utils/ (8 files)
 
-Large components that render different view types for tables/databases.
+Utility and helper modules.
 
-### `ActivityFeed.jsx`
-- **Purpose:** Activity feed view. Shows timeline of changes (create, update, delete) on records.
-- **Key exports:** `default` (ActivityFeed component)
-- **Dependencies:** api.js, design/tokens
-- **Line count:** ~300+
-
-### `Calendar.jsx` (deprecated, see CalendarView)
-- **Purpose:** Legacy calendar view.
-- **Note:** Superseded by CalendarView.jsx
-
-### `CalendarView.jsx`
-- **Purpose:** Calendar grid view. Shows events and tasks by date. Supports date filters.
-- **Key exports:** `default` (CalendarView component)
-- **Dependencies:** design/tokens, api.js
-- **Line count:** ~1,227
-
-### `CardGrid.jsx`
-- **Purpose:** Card grid view (kanban-like). Shows records as draggable cards grouped by a select field.
-- **Key exports:** `default` (CardGrid component)
-- **Dependencies:** design/tokens, api.js
-- **Line count:** ~500+
-
-### `Charts.jsx`
-- **Purpose:** Charting view. Bar, line, pie charts from table aggregations.
-- **Key exports:** `default` (Charts component)
-- **Dependencies:** design/tokens, api.js
-- **Line count:** ~600+
-
-### `ChatPanel.jsx`
-- **Purpose:** Chat panel for viewing/page context (note: differs from zen/ChatPanel).
-- **Key exports:** `default` (ChatPanel component)
-- **Dependencies:** ChatUI, design/tokens
-
-### `ConnectionRenderer.jsx`
-- **Purpose:** Renders related records via relation properties. Shows connected record cards.
-- **Key exports:** `default` (ConnectionRenderer component)
-- **Dependencies:** LinkPicker, design/tokens
-
-### `CustomView.jsx`
-- **Purpose:** Custom/user-defined view type. Extensible framework for plugin views.
-- **Key exports:** `default` (CustomView component)
-- **Dependencies:** api.js, design/tokens
-- **Line count:** ~701
-
-### `Document.jsx`
-- **Purpose:** Document view. Renders rich text document with formatting.
-- **Key exports:** `default` (Document component)
-- **Dependencies:** api.js, markdown.js
-
-### `DocumentEditor.jsx`
-- **Purpose:** Document editor. WYSIWYG editor for document pages.
-- **Key exports:** `default` (DocumentEditor component)
-- **Dependencies:** api.js, design/tokens
-- **Line count:** ~1,787 (large editor)
-
-### `FilterChips.jsx`
-- **Purpose:** Filter UI component. Shows active filters as editable chips.
-- **Key exports:** `default` (FilterChips component), `applyChipFilters()`
-- **Dependencies:** design/tokens
-- **Line count:** ~400+
-
-### `Form.jsx`
-- **Purpose:** Form view. Renders records as fillable forms instead of table rows.
-- **Key exports:** `default` (Form component)
-- **Dependencies:** design/tokens, api.js
-- **Line count:** ~500+
-
-### `Gantt.jsx`
-- **Purpose:** Gantt chart view. Timeline view with task bars.
-- **Key exports:** `default` (Gantt component)
-- **Dependencies:** design/tokens, api.js
-- **Line count:** ~1,198
-
-### `GmailView.jsx`
-- **Purpose:** Gmail integration view. Shows Gmail inbox, threads, and allows compose.
-- **Key exports:** `default` (GmailView component)
-- **Dependencies:** api.js, design/tokens
-- **Line count:** ~841
-
-### `Kanban.jsx`
-- **Purpose:** Kanban board view. Columns = select field values, cards = records.
-- **Key exports:** `default` (Kanban component)
-- **Dependencies:** design/tokens, api.js
-- **Line count:** ~600+
-
-### `LinkedSheet.jsx`
-- **Purpose:** Linked Google Sheets view (read-only proxy).
-- **Key exports:** `default` (LinkedSheet component)
-- **Dependencies:** api.js, design/tokens
-
-### `NetworkGraph.jsx`
-- **Purpose:** Network graph visualization. Shows nodes (records) and edges (relations).
-- **Key exports:** `default` (NetworkGraph component)
-- **Dependencies:** design/tokens, api.js
-- **Line count:** ~400+
-
-### `NewRecordModal.jsx`
-- **Purpose:** Quick record creation modal. Shows property form for new row/page.
-- **Key exports:** `default` (NewRecordModal component)
-- **Dependencies:** design/tokens, api.js
-
-### `NodeCanvas.jsx`
-- **Purpose:** Node-based workflow visualization. Used in automations and flows.
-- **Key exports:** `default` (NodeCanvas component)
-- **Dependencies:** design/tokens
-
-### `NodeConfigPanel.jsx`
-- **Purpose:** Panel to configure a flow/automation node. Shows properties, actions, conditions.
-- **Key exports:** `default` (NodeConfigPanel component)
-- **Dependencies:** design/tokens, api.js
-- **Line count:** ~776
-
-### `NodeRenderer.jsx`
-- **Purpose:** Renders individual nodes in node canvas.
-- **Key exports:** `default` (NodeRenderer component)
-- **Dependencies:** design/tokens
-
-### `NotificationFeed.jsx`
-- **Purpose:** Notification center. Shows all notifications with archive/dismiss.
-- **Key exports:** `default` (NotificationFeed component)
-- **Dependencies:** api.js, design/tokens
-- **Line count:** ~698
-
-### `RecordDetail.jsx`
-- **Purpose:** Modal/drawer showing full record detail. Properties, comments, files, activity.
-- **Key exports:** `default` (RecordDetail component)
-- **Dependencies:** RecordDetailPortals, api.js, design/tokens
-- **Line count:** ~1,300
-
-### `Sheet.jsx`
-- **Purpose:** Spreadsheet view. Full spreadsheet grid with formulas, cell styling, freeze panes.
-- **Key exports:** `default` (Sheet component)
-- **Dependencies:** api.js, design/tokens, SheetToolbar, FormulaBar
-- **Line count:** ~1,573
-
-### `SummaryTiles.jsx`
-- **Purpose:** Summary dashboard tiles. Shows key metrics (record count, avg, sum, etc.).
-- **Key exports:** `default` (SummaryTiles component)
-- **Dependencies:** api.js, design/tokens
-
-### `Table.jsx`
-- **Purpose:** Primary table view. Schema-agnostic, sortable, filterable, inline-editable data table.
-- **Key exports:** `default` (Table component)
-- **Dependencies:** api.js, notion/properties, design/tokens, FilterChips, RecordDetail
-- **Line count:** ~3,107 (largest view component)
-- **Key features:** Cell-level editing, column builder, owner tracking, record detail modal, multi-select, bulk operations
-
-### `ViewRenderer.jsx`
-- **Purpose:** Dispatcher that renders the correct view type based on page config.
-- **Key exports:** `default` (ViewRenderer component)
-- **Dependencies:** All view components, design/tokens
-
-### `WorkspaceSettings.jsx`
-- **Purpose:** Workspace settings page. User management, integrations, general settings.
-- **Key exports:** `default` (WorkspaceSettings component)
-- **Dependencies:** api.js, design/tokens, AuthContext
-
-### `_CellComponents.jsx`
-- **Purpose:** Reusable cell renderers for Table view. One component per property type (TextCell, SelectCell, DateCell, etc.).
-- **Key exports:** `TextCell`, `SelectCell`, `MultiSelectCell`, `DateCell`, `CheckboxCell`, `NumberCell`, `RelationCell`, `PeopleCell`, etc.
-- **Dependencies:** design/tokens, SelectPicker, MultiSelectPicker, LinkPicker
-
-### `_viewHelpers.js`
-- **Purpose:** Shared view utilities. Filter logic, sort logic, export formatting.
-- **Key exports:** `applyFilters()`, `applySorts()`, `groupRecords()`, `formatForExport()`
-- **Line count:** ~300+
+| File | Purpose |
+|------|---------|
+| `costTracker.js` | AI API cost tracking and budget management |
+| `files.js` | File handling utilities |
+| `fileProcessing.js` | File processing and parsing utilities |
+| `markdown.js` | Markdown parsing and rendering utilities |
+| `reportExport.js` | Report export (PDF via jsPDF) |
+| `reportGenerator.js` | Report data generation |
+| `useKeyboardShortcuts.js` | Keyboard shortcut registration hook |
 
 ---
 
-## `src/zen/` - Zen Mode / Simplified Views
+## src/google/ (1 file)
 
-Zen mode provides a distraction-free, task-focused interface. Views are optimized for workflows.
-
-### `CalendarView.jsx`
-- **Purpose:** Zen calendar view. Task/event calendar with quick-create bar.
-- **Key exports:** `default` (CalendarView component)
-- **Dependencies:** calendar/*, design/tokens, useAICuratedTasks
-
-### `ChatPanel.jsx`
-- **Purpose:** Zen chat panel (dual-tab assistant/agent). Enhanced Assistant tab with role-based tools.
-- **Key exports:** `default` (ChatPanel component)
-- **Dependencies:** ChatUI, WasabiPanel, aiRouter, tools, api.js
-- **Line count:** ~400+
-
-### `DashboardView.jsx`
-- **Purpose:** Zen dashboard. Widgets, quick stats, shortcuts to key data.
-- **Key exports:** `default` (DashboardView component)
-- **Dependencies:** WidgetGrid, api.js, design/tokens
-
-### `EmailThreadDrawer.jsx`
-- **Purpose:** Side drawer showing full email thread. Reply/forward UI.
-- **Key exports:** `default` (EmailThreadDrawer component)
-- **Dependencies:** api.js, design/tokens
-- **Line count:** ~726
-
-### `GmailView.jsx`
-- **Purpose:** Zen Gmail inbox view. Simplified email interface with threading.
-- **Key exports:** `default` (GmailView component)
-- **Dependencies:** api.js, design/tokens, EmailThreadDrawer
-- **Line count:** ~895
-
-### `KnowledgeHub.jsx`
-- **Purpose:** Zen knowledge hub. Quick access to documents, notes, KB entries.
-- **Key exports:** `default` (KnowledgeHub component)
-- **Dependencies:** api.js, design/tokens
-
-### `NotesView.jsx`
-- **Purpose:** Zen notes view. Quick note-taking, organizing, tagging.
-- **Key exports:** `default` (NotesView component)
-- **Dependencies:** api.js, markdown.js, design/tokens
-
-### `RecordDrawer.jsx`
-- **Purpose:** Zen record detail drawer. Streamlined record view with quick edits.
-- **Key exports:** `default` (RecordDrawer component)
-- **Dependencies:** RecordDrawerContext, api.js, design/tokens
-- **Line count:** ~1,100
-
-### `RecordDrawerContext.jsx`
-- **Purpose:** Context for record drawer state. What record to show, edit mode, etc.
-- **Key exports:** `RecordDrawerProvider`, `useRecordDrawer()`
-- **Line count:** ~100
-
-### `TaskList.jsx`
-- **Purpose:** Zen task list. Shows tasks from configured task table.
-- **Key exports:** `default` (TaskList component)
-- **Dependencies:** api.js, design/tokens
-
-### `TasksView.jsx`
-- **Purpose:** Zen tasks view. Main task management interface with calendar, list, and AI curation.
-- **Key exports:** `default` (TasksView component)
-- **Dependencies:** useAICuratedTasks, useTasksTable, api.js, design/tokens
-- **Line count:** ~600+
-
-### `WorkspaceBrowser.jsx`
-- **Purpose:** Zen workspace browser. Quick navigation to all databases, pages, shortcuts.
-- **Key exports:** `default` (WorkspaceBrowser component)
-- **Dependencies:** api.js, PagesContext, design/tokens
-- **Line count:** ~916
-
-### `ZenChatPanel.jsx`
-- **Purpose:** Zen chat sidebar. Minimized chat UI for side-by-side workflow.
-- **Key exports:** `default` (ZenChatPanel component)
-- **Dependencies:** ChatUI, design/tokens
-
-### `calendar/` Subdirectory (Calendar Components)
-
-#### `CalendarEventBlock.jsx`
-- **Purpose:** Single event block in calendar grid. Shows event title, time, attendees.
-- **Key exports:** `default` (CalendarEventBlock component)
-
-#### `CalendarFilterDropdown.jsx`
-- **Purpose:** Calendar filter UI. Filter by calendar, event type, attendee.
-- **Key exports:** `default` (CalendarFilterDropdown component)
-
-#### `CalendarTaskBlock.jsx`
-- **Purpose:** Task block in calendar grid. Shows task priority, completion.
-- **Key exports:** `default` (CalendarTaskBlock component)
-
-#### `DayColumn.jsx`
-- **Purpose:** Single day column in week view. Shows events and tasks for one day.
-- **Key exports:** `default` (DayColumn component)
-
-#### `MonthGrid.jsx`
-- **Purpose:** Month grid view. Shows all days of a month with events.
-- **Key exports:** `default` (MonthGrid component)
-
-#### `QuickCreateBar.jsx`
-- **Purpose:** Quick event/task creation bar. Add event/task with minimal input.
-- **Key exports:** `default` (QuickCreateBar component)
-
-#### `WeekListView.jsx`
-- **Purpose:** Week list view. Events and tasks listed in chronological order.
-- **Key exports:** `default` (WeekListView component)
-
-### `taskHelpers.js`
-- **Purpose:** Task-related helpers. Parse tasks, compute due dates, prioritize.
-- **Key exports:** `isTaskOverdue()`, `getTaskPriority()`, `formatTaskDueDate()`, `groupTasksByDate()`
-- **Line count:** ~150+
-
-### `useAICuratedTasks.js`
-- **Purpose:** Hook that fetches and AI-curates tasks for the current day. Smart task ranking.
-- **Key exports:** `useAICuratedTasks()`
-- **Dependencies:** api.js, runAgent, tools
-- **Line count:** ~1,115
-
-### `useDismissedTasks.js`
-- **Purpose:** Hook for managing dismissed tasks. Tracks dismissed task IDs in localStorage.
-- **Key exports:** `useDismissedTasks()`
-- **Line count:** ~80
-
-### `useInsight.js`
-- **Purpose:** Hook for generating workspace insights. Summary stats, trends, recommendations.
-- **Key exports:** `useInsight()`
-- **Dependencies:** api.js
-- **Line count:** ~150+
-
-### `useTasksTable.js`
-- **Purpose:** Hook to identify and configure tasks table. Auto-detection or manual selection.
-- **Key exports:** `useTasksTable()`
-- **Dependencies:** PagesContext, api.js
-- **Line count:** ~100+
+| File | Purpose |
+|------|---------|
+| `googleContext.js` | Google OAuth state and API context |
 
 ---
 
-## `mcp-server/` - MCP Server (Claude Integration)
+## src/config/ (5 files)
 
-### `index.js`
-- **Purpose:** Local MCP server for Claude Desktop (Cowork). Proxies requests to remote Wasabi Worker. Speaks MCP protocol over stdio.
-- **Key exports:** None (server binary)
-- **Tools exposed:** wasabi_health, wasabi_pages, wasabi_data, wasabi_analytics, wasabi_search, wasabi_automations, wasabi_functions, wasabi_flows, wasabi_kb, wasabi_neurons, wasabi_notifications, wasabi_users, wasabi_files, wasabi_dashboard, wasabi_sync, wasabi_export, wasabi_import, wasabi_bulk_update, wasabi_sql, wasabi_backup, wasabi_agent_query, wasabi_google, wasabi_trigger, wasabi_schedule
-- **Dependencies:** MCP SDK, zod, Node.js fs/path
-- **Line count:** 1000+ (not fully read)
-- **Key pattern:** Each tool group follows a similar pattern: fetch from Worker, parse JSON, return MCP-formatted response
+Configuration and storage utilities.
 
-### `config.json`
-- **Purpose:** MCP server config. Worker URL and API key.
-- **Example structure:**
-  ```json
-  {
-    "workerUrl": "https://wasabi.example.workers.dev",
-    "apiKey": "your-wasabi-key"
-  }
-  ```
-
-### `config.example.json`
-- **Purpose:** Template for config.json. Shows required fields.
-
-### `package.json`
-- **Purpose:** npm manifest for MCP server. Dependencies: @modelcontextprotocol/sdk, zod
+| File | Purpose |
+|------|---------|
+| `flowStorage.js` | Flow/automation persistence helpers |
+| `linkStorage.js` | Link/relation storage utilities |
+| `linkTypeCompat.js` | Link type compatibility layer |
+| `pageConfig.js` | Page configuration schema and defaults |
+| `setup.js` | Initial setup configuration |
+| `templates.js` | Page/view templates |
 
 ---
 
-## `docs/` - Documentation Files
+## src/notion/ (4 files)
 
-### `01-ui-ux.md`
-- **Topic:** UI/UX design, user flows, interaction patterns, accessibility
+Notion API integration layer.
 
-### `02-features-functions.md`
-- **Topic:** Feature list, function descriptions, use cases
-
-### `03-integrations.md`
-- **Topic:** Integration guides (Notion, Google, Monday.com, Gmail, Calendar), setup instructions
-
-### `04-ai-chat.md`
-- **Topic:** AI agent system, tools, prompts, model routing
-
-### `05-d1-r2.md`
-- **Topic:** D1 database schema, R2 file storage, migrations
-
-### `06-deployment.md`
-- **Topic:** Deployment guide, environment setup, production checklist
-
-### `07-architecture-routing.md`
-- **Topic:** Application architecture, request routing, data flow
-
-### `08-state-data-flow.md`
-- **Topic:** State management, context providers, data synchronization
-
-### `09-config-data-models.md`
-- **Topic:** Data models, configuration schemas, validation
-
-### `10-concepts-ideas-uses.md`
-- **Topic:** Product concepts, feature ideas, use cases
-
-### `11-phase7-plan.md`
-- **Topic:** Phase 7 roadmap, planned features, technical debt
-
-### `12-mcp-server.md`
-- **Topic:** MCP server setup, tool documentation, Claude integration
-
-### `13-realtime-collaboration.md`
-- **Topic:** Real-time collaboration architecture, WebSocket setup, conflict resolution
-
-### `14-d1-notion-sync-architecture.md`
-- **Topic:** Notion sync architecture, bidirectional sync logic, data mapping
-
-### `cleanup-review.md`
-- **Topic:** Code cleanup review findings, refactoring notes
-
-### `code-review.md`
-- **Topic:** Code review feedback, architecture decisions, known issues
-
-### `design-review.md`
-- **Topic:** Design system review, component audit, visual consistency
-
-### `wasabi-comprehensive-review.md`
-- **Topic:** Comprehensive codebase review, architecture overview, critical paths
-
-### `PHASE6_PLAN.md`
-- **Topic:** Phase 6 completion notes and architecture decisions
+| File | Purpose |
+|------|---------|
+| `client.js` | Notion API client (proxied through worker) |
+| `pagination.js` | Notion API pagination utilities |
+| `properties.js` | Notion property type mapping |
+| `schema.js` | Notion database schema detection |
 
 ---
 
-## File Statistics
+## src/sheets/ (1 file)
 
-- **Total source files:** 190+
-- **Total lines of code:** 71,280
-- **Largest files:** Table.jsx (3,107 lines), SystemManager.jsx (2,281 lines), toolExecutor.js (2,153 lines), DocumentEditor.jsx (1,787 lines)
-- **Largest directories:** src/views, src/core, src/agent
-- **Main tech stack:** React 18, Vite, Cloudflare Workers (D1 + R2), Notion API, Google APIs
+| File | Purpose |
+|------|---------|
+| `sheetClient.js` | Google Sheets API client |
 
 ---
 
-## Key Architecture Patterns
+## src/monday/ (1 file)
 
-### 1. **Context-Based State Management**
-- React Context for auth, pages, navigation, themes, collaboration
-- No Redux; hooks-based for simplicity
-- Cross-context actions wired in PlatformContext
-
-### 2. **API Abstraction Layer**
-- All backend calls through `api.js`
-- Single point for auth, error handling, connection state
-- Unified endpoint routing through Worker
-
-### 3. **View Type Dispatch**
-- PageShell routes to correct view based on page config
-- ViewRenderer handles all view type rendering
-- Supports Table, Sheet, Calendar, Gantt, Form, Chart, etc.
-
-### 4. **Lazy Loading with Retry**
-- App.jsx defines `lazyWithRetry()` for stale chunk recovery
-- ChatPanel, TasksView, NotesView, etc. lazily loaded
-- Auto-reload on final retry failure
-
-### 5. **AI Integration**
-- Multi-tier model routing (Haiku → Sonnet escalation)
-- Tool-use pattern for Claude integration
-- Parameterized agent loop in runAgent.js
-- Role-based tool access (admin/editor/viewer)
-
-### 6. **Real-Time Collaboration**
-- WebSocket sockets for table and user presence
-- Conflict detection and resolution
-- Presence avatars and cursor tracking
-
-### 7. **Knowledge Graph (Neurons)**
-- Link records across databases via NeuronsContext
-- O(1) badge lookups via graph indexing
-- Visual overlay for neuron visualization
-
-### 8. **Notion Sync**
-- Bidirectional sync: D1 ↔ Notion
-- Pull/push operations via sync endpoints
-- Field mapping and schema validation
-
-### 9. **Automation Engine**
-- Browser-based polling (no server cron)
-- Trigger evaluation (schedule, status_change, field_change, page_created)
-- Tool execution via runAgent
-- Node-based flows for complex workflows
-
-### 10. **Design System**
-- CSS-in-JS with rebuildable tokens on theme change
-- Global animation library injection
-- Dark-first color scheme with semantic colors
-- Consistent spacing, typography, shadows
+| File | Purpose |
+|------|---------|
+| `client.js` | Monday.com API client |
 
 ---
 
-## Dependencies Between Key Modules
+## docs/ (15 files)
 
-### `api.js` is a hub used by:
-- All agent files (automations, runAgent, toolExecutor, tools)
-- All context providers
-- All views and components
-- All integration clients (notion, sheets, monday, google)
+| File | Purpose |
+|------|---------|
+| `00-wasabi-overview.md` | Product description, architecture, development guidelines |
+| `01-ui-ux.md` | UI/UX patterns and design decisions |
+| `02-features-functions.md` | Feature catalog and function reference |
+| `03-integrations.md` | External integrations (Notion, Google, Monday) |
+| `04-ai-chat.md` | AI chat system architecture |
+| `05-d1-r2.md` | D1 database and R2 storage reference |
+| `06-deployment.md` | Deployment and infrastructure guide |
+| `07-architecture-routing.md` | Architecture and routing patterns |
+| `08-state-data-flow.md` | State management and data flow |
+| `09-config-data-models.md` | Configuration and data models |
+| `12-mcp-server.md` | MCP server reference (this directory) |
+| `13-realtime-collaboration.md` | Real-time collaboration system |
+| `14-d1-notion-sync-architecture.md` | D1/Notion sync architecture |
+| `15-security-and-known-issues.md` | Security posture and known issues |
+| `16-file-map.md` | This file |
 
-### `design/tokens.js` is used by:
-- `design/styles.js`
-- All views and components
-- ThemeContext for theme switching
-- Chart and visualization components
-
-### `PlatformContext` pulls from:
-- AuthContext
-- PagesContext
-- NavigationContext
-- Used by every major component
-
-### `NeuronsContext` is used by:
-- Table view (for badge rendering)
-- Sheet view (for cell selection)
-- Record detail (for linking)
-- Neurons visualization components
+Note: docs 10, 11, and the `reviews/` directory were deleted. Two `.docx` analysis files also exist in this directory.
 
 ---
 
-## Critical Paths for Development
+## mcp-server/ (3 source files)
 
-1. **Adding a new view type:** Create view in `src/views/`, add to ViewRenderer switch, define in page config templates
-2. **Adding a new tool:** Define in `tools.js`, implement in `toolExecutor.js`, add to role-based tool sets
-3. **Adding a new integration:** Create client in `src/[integration]/`, add to toolExecutor, expose via MCP server if needed
-4. **Adding a new context:** Create in `src/context/`, export Provider and hook, add to PlatformProvider if global
-5. **Modifying D1 schema:** Update schema in worker.js, create migration, test with both new and existing data
+| File | Purpose |
+|------|---------|
+| `index.js` | MCP server entry point (Node.js ESM, stdio transport) |
+| `config.json` | Local config with workerUrl and apiKey (gitignored) |
+| `config.example.json` | Config template |
+| `package.json` | Dependencies (@modelcontextprotocol/sdk) |
 
 ---
 
-## Known Issues & Review Findings
+## Other Root Files
 
-- **Table.jsx is large (3,107 lines):** Consider splitting into smaller components (CellRenderer, HeaderRow, etc.)
-- **toolExecutor.js is large (2,153 lines):** Could benefit from modular tool handlers
-- **No formal testing framework:** Consider adding Jest + React Testing Library
-- **Worker size limit approaching:** Monitor worker.js growth; may need to split endpoints into separate handlers
-- **Real-time sync conflicts:** Basic resolution strategy; could be improved for concurrent edits
-- **History trimming in runAgent:** May drop important context in long conversations; configurable maxPairs helps but needs monitoring
-
+| File | Purpose |
+|------|---------|
+| `.codesandbox/tasks.json` | CodeSandbox task configuration |

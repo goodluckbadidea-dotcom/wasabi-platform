@@ -1,51 +1,75 @@
 # 06 — Build & Deployment
 
-## Overview
+## Product Context
 
-Wasabi is deployed on **Cloudflare Pages** (frontend) and **Cloudflare Workers** (backend). The full tech stack uses:
-- Frontend: React 18 with Vite build tool
-- Backend: Cloudflare Workers with D1 SQLite and R2 storage
-- Real-time sync: Durable Objects for WebSocket rooms
-- Auth: JWT (HS256) with optional multi-user support
-
-This document covers the complete build, configuration, and deployment process.
+Wasabi is a self-hosted AI-native workspace deployed entirely on Cloudflare's edge infrastructure. The frontend is a React 18 SPA served by Cloudflare Pages. The backend is a single Cloudflare Worker (`worker.js`, ~9533 lines) that handles all API routes, authentication, WebSocket upgrade, cron triggers, and OAuth flows. All data lives in D1 (SQLite) and R2 (object storage), fully owned by the deployer.
 
 ---
 
-## Tech Stack & Versions
+## Infrastructure
 
-### Frontend Dependencies
-
-| Package | Version | Purpose |
-|---------|---------|---------|
-| **react** | ^18.3.1 | Core UI framework |
-| **react-dom** | ^18.3.1 | React DOM rendering |
-| **jspdf** | ^4.2.0 | PDF generation for documents |
-
-### Build & Dev Tools
-
-| Package | Version | Purpose |
-|---------|---------|---------|
-| **vite** | ^5.4.11 | Lightning-fast build tool and dev server |
-| **@vitejs/plugin-react** | ^4.3.4 | React Fast Refresh for HMR |
-
-### Backend Runtime
-
-- **Cloudflare Workers** with `nodejs_compat` compatibility flag
-- Compatibility date: `2025-09-27`
-- Language: JavaScript (ES modules)
-
-### Cloud Infrastructure
-
-- **Cloudflare Pages:** Frontend static hosting
-- **Cloudflare Workers:** Backend API and routing
-- **Cloudflare D1:** SQLite database (wasabi-main)
-- **Cloudflare R2:** File/document storage (wasabi-docs)
-- **Durable Objects:** Real-time WebSocket rooms for table sync and multi-device collaboration
+| Layer | Service | Purpose |
+|-------|---------|---------|
+| Frontend | Cloudflare Pages | Static SPA hosting, auto-deploy from GitHub |
+| Backend | Cloudflare Workers | Single worker: API, auth, WebSocket, cron, OAuth |
+| Database | Cloudflare D1 | SQLite source of truth (`wasabi-main`) |
+| Storage | Cloudflare R2 | File attachments, document content (`wasabi-docs`) |
+| Real-time | Durable Objects | `TableRoom` (per-table WebSocket), `UserRoom` (per-user broadcast) |
+| Cron | Worker Triggers | `*/2 * * * *` — automations, sync flush, cleanup |
 
 ---
 
-## Build Process
+## Dependencies
+
+### Production
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| react | ^18.3.1 | Core UI framework |
+| react-dom | ^18.3.1 | React DOM rendering |
+| jspdf | ^4.2.0 | PDF generation for documents |
+
+### Development
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| @vitejs/plugin-react | ^4.3.4 | React Fast Refresh for HMR |
+| vite | ^5.4.11 | Build tool and dev server |
+| vitest | ^4.1.0 | Test runner |
+
+---
+
+## npm Scripts
+
+```bash
+npm run dev        # Start Vite dev server on http://localhost:5173
+npm run build      # Production build → dist/ with lazy-loaded chunks
+npm run preview    # Preview production build locally
+npm run test       # Run vitest (single run)
+npm run test:watch # Run vitest in watch mode
+```
+
+---
+
+## Frontend Deployment (Cloudflare Pages)
+
+Push to the GitHub repo triggers automatic deployment via Cloudflare Pages:
+
+1. Pages monitors the repo (configured in Cloudflare dashboard)
+2. On push to main, Pages runs `npm install` then `npm run build`
+3. Serves `dist/` on `wasabi-platform.pages.dev`
+
+### npm Version Compatibility
+
+Cloudflare Pages builds use **Node 22 / npm 10**. Local development may use a newer npm version. If `package-lock.json` was generated with a different npm version, the Pages build will fail with `EBADPLATFORM` errors from platform-specific packages like `@esbuild`.
+
+**Fix:** Regenerate the lock file with npm 10:
+
+```bash
+rm -rf node_modules package-lock.json && npx -y npm@10 install
+```
+
+Commit the regenerated `package-lock.json` before pushing.
 
 ### Vite Configuration
 
@@ -68,93 +92,26 @@ export default defineConfig({
 });
 ```
 
-**Key Settings:**
-- **Output directory:** `dist/` (used by Cloudflare Pages)
-- **Source maps:** Disabled in production for security
-- **Dev server:** Listens on `0.0.0.0:5173` (all interfaces)
-- **React plugin:** Enables Fast Refresh for hot module reloading
-- **Code splitting:** Automatic via dynamic imports for lazy-loaded views
+- **Output:** `dist/` — served by Cloudflare Pages
+- **Source maps:** Disabled in production
+- **Dev server:** `0.0.0.0:5173` (all interfaces)
+- **Code splitting:** Automatic via `React.lazy()` / `lazyWithRetry()` dynamic imports
 
-### Build Steps
+### SPA Routing
 
-1. **Vite bundles React code** → `dist/`
-2. **Code splitting:** Large bundles (>100KB) split automatically for better caching
-3. **Asset optimization:** Images, fonts, CSS minified
-4. **Output:** HTML + JS + CSS ready for Cloudflare Pages
+**File:** `public/_redirects`
 
-**Lazy-Loaded Chunks (estimated sizes):**
-- `ZenTasksView` (~48 KB)
-- `ZenChatPanel` (~5 KB)
-- `NodeEditor` (~52 KB)
-- `FunctionsPanel` (~23 KB)
-- `BuildPage` (~24 KB)
-- `SashimiDrawer` (~12 KB)
-- `ZenGmail` (~14 KB)
+```
+/* /index.html 200
+```
 
-### Build Performance
-
-- **Dev build time:** ~1-2 seconds (Vite is instant)
-- **Production build time:** ~10-15 seconds
-- **Bundle size estimate:** ~300-400 KB (uncompressed, including jspdf)
+All non-file requests redirect to `index.html` for client-side routing.
 
 ---
 
-## npm Scripts
+## Worker Deployment
 
-### Development
-
-```bash
-npm run dev
-```
-Starts Vite dev server on `http://localhost:5173` with hot reload. All changes update instantly.
-
-### Build
-
-```bash
-npm run build
-```
-Bundles React code and outputs to `dist/`. Used by Cloudflare Pages deployment.
-
-### Preview
-
-```bash
-npm run preview
-```
-Preview production build locally (serves dist/ as static file server).
-
----
-
-## Cloudflare Pages Configuration
-
-**File:** `wrangler.toml`
-
-```toml
-name = "wasabi-platform"
-pages_build_output_dir = "./dist"
-```
-
-**Deployment Flow:**
-1. Pages monitors GitHub repo (via Cloudflare dashboard)
-2. On push to main, Pages:
-   - Runs `npm install`
-   - Runs `npm run build`
-   - Serves dist/ on `wasabi-platform.pages.dev`
-
-**Custom Domain:** Configure in Cloudflare dashboard → Pages settings.
-
-**Build Command (Cloudflare default):**
-```bash
-npm run build
-```
-
-**Environment Variables (Pages):**
-Set via Cloudflare dashboard → Pages → Settings → Environment variables:
-- `VITE_WORKER_URL` — Backend worker URL (e.g., `https://wasabi-api.example.com`)
-- `VITE_PUBLIC_API_KEY` — Optional public API key (accessible in browser)
-
----
-
-## Cloudflare Worker Configuration
+### wrangler-worker.toml
 
 **File:** `wrangler-worker.toml`
 
@@ -192,72 +149,111 @@ new_sqlite_classes = ["UserRoom"]
 
 [triggers]
 crons = ["*/2 * * * *"]
+
+[vars]
+CORS_ORIGINS = "https://wasabi-platform.pages.dev,http://localhost:5173,http://127.0.0.1:5173"
+
+# WASABI_SECRET set via: npx wrangler secret put WASABI_SECRET -c wrangler-worker.toml
 ```
 
-**Key Settings:**
+### Deploy Command
 
-- **D1 Binding:** `DB` → `wasabi-main` SQLite database
-- **R2 Binding:** `DOCS` → `wasabi-docs` bucket for file storage
-- **Durable Objects:**
-  - `TABLE_ROOMS` (class `TableRoom`) — WebSocket rooms for table real-time sync
-  - `USER_ROOMS` (class `UserRoom`) — WebSocket rooms for multi-device user state
-- **Cron Trigger:** Every 2 minutes for automation rules and sync flush
-- **Compatibility:** Node.js compatibility flag enabled for crypto APIs
-
-### Deploying Worker
-
-**Install Wrangler:**
 ```bash
-npm install -g wrangler
+npx wrangler deploy --config wrangler-worker.toml
 ```
 
-**Deploy:**
-```bash
-wrangler deploy -c wrangler-worker.toml
-```
+### Check Deployment
 
-**Set secrets (one-time):**
 ```bash
-npx wrangler secret put WASABI_SECRET -c wrangler-worker.toml
-```
-This sets the shared authentication secret used to validate API requests.
-
-**Check deployment status:**
-```bash
-wrangler deployments list -c wrangler-worker.toml
+npx wrangler deployments list --config wrangler-worker.toml
 ```
 
 ---
 
 ## Environment Variables & Secrets
 
-### Frontend (Vite)
+### Worker Variables (set in wrangler-worker.toml `[vars]`)
 
-Variables prefixed with `VITE_` are available in browser:
+| Variable | Value | Purpose |
+|----------|-------|---------|
+| CORS_ORIGINS | `https://wasabi-platform.pages.dev,http://localhost:5173,http://127.0.0.1:5173` | Allowed CORS origins, comma-separated |
+
+### Worker Secrets (set via `wrangler secret put`)
+
+| Secret | Purpose |
+|--------|---------|
+| WASABI_SECRET | JWT HMAC-SHA256 signing key. Set via `npx wrangler secret put WASABI_SECRET -c wrangler-worker.toml` |
+| GOOGLE_CLIENT_ID | Google OAuth client ID (for Gmail/Calendar integration) |
+| GOOGLE_CLIENT_SECRET | Google OAuth client secret |
+
+### Frontend Variables
+
+Variables prefixed with `VITE_` are embedded at build time and accessible in browser code:
+
+| Variable | Purpose |
+|----------|---------|
+| VITE_WORKER_URL | Backend worker URL (default: `http://localhost:8787`) |
+
+Set in Cloudflare Pages dashboard under Settings > Environment variables.
+
+---
+
+## Authentication
+
+- **Password hashing:** PBKDF2, 100,000 iterations
+- **Access token:** 15-minute JWT (HMAC-SHA256 with WASABI_SECRET), stored in memory
+- **Refresh token:** 7-day JWT, stored as HttpOnly cookie
+- **Rate limiting:** 5 failed attempts per 900 seconds per IP on auth endpoints
+- **Session management:** `active_sessions` D1 table, per-device tracking, revocation support
+
+---
+
+## Responsive Breakpoints
 
 ```javascript
-// src/main.jsx
-const workerUrl = import.meta.env.VITE_WORKER_URL || "http://localhost:8787";
+BP = { mobile: 768, tablet: 1194 }
 ```
 
-**Available variables:**
-- `VITE_WORKER_URL` — Backend worker URL (default: localhost:8787)
-- `VITE_PUBLIC_API_KEY` — Optional public API key
+These are the actual breakpoints used in `src/design/tokens.js` and `src/context/ViewportContext.jsx`. The `useViewport()` hook provides `isMobile` and `isTablet` flags. Graham uses Wasabi on iPad, so responsive design at these breakpoints is critical.
 
-### Backend (Worker)
+---
 
-Environment variables set via Cloudflare dashboard or `wrangler secret put`:
+## Durable Objects
 
-- `WASABI_SECRET` — Shared authentication secret (required for multi-user mode, can be any strong string)
-- D1 & R2 bindings are automatic via `wrangler-worker.toml`
+### TableRoom
 
-**No hardcoded secrets:** JWT signing uses `WASABI_SECRET`. Google OAuth and Claude API keys are stored in D1 `connections` table.
+Per-table WebSocket room for real-time collaboration:
+
+- Endpoint: `ws://worker-url/ws/table/{tableId}?token={jwt}`
+- Broadcasts cell changes to all connected clients
+- Tracks concurrent edits via `cell_versions` for conflict detection
+- SQLite-backed persistent state
+
+### UserRoom
+
+Per-user WebSocket room for multi-device state sync:
+
+- Endpoint: `ws://worker-url/ws/user/{userId}?token={jwt}`
+- Syncs page navigation, UI state across devices
+- Handles disconnect/reconnect
+
+Both instantiated via `env.TABLE_ROOMS.idFromName(tableId)` and `env.USER_ROOMS.idFromName(userId)`.
+
+---
+
+## Cron Trigger
+
+Schedule: `*/2 * * * *` (every 2 minutes)
+
+The cron handler runs three tasks:
+
+1. **Automation engine** — Evaluates enabled automation rules, fires matching rules via Claude Haiku
+2. **Sync flush** — Pushes `sync_dirty` rows to Notion for tables with active sync configs
+3. **Cleanup** — Expires old rate limit entries, cleans stale sessions
 
 ---
 
 ## Local Development
-
-### Setup
 
 ```bash
 # Install dependencies
@@ -265,271 +261,52 @@ npm install
 
 # Start dev server
 npm run dev
+# → http://localhost:5173
 ```
 
-Dev server runs on `http://localhost:5173`.
+The frontend connects to `VITE_WORKER_URL` (defaults to `http://localhost:8787`). To use the deployed worker:
 
-### Backend Testing
-
-The frontend makes API calls to `import.meta.env.VITE_WORKER_URL`, which defaults to `http://localhost:8787`.
-
-**Option 1: Use live worker**
 ```bash
-export VITE_WORKER_URL=https://wasabi-api.example.com
-npm run dev
+VITE_WORKER_URL=https://your-worker.workers.dev npm run dev
 ```
-
-**Option 2: Local worker (requires Cloudflare)**
-Complex setup involving local Wrangler. Not recommended for development.
-
-### Single-User Mode
-
-If `WASABI_SECRET` is not set, the worker allows all requests (first-time setup mode). This works for local development and single-user deployments:
-- No auth header required
-- No JWT validation
-- Any user can make any request
-
----
-
-## Database Migrations
-
-**D1 Migrations:** Stored in `wrangler-worker.toml` under `[[migrations]]`.
-
-Currently defined:
-- **v1:** Introduces `TableRoom` Durable Object with SQLite
-- **v2:** Introduces `UserRoom` Durable Object
-
-To add a migration:
-
-1. Increment the version tag (v3, v4, etc.)
-2. Add new table to `D1_SCHEMA` in `worker.js` (lines 16-319)
-3. Add migration block:
-   ```toml
-   [[migrations]]
-   tag = "v3"
-   new_sqlite_classes = ["NewClass"]  # if adding Durable Objects
-   ```
-4. Deploy via `wrangler deploy -c wrangler-worker.toml`
-
----
-
-## Durable Objects Configuration
-
-### TableRoom (Class)
-
-Handles WebSocket connections for table real-time sync (defined in `worker.js`).
-
-**Endpoints:**
-- `ws://api/ws/table/{tableId}?token={jwt}`
-- Broadcast cell changes to all connected clients
-- Track concurrent edits and version conflicts
-- Stored state: SQL schema for persistingthe table's state
-
-### UserRoom (Class)
-
-Handles WebSocket connections for multi-device user state sync (defined in `worker.js`).
-
-**Endpoints:**
-- `ws://api/ws/user/{userId}?token={jwt}`
-- Sync page state, scroll position, UI focus across devices
-- Handle device disconnect/reconnect
-
-Both Durable Objects are instantiated via `env.TABLE_ROOMS.idFromName(tableId)` and `env.USER_ROOMS.idFromName(userId)`.
-
----
-
-## R2 Storage Configuration
-
-**Bucket Name:** `wasabi-docs`
-**Region:** Automatic (geographically distributed)
-
-**Key structure:**
-```
-docs/{doc_id}.json         — Document content
-files/{file_id}_{name}     — User-uploaded files
-backups/{page_id}_{ts}.json — Sync backups
-```
-
-**File size limits:**
-- Cloudflare R2 max object size: 5 TB
-- Wasabi typical objects: 50 KB – 50 MB (documents, PDFs)
-
-**Recommended lifecycle management:**
-- Delete orphaned files older than 30 days
-- Consider versioning sensitive documents
-- Not yet implemented
-
----
-
-## HTML Entry Point
-
-**File:** `index.html`
-
-```html
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Wasabi</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg>...</svg>" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-    <style>
-      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-      html, body { height: 100%; width: 100%; overflow: hidden; }
-      #root { position: fixed; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; }
-      body { font-family: 'Outfit', 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; }
-    </style>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
-</html>
-```
-
-**Key Details:**
-- Loads fonts from Google Fonts (DM Mono, DM Sans, Outfit)
-- Embedded SVG favicon (Wasabi logo)
-- Full-height layout with fixed positioning (no scroll)
-- Mounts React app into `#root`
-
----
-
-## Redirect Rules
-
-**File:** `public/_redirects`
-
-```
-/* /index.html 200
-```
-
-**Purpose:** React SPA routing. All non-file requests redirect to index.html, allowing React Router to handle navigation.
-
----
-
-## CodeSandbox Configuration
-
-**File:** `.codesandbox/tasks.json`
-
-```json
-{
-  "$schema": "https://codesandbox.io/schemas/tasks.json",
-  "setupTasks": [
-    {
-      "name": "Install Dependencies",
-      "command": "npm install"
-    }
-  ],
-  "tasks": {
-    "dev": {
-      "name": "Development Server",
-      "command": "npm run dev",
-      "runAtStart": true,
-      "preview": {
-        "port": 5173
-      }
-    }
-  }
-}
-```
-
-**Effect:** CodeSandbox automatically runs `npm install` then `npm run dev`, making the project runnable in the browser without local setup.
-
----
-
-## Production Considerations
-
-### Security
-
-- **WASABI_SECRET:** Must be strong and kept secret. Used for auth header validation and JWT signing.
-- **CORS:** Currently allows all origins (`Access-Control-Allow-Origin: *`). Should be restricted in production (see code review).
-- **JWT Storage:** Currently in localStorage (vulnerable to XSS). Should use httpOnly cookies + refresh tokens.
-- **SSL/TLS:** Cloudflare provides free SSL for all deployments.
-
-### Performance
-
-- **Caching:** Cloudflare Cache Rules can cache static assets (CSS, JS, images) for 1 day or more
-- **Database:** D1 queries are typically <100ms. Use pagination for large result sets (>1000 rows).
-- **R2:** Files cached via Cloudflare CDN. First access may be slower (~500ms).
-- **Durable Objects:** Real-time sync adds <50ms latency per message (network + processing).
-
-### Monitoring
-
-**Cloudflare Analytics:**
-- Worker CPU time, request count, errors
-- Pages build logs and deployment history
-- D1 query logs (enable in dashboard)
-
-**Error Tracking:**
-- Implement Sentry or similar for frontend error tracking
-- Log backend errors to external service (not yet configured)
-
-### Backup & Disaster Recovery
-
-**Currently missing:**
-- D1 database backups (Cloudflare may auto-backup, verify)
-- R2 file versioning or replication
-- No documented recovery procedure
-
-**Recommendations:**
-- Enable D1 backups via Cloudflare dashboard
-- Enable R2 versioning or cross-region replication
-- Regular export of page configs and critical data
 
 ---
 
 ## Troubleshooting
 
-### Build Fails
+### npm ci / install fails with EBADPLATFORM
 
-**Issue:** `npm run build` fails with module errors
-- Check Node.js version (should be 16+)
-- Delete `node_modules/` and `package-lock.json`, run `npm install`
-- Check for TypeScript errors in `src/`
+**Cause:** `package-lock.json` was generated with a different npm version than the build environment. Platform-specific packages (like `@esbuild/darwin-arm64`) are locked to a specific OS/arch.
 
-### Worker Deploy Fails
+**Fix:**
+```bash
+rm -rf node_modules package-lock.json && npx -y npm@10 install
+```
 
-**Issue:** `wrangler deploy` returns 401 or permission error
-- Verify `CLOUDFLARE_API_TOKEN` is set correctly
-- Check token has Worker deploy permissions
-- Verify `database_id` in `wrangler-worker.toml` exists
+Commit the regenerated lock file.
 
-### D1 Queries Timeout
+### Cloudflare Pages build fails
 
-**Issue:** `POST /tables/{id}/query` times out for large tables
-- Add `limit` parameter (don't query >10000 rows at once)
-- Add index on frequently filtered fields
+**Common causes:**
+- Lock file version mismatch (see above)
+- Node version incompatibility — Pages uses Node 22
+- Missing environment variables — check VITE_WORKER_URL is set in Pages settings
+
+### Worker deploy fails
+
+**Common causes:**
+- Missing or invalid Cloudflare API token — verify with `npx wrangler whoami`
+- Token lacks Workers deploy permission
+- D1 database ID in `wrangler-worker.toml` does not exist — verify with `npx wrangler d1 list`
+
+### WebSocket connection drops
+
+- Verify JWT token is not expired (15-min access token)
+- Confirm WASABI_SECRET is the same between worker and token issuer
+- Check Durable Object bindings in `wrangler-worker.toml`
+
+### D1 query timeout
+
+- Add `limit` parameter — do not query more than 10,000 rows at once
+- Verify indexes exist for filtered columns (see `D1_INDEXES` in worker.js)
 - Check worker CPU time in Cloudflare dashboard
-
-### WebSocket Connection Fails
-
-**Issue:** `ws://api/ws/table/{id}` connection drops after a few seconds
-- Check JWT token is valid (compare `exp` to current time)
-- Verify `WASABI_SECRET` matches between Pages and Worker
-- Check Durable Object is properly configured in `wrangler-worker.toml`
-
----
-
-## Known Issues & Gaps
-
-See `/sessions/focused-stoic-noether/code-review.md` for complete list. Key deployment issues:
-
-1. **Missing monitoring:** No metrics, logs, or alerts for production issues
-2. **No backup strategy:** D1 and R2 backups not configured
-3. **CORS too permissive:** Should restrict to specific origins
-4. **No rate limiting:** Can be spammed with requests (especially auth endpoints)
-5. **No API versioning:** Breaking changes will affect all clients
-6. **No canary/blue-green deployment:** Worker deploys are instant and global (risky)
-
----
-
-## Resources
-
-- **Vite Docs:** https://vitejs.dev
-- **Cloudflare Workers Docs:** https://developers.cloudflare.com/workers
-- **Cloudflare Pages Docs:** https://developers.cloudflare.com/pages
-- **Cloudflare D1 Docs:** https://developers.cloudflare.com/d1
-- **Cloudflare R2 Docs:** https://developers.cloudflare.com/r2
-- **Durable Objects Docs:** https://developers.cloudflare.com/workers/runtime-apis/durable-objects

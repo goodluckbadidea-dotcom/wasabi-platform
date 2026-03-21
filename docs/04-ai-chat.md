@@ -1,515 +1,235 @@
-# Wasabi Platform: AI Agent System
+# 04 — AI Agent System
 
-**Version:** March 2026
-**Overview:** Wasabi features a conversational AI agent powered by Claude, integrated with your workspace data. The agent handles queries, tool execution, automations, and visual flows.
+## Product Context
 
----
-
-## Agent Architecture
-
-### Core Files
-
-| File | Purpose |
-|------|---------|
-| `runAgent.js` | Core agentic loop: Claude API calls + tool execution + retry logic |
-| `tools.js` | Tool definitions (schemas) available to Claude |
-| `toolExecutor.js` | Tool execution dispatch — maps tool names to API calls |
-| `wasabiPrompt.js` | System prompt builder — injects KB, page context, date, etc. |
-| `queryClassifier.js` | Classifies user queries to route to correct agent tier |
-| `dataSummary.js` | Generates compact data summaries for agent context |
-| `memory.js` | Knowledge base + conversation memory management |
-| `automations.js` | Automation rule engine — D1 rules polling + execution |
-| `flowExecutor.js` | Visual flow executor — node-graph traversal + branching |
-| `costTracker.js` | Tracks Claude API usage costs per session |
+In Wasabi, AI is a core collaborator, not a bolt-on feature. Users build persistent semantic scaffolding — Knowledge Base entries, Neurons, page hierarchies, automation rules — that accumulates over time. The AI draws from this scaffolding on every interaction, so each conversation builds on everything before it. The more a user organizes, the more accurate and contextual the AI becomes.
 
 ---
 
-## Agent Loop (`src/agent/runAgent.js`)
+## How AI Uses the Scaffolding
 
-### Core Function
+The AI system prompt is assembled dynamically from four layers of persistent context:
 
-```javascript
-export async function runAgent({
-  messages,                    // Conversation history
-  systemPrompt,                // System prompt text
-  tools,                        // Tool definitions array
-  model,                        // Claude model ID (e.g. "claude-3-5-sonnet")
-  workerUrl,                    // Wasabi worker URL
-  claudeKey,                    // Anthropic API key
-  executeTool,                  // (toolName, input) => string result
-  onToolCall,                   // Optional: callback on tool execution
-  onToolApproval,               // Optional: async gate for write tools
-  onStatus,                      // Optional: status/progress updates
-  abortRef,                      // Optional: { current: boolean } for cancellation
-  maxIterations = 12,            // Max loop iterations
-  maxTokens = 2048,              // Max tokens per response
-  tier = "unknown",              // "haiku"|"sonnet"|"unknown"
-  routeReason = "",              // Why this tier was chosen
-})
-```
+1. **Knowledge Base** — User-curated domain rules, business context, and operational knowledge stored in the `knowledge_base` D1 table. All KB entries are injected directly into the system prompt so the AI has institutional memory without the user repeating themselves.
 
-### Loop Behavior
+2. **Neurons** — Named relationship clusters linking records, pages, and fields across the workspace. The AI queries the neuron graph to understand connections (e.g., which vendors supply which SKUs, or which projects depend on which inventory items).
 
-**Iteration Process:**
-1. **Send to Claude:** POST to Claude API with conversation messages + tools
-2. **Parse Response:** Extract text + tool_use blocks
-3. **Tool Execution:**
-   - For each tool_use block: call `executeTool(name, input)`
-   - If `onToolApproval` provided and tool is write operation: gate execution
-   - Feed result back as tool_result message
-4. **Retry Logic:** If stop_reason is `tool_use`, loop again
-5. **Exit Conditions:**
-   - stop_reason is `end_turn` → return final text
-   - Iteration reaches `maxIterations` → break
-   - `abortRef.current` is true → abort
-   - No more tool_use blocks → return
+3. **Page Structure** — The hierarchy of pages, folders, and views tells the AI what matters and how data relates. A workspace summary of all pages is included so the AI can reason about cross-table operations.
 
-### Write Tool Gating
-
-**Write Tools:** `create_page`, `update_page`, `send_email`, `delete_calendar_event`, etc.
-
-**Approval Flow (if `onToolApproval` provided):**
-1. Collect all pending write tool blocks
-2. Call `onToolApproval(writeBlocks)` (async)
-3. If returns true: execute tools
-4. If returns false: return error to Claude
-
-**Usage:** Implements "confirm" agent mode before mutations
-
-### History Trimming
-
-```javascript
-export function trimHistory(messages, maxPairs = 3)
-// Keeps last N user/assistant exchanges
-// Drops old tool_result messages (prevent hallucination anchoring)
-```
-
-**Purpose:** Prevent stale data from earlier failed attempts from poisoning later responses
+4. **Data Summary** — `dataSummary.js` builds a compact representation of the current page's records within token budget constraints: it samples rows, includes key schema fields, and generates aggregate counts. This prevents context blowout while giving the AI enough data to reason.
 
 ---
 
-## Tool Definitions (`src/agent/tools.js`)
+## Agent Loop
 
-### Shared Tools
+**File:** `src/agent/runAgent.js`
 
-**Available to all agents:**
+The agent loop is the core execution cycle for all AI interactions:
 
-| Tool | Purpose | Input Parameters |
-|------|---------|------------------|
-| `query_database` | Query any data source | `database_id`, `filter`, `sorts` |
-| `get_page` | Fetch single Notion page | `page_id` |
-| `create_page` | Create record in database | `database_id`, `properties` |
-| `update_page` | Update record properties | `page_id`, `properties`, `database_id` |
-| `post_notification` | Create user notification | `message`, `type`, `source`, `record_id` |
+```
+User message
+  → queryClassifier determines strategy, complexity, estimated tools
+  → Model routing: Haiku (fast/cheap) or Sonnet (complex reasoning)
+  → runAgent builds system prompt (KB + neurons + page context + data summary)
+  → Claude API call with conversation history + tool definitions
+  → If response contains tool_use blocks:
+      → toolExecutor runs each tool against the worker API
+      → Tool results fed back as tool_result messages
+      → Loop continues (up to maxIterations = 12)
+  → If stop_reason is end_turn → return final text to user
+```
 
-**Note:** Results capped at 200 rows (50 for direct Notion). If `truncated: true`, not all data returned.
+**Exit conditions:** `end_turn` stop reason, max iterations reached, abort signal set, or no more tool_use blocks.
 
-### Wasabi-Specific Tools
+**Write tool gating:** When `onToolApproval` is provided (confirm mode), write operations (create, update, delete, send) are collected and gated behind user approval before execution.
 
-| Tool | Purpose |
-|------|---------|
-| `update_database` | Add/rename/remove properties from Notion schema |
-| `cross_database_query` | Query multiple databases in one call |
-| `create_database` | Create new Notion database |
-| `detect_schema` | Fetch and classify Notion database schema |
-| `create_page_config` | Create Wasabi page config (D1 or linked) |
-| `update_knowledge_base` | Write/update KB entries |
-| `search_knowledge_base` | Search KB by keyword |
-| `process_uploaded_files` | Process files from user upload |
-| `smart_match_records` | Fuzzy-match records across tables |
-| `create_automation_rule` | Create D1 automation rule |
-| `query_neurons` | Search neuron (semantic link) graph |
-| `create_neuron` | Create new neuron connection |
-| `run_calculation` | Execute transform function on data |
-| `batch_operations` | Batch create/update/delete rows |
-| `save_custom_function` | Create/save transform or aggregation |
-| `list_custom_functions` | List available custom functions |
-| `run_custom_function` | Execute custom function |
-| `delete_custom_function` | Delete custom function |
-
-### Gmail/Calendar Tools
-
-| Tool | Purpose |
-|------|---------|
-| `search_emails` | Search Gmail by query |
-| `get_email` | Fetch email message by ID |
-| `send_email` | Send email or reply |
-| `modify_email` | Archive, trash, mark read, etc. |
-| `create_email_draft` | Create unsent draft |
-| `list_calendar_events` | Query events in time range |
-| `create_calendar_event` | Create calendar event |
-| `update_calendar_event` | Update event details |
-| `delete_calendar_event` | Delete event |
+**History trimming:** `trimHistory(messages, maxPairs)` keeps only the last N user/assistant exchanges and drops old tool_result messages to prevent stale data from poisoning later responses.
 
 ---
 
-## Tool Executor (`src/agent/toolExecutor.js`)
+## Query Classifier
 
-### Tool Dispatch
+**File:** `src/agent/queryClassifier.js`
 
-```javascript
-export async function executeTool(toolName, toolInput, context)
-// Dispatch tool call to appropriate handler
-// Returns: { result, error?, metadata? }
-```
+Classifies each user message before it reaches the model to determine:
 
-### Data Source Routing
+| Output | Values | Purpose |
+|--------|--------|---------|
+| Strategy | `direct` / `data` / `action` / `complex` | What kind of work the query requires |
+| Complexity | low / medium / high | How much reasoning is needed |
+| Estimated tools | count of tools likely needed | Informs iteration budget |
+| Model route | Haiku or Sonnet | Cost/capability tradeoff |
 
-Determines where tool applies:
-- **D1 Tables:** Query via `/tables/{id}/rows`
-- **D1 Sheets:** Query via `/sheets/{id}`
-- **Linked Google Sheets:** Fetch via `/sheets/fetch` proxy
-- **Linked Monday.com:** Query via `/monday/graphql` proxy
-- **Linked Notion:** Query via `/query` proxy
-- **Transformations:** Execute in sandbox (see below)
-
-### Sandbox Execution
-
-**Custom Functions & Transforms:** Execute in restricted sandbox with whitelisted helpers:
-
-**Available in Sandbox:**
-```javascript
-_sbSum(arr)         // Array sum
-_sbAvg(arr)         // Average
-_sbMin/Max(arr)     // Min/max
-_sbGroupBy(arr, key) // Group array by key
-_sbSortBy(arr, key, dir) // Sort array
-_sbUnique(arr, key) // Unique values
-_sbRound(n, decimals) // Round number
-_sbDateAdd(dateStr, days) // Add days to date
-_sbDateDiff(d1, d2) // Days between dates
-_sbCurrency(n, currency) // Format as currency
-_sbPercent(n, decimals) // Format as percent
-_sbCompact(n)       // Compact number (K, M)
-_sbFlatten(arr)     // Flatten nested array
-_sbPick/Omit(obj, keys) // Pick/omit object keys
-_sbChunk(arr, size) // Split array into chunks
-```
-
-**Security:** `eval()` and `new Function()` blocked; validation on function code
+**Routing logic:**
+- Simple lookups, greetings, calendar checks → **Haiku** (claude-haiku-4-5-20251001) — fast and cheap
+- Multi-step analysis, schema creation, cross-table reasoning → **Sonnet** — higher capability
 
 ---
 
-## System Prompt Builder (`src/agent/wasabiPrompt.js`)
+## Tool Executor
 
-### Prompt Construction
+**File:** `src/agent/toolExecutor.js`
 
-```javascript
-export function buildWasabiPrompt({
-  platformDbIds,          // Platform infrastructure DB IDs
-  kbContext,              // Knowledge base context injection
-  currentPageContext,     // { pageName, databaseIds, schemaText }
-  dataSummary,            // Compact data summary
-  workspaceSummary,       // All workspace pages
-  neuronSummary,          // Neuron (semantic link) graph
-  currentDate,            // Today's date (YYYY-MM-DD)
-  workspaceInstructions,  // Custom AI instructions
-  agentMode,              // "auto" | "confirm" | "plan"
-  googleContext,          // Gmail/Calendar snippet
-})
-```
+Dispatches tool calls from the Claude response to the appropriate worker API endpoint. Over 50 tools organized by category:
 
-### Prompt Sections
+| Category | Tools |
+|----------|-------|
+| **CRUD** | `query_database`, `create_page`, `update_page`, `get_page`, `cross_database_query`, `batch_operations`, `create_database`, `detect_schema`, `create_page_config` |
+| **Email** | `search_emails`, `get_email`, `send_email`, `modify_email`, `create_email_draft` |
+| **Calendar** | `list_calendar_events`, `create_calendar_event`, `update_calendar_event`, `delete_calendar_event` |
+| **Automation** | `create_automation_rule`, `save_custom_function`, `list_custom_functions`, `run_custom_function`, `delete_custom_function`, `run_calculation` |
+| **Neurons** | `query_neurons`, `create_neuron` |
+| **Knowledge Base** | `update_knowledge_base`, `search_knowledge_base` |
+| **Records** | `smart_match_records`, `process_uploaded_files`, `post_notification` |
 
-**Included in Order:**
-1. **Identity:** "You are Wasabi, an AI assistant for managing..." (immutable)
-2. **Data Integrity Preamble:** "You operate on real business data. Extreme accuracy..."
-3. **Context:** Today's date, day of week
-4. **Workspace Instructions:** User-provided custom instructions
-5. **Agent Behavior:** Mode-specific instructions (auto/confirm/plan)
-6. **Capabilities:** Capabilities list (data management, analysis, etc.)
-7. **View Library:** Available view types (table, kanban, etc.)
-8. **Inline Charts:** Chart code examples
-9. **Templates:** Injected from config/templates.js
-10. **Tools Guide:** How to use available tools
-11. **System Builder:** Logic for building complex queries
-12. **Analytical Responses:** Guidelines for analysis
-13. **Rules:** Data integrity rules
-14. **KB Context:** Knowledge base snippets
-15. **Workspace Pages:** Summary of all databases
-16. **Neuron Graph:** Semantic links
-17. **Google Context:** Gmail/Calendar summary
-18. **Page Context:** Current page schema + data summary
+### Tool Safety
+
+Three layers protect against malicious or runaway code execution:
+
+1. **`validatePluginCode` blocklist** — Scans function/plugin code for dangerous patterns (`eval`, `Function`, `import`, `require`, `fetch`, `XMLHttpRequest`, etc.) before execution. Blocks indirect bypass attempts.
+
+2. **`TIMEOUT_GUARD` (5-second deadline)** — Wraps code execution in a timeout. If a function exceeds 5 seconds, execution is terminated and an error is returned.
+
+3. **Infinite loop detection** — Scans code for `while(true)`, `for(;;)`, and similar patterns before execution to prevent resource exhaustion.
+
+### Sandbox Helpers
+
+Custom functions execute in a restricted scope with whitelisted helper functions: `_sbSum`, `_sbAvg`, `_sbMin`, `_sbMax`, `_sbGroupBy`, `_sbSortBy`, `_sbUnique`, `_sbRound`, `_sbDateAdd`, `_sbDateDiff`, `_sbCurrency`, `_sbPercent`, `_sbCompact`, `_sbFlatten`, `_sbPick`, `_sbOmit`, `_sbChunk`.
+
+---
+
+## Data Summary
+
+**File:** `src/agent/dataSummary.js`
+
+Builds compact data context for the AI within token budget constraints:
+
+- Samples the first N records from the current page (default 10)
+- Includes key fields from the table schema
+- Generates aggregate counts and summaries
+- Returns markdown formatted for prompt injection
+- Prevents massive context blowout on large tables
+
+Cached summaries are stored in the `data_summary_cache` D1 table keyed by `page_id`.
+
+---
+
+## System Prompt Builder
+
+**File:** `src/agent/wasabiPrompt.js`
+
+Assembles the full system prompt in order:
+
+1. Identity and data integrity preamble (immutable)
+2. Current date and day of week
+3. User-provided workspace instructions
+4. Agent behavior mode instructions (auto / confirm / plan)
+5. Capabilities list, view library, chart examples, templates
+6. Tools guide and system builder
+7. Analytical response guidelines and data integrity rules
+8. KB context (all knowledge base entries)
+9. Workspace pages summary (all databases)
+10. Neuron graph (semantic links)
+11. Google context (Gmail/Calendar summary, if connected)
+12. Current page context: schema + data summary
 
 ### Agent Behavior Modes
 
-**"auto"** (default):
-- Agent executes tools without asking
-- Best for automation and quick queries
+| Mode | Behavior |
+|------|----------|
+| **auto** | Executes tools without asking. Best for automation and quick queries. |
+| **confirm** | Asks before write operations (create, update, delete). Reads execute immediately. |
+| **plan** | Presents a numbered plan before execution. Requires user confirmation. |
 
-**"confirm"**:
-- Agent asks before write operations (create, update, delete)
-- Read operations execute immediately
-- User approval gates all mutations
+---
 
-**"plan"**:
-- Agent presents plan before execution
-- Numbered steps with tools and affected data
-- Requires user "Execute plan" confirmation
+## Automations Engine
+
+**File:** `src/agent/automations.js`
+
+Automation rules are evaluated by the worker cron trigger, which fires every 2 minutes (`*/2 * * * *`). The cron handler iterates enabled rules, checks trigger conditions, and executes matching rules via Claude Haiku.
+
+**Model:** `claude-haiku-4-5-20251001` (hardcoded)
+
+### Trigger Types
+
+| Type | Condition |
+|------|-----------|
+| `schedule` | Cron expression matches current time |
+| `status_change` | A watched field value changed (detected via `rule_snapshots`) |
+| `field_change` | A specific field was modified |
+| `page_created` | A new record was created in the scoped table |
+| `manual` | User-triggered via UI or MCP |
+
+### Execution
+
+The `action_config.instruction` field is an AI prompt that supports `{{fieldName}}` template variables. When a rule fires:
+
+1. Template variables are expanded with current record data
+2. The instruction is sent to Claude Haiku with relevant table context
+3. The model can use tools (query, update, notify, email) to carry out the action
+4. `fire_count` is incremented and `last_fired_at` is updated
+
+---
+
+## Flow Executor
+
+**File:** `src/agent/flowExecutor.js`
+
+Executes multi-step DAG-based workflows defined as node graphs. Flows are more powerful than single-action automation rules — they support branching, delays, and chained actions.
+
+### Node Types
+
+| Type | Purpose |
+|------|---------|
+| **trigger** | Entry point: schedule, manual, or event-based |
+| **condition** | Branching logic (if/else splits) |
+| **action** | Execute an operation: update records, send email, post notification. Uses `config.instruction` for AI-powered steps. |
+| **delay** | Wait a specified duration before continuing |
+
+### Execution Model
+
+The executor traverses the graph from trigger nodes following edges. Each node's output feeds into connected nodes. Execution state is recorded per-node in `flow_executions.node_states`. Failed nodes can be retried based on the flow configuration.
+
+---
+
+## Cost Tracking
+
+**File:** `src/agent/costTracker.js`
+
+Token usage is recorded per API request:
+
+- Input and output tokens tracked separately
+- Cost calculated against model pricing
+- Per-session accumulation displayed in the chat UI
+- Usage data helps monitor AI spend across the workspace
 
 ---
 
 ## Chat UI Components
 
-### ChatUI (`src/core/ChatUI.jsx`)
+Two chat surfaces use the same agent loop (`runAgent`):
 
-Shared chat component with:
-- Message rendering (user, assistant, tool status)
-- Streaming support (live token display)
-- Tool call feedback ("Updating record...", "Querying database...")
-- Input with message history navigation
-- Error handling + retry UI
+| Component | File | Context |
+|-----------|------|---------|
+| **WasabiPanel** | `src/core/WasabiPanel.jsx` | Desktop sidebar chat. Persistent across page navigation. Full workspace context. |
+| **ChatPanel** | `src/zen/ChatPanel.jsx` | Zen mode full-screen chat. Page-scoped context. Lazy-loaded. |
 
-**Props:**
-```javascript
-<ChatUI
-  messages={[]}           // Conversation array
-  onSend={(text) => {}}   // Send message callback
-  isLoading={false}       // Disable input while processing
-  tier="sonnet"           // Model tier display
-  toolCalls={[]}          // Active tool execution status
-  error={null}            // Error banner
-/>
-```
-
-### ChatPanel (`src/views/ChatPanel.jsx`)
-
-Embeddable chat within a page:
-- Full page context awareness
-- Can modify records in this page
-- Inline data queries
-- 455 lines
-
-### ZenChatPanel (`src/zen/ZenChatPanel.jsx`)
-
-Lightweight chat for Sashimi mode:
-- Tasks, calendar, general queries
-- 476 lines
-- Lazy-loaded
+Both components render messages, display tool call feedback ("Querying database...", "Updating record..."), support streaming, and show the active model tier (Haiku/Sonnet).
 
 ---
 
-## Knowledge Base & Memory (`src/agent/memory.js`)
-
-### KB Functions
-
-```javascript
-export async function writeKB(category, key, content, source, related_pages)
-// Create/update KB entry
-
-export async function searchKB(query, category?)
-// Search KB by keyword
-
-export function kbResultsToText(results)
-// Format KB results for agent context
-```
-
-**KB Storage:** D1 table `knowledge_base` with:
-- `category` (e.g., "business_rules", "domain_knowledge")
-- `key` (identifier)
-- `content` (markdown text)
-- `source` (where KB came from)
-- `related_pages` (JSON array of page IDs)
-
-### Conversation Memory
-
-Conversation history stored in component state; no persistent backend storage.
-
----
-
-## Automations Engine (`src/agent/automations.js`)
-
-### Automation Model
-
-Hardcoded as: `claude-haiku-4-5-20251001`
-
-### D1 Rules
-
-```javascript
-export function parseD1Rule(row)
-// Convert automation_rules row to normalized rule object
-
-export function expandTemplate(template, data)
-// Replace {{fieldName}} with values
-```
-
-**Trigger Types:**
-- `schedule` (cron expression)
-- `status_change` (field value changes)
-- `field_change` (specific field changed)
-- `page_created` (new record created)
-- `manual` (user-triggered)
-
-**Action Config:**
-```javascript
-{
-  instruction: "Check inventory and alert if below {{ThresholdQty}}",
-  // {{field}} variables expanded with data
-}
-```
-
-**Polling:** Browser-side automation runs every 5 minutes (configurable)
-
----
-
-## Flow Executor (`src/agent/flowExecutor.js`)
-
-### Node Graph Execution
-
-```javascript
-export async function executeFlow(flow, context)
-// Traverse flow graph from trigger node(s) to outputs
-// Returns: execution results + history
-```
-
-### Node Types Supported
-
-- **Trigger:** Entry point (schedule, manual, event)
-- **Data Node:** Query database, fetch external data
-- **Transform:** Run custom function on data
-- **Branch:** Conditional splits (if/else)
-- **AI Node:** Call Claude with context
-- **Action:** Update records, send email, post notification
-- **Output:** Return result
-
-### Error Handling Issues (Known Issue #6)
-
-**Location:** lines 211-243
-
-**Problem:** Retry logic error handling has subtle bugs
-- `retried` flag only set on success, not after all retries fail
-- Original error `err` logged again instead of final `retryErr`
-
-**Impact:** Incorrect flow execution status reporting
-
----
-
-## Cost Tracking (`src/utils/costTracker.js`)
-
-### Usage Recording
-
-```javascript
-export function recordUsage(model, inputTokens, outputTokens)
-// Track token usage for cost calculation
-```
-
-**Pricing (hardcoded):**
-- claude-3-5-sonnet: $3/$15 per M tokens
-- claude-3-5-haiku: $0.80/$4 per M tokens
-
-**Per-Session Tracking:** Cost accumulated in session state, displayed in UI
-
----
-
-## Data Summary (`src/agent/dataSummary.js`)
-
-### Compact Context Generation
-
-```javascript
-export function generateDataSummary(records, schema, limit)
-// Creates compact summary of records for agent prompt
-// Avoids massive context bloat
-```
-
-**Strategy:**
-- Sample first N records (default 10)
-- Include key fields from schema
-- Aggregate counts/summaries
-- Return markdown for prompt injection
-
----
-
-## Query Classifier (`src/agent/queryClassifier.js`)
-
-### Query Routing
-
-Classifies user queries to determine:
-- **Agent tier:** Haiku (simple) vs Sonnet (complex)
-- **Required context:** Page data, schema, KB, etc.
-- **Tool set:** Which tools to enable
-
-**Example Classifications:**
-- "What's my next meeting?" → Haiku (Calendar)
-- "Analyze Q1 sales trends" → Sonnet (Complex analysis)
-- "Create a product database" → Sonnet (Schema management)
-
----
-
-## Known Issues & Gaps
-
-### Issue #5: Unhandled Promise Rejection (MAJOR)
-
-**Location:** `src/context/PagesContext.jsx` lines 38-78
-
-**Problem:** Async operations in useEffect without proper cleanup
-- No AbortController for request cancellation
-- `.catch(() => {})` silently swallows errors
-- State updates may occur on unmounted component
-
-**Impact:** Memory leaks, inconsistent state
-
----
-
-### Issue #6: Flow Executor Error Reporting (MAJOR)
-
-**Location:** `src/agent/flowExecutor.js` lines 211-243
-
-**Problem:** Retry logic error handling has bugs
-- `retried` flag doesn't properly track all retry failures
-- Wrong error object logged on final failure
-
-**Impact:** Flow execution status reports incorrectly
-
----
-
-### Issue #8: Missing Input Validation (MODERATE)
-
-**Location:** `src/agent/toolExecutor.js` sandbox execution
-
-**Problem:** `new Function()` used for code execution with minimal validation
-- Checks for `eval` and `new Function` in source code
-- But indirect calls can bypass: `Function.constructor`, minification, obfuscation
-
-**Impact:** Sandbox escape possible
-
-**Fix:** Use proper sandboxing library (vm2, isolated-vm)
-
----
-
-### Issue #13: Hardcoded Automation Model (MINOR)
-
-**Location:** `src/agent/automations.js` line 21
-
-**Problem:** Automation model hardcoded as Haiku
-```javascript
-const AUTOMATION_MODEL = "claude-haiku-4-5-20251001";
-```
-
-**Impact:** No flexibility for complex automation rules
-
-**Fix:** Make configurable based on rule complexity
-
----
-
-## Testing Checklist
-
-- [ ] Agent loop: Multi-turn conversations with tool use
-- [ ] Tool execution: All tool types (query, create, update, delete)
-- [ ] Error handling: Invalid inputs, API failures, timeouts
-- [ ] Tool gating: Write tools require approval in "confirm" mode
-- [ ] History trimming: Old messages discarded, no hallucinations
-- [ ] Automations: Rules trigger, execute correctly, log history
-- [ ] Flows: Nodes execute in order, branching works, outputs captured
-- [ ] Knowledge base: KB entries created, searched, injected in prompt
-- [ ] Cost tracking: Token usage recorded, costs calculated correctly
-- [ ] Cancellation: Abort signal stops agent loop promptly
-
----
-
-## References
-
-- **Agent Loop:** `src/agent/runAgent.js` main function
-- **Tool Schemas:** `src/agent/tools.js` (40+ tool definitions)
-- **System Prompt:** `src/agent/wasabiPrompt.js` (immutable identity)
-- **Tool Dispatch:** `src/agent/toolExecutor.js` (execute_tool handler)
-- **Code Review:** code-review.md (security + logic issues)
+## Key Files Reference
+
+| File | Purpose |
+|------|---------|
+| `src/agent/runAgent.js` | Agent loop: classify, route, call Claude, execute tools, respond |
+| `src/agent/queryClassifier.js` | Determines strategy, complexity, model routing |
+| `src/agent/toolExecutor.js` | 50+ tool implementations dispatched to worker API |
+| `src/agent/tools.js` | Tool definitions (name, description, parameters) for Claude |
+| `src/agent/wasabiPrompt.js` | System prompt builder — injects KB, neurons, page context, data summary |
+| `src/agent/dataSummary.js` | Compact data context within token budget |
+| `src/agent/automations.js` | Cron-triggered automation rule engine |
+| `src/agent/flowExecutor.js` | DAG-based multi-step workflow executor |
+| `src/agent/costTracker.js` | Token usage and cost tracking |
+| `src/agent/memory.js` | Knowledge base read/write helpers |

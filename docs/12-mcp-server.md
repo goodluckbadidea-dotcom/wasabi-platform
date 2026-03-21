@@ -1,53 +1,415 @@
-# Wasabi Platform: MCP Server
+# MCP Server
 
-**Version:** March 2026
-**Purpose:** Local MCP server for Claude Desktop (Cowork) integration with live Wasabi backend
-**Location:** `mcp-server/`
-**Transport:** stdio (spawned by Claude Desktop)
-**Runtime:** Node.js ESM (no build step required)
-**SDK:** `@modelcontextprotocol/sdk` v1.12+
+**Last Updated:** 2026-03-21
 
----
+## Product Context
 
-## Architecture
-
-```
-Claude Desktop / Cowork
-    │
-    │  stdio transport (JSON-RPC 2.0)
-    ▼
-mcp-server/index.js
-    (Node.js ES module process)
-    │
-    │  HTTPS requests + X-Wasabi-Key header
-    ▼
-Cloudflare Worker
-    (wasabi-worker.goodluckbadidea.workers.dev)
-    │
-    ├─→ D1 Database (tables, rows, automations)
-    ├─→ R2 Storage (files, documents)
-    ├─→ Notion API (via proxy)
-    ├─→ Google APIs (Gmail, Calendar, Sheets)
-    └─→ Claude API (for in-app agent)
-```
-
-**MCP Server Role:** Thin proxy layer
-- Translates MCP tool calls → HTTP requests
-- Adds authentication (X-Wasabi-Key header)
-- Parses responses → structured JSON
-- Auto-syncs Notion data on first query if needed
-- No business logic — purely request/response translation
+Wasabi is an AI-native workspace where users build persistent semantic scaffolding -- databases, knowledge bases, automations, and relationship networks (Neurons) -- that makes AI interactions more accurate over time. The MCP server is the "super-user tier" of Wasabi's three-tier platform vision: it lets external tools (Claude Code, Claude Desktop, or any MCP-compatible client) read and write Wasabi data programmatically.
 
 ---
 
-## Configuration
+## Purpose
 
-### Claude Desktop Setup
+The MCP server is a local Node.js process (`mcp-server/index.js`) that translates MCP tool calls into authenticated HTTPS requests against the Wasabi Cloudflare Worker. It uses stdio transport (JSON-RPC 2.0) and is spawned by the MCP client (e.g., Claude Desktop).
 
-**File:** `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
-Or equivalent on Windows/Linux
+```
+MCP Client (Claude Code / Claude Desktop)
+    |
+    |  stdio transport (JSON-RPC 2.0)
+    v
+mcp-server/index.js  (Node.js ESM process)
+    |
+    |  HTTPS + X-Wasabi-Key header
+    v
+Cloudflare Worker (wasabi-worker)
+    |
+    +-- D1 Database
+    +-- R2 Storage
+    +-- Notion API (proxy)
+    +-- Google APIs (Gmail, Calendar)
+    +-- Claude API (in-app agent)
+```
 
-**Configuration:**
+The MCP server contains no business logic. It is a thin proxy: translate tool call to HTTP request, attach authentication, parse response, return structured JSON.
+
+---
+
+## Authentication
+
+MCP requests use a **shared secret key** sent as the `X-Wasabi-Key` HTTP header. This is NOT the same as JWT cookie authentication used by the browser frontend.
+
+| Mechanism | Used By | How It Works |
+|-----------|---------|--------------|
+| `X-Wasabi-Key` header | MCP server | Shared secret stored in `mcp-server/config.json` (gitignored). Worker validates against `WASABI_KEY` env var. |
+| JWT + HttpOnly cookie | Browser frontend | 15-min access token in memory, 7-day refresh token in cookie. |
+
+Configuration file (`mcp-server/config.json`, created from `config.example.json`):
+
+```json
+{
+  "workerUrl": "https://wasabi-worker.goodluckbadidea.workers.dev",
+  "apiKey": "your-wasabi-secret-key"
+}
+```
+
+---
+
+## Security
+
+MCP requests pass through the same `checkRoutePermission()` function in `worker.js` as regular API calls. The MCP server does not bypass any access control -- it is subject to the same role-based permission checks, rate limiting, and input validation as the browser frontend.
+
+The API key is stored in a gitignored config file. The MCP server runs locally as a child process -- it is never exposed on a public network. All traffic to the worker uses HTTPS.
+
+---
+
+## Tools (29)
+
+### 1. wasabi_health
+
+Check worker status or list saved external connections (Notion key, Claude key, Google OAuth).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| action | `"check"` or `"list_connections"` | What to return |
+
+### 2. wasabi_pages
+
+CRUD for pages (databases, documents, sheets, dashboards).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| action | `"list"` `"get"` `"get_schema"` `"create"` `"update"` `"delete"` | Operation |
+| id | string | Page ID (for get/get_schema/update/delete) |
+| data | object | Page config (title, page_type, columns, views) |
+
+Page types: `database`, `document`, `sheet`, `page`, `dashboard`. View types: `table`, `kanban`, `gantt`, `calendar`, `cardGrid`, `charts`, `form`, `summaryTiles`, `activityFeed`, `customView`.
+
+### 3. wasabi_data
+
+CRUD for table rows with filter/sort/pagination.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| action | `"list"` `"query"` `"create"` `"update"` `"delete"` | Operation |
+| table_id | string | Target table |
+| row_id | string | Row ID (for update/delete) |
+| filters | object | Filter object |
+| sorts | array | Sort array |
+| rows | array | Batch row creation |
+| data | object | Row data for update |
+| limit / offset | number | Pagination |
+
+Auto-syncs Notion-linked tables on first empty query (cold start).
+
+### 4. wasabi_automations
+
+CRUD for automation rules. Trigger types: `schedule` (cron), `status_change`, `field_change`, `page_created`, `manual`. Action config uses an AI prompt with `{{fieldName}}` template variables.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| action | `"list"` `"get"` `"create"` `"update"` `"delete"` | Operation |
+| id | string | Rule ID |
+| data | object | Rule config (name, trigger_type, trigger_config, action_config, enabled) |
+| enabled | boolean | Filter by enabled state |
+
+### 5. wasabi_functions
+
+CRUD for custom functions and plugins. Types: `transform`, `aggregation`, `forecast`, `alert`, `pipeline`, `view`, `plugin`. Plugins include an HTML/CSS/JS manifest rendered in an iframe.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| action | `"list"` `"get"` `"create"` `"update"` `"delete"` `"list_executions"` | Operation |
+| id | string | Function ID |
+| data | object | Function config (name, type, code, inputs, outputs, status, meta) |
+| type / status | string | Filters |
+
+### 6. wasabi_flows
+
+CRUD for multi-step node-based automation flows. Graph structure with nodes (trigger, action, condition, delay) and edges.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| action | `"list"` `"get"` `"create"` `"update"` `"delete"` `"list_executions"` | Operation |
+| id | string | Flow ID |
+| data | object | Flow config (name, description, graph, enabled) |
+| enabled | boolean | Filter |
+
+### 7. wasabi_kb
+
+CRUD and search for knowledge base entries. Categories include `business_rules`, `domain_knowledge`, `team_context`, `templates`. Full-text search via the `search` action.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| action | `"list"` `"get"` `"create"` `"update"` `"delete"` `"search"` | Operation |
+| id | string | KB entry ID |
+| data | object | Entry data (key, category, content, source, related_pages) |
+| category / query | string | Filters |
+
+### 8. wasabi_notifications
+
+Manage notifications. Types: `notification`, `alert`, `summary`.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| action | `"list"` `"create"` `"update"` `"delete"` `"mark_all_read"` `"unread_count"` | Operation |
+| id | string | Notification ID |
+| data | object | Notification data (message, type, source, record_id) |
+| status | `"unread"` or `"read"` | Filter |
+
+### 9. wasabi_neurons
+
+CRUD for semantic relationship clusters (Neurons). Neurons link records, pages, and fields across the workspace.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| action | `"list"` `"get"` `"create"` `"delete"` `"graph"` `"add_node"` `"remove_node"` `"by_node"` | Operation |
+| id | string | Neuron ID |
+| data | object | Neuron data (name, nodes with node_type/node_id/node_label/page_config_id) |
+| node_id | string | For remove_node/by_node |
+
+### 10. wasabi_users
+
+User management. Admin-only for invite/update/delete.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| action | `"list"` `"get_me"` `"invite"` `"update"` `"delete"` | Operation |
+| id | string | User ID |
+| data | object | User data (display_name, role) |
+
+### 11. wasabi_files
+
+List, get URL, or delete files in R2 storage. Upload is via web UI only.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| action | `"list"` `"get_url"` `"delete"` | Operation |
+| id | string | File ID |
+| page_id / record_id | string | Filters |
+
+### 12. wasabi_search
+
+Global keyword search across all tables, pages, and knowledge base.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| query | string | Search keyword |
+| scope | `"all"` `"tables"` `"kb"` `"pages"` | Limit scope |
+| limit | number | Max results per table |
+
+### 13. wasabi_dashboard
+
+Workspace snapshot: health status, page list with row counts, unread notifications, recent activity.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| include | `"all"` `"health"` `"pages"` `"notifications"` `"activity"` | What to include |
+
+### 14. wasabi_analytics
+
+Aggregate queries on table data: count, sum, average, group_count, group_sum.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| table_id | string | Target table |
+| operation | `"count"` `"sum"` `"average"` `"group_count"` `"group_sum"` | Aggregation type |
+| field | string | Field for sum/average/group operations |
+| group_by | string | Group-by field |
+| filters | object | Filter object |
+
+### 15. wasabi_diff
+
+Change tracking. Returns rows modified after a given date.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| table_id | string | Target table |
+| since | ISO date string | Cutoff date |
+| limit | number | Max rows |
+
+### 16. wasabi_import
+
+Bulk import rows. Use `action: "schema"` first to see columns, then `"import"` to insert. Optional `merge_key` for deduplication.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| action | `"schema"` or `"import"` | Operation |
+| table_id | string | Target table |
+| rows | array | Row data for import |
+| merge_key | string | Column to deduplicate on |
+
+### 17. wasabi_export
+
+Export table data as JSON or CSV.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| table_id | string | Target table |
+| format | `"json"` or `"csv"` | Output format |
+| filters | object | Filter subset |
+| limit | number | Max rows |
+
+### 18. wasabi_link_external
+
+Attach comments or notes linking external context (emails, URLs, documents) to records.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| action | `"add_comment"` `"set_note"` `"get_comments"` `"get_note"` | Operation |
+| record_id | string | Target record |
+| page_id | string | Required for notes |
+| content | string | Comment/note text |
+| user_name | string | Author display name |
+
+### 19. wasabi_sql
+
+Advanced query with complex filters, sorts, field selection, and pagination.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| table_id | string | Target table |
+| fields | string | Comma-separated field list |
+| filters | object | Filter object (`{field: {op: value}}`) |
+| sorts | array | Sort array |
+| limit / offset | number | Pagination |
+
+Filter operators: `eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `contains`, `starts_with`, `in`.
+
+### 20. wasabi_schema_alter
+
+Modify a table's schema: add columns, remove columns, rename/retype columns.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| action | `"get"` or `"update"` | Operation |
+| table_id | string | Target table |
+| schema | string (JSON) | Updated columns array |
+
+### 21. wasabi_bulk_update
+
+Update all rows matching a filter in one operation. Supports dry run to preview matches.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| table_id | string | Target table |
+| filters | object | Filter to match rows |
+| updates | object | Cell values to set |
+| dry_run | boolean | Preview without applying |
+
+### 22. wasabi_backup
+
+Full snapshot of a table (schema + all rows) returned as JSON.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| table_id | string | Target table |
+
+### 23. wasabi_agent_query
+
+Send a prompt to the in-app Wasabi AI agent. The in-app agent has Wasabi-specific context (system prompt, KB, page schemas) that external tools do not.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| prompt | string | The prompt/question |
+| context | object | Optional additional context (page_id, record data) |
+
+### 24. wasabi_agent_config
+
+Manage the in-app agent's knowledge base and behavior configuration.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| action | `"get_kb"` `"update_kb"` `"create_kb"` `"list_kb"` | Operation |
+| id | string | KB entry ID |
+| category | string | Filter by category |
+| data | object | KB entry data |
+
+### 25. wasabi_trigger
+
+Manually fire an automation rule or flow on demand.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| type | `"rule"` or `"flow"` | What to trigger |
+| id | string | Rule or flow ID |
+| input | object | Input data |
+
+### 26. wasabi_schedule
+
+Create and manage scheduled automation rules with cron expressions.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| action | `"list"` `"create"` `"update"` `"delete"` | Operation |
+| id | string | Rule ID |
+| data | object | Schedule config (name, cron, action_config, scope_table_id, enabled) |
+
+### 27. wasabi_google
+
+Access Gmail and Google Calendar through Wasabi's stored OAuth tokens.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| service | `"gmail"` or `"calendar"` | Google service |
+| action | string | Service-specific action |
+| data | object | Action params |
+| id | string | Message/event/thread ID |
+
+Gmail actions: `summary`, `search`, `read`, `send`, `draft`, `modify`, `thread`. Calendar actions: `list`, `summary`, `events`, `create_event`, `update_event`, `delete_event`, `freebusy`.
+
+### 28. wasabi_sync
+
+Manage Notion sync for tables. Configure bidirectional sync, push/pull changes, check status.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| action | `"configure"` `"push"` `"pull"` `"status"` `"delete"` `"flush"` | Operation |
+| table_id | string | Target table |
+| data | object | Sync config (notion_db_id, direction, field_mapping) |
+| full | boolean | Full resync for pull |
+
+Directions: `push` (D1 to Notion), `pull` (Notion to D1), `bidirectional`.
+
+### 29. wasabi_records
+
+Manage per-record metadata: notes, comments, badge counts, view history.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| action | `"get_note"` `"set_note"` `"get_comments"` `"add_comment"` `"delete_comment"` `"badge_counts"` `"view_history"` `"record_view"` | Operation |
+| record_id | string | Target record |
+| page_id | string | For notes |
+| data | object | Content/comment data |
+| record_ids | array | For badge_counts |
+| since | ISO date | For view_history filter |
+
+---
+
+## Usage Playbook
+
+For most tasks, follow this order:
+
+1. `wasabi_dashboard` -- understand workspace health and page list
+2. `wasabi_pages list` -- find page IDs and types
+3. `wasabi_data list` -- fetch rows (triggers auto-sync for Notion-linked tables)
+4. `wasabi_search` -- keyword search across all data
+5. `wasabi_analytics` -- aggregations and summaries
+6. `wasabi_automations` / `wasabi_flows` -- set up automation
+
+---
+
+## Auto-Sync on Cold Start
+
+When `wasabi_data`, `wasabi_sql`, or `wasabi_analytics` return empty results for a Notion-linked table with `last_synced_at = null`, the MCP server automatically triggers a full pull from Notion, retries the original query, and returns `_auto_synced: true` in the response.
+
+---
+
+## Development
+
+**Runtime:** Node.js ESM. **SDK:** `@modelcontextprotocol/sdk` v1.12+.
+
+Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
 ```json
 {
   "mcpServers": {
@@ -59,656 +421,12 @@ Or equivalent on Windows/Linux
 }
 ```
 
-After updating, restart Claude Desktop to load the MCP server.
-
-### MCP Server Config
-
-**File:** `mcp-server/config.json` (gitignored — not in version control)
-
-**Template:** `mcp-server/config.example.json`
-```json
-{
-  "workerUrl": "https://wasabi-worker.goodluckbadidea.workers.dev",
-  "apiKey": "wasabi-secret-key"
-}
-```
-
-**Required Fields:**
-- `workerUrl`: Wasabi Worker base URL (no trailing slash)
-- `apiKey`: X-Wasabi-Key header value
-
-**Package Dependencies:** `mcp-server/package.json`
-```json
-{
-  "@modelcontextprotocol/sdk": "^1.12.0"
-}
-```
-
-Run `npm install` in mcp-server directory before first use.
-
----
-
-## Tools (Complete Reference)
-
-### 1. Health & Status
-
-```javascript
-wasabi_health(action: "check" | "list_connections")
-```
-- **check**: Verify worker is online
-- **list_connections**: Show saved external keys (Notion, Claude, Google)
-
----
-
-### 2. Pages (Databases, Documents, Sheets)
-
-```javascript
-wasabi_pages(
-  action: "list" | "get" | "get_schema" | "create" | "update" | "delete",
-  id?: string,
-  data?: { title, page_type, columns, views, ... }
-)
-```
-
-**Actions:**
-- `list`: Return all pages with row counts, types
-- `get`: Fetch single page config
-- `get_schema`: Table column definitions
-- `create`: Create database/doc/sheet with initial columns
-- `update`: Add views, rename fields, update settings
-- `delete`: Delete page and all data
-
-**Page Types:** `database`, `document`, `sheet`, `page`, `dashboard`
-
-**View Types:** `table`, `kanban`, `gantt`, `calendar`, `cardGrid`, `charts`, `form`, `summaryTiles`, `activityFeed`, `customView`
-
----
-
-### 3. Data (Table Rows)
-
-```javascript
-wasabi_data(
-  action: "list" | "query" | "create" | "update" | "delete",
-  table_id: string,
-  row_id?: string,
-  filters?: object,
-  sorts?: array,
-  rows?: array,
-  data?: object,
-  limit?: number,
-  offset?: number
-)
-```
-
-**Features:**
-- Auto-syncs Notion linked tables on first empty query
-- Supports filter/sort (D1 native syntax)
-- Returns `truncated: true` if results exceed limit
-- Create accepts single or batch rows
-- Update uses merge mode by default (partial cell updates)
-
----
-
-### 4. Automations (Rules)
-
-```javascript
-wasabi_automations(
-  action: "list" | "get" | "create" | "update" | "delete",
-  id?: string,
-  data?: { name, trigger_type, trigger_config, action_config, enabled },
-  enabled?: boolean
-)
-```
-
-**Trigger Types:**
-- `schedule` (cron): `{cron: "0 9 * * 1-5"}`
-- `status_change`: `{field_name, old_value, new_value}`
-- `field_change`: `{field_name}`
-- `page_created`: `{}`
-- `manual`: `{}`
-
-**Action Config:**
-- `instruction`: AI prompt (supports `{{fieldName}}` template vars)
-
----
-
-### 5. Custom Functions
-
-```javascript
-wasabi_functions(
-  action: "list" | "get" | "create" | "update" | "delete" | "list_executions",
-  id?: string,
-  data?: { name, type, code, inputs, outputs, status, meta },
-  type?: string,
-  status?: "draft" | "active" | "disabled"
-)
-```
-
-**Function Types:**
-- `transform`: Data transformation
-- `aggregation`: Summarize data
-- `forecast`: Predict trends
-- `alert`: Trigger notifications
-- `pipeline`: Multi-step data flow
-- `view`: Custom view renderer
-- `plugin`: Dashboard widget
-
-**Execution History:** `list_executions` shows past runs with timestamps and results
-
----
-
-### 6. Flows (Visual Automation)
-
-```javascript
-wasabi_flows(
-  action: "list" | "get" | "create" | "update" | "delete" | "list_executions",
-  id?: string,
-  data?: { name, description, graph, enabled }
-)
-```
-
-**Flow Structure:**
-```json
-{
-  "nodes": [
-    { "id": "n1", "type": "trigger", "label": "On Schedule", "config": {} },
-    { "id": "n2", "type": "data", "label": "Query Tasks", "config": { "source_id": "..." } },
-    { "id": "n3", "type": "ai", "label": "Summarize", "config": { "prompt": "..." } },
-    { "id": "n4", "type": "action", "label": "Post", "config": { "target": "notification" } }
-  ],
-  "edges": [
-    { "from": "n1", "to": "n2" },
-    { "from": "n2", "to": "n3" },
-    { "from": "n3", "to": "n4" }
-  ]
-}
-```
-
----
-
-### 7. Knowledge Base
-
-```javascript
-wasabi_kb(
-  action: "list" | "get" | "create" | "update" | "delete" | "search",
-  id?: string,
-  data?: { key, category, content, source, related_pages },
-  category?: string,
-  query?: string
-)
-```
-
-**Categories:** `business_rules`, `domain_knowledge`, `team_context`, `templates`, etc.
-
-**Search:** Full-text search across all KB entries
-
----
-
-### 8. Notifications
-
-```javascript
-wasabi_notifications(
-  action: "list" | "create" | "update" | "delete" | "mark_all_read" | "unread_count",
-  id?: string,
-  data?: { message, type, source, record_id },
-  status?: "unread" | "read"
-)
-```
-
-**Notification Types:** `notification`, `alert`, `summary`
-
----
-
-### 9. Neurons (Semantic Links)
-
-```javascript
-wasabi_neurons(
-  action: "list" | "get" | "create" | "delete" | "graph" | "add_node" | "remove_node" | "by_node",
-  id?: string,
-  data?: { name, nodes: [{ type, ref }] },
-  node_id?: string
-)
-```
-
-**Neuron Structure:** Named clusters linking:
-- Records (reference by `{type: "record", record_id, page_id}`)
-- Pages (reference by `{type: "page", page_id}`)
-- Fields (reference by `{type: "field", field_name}`)
-
-**Graph View:** Return relationship graph structure
-
----
-
-### 10. Users
-
-```javascript
-wasabi_users(
-  action: "list" | "get_me" | "invite" | "update" | "delete",
-  id?: string,
-  data?: { display_name, role }
-)
-```
-
-**Actions:**
-- `invite`: Create invite with role (`viewer`, `editor`, `admin`)
-- `update`: Change role or status
-- `delete`: Deactivate user
-
----
-
-### 11. Files (R2 Storage)
-
-```javascript
-wasabi_files(
-  action: "list" | "get_url" | "delete",
-  id?: string,
-  page_id?: string,
-  record_id?: string
-)
-```
-
-**Filtering:**
-- `page_id`: Files attached to page
-- `record_id`: Files attached to record
-
-**Upload:** Via web UI only (not supported in MCP)
-
----
-
-### 12. Search (Global)
-
-```javascript
-wasabi_search(
-  query: string,
-  scope?: "all" | "tables" | "kb" | "pages",
-  limit?: number
-)
-```
-
-Returns results grouped by source (table, KB, page) with matching excerpts.
-
----
-
-### 13. Dashboard
-
-```javascript
-wasabi_dashboard(
-  include?: "all" | "health" | "pages" | "notifications" | "activity"
-)
-```
-
-**Returns:**
-- Health status (worker up, DB connected)
-- Page list with row counts
-- Unread notification count
-- Recent activity (last 10 actions)
-
----
-
-### 14. Analytics
-
-```javascript
-wasabi_analytics(
-  table_id: string,
-  operation: "count" | "sum" | "average" | "group_count" | "group_sum",
-  field?: string,
-  group_by?: string,
-  filters?: object
-)
-```
-
-**Examples:**
-- `count` rows
-- `sum` on numeric field
-- `group_count` items by field
-- `group_sum` revenue by customer
-
----
-
-### 15. Diff (Change Tracking)
-
-```javascript
-wasabi_diff(
-  table_id: string,
-  since?: ISO date string
-)
-```
-
-Returns rows modified after given date with `updated_at` timestamp.
-
----
-
-### 16. Import (Bulk)
-
-```javascript
-wasabi_import(
-  action: "schema" | "import",
-  table_id: string,
-  rows?: array,
-  merge_key?: string
-)
-```
-
-**Schema Action:** Return column definitions for mapping
-
-**Import Action:** Insert with optional `merge_key` for deduplication
-
----
-
-### 17. Export
-
-```javascript
-wasabi_export(
-  table_id: string,
-  format: "json" | "csv",
-  filters?: object,
-  limit?: number
-)
-```
-
-Returns data as JSON array or CSV string.
-
----
-
-### 18. Link External
-
-```javascript
-wasabi_link_external(
-  action: "add_comment" | "set_note" | "get_comments" | "get_note",
-  record_id: string,
-  page_id?: string,
-  content?: string,
-  user_name?: string
-)
-```
-
-Attach notes/comments linking external context to records.
-
----
-
-### 19. SQL (Advanced Query)
-
-```javascript
-wasabi_sql(
-  table_id: string,
-  fields?: string,
-  filters?: object,
-  sorts?: array,
-  limit?: number,
-  offset?: number
-)
-```
-
-**Filters Syntax:**
-```json
-{
-  "field_name": { "op": "value" }
-}
-```
-
-**Operators:** `eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `contains`, `starts_with`, `in`
-
----
-
-### 20. Schema Alter
-
-```javascript
-wasabi_schema_alter(
-  action: "get" | "update",
-  table_id: string,
-  schema?: array
-)
-```
-
-**Modifications:**
-- Add columns: `{ name, type, options?, format? }`
-- Remove: Set column to `null`
-- Rename: Update column object with new `name`
-
----
-
-### 21. Bulk Update
-
-```javascript
-wasabi_bulk_update(
-  table_id: string,
-  filters: object,
-  updates: object,
-  dry_run?: boolean
-)
-```
-
-**Dry Run:** Returns matched rows without applying updates.
-
----
-
-### 22. Backup
-
-```javascript
-wasabi_backup(table_id: string)
-```
-
-Returns complete table snapshot: schema + all rows as JSON.
-
----
-
-### 23. Agent Query
-
-```javascript
-wasabi_agent_query(
-  prompt: string,
-  context?: object
-)
-```
-
-Sends prompt to the in-app Wasabi agent (Claude-to-Claude).
-
----
-
-### 24. Agent Config
-
-```javascript
-wasabi_agent_config(
-  action: "get_kb" | "update_kb" | "create_kb" | "list_kb",
-  id?: string,
-  category?: string,
-  data?: { key, category, content, source }
-)
-```
-
-Manage agent's knowledge base and behavior configuration.
-
----
-
-### 25. Trigger
-
-```javascript
-wasabi_trigger(
-  type: "rule" | "flow",
-  id: string,
-  input?: object
-)
-```
-
-Manually fire automation rule or flow on demand.
-
----
-
-### 26. Schedule
-
-```javascript
-wasabi_schedule(
-  action: "list" | "create" | "update" | "delete",
-  id?: string,
-  data?: { name, cron, action_config, scope_table_id, enabled }
-)
-```
-
-Create scheduled automation rules with cron expressions.
-
----
-
-### 27. Google (Gmail + Calendar)
-
-```javascript
-wasabi_google(
-  service: "gmail" | "calendar",
-  action: string,
-  data?: object,
-  id?: string
-)
-```
-
-**Gmail Actions:**
-- `summary`, `search`, `read`, `send`, `draft`, `modify`, `thread`
-
-**Calendar Actions:**
-- `list`, `summary`, `events`, `create_event`, `update_event`, `delete_event`, `freebusy`
-
----
-
-### 28. Sync (Notion)
-
-```javascript
-wasabi_sync(
-  action: "configure" | "push" | "pull" | "status" | "delete" | "flush",
-  table_id: string,
-  data?: { notion_db_id, direction, field_mapping },
-  full?: boolean
-)
-```
-
-**Directions:** `push` (D1→Notion), `pull` (Notion→D1), `bidirectional`
-
-**Full Resync:** `full=true` clears D1 and pulls everything from Notion
-
----
-
-### 29. Records
-
-```javascript
-wasabi_records(
-  action: "get_note" | "set_note" | "get_comments" | "add_comment" | "delete_comment" | "badge_counts" | "view_history" | "record_view",
-  record_id: string,
-  page_id?: string,
-  data?: { content },
-  record_ids?: array,
-  since?: ISO date
-)
-```
-
-Manage per-record metadata: notes, comments, badges, view history.
-
----
-
-## Usage Playbook
-
-**For Most Tasks, Follow This Order:**
-
-1. Start with `wasabi_dashboard` to understand workspace health
-2. Use `wasabi_pages list` to find page IDs and types
-3. For linked Notion tables, first `wasabi_data list` (triggers auto-sync)
-4. Use `wasabi_search` for keyword queries across all data
-5. Use `wasabi_analytics` for aggregations and summaries
-6. Use `wasabi_automations` / `wasabi_flows` to set up automation
-
----
-
-## Auto-Sync on Cold Start
-
-**Problem:** Notion-linked database has sync config but no data in D1 (initial pull never ran)
-
-**Solution:** When `wasabi_data`, `wasabi_sql`, or `wasabi_analytics` return empty results:
-1. Server checks if Notion sync configured with `last_synced_at = null`
-2. Automatically triggers full pull from Notion
-3. Retries original query
-4. Returns `_auto_synced: true` in response
-
-This solves cold-start problem without manual intervention.
-
----
-
-## Known Limitations
-
-### Issue: Notion-Linked Databases Return Empty (LIMITATION)
-
-**Status:** By design
-
-**Problem:** Notion-linked databases configured but have `last_synced_at = null` will return empty results until first manual sync
-
-**Workaround:** Auto-sync (see above) handles this automatically on first query
-
-**Impact:** Users don't need to manually trigger Notion sync; MCP server handles it
-
----
-
-## Development & Testing
-
-### Local Testing
-
-Server uses stdio transport — test with piped JSON-RPC:
-
-```bash
-cd mcp-server
-npm install
-printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}}}\n' | node index.js
-```
-
-### Adding Tools
-
-In `mcp-server/index.js`:
-
-```javascript
-server.tool(
-  "tool_name",
-  "Description for Claude",
-  { zod_schema_of_inputs },
-  async (inputs) => {
-    try {
-      const result = await wasabiFetch("/endpoint", "POST", inputs);
-      return ok(result);
-    } catch (e) {
-      return err(e);
-    }
-  }
-);
-```
-
-Then restart Claude Desktop to load changes.
-
-### Core Fetch Helper
-
-```javascript
-async function wasabiFetch(path, method = "GET", body = null)
-```
-
-- Prepends `workerUrl` to path
-- Adds `X-Wasabi-Key` header
-- Auto-parses JSON response
-- Throws on non-2xx status
-
-### Response Helpers
-
-```javascript
-ok(result)     // Return { content: [{type: "text", text: JSON.stringify(result)}] }
-err(error)     // Return { content: [...], isError: true }
-```
-
----
-
-## Security Model
-
-- **Authentication:** X-Wasabi-Key header on all requests
-- **Configuration:** API key in `config.json` (gitignored)
-- **Process Isolation:** MCP server runs locally as child process
-- **Network:** No public exposure; Claude Desktop spawns via stdio
-- **Transport:** Authenticated HTTPS to Wasabi Worker
+Core fetch helper (`wasabiFetch`) prepends `workerUrl`, adds `X-Wasabi-Key` header, auto-parses JSON, and throws on non-2xx status. Response helpers `ok(result)` and `err(error)` format MCP-compliant responses.
 
 ---
 
 ## References
 
-- **Worker Routes:** `worker.js` for all `/wasabi/*` endpoints
-- **SDK Docs:** https://modelcontextprotocol.io
-- **Config Example:** `mcp-server/config.example.json`
-- **Setup Guide:** `README.md` in mcp-server directory
+- Worker routes: `worker.js` (all `/wasabi/*` endpoints)
+- MCP SDK docs: https://modelcontextprotocol.io
+- Config template: `mcp-server/config.example.json`

@@ -1,645 +1,495 @@
 # 01 — Design System & UI/UX
 
-## Overview
+## Product Context
 
-Wasabi's design system is built on **mutable design tokens** and **theme-locked color palettes**. All visual design is defined in `src/design/` and uses **inline styles** — no CSS files or external UI dependencies. The system supports 5 Japanese-inspired themes, each locked to dark or light mode for visual consistency.
+Wasabi is an AI-native workspace where users build persistent semantic scaffolding that makes AI more accurate over time. The design system exists to serve two audiences: humans who need a fast, consistent interface for organizing data visually, and the AI agent that reasons over the structured context they create. See `docs/00-wasabi-overview.md` for the full platform description.
 
 ---
 
 ## Design Files
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `src/design/tokens.js` | ~200 | Colors (C object), fonts, shadows, radius, breakpoints, palettes |
-| `src/design/styles.js` | ~450 | Mutable style objects (rebuilt on theme change) |
-| `src/design/animations.js` | ~250 | @keyframes definitions and animation presets |
-| `src/design/icons.jsx` | ~500+ | 65+ SVG icons (no emojis, all inline) |
+| File | Purpose |
+|------|---------|
+| `src/design/tokens.js` | Colors (C), fonts (FONT, MONO), shadows (SHADOW), radius (RADIUS), breakpoints (BP), z-index (Z), palettes |
+| `src/design/styles.js` | Mutable shared style objects (S), rebuilt on theme change |
+| `src/design/animations.js` | @keyframes injection, ANIM presets (33), TRANSITION presets (6) |
+| `src/design/interactions.js` | hoverBg() and focusRing() inline event helpers |
+| `src/design/icons.jsx` | 70 inline SVG icon components |
 
 ---
 
-## Design Tokens (tokens.js)
+## Theme System
 
-### Color System: The Mutable C Object
+### 5 Themes (Mode-Locked)
 
-All components import `C` from `tokens.js` and use it directly:
-
-```javascript
-import { C } from "../design/tokens.js";
-// Then: background: C.dark, color: C.accent, etc.
-```
-
-**Key property:** `C` is mutable. When the user changes themes, `applyTheme()` mutates `C` in place. All components see the updated values without re-importing or re-rendering unnecessarily.
-
-### Color Tokens (C object structure)
-
-```javascript
-C.dark              // Background color (theme.bg)
-C.surface           // Secondary surface (theme.surface)
-C.surfaceAlt        // Raised surface (theme.surfaceRaised)
-C.border            // Border/divider (theme.border)
-C.border2           // Secondary border (slightly lighter)
-C.text              // Primary text color (theme.textPrimary)
-C.textMid           // Secondary text (theme.textSecondary)
-C.muted             // Muted/disabled text (theme.textMuted)
-C.white             // Alias for primary text
-
-// Accessibility aliases
-C.darkText          // Alias: C.text
-C.darkSurf          // Alias: C.surface
-C.darkSurf2         // Alias: C.surfaceAlt
-C.darkBorder        // Alias: C.border
-C.darkMuted         // Alias: C.muted
-
-// Edge lines (gradients)
-C.edgeLine          // Sidebar/content edge separator
-
-// Code blocks
-C.codeBlockBg       // Code snippet background
-
-// Overlays
-C.overlayBg         // Modal/dialog overlay (theme-aware rgba)
-
-// Accent colors (per-theme)
-C.accent            // Theme accent color
-C.accentDim         // Darkened accent (22% darker)
-C.accentPale        // Soft accent background for pills/badges
-
-// Fixed colors (unchanged across themes)
-C.green             // "#2A6B38" (success)
-C.orange            // "#FF4800" (warning/highlight)
-```
-
-### The 5 Themes
-
-Each theme is **locked to its designed mode** (dark or light). Switching modes within a theme is not allowed; users must select a different theme for the opposite mode.
+Each theme is locked to its designed mode (dark or light). Users select a different theme to change modes rather than toggling dark/light within a theme.
 
 | Theme | Mode | Accent | Description |
 |-------|------|--------|-------------|
-| **shoji** | light | #C0543A | Washi paper warm light |
-| **obsidian** | dark | #5CC63A (Wasabi) | Volcanic glass OLED dark (default) |
-| **hinoki** | dark | #C4944A | Cypress wood warm dark |
-| **kori** | light | #2C72CC | Glacier ice cool light |
-| **sumi** | dark | #C86040 | Ink wash neutral dark |
+| **Shoji** | light | `#C0543A` | Washi paper warm light |
+| **Obsidian** | dark | `#5CC63A` | Volcanic glass OLED dark (default) |
+| **Hinoki** | dark | `#C4944A` | Cypress wood warm dark |
+| **Kori** | light | `#2C72CC` | Glacier ice cool light |
+| **Sumi** | dark | `#C86040` | Ink wash neutral dark |
 
 ### Theme Data Structure
 
-Each theme in `THEMES` object:
+Each entry in the `THEMES` object contains:
 
-```javascript
-THEMES[themeId] = {
-  label: "Obsidian",
-  description: "Volcanic glass · OLED dark",
-  mode: "dark",           // Locked mode
-  accent: "#5CC63A",      // Theme accent
-  accentDim: "#447E2A",   // Pre-calculated darker accent
-  accentPale: "#142810",  // Soft accent background
-  palette: [              // 10-color array for data viz
-    { key: "base-dark", hex: "#080809", text: "#F2F2F3" },
-    { key: "surface", hex: "#101012", text: "#F2F2F3" },
-    { key: "raised", hex: "#18181C", text: "#F2F2F3" },
-    // ... 7 more colors ...
-  ],
-  // Both point to same tokens (mode is locked)
-  dark: { /* token set */ },
-  light: { /* same token set */ },
-}
-```
+- `label`, `description` — display strings
+- `mode` — `"dark"` or `"light"` (locked)
+- `accent` — primary accent hex
+- `accentDim` — 22% darker accent (auto-computed)
+- `accentPale` — soft accent background for badges/pills
+- `palette` — 10-color array for data visualization
+- `dark` / `light` — both point to the same token set (mode is locked)
 
-### Typography
+### Theme Change Flow
 
-```javascript
-FONT        // "'Outfit','DM Sans',sans-serif" — primary font
-FONT_DISPLAY // "'Outfit',sans-serif" — display/headings
-MONO        // "'DM Mono','Courier New',monospace" — code
-```
-
-**Font size scale used across components:**
-- Headers/titles: 16–18px, weight 600–700
-- Body text: 12–14px, weight 400–500
-- Labels/badges: 9–11px, weight 500–600
-- Calendar events: 12px titles, 10–11px times
-- Data tables: 12px rows, 11px headers
-
-### Border Radius (RADIUS)
-
-```javascript
-RADIUS.sm       // 4px
-RADIUS.md       // 6px
-RADIUS.lg       // 8px
-RADIUS.xl       // 12px
-RADIUS.pill     // 999px (fully rounded)
-```
-
-### Shadows (SHADOW)
-
-```javascript
-SHADOW.card      // Subtle card shadow
-SHADOW.cardHover // Darker on hover
-SHADOW.dropdown  // Dropdown/popover shadow
-SHADOW.inset     // Inset shadow for depth
-```
-
-*Note: SHADOW is mutable, rebuilt when theme changes.*
-
-### Breakpoints (BP)
-
-```javascript
-BP.mobile   // 640px
-BP.tablet   // 1024px
-```
-
-**Status:** Defined in tokens but **not yet used** for responsive styles. Desktop-only layout assumption throughout app.
-
-### Color Palettes
-
-Four mutable arrays rebuilt on theme change:
-
-1. **VIEW_PALETTE** — 10-color array for record/row coloring in data views (Kanban cards, calendar event colors, etc.)
-2. **TIMELINE_PALETTE** — Derived from VIEW_PALETTE for Gantt charts
-3. **SELECT_PALETTE** — Reordered color set for select/status pills
-4. **WASABI_COLORS** — Maps Notion's 18 color names to Wasabi fill colors
+1. User clicks theme selector in TopHeader
+2. `ThemeContext.applyTheme(name)` called
+3. Retrieves `THEMES[name]`, extracts tokens
+4. Mutates `C` in place via `Object.assign(C, tokens)`
+5. Rebuilds `SHADOW`, all palettes (`VIEW_PALETTE`, `SELECT_PALETTE`, `TIMELINE_PALETTE`, `WASABI_COLORS`, `STATUS_COLORS`), and `S` via `rebuildStyles()`
+6. Updates CSS custom properties for scrollbar theming
+7. Persists to `localStorage: wasabi-theme-name`
+8. Components render with new values instantly (no re-import needed)
 
 ---
 
-## Styles (styles.js)
+## Color Tokens (C Object)
 
-Mutable style objects exported as `S`. All components import and use:
+`C` is a mutable token object. When the theme changes, `applyTheme()` mutates it in place so all importers see updated values without re-rendering.
+
+```javascript
+import { C } from "../design/tokens.js";
+```
+
+### Surface & Background
+
+| Token | Purpose |
+|-------|---------|
+| `C.dark` | Root background (theme.bg) |
+| `C.surface` | Secondary surface (theme.surface) |
+| `C.surfaceAlt` | Raised surface (theme.surfaceRaised) |
+| `C.border` | Primary border/divider |
+| `C.border2` | Secondary border (slightly lighter in dark, darker in light) |
+
+### Text
+
+| Token | Purpose |
+|-------|---------|
+| `C.text` | Primary text color |
+| `C.textMid` | Secondary text |
+| `C.muted` | Muted/disabled text |
+| `C.white` | Alias for `C.text` |
+
+### Aliases (backward compatibility)
+
+| Token | Alias for |
+|-------|-----------|
+| `C.darkText` | `C.text` |
+| `C.darkSurf` | `C.surface` |
+| `C.darkSurf2` | `C.surfaceAlt` |
+| `C.darkBorder` | `C.border` |
+| `C.darkMuted` | `C.muted` |
+
+### Special Surfaces
+
+| Token | Purpose |
+|-------|---------|
+| `C.edgeLine` | Sidebar/content edge separator (= surfaceRaised) |
+| `C.codeBlockBg` | Code snippet background |
+| `C.overlayBg` | Modal/dialog backdrop (dark: `rgba(0,0,0,0.55)`, light: `rgba(0,0,0,0.25)`) |
+
+### Accent Colors (per-theme)
+
+| Token | Purpose |
+|-------|---------|
+| `C.accent` | Theme accent color |
+| `C.accentDim` | Darkened accent (22% darker) |
+| `C.accentPale` | Soft accent background for pills/badges |
+
+### Semantic Status Colors (fixed across themes)
+
+| Token | Value | Purpose |
+|-------|-------|---------|
+| `C.error` | `#E05252` | Error/destructive states |
+| `C.errorHover` | `#C94040` | Error hover/active state |
+| `C.errorDim` | Theme-aware | Subtle error background (33% dark / 18% light alpha) |
+| `C.warning` | `#FF6B3D` | Warning states |
+| `C.warningDim` | Theme-aware | Subtle warning background |
+| `C.success` | `#4CAF50` | Success states |
+| `C.successDim` | Theme-aware | Subtle success background |
+
+### Fixed Colors (unchanged across themes)
+
+| Token | Value | Purpose |
+|-------|-------|---------|
+| `C.green` | `#2A6B38` | Legacy green |
+| `C.orange` | `#FF4800` | TE highlight color |
+| `C.orangeDim` | `#D93C00` | Darker orange |
+| `C.orangePale` | `#FFF0E8` | Pale orange background |
+
+---
+
+## Typography
+
+```javascript
+FONT         = "'Outfit','DM Sans',sans-serif"    // Primary body + headings
+FONT_DISPLAY = "'Outfit','DM Sans',sans-serif"    // Alias for FONT
+MONO         = "'DM Mono','Courier New',monospace" // Code blocks, technical text
+```
+
+Font size conventions used across components:
+- Headers/titles: 15-18px, weight 600-700
+- Body text: 12-14px, weight 400-500
+- Labels/badges: 9-11px, weight 500-600
+- Data table rows: 12px; table headers: 11px
+
+---
+
+## Border Radius (RADIUS)
+
+```javascript
+RADIUS.sm   = 4     // Micro: checkboxes, inline code, tooltips
+RADIUS.md   = 10    // Secondary interactive: inputs, small buttons, stacked cards
+RADIUS.lg   = 14    // Content surfaces: cards, panels, dropdowns, modals
+RADIUS.xl   = 14    // Alias for lg
+RADIUS.pill = 999   // Primary/navigational: CTA buttons, search bars, tabs, nav items
+```
+
+---
+
+## Shadows (SHADOW)
+
+The `SHADOW` object is mutable and rebuilt on theme change. Each theme has a tint (warm or cool RGB) and shadows are softer for light themes, deeper for dark themes.
+
+```javascript
+SHADOW.card       // Subtle resting card shadow
+SHADOW.cardHover  // Elevated card on hover
+SHADOW.dropdown   // Dropdown/popover/modal shadow
+SHADOW.inset      // Inset shadow for depth
+SHADOW.glow       // Glow effect (neurons, highlights)
+```
+
+Shadow tints per theme: obsidian `(0,8,24)`, shoji `(12,8,4)`, hinoki `(18,10,0)`, kori `(0,6,20)`, sumi `(6,8,16)`.
+
+---
+
+## Breakpoints (BP)
+
+```javascript
+BP.mobile = 768    // Below 768 = phone. 768 = iPad portrait cutoff
+BP.tablet = 1194   // 768..1194 = tablet. Covers iPad Air landscape (1180px), iPad Pro 11" (1194px)
+```
+
+Breakpoints are actively used via `ViewportContext` (see below) for responsive layout decisions.
+
+---
+
+## Z-Index Scale (Z)
+
+All fixed/absolute overlays must use these tokens. Component-internal relative z-indexes (1-10) are fine inline.
+
+```javascript
+Z.sticky    =    50  // Sticky headers, toolbars
+Z.dropdown  =   150  // Dropdowns, popovers, select pickers
+Z.header    =   200  // TopHeader bar
+Z.modal     =   500  // Modals, dialogs, command palette, context menus
+Z.panel     =   900  // Side panels (WasabiPanel, Gmail)
+Z.lock      =  1000  // PIN lock overlay, document editor overlays
+Z.toast     =  9000  // Conflict toasts, notifications
+Z.workspace =  9999  // Workspace browser (always on top)
+```
+
+---
+
+## Animations (ANIM) — 33 Presets
+
+Keyframes are injected once on app load via `injectAnimations()`. The `ANIM` object provides preset strings for the `animation` CSS property.
+
+### Entrance Animations
+
+| Preset | Description |
+|--------|-------------|
+| `ANIM.snapUp(delay)` | Page/card entrance (translate + scale + overshoot settle) |
+| `ANIM.popIn(delay)` | Modal/overlay entrance (scale bounce) |
+| `ANIM.settleIn(delay)` | List item entrance (subtle translate + scale) |
+| `ANIM.slideUp(delay)` | Gentle upward slide |
+| `ANIM.scaleIn(delay)` | Zoom-in entrance |
+| `ANIM.fadeUp(delay)` | Fade + slight upward rise |
+| `ANIM.fadeIn(delay)` | Pure opacity fade |
+| `ANIM.snapDown(delay)` | Entrance from above (reverse snapUp) |
+| `ANIM.snapInRight(delay)` | Entrance from right with bounce |
+| `ANIM.snapInLeft(delay)` | Entrance from left with bounce |
+| `ANIM.modalPop(delay)` | Modal entrance (scale + translate settle) |
+| `ANIM.contentSwap(delay)` | Content swap transition |
+| `ANIM.navDrop` | Nav dropdown entrance |
+| `ANIM.panelSlideIn` | Side panel entrance |
+| `ANIM.backdropFade` | Backdrop fade-in |
+| `ANIM.drawerFade` | Drawer overlay fade |
+| `ANIM.drawerSlide` | Drawer slide from right |
+| `ANIM.drawerSlideLeft` | Drawer slide from left |
+
+### Staggered / Row Animations
+
+| Preset | Description |
+|--------|-------------|
+| `ANIM.rowReveal(idx)` | Table row reveal with stagger (0.02s per index) |
+| `ANIM.listItem(idx)` | List item entrance with stagger (0.03s per index) |
+| `ANIM.scrollReveal(idx)` | Scroll-triggered row reveal (0.015s per index) |
+
+### Looping Animations
+
+| Preset | Description |
+|--------|-------------|
+| `ANIM.bounce(i)` | Subtle bounce (loading dots) |
+| `ANIM.spin` | 360-degree rotation (loading spinners) |
+| `ANIM.blink` | Opacity pulse |
+| `ANIM.pulse` | Scale pulse |
+| `ANIM.coordMorph` | Border-radius morphing (orbs) |
+| `ANIM.coordPulse` | Scale breathing (orbs) |
+| `ANIM.nodeGlow` | Glow effect (neurons) |
+| `ANIM.dashFlow` | SVG dash flow (neuron lines) |
+| `ANIM.shimmer` | Shimmer effect (skeleton loaders) |
+
+### Exit Animations
+
+| Preset | Description |
+|--------|-------------|
+| `ANIM.fadeOut(dur)` | Fade + scale down exit |
+| `ANIM.slideOutRight` | Slide out to right |
+| `ANIM.slideOutLeft` | Slide out to left |
+| `ANIM.backdropFadeOut` | Backdrop fade-out |
+
+---
+
+## Transitions (TRANSITION) — 6 Presets
+
+Common CSS transition strings for inline styles:
+
+```javascript
+TRANSITION.hover       // "all 0.18s cubic-bezier(0.4, 0, 0.2, 1)"        — smooth hover
+TRANSITION.snap        // "all 0.25s cubic-bezier(0.22, 1.2, 0.36, 1)"    — snappy resize
+TRANSITION.sidebar     // "width 0.32s ..., padding 0.32s ..."            — sidebar collapse
+TRANSITION.panel       // "transform 0.3s ..., opacity 0.25s ease"        — panel slide
+TRANSITION.color       // "background 0.15s, color 0.15s, border 0.15s"   — color fade
+TRANSITION.panelResize // "width 0.28s cubic-bezier(0.25, 1, 0.5, 1)"    — panel drag resize
+```
+
+---
+
+## Interaction Helpers (interactions.js)
+
+Two exported functions for consistent hover and focus behavior via inline event handlers:
+
+### hoverBg(bg, reset)
+
+Spread onto any element for hover background transitions:
+
+```jsx
+<button {...hoverBg()}>Default</button>
+<div {...hoverBg(C.accent + "10", C.darkSurf)}>Custom</div>
+```
+
+Sets `onMouseEnter` / `onMouseLeave` handlers that update `style.background`.
+
+### focusRing(color)
+
+Spread onto any focusable element for keyboard-only focus rings:
+
+```jsx
+<button {...focusRing()}>Accessible</button>
+```
+
+Uses `:focus-visible` detection to show a 2px accent outline only on keyboard navigation.
+
+---
+
+## Shared Styles (S Object) — 52 Keys
+
+`S` is a mutable style object rebuilt on theme change via `rebuildStyles()`. Components import and spread:
 
 ```javascript
 import { S } from "../design/styles.js";
-// Then: style={{ ...S.navItem, ...customOverrides }}
+// Usage: style={{ ...S.card, ...customOverrides }}
 ```
 
-### Main Style Groups
+### Key Style Groups
 
-**App shell:**
-- `S.app` — Root container
-- `S.sidebar`, `S.sidebarExpanded` — Sidebar (56px collapsed, 220px expanded)
-- `S.main` — Main content area
-- `S.header` — Top header bar
+**App Shell:** `app`, `sidebar`, `sidebarExpanded`, `main`, `header`, `headerTitle`
 
-**Navigation:**
-- `S.navItem` — Individual nav icon button
-- `S.navItemActive` — Active state
-- `S.navItemHover` — Hover state
+**Navigation:** `navItem`, `navItemActive`, `navItemHover`
 
-**Messaging/Chat:**
-- `S.messages` — Message container
-- `S.msgOuter`, `S.msgInner` — Message wrapper
-- `S.bubbleUser`, `S.bubbleAssistant` — Chat bubbles
-- `S.avatarWrap` — Avatar circle
+**Chat/Messaging:** `messages`, `msgOuter`, `msgInner`, `avatarWrap`, `bubbleUser`, `bubbleAssistant`, `inputBox`, `inputWrap`, `inputWrapFocused`, `textarea`, `sendBtn`
 
-**Buttons & controls:**
-- `S.btnGhost` — Transparent button
-- `S.btnPrimary` — Accent-colored button
-- `S.inputBase` — Input field base
-- `S.inputFocused` — Input focus style
+**Buttons:** `btnPrimary`, `btnSecondary`, `btnGhost`, `btnChoice`
 
-**Tables & lists:**
-- `S.table`, `S.thead`, `S.tr`, `S.td` — Table elements
-- `S.trHover` — Row hover state
+**Cards:** `card`, `cardHover`
 
-**Overlays:**
-- `S.overlay` — Modal backdrop (zIndex: 100)
-- `S.modal` — Modal container (zIndex: 200)
+**Tables:** `table`, `th`, `td`, `trHover`
 
-*Note: rebuild `S` on theme change via `rebuildStyles()` call from ThemeContext.*
+**Inputs:** `input`, `inputFocused`, `inputDark`, `select`
+
+**Overlays:** `overlay`, `drawer`, `dropdown`, `dropdownItem`, `dropdownItemHover`
+
+**Typography:** `h1`, `h2`, `h3`, `label`, `caption`, `code`, `codeBlock`
+
+**Misc:** `pill(color)`, `badge`, `divider`, `empty`, `thinkingDot(i)`, `tooltip`
 
 ---
 
-## Animations (animations.js)
+## Icon Library — 70 Icons
 
-### Keyframes Injection
-
-All @keyframes are injected once on app load:
-
-```javascript
-// src/App.jsx
-injectAnimations();
-injectInteractionStyles();
-injectScrollbarStyles(C);
-updateCSSCustomProperties(C);
-```
-
-This creates a `<style>` tag with all animation definitions, avoiding duplicate @keyframes.
-
-### Key Animation Presets (ANIM object)
-
-```javascript
-ANIM.snapUp(delay)          // Page/card entrance (translate + scale)
-ANIM.popIn(delay)           // Modal/overlay entrance
-ANIM.settleIn(delay)        // List item entrance
-ANIM.slideUp(delay)         // Gentle upward slide
-ANIM.scaleIn(delay)         // Zoom-in entrance
-ANIM.fadeUp(delay)          // Fade + slight rise
-ANIM.fadeIn(delay)          // Pure fade
-ANIM.slideOutRight(delay)   // Exit to right
-ANIM.slideInRight(delay)    // Entrance from right
-ANIM.slideInLeft(delay)     // Entrance from left
-ANIM.bounce(delay)          // Subtle bounce
-ANIM.spin(delay)            // Rotation (loading spinners)
-ANIM.blink(delay)           // Opacity pulse
-ANIM.pulse(delay)           // Scale pulse
-ANIM.shimmer(delay)         // Shimmer effect
-ANIM.navDrop(delay)         // Nav dropdown entrance
-ANIM.panelSlideIn(delay)    // Side panel entrance
-ANIM.nodeGlow(delay)        // Glow effect (neurons)
-ANIM.dashFlow(delay)        // Dash flow (SVG)
-ANIM.coordMorph(delay)      // Border morphing (orbs)
-```
-
-### Transition Presets (TRANSITION object)
-
-Common CSS transitions for consistency:
-
-```javascript
-TRANSITION.all              // all 0.15s
-TRANSITION.color            // color 0.15s
-TRANSITION.background       // background 0.15s
-TRANSITION.transform        // transform 0.1s
-TRANSITION.slow             // all 0.3s
-```
-
----
-
-## Icon Library (icons.jsx)
-
-### Icon Set (65 icons total)
-
-All icons are inline SVG components, no emoji anywhere.
-
-**Navigation & Core:**
-- `IconWasabi` — Wasabi leaf logo
-- `IconWasabiNode` — Wasabi sphere (neurons)
-- `IconGear` — Settings
-- `IconSearch` — Search
-- `IconMenu` — Hamburger menu
-- `IconHamburger` — Alt hamburger
-
-**Communication:**
-- `IconMail` — Email/Gmail
-- `IconChat` — Chat/messages
-- `IconBell` — Notifications
-- `IconUser` — Single user
-- `IconUsers` — Multiple users
-- `IconMention` — @mention
-- `IconPhone` — Phone call
-
-**Data & Views:**
-- `IconDatabase` — Database
-- `IconTable` — Table/spreadsheet
-- `IconSheet` — Sheet view
-- `IconKanban` — Kanban board
-- `IconCalendar` — Calendar
-- `IconTimeline` — Timeline/Gantt
-- `IconGrid` — Grid/layout
-- `IconCards` — Card layout
-- `IconChart` — Charts/analytics
-
-**Actions:**
-- `IconPlus` — Add/create
-- `IconClose` — Close/dismiss
-- `IconTrash` — Delete
-- `IconEdit` — Edit
-- `IconCheck` — Checkmark
-- `IconCheckSquare` — Checkbox checked
-- `IconArrowUp` — Arrow up
-- `IconArrowDown` — Arrow down
-- `IconChevronLeft` — Chevron left
-- `IconChevronRight` — Chevron right
-- `IconChevronDown` — Chevron down
-
-**Pages & Organization:**
-- `IconPage` — Page/document
-- `IconFolder` — Folder
-- `IconInbox` — Inbox
-- `IconQueue` — Task queue/list
-- `IconBrain` — AI/intelligence
-- `IconLightbulb` — Ideas/insights
-
-**States & Indicators:**
-- `IconWarning` — Warning/alert
-- `IconStatusDot` — Status indicator
-- `IconBlocked` — Blocked/denied
-- `IconAlarm` — Alarm/timer
-- `IconHourglass` — Pending/waiting
-- `IconBolt` — Lightning (quick action)
-
-**Utilities & Misc:**
-- `IconLink` — Link/relationship
-- `IconClipboard` — Copy/clipboard
-- `IconExport` — Export/download
-- `IconUpload` — Upload/import
-- `IconRefresh` — Refresh/reload
-- `IconExpand` — Expand
-- `IconSun` — Light mode
-- `IconMoon` — Dark mode
-- `IconFilter` — Filter
-- `IconSort` — Sort
-- `IconBelt` — Belt/connector
-- `IconForm` — Form/input
-- `IconFunction` — Function/code
-- `IconTransform` — Transform/convert
-- `IconCondition` — Condition/logic
-- `IconPlay` — Play/execute
-- `IconDollar` — Currency/pricing
-- `IconEyeOff` — Hide/privacy
-- `IconDiamond` — Premium/highlight
-- `IconBox` — Container/box
-- `IconStar` — Favorite/important
-- `IconConnect` — Connect/sync
-- `IconHandshake` — Partnership/agreement
-- `IconPaperclip` — Attachment
-- `IconSend` — Send/submit
-- `IconLog` — Activity log
-
-### Icon Component Pattern
+All icons are inline SVG components in `src/design/icons.jsx`. No emoji anywhere. Every icon accepts `size` (default 20), `color` (default `currentColor`), and `style` props.
 
 ```jsx
 import { IconPlus } from "../design/icons.jsx";
-
-// Icon properties:
-<IconPlus
-  size={20}           // 20px (default), any size
-  color="#5CC63A"     // custom color, or uses currentColor (default)
-  style={{ ... }}     // inline style overrides
-  aria-label="Add"    // MISSING (accessibility gap)
-/>
+<IconPlus size={20} color={C.accent} />
 ```
 
-**Implementation:** All icons use a shared `Icon` wrapper component that handles SVG setup. Each icon is a functional component returning SVG markup.
+Icons cover navigation, communication, data views, actions, pages, states, and utilities. All share an internal `Icon` wrapper component.
 
 ---
 
-## Layout Architecture
+## Layout Dimensions
 
-### Main App Structure
+### TopHeader (`src/core/TopHeader.jsx`)
 
-```
-App
-├── TopHeader (header bar: logo + breadcrumb + controls)
-├── Layout (display: flex)
-│   ├── WasabiPanel (optional left panel: chat, log, notifications)
-│   ├── Navigation (sidebar: nav icons + expanded menu)
-│   └── Main Content
-│       ├── PageShell (if viewing a page)
-│       │   ├── SubPageNav (page header: title, refresh, settings)
-│       │   └── ViewRenderer (actual view: table, kanban, etc.)
-│       ├── Or: Zen Views (if in zen mode)
-│       │   ├── TasksView
-│       │   ├── NotesView
-│       │   ├── GmailView
-│       │   ├── DashboardView
-│       │   └── WorkspaceBrowser
-│       └── System Panels (overlays)
-│           ├── CommandPalette
-│           ├── Modals (ConfirmDialog, NewRecordModal, etc.)
-│           ├── Drawers (RecordDetail, etc.)
-│           └── Neurons (visual overlay)
-```
+- **Height:** 52px
+- **Background:** `C.dark`, border-bottom with `C.edgeLine`
+- **Z-index:** `Z.header` (200)
+- **Layout:** Left (wordmark + breadcrumb) | Center (save status) | Right (refresh, neurons, theme, user pill)
 
-### Header: TopHeader.jsx
+### Sidebar / Navigation (`src/core/Navigation.jsx`)
 
-**Height:** 54px (including safe area padding)
+- **Collapsed width:** 56px (icon-only nav)
+- **Expanded width:** 220px (page list + nav items)
+- **Background:** `C.dark`, border-right with `C.edgeLine`
 
-**Layout:**
-- **Left:** Wordmark "WASABI" (gradient text) + vertical divider + breadcrumb (page path)
-- **Center:** Save status indicator (optional)
-- **Right:** Refresh button, Neurons toggle, Theme cycle, User pill (avatar + dropdown)
+### WasabiPanel (`src/core/WasabiPanel.jsx`)
 
-**Styling:**
-- Background: C.dark
-- Border-bottom: 1px with gradient (accent-flavored)
-- zIndex: 200
-
-### Sidebar: Navigation.jsx
-
-**Collapsed width:** 56px
-**Expanded width:** 220px
-
-**Sections:**
-1. **Top icon bar** (always visible):
-   - Wasabi logo (flame icon)
-   - Search button (opens command palette)
-   - Notifications bell (with badge)
-   - Brain icon (neurons toggle)
-
-2. **Page navigation** (expanded only):
-   - Current folder pages (hierarchical)
-   - Add/Create menu
-   - Page context menu (right-click)
-
-3. **Bottom nav** (expanded only):
-   - Workspaces, Dashboard, To-Do, Notes, Gmail, Workspace Browser
-   - Settings (gear icon)
-
-**Styling:**
-- Background: C.dark
-- Border-right: 1px C.edgeLine
-- zIndex: 10
-
-### Right Panel: WasabiPanel.jsx
-
-**Default width:** 320px (resizable: 280–640px)
-
-**Tabs:**
-1. **Chat** — AI conversation with context from current page
-2. **Log** — Activity log of recent actions
-3. **Notifications** — Notification feed (new in Phase 3)
-
-**Controls:**
-- Resize handle (bottom-right of panel header)
-- Minimize button (snap to default width)
-- Close button (hides panel)
-
-**Styling:**
-- Background: C.dark
-- Drag handle: C.border
-- zIndex: 100
+- **Default width:** 320px
+- **Resizable:** 280-640px via drag handle
+- **Tabs:** Chat, Log, Notifications
+- **Z-index:** `Z.panel` (900)
 
 ---
 
-## Component-Specific Patterns
+## ViewportContext
 
-### Buttons
+`src/context/ViewportContext.jsx` provides responsive state to any component via the `useViewport()` hook.
 
-**Ghost button (transparent):**
-```javascript
-style={{
-  ...S.btnGhost,
-  color: C.text,
-  fontSize: 12,
-}}
-```
+```jsx
+import { useViewport } from "../context/ViewportContext.jsx";
 
-**Primary button (accent background):**
-```javascript
-style={{
-  background: C.accent,
-  color: "#fff",
-  padding: "6px 12px",
-  borderRadius: RADIUS.md,
-  cursor: "pointer",
-}}
-```
-
-### Input Fields
-
-**Base style:**
-```javascript
-style={{
-  ...S.inputBase,
-  color: C.text,
-  background: C.surface,
-  borderColor: C.border,
-}}
-```
-
-**Focused state (2px accent shadow):**
-```javascript
-onFocus: (e) => {
-  e.target.style.boxShadow = `0 0 0 2px ${C.accent}33`;
+function MyComponent() {
+  const { isNarrow, isTablet, isTouch, width } = useViewport();
+  // isNarrow:  width < 768  (phone)
+  // isTablet:  768 <= width <= 1194  (iPad range)
+  // isTouch:   navigator.maxTouchPoints > 0
+  // width:     current viewport width in px
 }
 ```
 
-### Modals & Overlays
+Uses `matchMedia` listeners on BP breakpoints for efficient updates.
 
-**Overlay backdrop:**
-```javascript
-background: C.overlayBg,  // Theme-aware rgba
-position: "fixed",
-zIndex: 100,
-inset: 0,
+---
+
+## StateIndicators
+
+`src/components/StateIndicators.jsx` exports three reusable components for loading, empty, and error states:
+
+### SkeletonLoader
+
+```jsx
+<SkeletonLoader rows={5} style={{}} />
 ```
 
-**Modal container:**
-```javascript
-position: "fixed",
-zIndex: 200,
-background: C.surface,
-borderRadius: RADIUS.lg,
-boxShadow: SHADOW.dropdown,
+Renders shimmer-animated placeholder rows during data fetch.
+
+### EmptyState
+
+```jsx
+<EmptyState icon={IconInbox} message="Nothing here yet" action="Add item" onAction={handleAdd} />
 ```
 
----
+Centered message with optional icon and action button.
 
-## Known Gaps & Issues
+### ErrorState
 
-### Critical Gaps (from design review)
+```jsx
+<ErrorState message="Something went wrong" onRetry={handleRetry} />
+```
 
-1. **Hardcoded Overlay Colors**
-   - Multiple components use hardcoded `rgba(0,0,0,0.55)` instead of `C.overlayBg`
-   - Affects: ConfirmDialog, LinkPicker, SheetUrlDialog, CommandPalette, GmailView, WorkspaceBrowser, PinLockOverlay, ViewSettingsPanel
-   - **Impact:** Theme changes don't affect overlay darkness; light themes may have poor contrast
-   - **Fix:** Replace all instances with `C.overlayBg`
-
-2. **Missing Error/Warning Color Tokens**
-   - Error red (#E05252) and warning orange (#FF6B3D) are hardcoded in SystemManager and other files
-   - No dedicated `C.error`, `C.warning`, `C.success` tokens
-   - **Impact:** Error states don't adapt to theme changes
-   - **Fix:** Add to C object and use throughout
-   - **Suggested tokens:**
-     ```javascript
-     C.error: "#E05252",
-     C.errorDim: "#C94040",
-     C.errorPale: "#E0525218",
-     C.warning: "#FF6B3D",
-     C.warningDim: "#FF4800",
-     C.warningPale: "#FF480044",
-     C.success: "#2A6B38",
-     ```
-
-3. **Missing Z-Index Scale**
-   - Z-index values hardcoded throughout: 100, 150, 200, 1000, etc.
-   - No centralized `Z_INDEX` constant for stacking context
-   - **Impact:** Potential z-index stacking conflicts; hard to reason about layer order
-   - **Fix:** Create `Z_INDEX` tokens:
-     ```javascript
-     export const Z_INDEX = {
-       dropdown: 150,
-       overlay: 100,
-       modal: 200,
-       tooltip: 210,
-       notification: 250,
-     };
-     ```
-
-4. **No Responsive Design Implementation**
-   - Breakpoints defined (`BP.mobile: 640px`, `BP.tablet: 1024px`) but unused
-   - No @media queries or responsive style variants
-   - Fixed sidebar width, fixed drawer widths, fixed column widths
-   - **Impact:** Poor UX on tablets and mobile; desktop-only experience
-   - **Fix:** Implement @media queries using BP tokens or React window size hooks
-
-5. **Hardcoded Icon Colors**
-   - `IconWasabi` defaults to hardcoded "#7DC143" (should be dynamic)
-   - `IconWasabiNode` defaults to hardcoded "#F5B724"
-   - **Impact:** Icons don't adapt if brand colors change
-   - **Fix:** Accept color props or use theme-aware defaults
-
-### Major Gaps
-
-6. **Missing Accessibility Attributes**
-   - No `aria-label` on icon-only buttons
-   - No `role="dialog"` on modals
-   - No `aria-modal`, `aria-hidden` on overlays
-   - No `role="listbox"` on dropdowns
-   - **Impact:** Screen reader users cannot navigate components (WCAG 2.1 Level A violations)
-   - **Fix:** Add ARIA attributes to all interactive components
-
-7. **Missing Loading/Empty States**
-   - Some views show blank screens during data fetch (Table.jsx, Kanban.jsx)
-   - No skeleton loaders or spinners
-   - **Impact:** Users uncertain if app is responsive
-   - **Fix:** Add Spinner components and skeleton loaders during data fetch
-
-8. **Inconsistent Animation Durations**
-   - Components define their own EXIT_DURATION (200ms, 180ms) instead of using ANIM presets
-   - Drawer uses 200ms, ConfirmDialog uses 180ms
-   - **Impact:** Animations feel out of sync
-   - **Fix:** Export EXIT_DURATION_MS from animations.js and use consistently
-
-9. **Missing Hover States**
-   - Some table rows and list items lack clear hover visual feedback
-   - Not all interactive elements have :hover styles
-   - **Impact:** Users unsure which elements are interactive
-   - **Fix:** Ensure all interactive list/table rows have clear hover states
-
-10. **Inconsistent Focus Styles**
-    - Input focus styles vary between components (box-shadow vs. border color)
-    - Some custom inputs don't follow S.inputFocused pattern
-    - **Impact:** Inconsistent keyboard navigation feedback
-    - **Fix:** Ensure all inputs use consistent focus styling
-
-11. **Missing Copy/Success Feedback**
-    - Copy-to-clipboard operations lack feedback
-    - No toast notifications or temporary "Copied!" messages
-    - **Impact:** Users unsure if copy succeeded
-    - **Fix:** Add toast notification on copy operations
-
-12. **Inconsistent Button Styling**
-    - Close buttons have different styling across components (onMouseEnter/Leave vs. CSS :hover)
-    - Mix of S.btnGhost and inline styles
-    - **Impact:** Visual inconsistency
-    - **Fix:** Create reusable IconButton component
+Error message with optional retry button.
 
 ---
 
-## Theme Change Flow
+## ToastContext
 
-1. User clicks theme selector in header
-2. `ThemeContext.applyTheme()` is called with new theme ID
-3. Function retrieves `THEMES[themeId]` and extracts tokens
-4. Mutates `C` object in place: `Object.assign(C, newTokens)`
-5. Calls `rebuildStyles()` to regenerate `S` object
-6. Updates CSS custom properties for scrollbars
-7. Persists to localStorage: `wasabi-theme-name`
-8. Components render with new colors (no re-import needed)
+`src/context/ToastContext.jsx` provides a global toast notification system.
+
+### useToast() Hook
+
+```jsx
+import { useToast } from "../context/ToastContext.jsx";
+
+function MyComponent() {
+  const { showToast } = useToast();
+  showToast("Page saved", "success");
+  showToast("Save failed", "error");
+  showToast("Check connection", "warning");
+  showToast("Sync complete", "info");
+}
+```
+
+### globalToast()
+
+For non-component code (e.g., context providers):
+
+```javascript
+import { globalToast } from "../context/ToastContext.jsx";
+globalToast("Operation failed", "error", 4000);
+```
+
+### Toast Types
+
+| Type | Usage |
+|------|-------|
+| `success` | Successful operations (save, create, sync) |
+| `error` | Failed operations, validation errors |
+| `warning` | Non-blocking alerts, degraded states |
+| `info` | Informational notifications |
+
+Toasts auto-dismiss after 4 seconds (configurable via `durationMs` parameter) and support fade-out exit animation.
 
 ---
 
-## Summary
+## Color Palettes
 
-Wasabi's design system is **minimal and mutable**, prioritizing simplicity and performance over framework abstractions. The key pattern — mutable `C` object — allows all components to use the same reference and see updates instantly without prop drilling or context subscriptions. Combined with theme-locked color palettes and inline styles, this creates a lean, fast, and cohesive visual system.
+Four mutable palette systems, all rebuilt on theme change:
 
-**For developers:** Always import and use `C` and `S` directly. On theme changes, styles update automatically in place. No need to pass colors as props or wrap components in additional context providers.
+1. **VIEW_PALETTE** — 11-entry array (key, hex, text) for data visualization. Theme-tuned for temperature/saturation. Indices map to Notion color names via `NOTION_TO_PALETTE_IDX`.
+2. **TIMELINE_PALETTE** — Derived from VIEW_PALETTE vivid entries for Gantt bar colors. Includes `color` and `bg` (pale tint) per entry.
+3. **SELECT_PALETTE** — Reordered vivid-first color set for select/status pill backgrounds.
+4. **WASABI_COLORS** — Maps Notion's 10 color names to Wasabi fill+text pairs.
+
+Color resolution follows a priority chain: per-view mapping, global defaults, Notion schema color, STATUS_COLORS, option index, hash fallback. The `resolveUnifiedColor()` function is the single entry point.
+
+---
+
+## Style Rules
+
+1. **Always use design tokens** — `C.error` not `"#E05252"`, `Z.modal` not `500`, `FONT` not `"'Outfit'..."`
+2. **Inline styles only** — no CSS files, no styled-components, no CSS-in-JS libraries
+3. **Z-index must use Z tokens** — never hardcode z-index values for fixed/absolute overlays
+4. **All overlays use `C.overlayBg`** — never hardcode `rgba(0,0,0,...)`
+5. **ARIA on all dialogs** — `role="dialog"`, `aria-modal="true"`, `aria-labelledby`
+6. **iPad-aware** — use `useViewport()` for responsive behavior, test at 768px and 1194px
+7. **All record editing through RecordDrawer** — table cells are read-only (click opens drawer)
+8. **Use S styles as base** — spread `S.card`, `S.btnGhost`, etc. and override with inline additions
+9. **Use interaction helpers** — `{...hoverBg()}` and `{...focusRing()}` for consistent interactive states
+10. **Use StateIndicators** — `SkeletonLoader`, `EmptyState`, `ErrorState` for loading/empty/error states
+11. **Use ToastContext** — `showToast()` for user feedback on operations

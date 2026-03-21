@@ -1,490 +1,357 @@
 # State Management & Data Flow
 
-## Overview
+## Product Context
 
-Wasabi uses **React Context API** for state management, structured into focused contexts that handle specific domains:
-
-- **AuthContext** - User identity, credentials, worker connection
-- **PagesContext** - Page configs, hierarchy, batch operations
-- **NavigationContext** - Current page/folder selection
-- **ThemeContext** - Theme (light/dark)
-- **UserSyncContext** - Multi-device synchronization
-- **ColorMappingContext** - Global row color mappings
-- **CollaborationContext** - Real-time presence, typing, conflicts
-- **LinksContext** - Neuron relationships
-- **RecordDrawerContext** - Record detail drawer state
-
-This doc describes each context's state shape, functions, and typical data flow patterns.
+Wasabi is an AI-native workspace built as a React 18 SPA. State management uses the React Context API exclusively — no Redux, Zustand, or other external state libraries. There are 11 context providers in `src/context/`, plus RecordDrawerContext in `src/zen/`.
 
 ---
 
-## Context Specifications
+## Context Providers
 
-### AuthContext
+All 11 providers live in `src/context/`. They are nested in App.jsx in a specific order (see 07-architecture-routing.md for the full wrapping hierarchy).
 
-**File:** `src/context/AuthContext.jsx`
-
-#### State Shape
-
-```javascript
-{
-  // Credentials
-  user: {
-    workerUrl: string,
-    notionKey?: string,
-    claudeKey?: string,
-    mondayKey?: string,
-  },
-
-  // Connection
-  workerConnection: {
-    workerUrl: string,
-    secret?: string,
-  },
-
-  // Setup & Auth Gates
-  isAuthenticated: boolean,
-  isSetup: boolean,
-  isLoading: boolean,
-  setupError: string | null,
-
-  // Multi-user Identity
-  identity: {
-    id: string,
-    display_name: string,
-    role: "admin" | "editor" | "viewer",
-  } | null,
-  multiUserEnabled: boolean,
-  identityLoading: boolean,
-  adminInvite: string | null,
-
-  // Platform IDs
-  platformIds: {
-    databaseId?: string,
-    tableId?: string,
-  },
-}
-```
-
-#### Key Functions
-
-```javascript
-setUserKeys(keys)
-updateConnectionKey(key, value) → Promise
-getConnections() → { connections }
-completeSetup()
-initDatabase() → { multi_user?, admin_invite? }
-login(email, password) → { user }
-register(email, password, inviteCode) → { user }
-logout()
-hasRole(requiredRole)
-```
-
-#### Initialization Flow
-
-1. Load from localStorage: `wasabi_user_keys`, `wasabi_connection`, `wasabi_platform_ids`
-2. On workerConnection available: call `initDatabase()` + validate JWT
-3. Persist changes to localStorage + D1
-
-#### Known Issues
-
-- **Race condition:** hasBootstrapped ref prevents re-init if workerConnection changes mid-flight
-- **JWT storage:** Tokens in plaintext localStorage (XSS vulnerability)
-- **No expiration check:** JWT validated only on load, not before use
-
----
-
-### PagesContext
-
-**File:** `src/context/PagesContext.jsx`
-
-#### State Shape
-
-```javascript
-{
-  pages: [
-    {
-      id: string,
-      name: string,
-      type: "page" | "folder",
-      page_type: "database" | "document" | "linked_notion" | "linked_monday" | "worksheet" | "dashboard" | "workspace",
-      databaseIds?: string[],
-      views?: [
-        {
-          id?: string,
-          label: string,
-          type: "table" | "kanban" | "calendar" | "grid" | "document" | "gallery" | "timeline",
-          config: { /* view-specific */ },
-        },
-      ],
-      widgets?: [ /* dashboard widgets */ ],
-    },
-  ],
-
-  pageTree: [ /* nested hierarchy */ ],
-  folders: [ /* all folder pages */ ],
-  globalDashboard: pageConfig | null,
-
-  batchQueue: [
-    {
-      id: string,
-      operation: "create" | "update" | "delete" | "move",
-      pageId: string,
-      timestamp: number,
-      status: "pending" | "done" | "failed",
-    },
-  ],
-
-  saveStatus: "idle" | "saving" | "saved" | "error",
-}
-```
-
-#### Key Functions
-
-```javascript
-addPage(config) → Promise
-updatePageConfig(id, updates) → Promise
-removePage(id) → Promise
-getFolderPages(folderId) → [pageConfig]
-addToQueue(op), updateQueueItem(id, changes), removeQueueItem(id)
-```
-
-#### Initialization Flow
-
-1. Load from localStorage: `wasabi_page_configs`
-2. Sync from D1 (once): validate Notion page IDs, remove stale configs
-3. Auto-create "My Workspace" if none exist
-4. Auto-create global Dashboard if none exist
-
-#### Known Issues
-
-- **No validation:** Invalid view types silently ignored
-- **Stale references:** Deleted Notion DBs remain until manual sync
-- **Batch queue:** Unclear if undo is actually implemented
-
----
-
-### NavigationContext
-
-**File:** `src/context/NavigationContext.jsx`
-
-#### State Shape
-
-```javascript
-{
-  activePage: string | null,
-  activeFolder: string | null,
-  expandedNodes: Set<string>,
-}
-```
-
-#### Key Functions
-
-```javascript
-setActivePage(id) → void
-setActiveFolder(id) → void
-toggleExpand(nodeId) → void
-```
-
----
-
-### ThemeContext
+### 1. ThemeContext
 
 **File:** `src/context/ThemeContext.jsx`
 
-#### State Shape
+Manages the active theme and exposes mutable design token objects.
 
-```javascript
-{
-  theme: { /* all design tokens from tokens.js */ },
-  themeName: "light" | "dark",
-  toggleTheme(): void,
-}
-```
+**Key state:**
+- `themeName` — one of: "shoji", "obsidian", "hinoki", "kori", "sumi"
+- `C` — color token object (mutated in place when theme changes)
+- `SHADOW` — shadow token object (mutated in place when theme changes)
 
-Loads from localStorage: `wasabi_theme`. Updates CSS custom properties on change.
+**Key methods:**
+- `applyTheme(name)` — switches theme, updates C and SHADOW objects, persists to localStorage
 
----
-
-### UserSyncContext
-
-**File:** `src/context/UserSyncContext.jsx`
-
-Multi-device synchronization via WebSocket user room.
-
-#### State Shape
-
-```javascript
-{
-  onNavUpdate: (callback: (pageId, folderId) => void) => () => void,
-  sendNavUpdate: (pageId, folderId) => void,
-  onSessionRevoked: (callback: () => void) => () => void,
-}
-```
-
-#### Data Flow
-
-**Navigation Sync:**
-```
-Device A: setActivePage(id)
-  → sendNavUpdate(id, folderId)
-  → worker broadcasts to UserRoom
-  → Device B receives and calls onNavUpdate callback
-  → Device B: setActivePage(id)
-```
+**localStorage:** reads/writes `wasabi_theme`
 
 ---
 
-### ColorMappingContext
+### 2. ViewportContext
 
-**File:** `src/context/ColorMappingContext.jsx`
+**File:** `src/context/ViewportContext.jsx`
 
-#### State Shape
+Tracks viewport dimensions and device characteristics using `matchMedia` listeners (not resize events).
 
-```javascript
-{
-  globalColorField: string,
-  globalColorMapping: { [value: string]: colorHex },
-  setGlobalColorField: (fieldName) => void,
-  setGlobalColorMapping: (mapping) => void,
-}
-```
+**Key state:**
+- `isNarrow` — viewport width < BP.mobile (768px)
+- `isTablet` — viewport width < BP.tablet (1194px)
+- `isTouch` — device supports touch input
+- `width` — current viewport width in pixels
+
+No localStorage usage. Values update reactively via matchMedia change listeners.
 
 ---
 
-### CollaborationContext
+### 3. PlatformContext
+
+**File:** `src/context/PlatformContext.jsx`
+
+Composition layer that wraps AuthProvider, PagesProvider, and NavigationProvider internally, then merges their exports into a single `usePlatform()` hook for backward compatibility.
+
+**Key state (merged from sub-providers):**
+- `workerConnection` — { workerUrl, secret } for the Cloudflare Worker
+- `pages` — full page config array
+- `activePage` — current route identifier
+- Feature flags and connection status
+
+**Key methods:**
+- All CRUD operations from PagesProvider
+- All auth operations from AuthProvider
+- All navigation operations from NavigationProvider
+
+---
+
+### 4. ToastContext
+
+**File:** `src/context/ToastContext.jsx`
+
+Provides toast notification display for both component and non-component code.
+
+**Key methods:**
+- `showToast(message, type)` — displays a toast notification (type: "success", "error", "warning", "info")
+- `globalToast()` — module-level function that can be called from non-component code (e.g., api.js error handlers) without needing React context access
+
+---
+
+### 5. AuthContext
+
+**File:** `src/context/AuthContext.jsx`
+
+Handles authentication, worker connection, and multi-user identity.
+
+**Key state:**
+- `identity` — `{ id, display_name, role }` or null when not logged in
+- `multiUserEnabled` — boolean, whether workspace has multiple users
+- `workerConnection` — `{ workerUrl, secret }`
+- `isSetup` — boolean, whether initial setup is complete
+- `isAuthenticated` — boolean
+- `identityLoading` — boolean, true during bootstrap
+
+**Bootstrap state machine:** `idle → booting → ready`
+1. `idle` — initial state on mount
+2. `booting` — calls `initDatabase()` to create D1 tables, detect multi-user mode; validates existing JWT via `authMe()`
+3. `ready` — bootstrap complete, auth state resolved
+
+**Key methods:**
+- `login(displayName, password)` — authenticates, receives JWT
+- `register(displayName, password, inviteCode)` — creates account with invite code
+- `logout()` — clears identity, revokes session
+- `hasRole(requiredRole)` — checks if current identity meets minimum role
+
+---
+
+### 6. PagesContext
+
+**File:** `src/context/PagesContext.jsx`
+
+Manages the array of page configurations and provides CRUD operations.
+
+**Key state:**
+- `pages` — array of all PageConfig objects
+- `activePage` — currently selected page ID or system route string
+- `pageTree` — nested hierarchy computed from pages
+- `folders` — computed list of folder-type pages
+- `saveStatus` — "idle" | "saving" | "saved" | "error"
+
+**Key methods:**
+- `addPage(config)` — creates a new page, persists to D1, shows toast on success/error
+- `updatePageConfig(id, updates)` — partial update, persists to D1
+- `removePage(id)` — deletes page from D1
+- `getFolderPages(folderId)` — returns child pages of a folder
+
+Save operations display toast feedback via ToastContext (success/error messages).
+
+---
+
+### 7. NavigationContext
+
+**File:** `src/context/NavigationContext.jsx`
+
+Manages current navigation state: which page is active, which folder is selected, and sidebar UI state.
+
+**Key state:**
+- `activePage` — current page ID or system route string
+- `activeFolder` — current folder ID
+- `sidebarCollapsed` — boolean
+- `searchQuery` — sidebar search text
+- `expandedNodes` — Set of expanded folder node IDs
+
+**Key methods:**
+- `setActivePage(id)` — navigate to a page or system route
+- `setActiveFolder(id)` — select folder context
+- `toggleSidebar()` — collapse/expand sidebar
+- `toggleExpand(nodeId)` — expand/collapse a folder in the sidebar tree
+
+**localStorage:** reads/writes `wasabi_sidebar_collapsed`, `wasabi_active_page`
+
+---
+
+### 8. CollaborationContext
 
 **File:** `src/context/CollaborationContext.jsx`
 
-Real-time presence, typing, and conflict detection via WebSocket (TableSocket).
+Manages real-time collaboration via WebSocket connection to a TableRoom Durable Object.
 
-#### State Shape
+**Key state:**
+- `activeUsers` — Map of users currently viewing the same table
+- `pendingConflicts` — array of field-level conflicts detected during save
 
-```javascript
-{
-  activeUsers: Map<userId, {
-    userId: string,
-    userName: string,
-    color: string,
-    activeRecordId?: string,
-    isTyping: boolean,
-    typingField?: string,
-  }>,
+**Key methods:**
+- `focusRecord(recordId)` — broadcast that user is viewing a record
+- `blurRecord()` — stop broadcasting focus
+- `startTyping(recordId, field)` / `stopTyping()` — typing indicators
+- `saveRecord(recordId, cells, baseVersions)` — save with conflict detection
+- `onRecordUpdate(callback)` — subscribe to remote record changes
 
-  pendingConflicts: [
-    {
-      recordId: string,
-      field: string,
-      yourValue: any,
-      theirValue: any,
-      detectedAt: timestamp,
-    },
-  ],
+**WebSocket messages handled:**
+- `record_updated` — another user saved a record; triggers data refresh
+- `save_result` — response to a save attempt (success or conflict)
+- `conflict` — field-level conflict detected during save
+- `presence` — active users list update
+- `user_joined` / `user_left` — presence changes
 
-  focusRecord: (recordId) => void,
-  blurRecord: () => void,
-  startTyping: (recordId, field) => void,
-  stopTyping: () => void,
-  saveRecord: (recordId, cells, baseVersions) => void,
-  dismissConflict: (recordId, field) => void,
-  onRecordUpdate: (callback) => unsubscribe,
-}
-```
-
-#### Connection Flow
-
-```javascript
-new TableSocket(tableId, userId, userName, role)
-  → WebSocket connect to worker /ws/table/{tableId}
-  → Send "join" message
-  → Receive "presence" with active users
-```
-
-#### Conflict Detection Algorithm
-
-```javascript
-for (field, value) in user_cells:
-  currentVersion = cell_versions[field] || 0
-  baseVersion = base_versions[field]
-
-  if baseVersion === undefined OR baseVersion >= currentVersion:
-    // Accept change
-    accepted[field] = value
-    newVersions[field] = currentVersion + 1
-  else:
-    // Conflict detected
-    conflicts[field] = {
-      yourValue: value,
-      theirValue: currentCells[field],
-      currentVersion: currentVersion,
-    }
-```
-
-#### Known Issues
-
-- **Only works with D1 tables:** Notion-linked DBs don't support conflict detection
-- **No three-way merge:** Simple last-write-wins after version check
-- **Doesn't work with Notion-linked databases**
+Connection is per-table: `wss://{worker}/ws/table/{tableId}?token={jwt}`
 
 ---
 
-### LinksContext
+### 9. UserSyncContext
+
+**File:** `src/context/UserSyncContext.jsx`
+
+Cross-device synchronization via WebSocket connection to a UserRoom Durable Object.
+
+**Key state/methods:**
+- `sendNavUpdate(pageId, folderId)` — broadcast navigation to other devices
+- `onNavUpdate(callback)` — listen for navigation changes from other devices
+- `onSessionRevoked(callback)` — listen for session revocation (logout from another device)
+
+**session_revoked handling:** When the UserRoom broadcasts a `session_revoked` message (triggered when an admin revokes a session or the user logs out on another device), the callback clears local identity and redirects to the login screen.
+
+Connection is per-user: `wss://{worker}/ws/user/{userId}?token={jwt}`
+
+---
+
+### 10. ColorMappingContext
+
+**File:** `src/context/ColorMappingContext.jsx`
+
+Manages per-column color assignments for select and status fields in table views.
+
+**Key state:**
+- `globalColorField` — which column drives row coloring
+- `globalColorMapping` — `{ [optionValue]: colorHex }` map
+
+**Key methods:**
+- `setGlobalColorField(fieldName)` — set which column drives colors
+- `setGlobalColorMapping(mapping)` — update the value-to-color map
+
+---
+
+### 11. LinksContext
 
 **File:** `src/context/LinksContext.jsx`
 
-Manages Neuron relationships between records and pages.
+Manages cell_links between tables — cross-page references that connect records or fields across different pages.
+
+**Key methods:**
+- Link/unlink records across tables
+- Query and resolve link targets
+- Fetch links for a specific page
+
+Links are stored in the `cell_links` D1 table and cached locally.
 
 ---
 
-### RecordDrawerContext
+## RecordDrawerContext (src/zen/)
 
 **File:** `src/zen/RecordDrawerContext.jsx`
 
-Manages detail drawer for editing record.
+Not in `src/context/` — lives in `src/zen/` because it is tightly coupled to the RecordDrawer component.
 
-#### State Shape
+**Key state:**
+- `recordId` — currently open record ID (null when closed)
+- `pageId` — page containing the open record
 
-```javascript
-{
-  recordId: string | null,
-  pageId: string | null,
-  open: (recordId, pageId) => void,
-  close: () => void,
-}
-```
+**Key callbacks:**
+- `notifySaved(recordId, updatedCells)` — called by RecordDrawer after a successful save; consumed by PageShell to refresh view data without full reload
+- `notifyDeleted(recordId)` — called by RecordDrawer after a record is deleted; consumed by PageShell to remove the record from the view
 
----
-
-## Custom Hooks
-
-### useRecordDetail
-
-**File:** `src/hooks/useRecordDetail.js`
-
-Fetches single record by ID.
-
-```javascript
-const {
-  record,
-  schema,
-  loading,
-  error,
-  updateCell,
-} = useRecordDetail(tableId, recordId)
-```
-
-### useViewPrefs
-
-**File:** `src/hooks/useViewPrefs.js`
-
-Stores view preferences in localStorage.
-
-### useTasksTable, useAICuratedTasks, useDismissedTasks, useInsight
-
-**Files:** `src/zen/useTasksTable.js`, etc.
-
-Specialized hooks for TasksView data.
+These callbacks are the primary mechanism for drawer-to-view data synchronization.
 
 ---
 
-## Data Source Abstraction Layer
+## JWT Lifecycle
 
-**File:** `src/lib/dataSource.js`
+Wasabi uses a refresh token pattern with JWT. The access token is stored **in memory only** (the `_jwtInMemory` variable in `src/lib/api.js`), never in localStorage.
 
-Normalizes data from D1, Notion, Monday into common format.
+### Token Flow
 
-#### Source Detection
+```
+1. User logs in (login endpoint)
+   → Worker returns:
+     - Access token (JWT, 15-min expiry) in response body
+     - Refresh token (7-day expiry) as HttpOnly cookie
 
-```javascript
-resolveSourceType(pageConfig) → "d1" | "notion" | "monday" | "linked_sheet" | "document"
+2. Access token stored in memory (_jwtInMemory in api.js)
+   → Attached to every API request via Authorization header
+
+3. Before each request, apiFetch() checks token expiry
+   → If < 2 minutes remaining: triggers auto-refresh
+   → Calls /auth/refresh endpoint (sends HttpOnly cookie)
+   → Receives new access token in response body
+   → Updates _jwtInMemory
+
+4. If request returns 401:
+   → apiFetch() attempts one refresh retry
+   → Calls /auth/refresh endpoint
+   → If refresh succeeds: retries original request with new token
+   → If refresh fails: clears identity, redirects to login
 ```
 
-#### Output Format (All Sources)
+### What Is NOT in localStorage
 
-```javascript
-{
-  data: [
-    {
-      id: string,
-      properties: { [fieldName]: { type, ...value } },
-      created_time: ISO8601,
-      last_edited_time: ISO8601,
-      _databaseId?: string,
-    },
-  ],
-  schema: { /* detected schema */ },
-  schemas: { [dbId]: schema },
-}
-```
+JWT tokens are never stored in localStorage. The `_jwtInMemory` variable in api.js is the sole location for the access token. The refresh token exists only as an HttpOnly cookie (not accessible to JavaScript).
 
 ---
 
-## WebSocket Connections
+## WebSocket Data Flow
 
-### TableSocket (tableSocket.js)
+### TableRoom (Per-Table Collaboration)
 
-Real-time collaboration for single table.
+```
+CollaborationContext connects to TableRoom DO
+  → wss://{worker}/ws/table/{tableId}?token={jwt}
+  → Sends: join, focus, blur, typing, stop_typing, save
+  → Receives: presence, user_joined, user_left, record_updated, save_result, conflict
+```
 
-**URL:** `wss://{worker}/ws/table/{tableId}?token={jwt}`
+Used for: real-time presence, typing indicators, field-level conflict detection, live record updates.
 
-**Messages:**
-- Client → Server: `join`, `focus`, `blur`, `typing`, `stop_typing`, `save`
-- Server → Client: `presence`, `user_joined`, `user_left`, `record_updated`, `conflict`, `save_result`
+### UserRoom (Per-User Cross-Device)
 
-### UserSocket (userSocket.js)
+```
+UserSyncContext connects to UserRoom DO
+  → wss://{worker}/ws/user/{userId}?token={jwt}
+  → Sends: nav_update
+  → Receives: nav_update, session_revoked
+```
 
-Multi-device synchronization.
-
-**URL:** `wss://{worker}/ws/user/{userId}?token={jwt}`
-
-**Messages:**
-- Client → Server: `nav_update`
-- Server → Client: `nav_update`, `session_revoked`
+Used for: syncing navigation across devices, broadcasting session revocation.
 
 ---
 
 ## localStorage Keys
 
+Only these keys are used in the current implementation:
+
 | Key | Purpose |
 |-----|---------|
-| `wasabi_user_keys` | Credentials |
 | `wasabi_connection` | Worker URL + secret |
-| `wasabi_platform_ids` | Workspace IDs |
-| `wasabi_page_configs` | Cached page list |
-| `wasabi_jwt` | Auth token (multi-user) |
-| `wasabi_sidebar_collapsed` | Sidebar state |
-| `wasabi_panel_open` | Chat panel state |
-| `wasabi_view_states` | View selection per page |
-| `wasabi_theme` | Theme preference |
+| `wasabi_sidebar_collapsed` | Sidebar collapsed/expanded state |
+| `wasabi_panel_open` | WasabiPanel (chat) open/closed state |
+| `wasabi_active_page` | Last active page ID |
+| `wasabi_theme` | Theme name |
+
+**JWT is NOT in localStorage.** The access token lives in memory (`_jwtInMemory` in api.js). The refresh token is an HttpOnly cookie.
 
 ---
 
-## Known Issues & Gaps
+## Standard Data Flow Patterns
 
-### 1. Race Condition in AuthContext Bootstrap
-- If `workerConnection` changes while `initDatabase()` in flight, state consistency broken
-- **Impact:** Multi-device switching may leave identity unvalidated
+### User Action → API → Re-render
 
-### 2. JWT Stored in Plain localStorage
-- No expiration check before use
-- Vulnerable to XSS attacks
-- **Impact:** Token theft possible if XSS vulnerability exists
+```
+User action (click, type, etc.)
+  → React component handler
+  → apiFetch() [src/lib/api.js] with JWT in Authorization header
+  → Cloudflare Worker endpoint [worker.js]
+  → D1/R2 query
+  → JSON response
+  → Context state update (setState)
+  → React re-render
+```
 
-### 3. Unhandled Promise Rejections
-- Many `.catch(() => {})` silence errors without logging
-- No error propagation to UI
-- **Impact:** Silent failures, difficult debugging
+### Real-Time Collaboration
 
-### 4. No Concurrent Fetch Cancellation
-- If user navigates away while fetch in flight, setState on unmounted component
-- No AbortController cleanup
-- **Impact:** Memory leaks, console warnings
+```
+User A saves record
+  → CollaborationContext.saveRecord() sends via WebSocket
+  → Worker writes to D1, checks cell_versions for conflicts
+  → Worker broadcasts record_updated via TableRoom DO
+  → User B's CollaborationContext receives update
+  → onRecordUpdate callback fires
+  → View re-renders with new data
+```
 
-### 5. Conflict Detection Only in D1
-- Notion-linked databases don't support conflict detection
-- **Impact:** Lost updates if multiple users edit Notion-linked DB simultaneously
+### Cross-Device Navigation Sync
 
-### 6. Notion Data Always Read from D1
-- Frontend never directly queries Notion API
-- All reads go through D1 (via worker)
-- **Impact:** Limits real-time sync frequency, stale data possible
+```
+Device A: user navigates to page
+  → UserSyncContext.sendNavUpdate(pageId, folderId)
+  → Worker broadcasts via UserRoom DO
+  → Device B receives nav_update
+  → onNavUpdate callback fires
+  → NavigationContext.setActivePage(pageId)
+```
