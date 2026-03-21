@@ -67,7 +67,7 @@ export default function Navigation({
       try {
         const res = await getUnreadNotificationCount();
         if (!cancelled) setNotifUnreadCount(res?.unread_count || 0);
-      } catch (_) {}
+      } catch (err) { console.warn("[Navigation] getUnreadNotificationCount:", err.message || err); }
     }
     pollNotifCount();
     notifPollRef.current = setInterval(pollNotifCount, 30_000);
@@ -238,11 +238,11 @@ export default function Navigation({
       const pt = pageConfig.pageType || pageConfig.page_type;
       if (pt !== "linked_notion") {
         for (const dbId of (pageConfig.databaseIds || [])) {
-          archivePage(user.workerUrl, user.notionKey, dbId).catch(() => {});
+          archivePage(user.workerUrl, user.notionKey, dbId).catch(err => console.warn("[Navigation] archivePage:", err.message || err));
         }
       }
       if (pt === "document" && pageConfig.notionPageId) {
-        archivePage(user.workerUrl, user.notionKey, pageConfig.notionPageId).catch(() => {});
+        archivePage(user.workerUrl, user.notionKey, pageConfig.notionPageId).catch(err => console.warn("[Navigation] archivePage:", err.message || err));
       }
     }
   }, [user, removePage]);

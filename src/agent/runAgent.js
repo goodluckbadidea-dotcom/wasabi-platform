@@ -322,7 +322,7 @@ async function callClaude({
             cacheHit,
             routeReason,
           });
-        } catch {}
+        } catch (err) { console.warn("[runAgent] recordUsage:", err.message || err); }
       }
 
       return data;

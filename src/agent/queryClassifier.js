@@ -142,7 +142,7 @@ export async function classifyQuery({
           tier: "haiku",
           routeReason: "query_classifier",
         });
-      } catch {}
+      } catch (err) { console.warn("[queryClassifier] recordUsage:", err.message || err); }
     }
 
     // Extract text from response

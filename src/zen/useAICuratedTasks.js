@@ -520,7 +520,7 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
       if (bootstrapQueue.length > 0) {
         Promise.allSettled(
           bootstrapQueue.map((b) => upsertTaskActivity(b.taskId, b.source, b.time))
-        ).catch(() => {});
+        ).catch(err => console.warn("[useAICuratedTasks] upsertTaskActivity:", err.message || err));
       }
 
       // Build interaction type map from new task_interactions table (if available)
@@ -536,10 +536,10 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
                   interactionTypeMap.set(i.task_id, i.interaction_type);
                 }
               }
-            } catch {}
+            } catch (err) { console.warn("[useAICuratedTasks] listTaskInteractions:", err.message || err); }
           });
           await Promise.allSettled(intPromises);
-        } catch {}
+        } catch (err) { console.warn("[useAICuratedTasks] interaction fetch:", err.message || err); }
       }
 
       // Annotate all tasks with staleness/overdue signals

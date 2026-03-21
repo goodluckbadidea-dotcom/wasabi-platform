@@ -161,7 +161,7 @@ export default function PageShell({
             const nonOverlapping = conflictList.filter((c) => c.field !== propertyName);
             if (nonOverlapping.length > 0) {
               for (const c of nonOverlapping) {
-                updateRecord(pageConfig, c.recordId, c.field, c.currentValue, user).catch(() => {});
+                updateRecord(pageConfig, c.recordId, c.field, c.currentValue, user).catch(err => console.warn("[PageShell] updateRecord:", err.message || err));
               }
             }
             if (overlapping.length > 0) {

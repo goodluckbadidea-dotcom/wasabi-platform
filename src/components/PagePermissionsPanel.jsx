@@ -31,7 +31,7 @@ export default function PagePermissionsPanel({ pageId }) {
       ]);
       setPermissions(permRes.permissions || []);
       setUsers(userRes.users || []);
-    } catch (_) {}
+    } catch (err) { console.warn("[PagePermissionsPanel] load:", err.message || err); }
     setLoading(false);
   }, [pageId]);
 
@@ -46,7 +46,7 @@ export default function PagePermissionsPanel({ pageId }) {
         await setPagePermission(pageId, userId, newPerm);
       }
       await load();
-    } catch (_) {}
+    } catch (err) { console.warn("[PagePermissionsPanel] handleChange:", err.message || err); }
     setSaving(null);
   }, [pageId, load]);
 

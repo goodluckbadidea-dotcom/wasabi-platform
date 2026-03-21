@@ -59,7 +59,7 @@ export default class UserSocket {
         for (const handler of this.handlers) {
           handler(msg);
         }
-      } catch {}
+      } catch (err) { console.warn("[userSocket] JSON parse:", err.message); }
     };
 
     this.ws.onclose = (event) => {

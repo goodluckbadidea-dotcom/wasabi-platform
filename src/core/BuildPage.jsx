@@ -707,7 +707,7 @@ export default function BuildPage({ onOpenChat }) {
       const type = activeTab === "views" ? "view" : "plugin";
       api.listCustomFunctions({ type, status: "active" })
         .then((res) => setItems(res?.entries || []))
-        .catch(() => {});
+        .catch(err => console.warn("[BuildPage] listCustomFunctions:", err.message || err));
     }, 3000);
   }, [onOpenChat, activeTab]);
 

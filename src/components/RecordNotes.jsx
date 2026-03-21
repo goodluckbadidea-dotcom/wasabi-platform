@@ -20,7 +20,7 @@ function parseNoteData(raw) {
     if (parsed._mode === "log") {
       return { mode: "log", text: "", entries: parsed.entries || [] };
     }
-  } catch {}
+  } catch (err) { console.warn("[RecordNotes] JSON parse:", err.message); }
   return { mode: "free", text: raw, entries: [] };
 }
 

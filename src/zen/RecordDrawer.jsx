@@ -146,17 +146,17 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
     if (isNotion && !fieldMap.notes && task.id && pageConfigId) {
       getRecordNote(task.id, pageConfigId)
         .then((res) => { if (res?.note?.content) setNotes(res.note.content); })
-        .catch(() => {});
+        .catch(err => console.warn("[RecordDrawer] getRecordNote:", err.message || err));
     }
     // Log view interaction
     if (task.id && task.source) {
-      logTaskInteraction(task.id, task.source, identity?.id, "view", null).catch(() => {});
+      logTaskInteraction(task.id, task.source, identity?.id, "view", null).catch(err => console.warn("[RecordDrawer] logTaskInteraction:", err.message || err));
     }
     // Fetch interaction summary for smart display
     if (task.id) {
       getInteractionSummary(task.id)
         .then((res) => setInteractionSummary(res?.summary || []))
-        .catch(() => {});
+        .catch(err => console.warn("[RecordDrawer] getInteractionSummary:", err.message || err));
     }
   }, [task.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -200,13 +200,13 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
         }
         // Save notes to wasabi-internal storage if no Notion field mapped
         if (!fieldMap.notes && notes) {
-          await saveRecordNote(task.id, pageConfigId, notes).catch(() => {});
+          await saveRecordNote(task.id, pageConfigId, notes).catch(err => console.warn("[RecordDrawer] saveRecordNote:", err.message || err));
         }
         // Log typed interaction for smart task list scoring
         const statusChanged = status !== task.status;
         if (statusChanged) {
           const detail = `${task.status || "none"} → ${status}`;
-          logTaskInteraction(task.id, task.source, identity?.id, "status_change", detail).catch(() => {});
+          logTaskInteraction(task.id, task.source, identity?.id, "status_change", detail).catch(err => console.warn("[RecordDrawer] logTaskInteraction:", err.message || err));
           onRecordInteraction?.(task.id, "status_change", detail);
         } else if (Object.keys(properties).length > 0) {
           const changedFields = [];
@@ -214,7 +214,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
           if (priority !== task.priority) changedFields.push("priority");
           if (due !== toDateInput(task.due)) changedFields.push("due date");
           if (notes !== (task.notes || "")) changedFields.push("notes");
-          logTaskInteraction(task.id, task.source, identity?.id, "field_edit", changedFields.join(", ")).catch(() => {});
+          logTaskInteraction(task.id, task.source, identity?.id, "field_edit", changedFields.join(", ")).catch(err => console.warn("[RecordDrawer] logTaskInteraction:", err.message || err));
           onRecordInteraction?.(task.id, "field_edit", changedFields.join(", "));
         }
         const updated = { ...task, title, done, status, priority, due, notes };
@@ -245,10 +245,10 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
           const doneChanged = done !== task.done;
           if (statusChanged || doneChanged) {
             const detail = statusChanged ? `${task.status || "none"} → ${status}` : (done ? "completed" : "reopened");
-            logTaskInteraction(task.id, task.source, identity?.id, "status_change", detail).catch(() => {});
+            logTaskInteraction(task.id, task.source, identity?.id, "status_change", detail).catch(err => console.warn("[RecordDrawer] logTaskInteraction:", err.message || err));
             onRecordInteraction?.(task.id, "status_change", detail);
           } else {
-            logTaskInteraction(task.id, task.source, identity?.id, "field_edit", "updated").catch(() => {});
+            logTaskInteraction(task.id, task.source, identity?.id, "field_edit", "updated").catch(err => console.warn("[RecordDrawer] logTaskInteraction:", err.message || err));
             onRecordInteraction?.(task.id, "field_edit", "updated");
           }
         }
@@ -633,8 +633,8 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
           recordId={task.id}
           pageConfigId={pageConfigId}
           onCommentAdded={(text) => {
-            if (task.source) logTaskInteraction(task.id, task.source, identity?.id, "comment", text.slice(0, 50)).catch(() => {});
-            upsertTaskActivity(task.id, task.source, new Date().toISOString()).catch(() => {});
+            if (task.source) logTaskInteraction(task.id, task.source, identity?.id, "comment", text.slice(0, 50)).catch(err => console.warn("[RecordDrawer] logTaskInteraction:", err.message || err));
+            upsertTaskActivity(task.id, task.source, new Date().toISOString()).catch(err => console.warn("[RecordDrawer] upsertTaskActivity:", err.message || err));
           }}
           userId={identity?.id}
           userName={identity?.display_name}
@@ -1051,7 +1051,7 @@ export default function RecordDrawer({ onTaskUpdated, onTaskDeleted, onEventUpda
     const recordId = drawerItem.data.id;
     if (lastTrackedRef.current === recordId) return;
     lastTrackedRef.current = recordId;
-    putRecordView(recordId).catch(() => {});
+    putRecordView(recordId).catch(err => console.warn("[RecordDrawer] putRecordView:", err.message || err));
     if (collab) collab.focusRecord(recordId);
     return () => { if (collab) collab.blurRecord(); };
   }, [drawerItem, identity, collab]);

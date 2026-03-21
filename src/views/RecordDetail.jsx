@@ -437,7 +437,7 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
       .then((res) => {
         setTeamUsers(res.users || []);
       })
-      .catch(() => {});
+      .catch(err => console.warn("[RecordDetail] listUserDirectory:", err.message || err));
   }, []);
 
   // Close owner picker on outside click

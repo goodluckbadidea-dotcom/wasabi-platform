@@ -249,7 +249,7 @@ export default function GmailView() {
       setExpandedBody(full);
       // Mark as read
       if (msg.labelIds?.includes("UNREAD")) {
-        modifyEmail(msg.id, "mark_read").catch(() => {});
+        modifyEmail(msg.id, "mark_read").catch(err => console.warn("[GmailView] modifyEmail:", err.message || err));
         // Optimistically update label
         setMessages((prev) =>
           prev.map((m) =>

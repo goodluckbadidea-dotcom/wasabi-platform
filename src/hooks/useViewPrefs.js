@@ -22,7 +22,7 @@ export default function useViewPrefs() {
       const vp = res?.state?.view_prefs || {};
       setPrefs(vp);
       prefsRef.current = vp;
-    }).catch(() => {});
+    }).catch(err => console.warn("[useViewPrefs] getUserState:", err.message || err));
     return () => { loadedRef.current = false; };
   }, [identity?.id]);
 

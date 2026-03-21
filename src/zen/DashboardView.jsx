@@ -60,7 +60,7 @@ export default function DashboardView() {
           saveWidgetsLocal(key, w);
         }
       })
-      .catch(() => {}); // Fall back to localStorage
+      .catch(err => console.warn("[DashboardView] getUserDashboard:", err.message || err)); // Fall back to localStorage
   }, [identity, key]);
 
   // ── Listen for dashboard updates from other devices ──
@@ -93,7 +93,7 @@ export default function DashboardView() {
     // Debounced D1 save
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      putUserDashboard(newWidgets).catch(() => {});
+      putUserDashboard(newWidgets).catch(err => console.warn("[DashboardView] putUserDashboard:", err.message || err));
     }, 1000);
   }, [key, userSync]);
 

@@ -1052,7 +1052,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     if (!showOwnerColumn) return;
     listUserDirectory().then((res) => {
       setTeamUsers(res.users || []);
-    }).catch(() => {});
+    }).catch(err => console.warn("[Table] listUserDirectory:", err.message || err));
   }, [showOwnerColumn]);
 
   // ── Ghost Row (inline new record creation) ──
@@ -1103,7 +1103,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     if (!pageConfig?.id) return;
     resolveLinksForView(pageConfig.id, viewIdx)
       .then(setResolvedLinks)
-      .catch(() => {});
+      .catch(err => console.warn("[Table] resolveLinksForView:", err.message || err));
   }, [pageConfig?.id, viewIdx, resolveLinksForView]);
   const targetDatabaseId = config.databaseId || pageConfig?.databaseIds?.[0] || pageConfig?.id;
 
@@ -1550,7 +1550,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
         if (ids.length === 0) return;
         const res = await getRecordBadgeCounts(ids, pageConfig.id);
         setBadgeCounts(res?.counts || {});
-      } catch {}
+      } catch (err) { console.warn("[Table] getRecordBadgeCounts:", err.message || err); }
     }, 500);
     return () => { if (badgeFetchRef.current) clearTimeout(badgeFetchRef.current); };
   }, [processedData, pageConfig?.id]);
@@ -2861,7 +2861,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           onLinkField={(fieldName, fieldType) => setLinkPickerCell({ pageId: detailPage.id, field: fieldName, fieldType })}
           onUnlinkField={(linkId) => {
             removeLink(linkId);
-            resolveLinksForView(pageConfig?.id, viewIdx).then(setResolvedLinks).catch(() => {});
+            resolveLinksForView(pageConfig?.id, viewIdx).then(setResolvedLinks).catch(err => console.warn("[Table] resolveLinksForView:", err.message || err));
           }}
           onRefresh={onRefresh}
         />
@@ -2956,7 +2956,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
             // Refresh resolved links
             resolveLinksForView(pageConfig?.id, viewIdx)
               .then(setResolvedLinks)
-              .catch(() => {});
+              .catch(err => console.warn("[Table] resolveLinksForView:", err.message || err));
             setLinkPickerCell(null);
           }}
         />

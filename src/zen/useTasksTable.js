@@ -43,14 +43,14 @@ export default function useTasksTable() {
             if (!cancelled) setTableId(state.zen_tasks_table_id);
             return;
           }
-        } catch {}
+        } catch (err) { console.warn("[useTasksTable] getUserState:", err.message || err); }
 
         // Fallback: search pages for existing zen table (may exist from before user_state was set)
         const existing = pages.find((p) => p._systemInternal || (p.name && p.name.startsWith("Zen Tasks")));
         if (existing) {
           if (!cancelled) setTableId(existing.id);
           // Persist to user_state so we find it next time
-          putUserState({ zen_tasks_table_id: existing.id }).catch(() => {});
+          putUserState({ zen_tasks_table_id: existing.id }).catch(err => console.warn("[useTasksTable] putUserState:", err.message || err));
           return;
         }
       }
@@ -87,7 +87,7 @@ export default function useTasksTable() {
 
           // Save to user_state if logged in
           if (identity?.id) {
-            putUserState({ zen_tasks_table_id: id }).catch(() => {});
+            putUserState({ zen_tasks_table_id: id }).catch(err => console.warn("[useTasksTable] putUserState:", err.message || err));
           } else {
             localStorage.setItem("wasabi_tasks_table_id", id);
           }

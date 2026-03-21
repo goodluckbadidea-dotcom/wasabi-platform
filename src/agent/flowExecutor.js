@@ -337,7 +337,7 @@ async function executeAction(node, inputs, opts) {
               type: "summary",
               source: `flow:${node.label}`,
             });
-          } catch (_) {}
+          } catch (err) { console.warn("[flowExecutor] createNotification:", err.message || err); }
           return { _action: "email_composed", to, subject, body, ...inputs };
         }
         case "create_page": {
@@ -459,7 +459,7 @@ async function executeFunctionNode(node, inputs) {
       output_summary: JSON.stringify({ type: typeof result.result }),
       duration_ms: durationMs,
       error: result.success ? "" : "execution failed",
-    }).catch(() => {});
+    }).catch(err => console.warn("[flowExecutor] createFunctionExecution:", err.message || err));
   } catch { /* ignore */ }
 
   if (!result.success) throw new Error(`Function "${fn.name}" execution failed`);
@@ -517,7 +517,7 @@ async function executePluginNode(node, inputs) {
       output_summary: JSON.stringify({ type: typeof result.result }),
       duration_ms: durationMs,
       error: result.success ? "" : "execution failed",
-    }).catch(() => {});
+    }).catch(err => console.warn("[flowExecutor] createFunctionExecution:", err.message || err));
   } catch { /* ignore */ }
 
   if (!result.success) throw new Error(`Plugin "${fn.name}" execution failed`);

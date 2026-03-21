@@ -76,7 +76,7 @@ function NotificationCard({ notif, expanded, onToggle, onMarkRead, onDismiss, on
       setReplyText("");
       setReplySuccess(true);
       setTimeout(() => setReplySuccess(false), 2000);
-    } catch (_) {}
+    } catch (err) { console.warn("[NotificationFeed] handleReply:", err.message || err); }
     setReplying(false);
   };
 
@@ -461,18 +461,18 @@ export default function NotificationFeed() {
 
   const markAsRead = useCallback(async (notifId) => {
     setNotifications((prev) => prev.map((n) => (n.id === notifId ? { ...n, status: "read" } : n)));
-    try { await api.updateNotification(notifId, { status: "read" }); } catch (_) {}
+    try { await api.updateNotification(notifId, { status: "read" }); } catch (err) { console.warn("[NotificationFeed] markAsRead:", err.message || err); }
   }, []);
 
   const markAllRead = useCallback(async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, status: "read" })));
-    try { await api.markAllNotificationsRead(); } catch (_) {}
+    try { await api.markAllNotificationsRead(); } catch (err) { console.warn("[NotificationFeed] markAllRead:", err.message || err); }
   }, []);
 
   const dismissNotification = useCallback(async (notifId) => {
     setNotifications((prev) => prev.filter((n) => n.id !== notifId));
     setExpandedId(null);
-    try { await api.deleteNotification(notifId); } catch (_) {}
+    try { await api.deleteNotification(notifId); } catch (err) { console.warn("[NotificationFeed] dismissNotification:", err.message || err); }
   }, []);
 
   const toggleExpand = useCallback((notifId) => {
@@ -525,7 +525,7 @@ export default function NotificationFeed() {
   // Save preferences
   const handleUpdatePrefs = useCallback(async (newPrefs) => {
     setPrefs(newPrefs);
-    try { await api.putNotificationPreferences(newPrefs); } catch (_) {}
+    try { await api.putNotificationPreferences(newPrefs); } catch (err) { console.warn("[NotificationFeed] putNotificationPreferences:", err.message || err); }
   }, []);
 
   // Filter by tab

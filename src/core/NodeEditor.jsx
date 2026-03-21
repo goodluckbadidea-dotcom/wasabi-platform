@@ -1179,7 +1179,7 @@ export default function NodeEditor({ automationEngine }) {
           status: "completed",
           node_states: nodeStates,
           completed_at: new Date().toISOString(),
-        }).catch(() => {});
+        }).catch(err => console.warn("[NodeEditor] updateFlowExecution:", err.message || err));
       }
     } catch (err) {
       console.error("[NodeEditor] Flow execution error:", err);
@@ -1190,7 +1190,7 @@ export default function NodeEditor({ automationEngine }) {
           node_states: nodeStates,
           error: err.message,
           completed_at: new Date().toISOString(),
-        }).catch(() => {});
+        }).catch(err2 => console.warn("[NodeEditor] updateFlowExecution:", err2.message || err2));
       }
     } finally {
       setIsRunning(false);

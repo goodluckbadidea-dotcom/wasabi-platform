@@ -46,7 +46,7 @@ export function NeuronsProvider({ children }) {
   useEffect(() => {
     loadNeurons()
       .then((list) => setNeurons(list))
-      .catch(() => {});
+      .catch(err => console.warn("[NeuronsContext] loadNeurons:", err.message || err));
     rebuildNodeMap();
   }, []);
 

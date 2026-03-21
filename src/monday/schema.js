@@ -211,7 +211,7 @@ function convertColumnValue(cv, col, notionType) {
   let parsed = null;
   try {
     if (cv.value) parsed = JSON.parse(cv.value);
-  } catch {}
+  } catch (err) { console.warn("[schema] JSON parse:", err.message); }
 
   switch (notionType) {
     case "rich_text":

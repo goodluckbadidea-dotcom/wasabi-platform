@@ -1678,7 +1678,7 @@ export function createToolExecutor({
               output_summary: JSON.stringify({ preview: outputPreview }),
               duration_ms: durationMs,
               error: result.success ? "" : (result.error || "execution failed"),
-            }).catch(() => {});
+            }).catch(err => console.warn("[toolExecutor] createFunctionExecution:", err.message || err));
           } catch { /* ignore audit log failures */ }
 
           if (!result.success) return JSON.stringify({ error: `Function "${fn.name}" failed`, function_id });
@@ -1724,7 +1724,7 @@ export function createToolExecutor({
               trigger_source: "chat", status: "error",
               duration_ms: Date.now() - execStart,
               error: err.message,
-            }).catch(() => {});
+            }).catch(err => console.warn("[toolExecutor] createFunctionExecution:", err.message || err));
           } catch { /* ignore */ }
           return JSON.stringify({ error: `Failed to run function: ${err.message}`, function_id });
         }

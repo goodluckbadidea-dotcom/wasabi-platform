@@ -453,7 +453,7 @@ export default function Sheet({ pageConfig }) {
       if (newCC > colCount || newRC > rowCount) {
         setColCount(newCC);
         setRowCount(newRC);
-        resizeSheet(sheetId, { col_count: newCC, row_count: newRC }).catch(() => {});
+        resizeSheet(sheetId, { col_count: newCC, row_count: newRC }).catch(err => console.warn("[Sheet] resizeSheet:", err.message || err));
       }
     }
 
@@ -506,7 +506,7 @@ export default function Sheet({ pageConfig }) {
     const onUp = () => {
       if (resizeDrag.current) {
         const finalWidths = { ...colWidthsRef.current };
-        updateSheet(sheetId, { col_widths: finalWidths }).catch(() => {});
+        updateSheet(sheetId, { col_widths: finalWidths }).catch(err => console.warn("[Sheet] updateSheet:", err.message || err));
       }
       resizeDrag.current = null;
       document.removeEventListener("mousemove", onMove);
@@ -531,7 +531,7 @@ export default function Sheet({ pageConfig }) {
     };
     const onUp = () => {
       if (rowResizeDrag.current) {
-        updateSheet(sheetId, { row_heights: rowHeightsRef.current }).catch(() => {});
+        updateSheet(sheetId, { row_heights: rowHeightsRef.current }).catch(err => console.warn("[Sheet] updateSheet:", err.message || err));
       }
       rowResizeDrag.current = null;
       document.removeEventListener("mousemove", onMove);
@@ -551,7 +551,7 @@ export default function Sheet({ pageConfig }) {
     }
     maxW = Math.min(maxW, 400);
     setColWidths((prev) => ({ ...prev, [col]: maxW }));
-    updateSheet(sheetId, { col_widths: { ...colWidthsRef.current, [col]: maxW } }).catch(() => {});
+    updateSheet(sheetId, { col_widths: { ...colWidthsRef.current, [col]: maxW } }).catch(err => console.warn("[Sheet] updateSheet:", err.message || err));
   }, [cells, rowCount, sheetId]);
 
   // ─── Structure operations ───
@@ -571,14 +571,14 @@ export default function Sheet({ pageConfig }) {
   const toggleFreezeCol = useCallback((colIdx) => {
     const newFrozen = { ...frozen, cols: frozen.cols >= colIdx ? 0 : colIdx };
     setFrozen(newFrozen);
-    updateSheet(sheetId, { frozen: newFrozen }).catch(() => {});
+    updateSheet(sheetId, { frozen: newFrozen }).catch(err => console.warn("[Sheet] updateSheet:", err.message || err));
     setContextMenu(null);
   }, [frozen, sheetId]);
 
   const toggleFreezeRow = useCallback((rowIdx) => {
     const newFrozen = { ...frozen, rows: frozen.rows >= rowIdx ? 0 : rowIdx };
     setFrozen(newFrozen);
-    updateSheet(sheetId, { frozen: newFrozen }).catch(() => {});
+    updateSheet(sheetId, { frozen: newFrozen }).catch(err => console.warn("[Sheet] updateSheet:", err.message || err));
     setContextMenu(null);
   }, [frozen, sheetId]);
 
@@ -834,7 +834,7 @@ export default function Sheet({ pageConfig }) {
         }
         tsv += rowArr.join("\t") + "\n";
       }
-      navigator.clipboard.writeText(tsv).catch(() => {});
+      navigator.clipboard.writeText(tsv).catch(err => console.warn("[Sheet] clipboard write:", err.message || err));
       return;
     }
 
@@ -859,7 +859,7 @@ export default function Sheet({ pageConfig }) {
         }
         tsv += rowArr.join("\t") + "\n";
       }
-      navigator.clipboard.writeText(tsv).catch(() => {});
+      navigator.clipboard.writeText(tsv).catch(err => console.warn("[Sheet] clipboard write:", err.message || err));
       return;
     }
 
@@ -897,7 +897,7 @@ export default function Sheet({ pageConfig }) {
             });
           });
           batchUpdateWithUndo(patch);
-        }).catch(() => {});
+        }).catch(err => console.warn("[Sheet] clipboard read:", err.message || err));
       }
       return;
     }

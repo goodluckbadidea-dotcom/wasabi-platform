@@ -371,7 +371,7 @@ export default function SystemManager() {
     setConnectionsLoading(true);
     Promise.all([
       getConnections().then((data) => setConnections(data.connections || [])),
-      getGoogleStatus().then(setGoogleStatus).catch(() => {}),
+      getGoogleStatus().then(setGoogleStatus).catch(err => console.warn("[SystemManager] getGoogleStatus:", err.message || err)),
     ])
       .catch((err) => console.warn("Failed to load connections:", err))
       .finally(() => setConnectionsLoading(false));
@@ -403,7 +403,7 @@ export default function SystemManager() {
             setGoogleError(e.data.detail || "OAuth failed");
           }
           // Refresh status
-          getGoogleStatus().then(setGoogleStatus).catch(() => {});
+          getGoogleStatus().then(setGoogleStatus).catch(err => console.warn("[SystemManager] getGoogleStatus:", err.message || err));
           setGoogleLoading(false);
         }
       };
@@ -414,7 +414,7 @@ export default function SystemManager() {
         if (popup?.closed) {
           clearInterval(pollId);
           window.removeEventListener("message", onMessage);
-          getGoogleStatus().then(setGoogleStatus).catch(() => {});
+          getGoogleStatus().then(setGoogleStatus).catch(err => console.warn("[SystemManager] getGoogleStatus:", err.message || err));
           setGoogleLoading(false);
         }
       }, 1000);
@@ -1812,7 +1812,7 @@ function UsersTab({ identity }) {
           }}>
             Invite code:{" "}
             <span
-              onClick={() => { try { navigator.clipboard.writeText(lastInvite.invite_code); } catch {} }}
+              onClick={() => { try { navigator.clipboard.writeText(lastInvite.invite_code); } catch (err) { console.warn("[SystemManager] clipboard write:", err.message); } }}
               style={{
                 fontFamily: MONO,
                 fontWeight: 700,
@@ -2219,7 +2219,7 @@ function AuditLogTab() {
           {entries.map((e) => {
             const color = ACTION_COLORS[e.action] || C.darkMuted;
             let details = {};
-            try { details = JSON.parse(e.details || "{}"); } catch (_) {}
+            try { details = JSON.parse(e.details || "{}"); } catch (err) { console.warn("[SystemManager] JSON parse:", err.message); }
             const ts = e.created_at ? new Date(e.created_at + "Z").toLocaleString() : "";
             return (
               <div key={e.id} style={{

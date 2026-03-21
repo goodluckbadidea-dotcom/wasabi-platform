@@ -321,7 +321,7 @@ export default function NetworkGraph({ automationEngine }) {
                 }
                 edges.push({ source: `auto_${rule.id}`, target: pageId, directed: true });
               }
-            } catch {}
+            } catch (err) { console.warn("[NetworkGraph] JSON parse:", err.message); }
           }
         });
 

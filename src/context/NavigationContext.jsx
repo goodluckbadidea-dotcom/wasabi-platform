@@ -48,7 +48,7 @@ export function NavigationProvider({ children }) {
           saveJSON("wasabi_active_page", state.last_page);
         }
       })
-      .catch(() => {});
+      .catch(err => console.warn("[NavigationContext] getUserState:", err.message || err));
   }, [identity]);
 
   // Reset restoration flag on identity change (user switch)
@@ -62,7 +62,7 @@ export function NavigationProvider({ children }) {
     if (!identity?.id || !activePage) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      putUserState({ last_page: activePage }).catch(() => {});
+      putUserState({ last_page: activePage }).catch(err => console.warn("[NavigationContext] putUserState:", err.message || err));
     }, 500);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [activePage, identity]);

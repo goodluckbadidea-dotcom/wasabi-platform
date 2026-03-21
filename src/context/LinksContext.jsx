@@ -51,7 +51,7 @@ export function LinksProvider({ children }) {
   // Remove a link
   const removeLink = useCallback(async (linkId) => {
     setLinks((prev) => prev.filter((l) => l.id !== linkId));
-    deleteLink(null, null, linkId).catch(() => {});
+    deleteLink(null, null, linkId).catch(err => console.warn("[LinksContext] deleteLink:", err.message || err));
   }, []);
 
   // Fetch data for a source ref (with caching)
@@ -75,7 +75,7 @@ export function LinksProvider({ children }) {
           const data = await queryAll(user.workerUrl, user.notionKey, dbId);
           dataCacheRef.current[cacheKey] = { data, fetchedAt: Date.now() };
           return { notionData: data, sheetDataMap: {} };
-        } catch {}
+        } catch (err) { console.warn("[LinksContext] queryAll:", err.message || err); }
       }
       return { notionData: [], sheetDataMap: {} };
     }
@@ -90,7 +90,7 @@ export function LinksProvider({ children }) {
         const data = await fetchSheetData(user.workerUrl, sourceRef.sheetUrl);
         dataCacheRef.current[cacheKey] = { data, fetchedAt: Date.now() };
         return { notionData: [], sheetDataMap: { [sourceRef.sheetUrl]: data } };
-      } catch {}
+      } catch (err) { console.warn("[LinksContext] fetchSheetData:", err.message || err); }
       return { notionData: [], sheetDataMap: {} };
     }
 
