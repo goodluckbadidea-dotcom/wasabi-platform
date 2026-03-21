@@ -5,6 +5,7 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import Drawer from "../core/Drawer.jsx";
+import { useViewport } from "../context/ViewportContext.jsx";
 import { useRecordDrawer } from "./RecordDrawerContext.jsx";
 import {
   updateRow, deleteRow, updateCalendarEvent, deleteCalendarEvent,
@@ -1052,6 +1053,7 @@ function WorkspaceSettingsEditor({ workspace, onClose }) {
 export default function RecordDrawer({ onTaskUpdated, onTaskDeleted, onEventUpdated, onEventDeleted, onRecordInteraction }) {
   const { drawerItem, closeDrawer } = useRecordDrawer();
   const { identity } = usePlatform();
+  const { isTablet } = useViewport();
   const collab = useCollaboration();
 
   // Track record view for read receipts + collaboration focus
@@ -1075,7 +1077,8 @@ export default function RecordDrawer({ onTaskUpdated, onTaskDeleted, onEventUpda
       : drawerItem.type === "workspace-settings"
         ? `${drawerItem.data?.name || "Workspace"} Settings`
         : "Edit Event";
-  const width = drawerItem.type === "email" ? 560 : 480;
+  const desktopW = drawerItem.type === "email" ? 560 : 480;
+  const width = isTablet ? 360 : desktopW;
 
   return (
     <Drawer open={!!drawerItem} onClose={closeDrawer} title={title} side="right" width={width}>

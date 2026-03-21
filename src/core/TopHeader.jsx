@@ -90,9 +90,9 @@ export default function TopHeader() {
       {saveStatus !== "idle" && (
         <div style={{
           fontSize: 10, fontFamily: FONT, fontWeight: 500,
-          color: saveStatus === "error" ? "#E05252" : saveStatus === "saving" ? C.darkMuted : C.accent,
+          color: saveStatus === "error" ? C.error : saveStatus === "saving" ? C.darkMuted : C.accent,
           padding: "4px 10px", borderRadius: RADIUS.pill, flexShrink: 0,
-          background: saveStatus === "error" ? "#E0525215" : "transparent",
+          background: saveStatus === "error" ? C.errorDim : "transparent",
           transition: "all 0.2s",
           letterSpacing: "0.03em",
         }}>

@@ -5,6 +5,7 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { C, FONT, RADIUS, SHADOW, getSolidPillColor } from "../design/tokens.js";
+import { useViewport } from "../context/ViewportContext.jsx";
 import { readProp, buildProp } from "../notion/properties.js";
 import { IconClose, IconEdit, IconExpand } from "../design/icons.jsx";
 import { timeAgo } from "../utils/helpers.js";
@@ -416,6 +417,7 @@ const OwnerPickerDropdown = React.forwardRef(function OwnerPickerDropdown({ owne
 
 // ── Main Component ──
 export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete, pageConfigId, resolvedLinks, onLinkField, onUnlinkField, onRefresh }) {
+  const { isTablet } = useViewport();
   const [editingField, setEditingField] = useState(null);
   const [editValue, setEditValue] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -536,7 +538,7 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
 
   return (
     <div style={ds.overlay} onClick={onClose} onKeyDown={(e) => e.stopPropagation()}>
-      <div style={ds.drawer} onClick={(e) => e.stopPropagation()}>
+      <div style={{ ...ds.drawer, ...(isTablet ? { width: 400 } : {}) }} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div style={ds.header}>
           <div style={{ ...ds.title, display: "flex", alignItems: "center", gap: 8 }}>

@@ -16,10 +16,12 @@ import { ZEN_TOOLS_ADMIN, ZEN_TOOLS_EDITOR, ZEN_TOOLS_VIEWER } from "../agent/to
 import { runAgent } from "../agent/runAgent.js";
 import { fetchGoogleContext } from "../google/googleContext.js";
 import * as api from "../lib/api.js";
+import { useViewport } from "../context/ViewportContext.jsx";
 
 const DEFAULT_WIDTH = 320;
 const MIN_WIDTH = 280;
 const MAX_WIDTH = 640;
+const TABLET_MAX_WIDTH = 400;
 
 const TASK_CACHE_KEY = "wasabi_ai_tasks_v4";
 const TASK_CACHE_TTL = 15 * 60 * 1000;
@@ -197,6 +199,8 @@ export default function ChatPanel({
   onClearPendingMessage,
 }) {
   const { user, identity, pages } = usePlatform();
+  const { isTablet } = useViewport();
+  const maxW = isTablet ? TABLET_MAX_WIDTH : MAX_WIDTH;
   const canUseAgent = !identity || identity.role === "admin";
 
   // ── Tab state (persisted) ──
@@ -239,7 +243,7 @@ export default function ChatPanel({
     if (!isDragging) return;
     const handleDragMove = (e) => {
       const delta = e.clientX - dragRef.current.startX;
-      const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, dragRef.current.startWidth + delta));
+      const newWidth = Math.min(maxW, Math.max(MIN_WIDTH, dragRef.current.startWidth + delta));
       setPanelWidth(newWidth);
     };
     const handleDragEnd = () => setIsDragging(false);

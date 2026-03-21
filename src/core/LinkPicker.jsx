@@ -6,6 +6,7 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
+import { useViewport } from "../context/ViewportContext.jsx";
 import { queryAll } from "../notion/pagination.js";
 import { detectSchema } from "../notion/schema.js";
 import { fetchSheetData } from "../sheets/sheetClient.js";
@@ -118,6 +119,7 @@ function LinkPickerGrid({ viewData, targetFieldType, selectedCell, setSelectedCe
 
 export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode = "source", targetFieldType }) {
   const { user, pages } = usePlatform();
+  const { isTablet } = useViewport();
   const [search, setSearch] = useState("");
   const [selectedPage, setSelectedPage] = useState(null);
   const [selectedView, setSelectedView] = useState(null);
@@ -270,7 +272,7 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
     card: {
       background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
       borderRadius: RADIUS.xl, boxShadow: SHADOW.dropdown,
-      width: "90vw", maxWidth: 860, maxHeight: "80vh",
+      width: "90vw", maxWidth: isTablet ? 600 : 860, maxHeight: "80vh",
       display: "flex", flexDirection: "column",
       animation: ANIM.modalPop(), fontFamily: FONT, overflow: "hidden",
     },
