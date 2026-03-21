@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { C, FONT, FONT_DISPLAY, RADIUS, Z } from "../design/tokens.js";
 import { ANIM, TRANSITION } from "../design/animations.js";
+import { formatEmailDate, truncate } from "../utils/helpers.js";
 import { searchEmails, getEmail, sendEmail, modifyEmail } from "../lib/api.js";
 import { useRecordDrawer } from "./RecordDrawerContext.jsx";
 import RecordDrawer from "./RecordDrawer.jsx";
@@ -19,29 +20,7 @@ const LABELS = [
 ];
 
 // ── Date formatting ──
-function formatDate(dateStr) {
-  if (!dateStr) return "";
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return dateStr;
-  const now = new Date();
-  const isToday =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  if (isToday) {
-    return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  }
-  const isThisYear = d.getFullYear() === now.getFullYear();
-  if (isThisYear) {
-    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  }
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-}
-
-function truncate(str, max) {
-  if (!str) return "";
-  return str.length > max ? str.slice(0, max) + "..." : str;
-}
+// formatEmailDate and truncate imported from utils/helpers.js
 
 // ── Compose / Reply Modal ──
 function ComposeModal({ onClose, onSent, replyTo }) {
@@ -641,7 +620,7 @@ export default function GmailView() {
                     fontSize: 11, fontFamily: FONT, color: C.darkMuted,
                     flexShrink: 0,
                   }}>
-                    {formatDate(msg.date)}
+                    {formatEmailDate(msg.date)}
                   </span>
 
                   {/* Star button */}
@@ -765,7 +744,7 @@ export default function GmailView() {
                         }}>
                           <div><strong style={{ color: C.darkText }}>From:</strong> {expandedBody?.from || msg.from || ""}</div>
                           <div><strong style={{ color: C.darkText }}>To:</strong> {expandedBody?.to || "me"}</div>
-                          <div><strong style={{ color: C.darkText }}>Date:</strong> {formatDate(expandedBody?.date || msg.date)}</div>
+                          <div><strong style={{ color: C.darkText }}>Date:</strong> {formatEmailDate(expandedBody?.date || msg.date)}</div>
                         </div>
 
                         {/* Body */}

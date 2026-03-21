@@ -7,6 +7,7 @@ import { C, FONT, RADIUS, TIMELINE_PALETTE, VIEW_PALETTE, getStatusColor, getSol
 import { readField, getFieldType, getOptionNames, resolveField } from "./_viewHelpers.js";
 import { buildProp } from "../notion/properties.js";
 import RecordDetail from "./RecordDetail.jsx";
+import { DAY_NAMES, MONTH_NAMES } from "../utils/helpers.js";
 import NewRecordModal from "./NewRecordModal.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 
@@ -76,8 +77,7 @@ function startOfDay(d) {
   return r;
 }
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const DAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+// DAY_NAMES and MONTH_NAMES imported from utils/helpers.js
 
 // ─── Generate timeline headers ───
 
@@ -95,7 +95,7 @@ function buildHeaders(origin, days, pxPerDay) {
 
     if (month !== prevMonth) {
       if (prevMonth >= 0) {
-        months.push({ label: `${MONTHS[prevMonth]} ${year}`, x: monthStart * pxPerDay, width: (i - monthStart) * pxPerDay });
+        months.push({ label: `${MONTH_NAMES[prevMonth]} ${year}`, x: monthStart * pxPerDay, width: (i - monthStart) * pxPerDay });
       }
       monthStart = i;
       prevMonth = month;
@@ -104,7 +104,7 @@ function buildHeaders(origin, days, pxPerDay) {
     if (pxPerDay >= 20) {
       dayHeaders.push({
         label: String(d.getDate()),
-        dayName: DAYS_SHORT[d.getDay()],
+        dayName: DAY_NAMES[d.getDay()],
         x: i * pxPerDay,
         isWeekend: d.getDay() === 0 || d.getDay() === 6,
         isToday: formatDateISO(d) === formatDateISO(new Date()),
@@ -116,7 +116,7 @@ function buildHeaders(origin, days, pxPerDay) {
   if (prevMonth >= 0) {
     const d = addDays(origin, days);
     months.push({
-      label: `${MONTHS[prevMonth]} ${d.getFullYear()}`,
+      label: `${MONTH_NAMES[prevMonth]} ${d.getFullYear()}`,
       x: monthStart * pxPerDay,
       width: (days + 1 - monthStart) * pxPerDay,
     });

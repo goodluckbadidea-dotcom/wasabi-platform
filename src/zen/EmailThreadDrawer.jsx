@@ -7,23 +7,9 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { getThread, sendEmail, createDraft, updateDraft, modifyEmail } from "../lib/api.js";
+import { formatEmailDate } from "../utils/helpers.js";
 
 // ── Helpers ──
-
-function formatDate(dateStr) {
-  if (!dateStr) return "";
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return dateStr;
-  const now = new Date();
-  const isToday =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  if (isToday) return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  const isThisYear = d.getFullYear() === now.getFullYear();
-  if (isThisYear) return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-}
 
 function extractName(fromStr) {
   if (!fromStr) return "?";
@@ -106,7 +92,7 @@ function MessageCard({ msg, isExpanded, onToggle, isHighlighted, innerRef }) {
               {name}
             </span>
             <span style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT, flexShrink: 0 }}>
-              {formatDate(msg.date)}
+              {formatEmailDate(msg.date)}
             </span>
           </div>
           {!isExpanded && (

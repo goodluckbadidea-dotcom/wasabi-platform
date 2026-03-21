@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { C, FONT, RADIUS, Z } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
+import { formatEmailDate, truncate } from "../utils/helpers.js";
 import {
   searchEmails,
   getEmail,
@@ -22,30 +23,7 @@ const LABELS = [
 ];
 
 // ── Date formatting ──
-function formatDate(dateStr) {
-  if (!dateStr) return "";
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return dateStr;
-  const now = new Date();
-  const isToday =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  if (isToday) {
-    return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  }
-  const isThisYear = d.getFullYear() === now.getFullYear();
-  if (isThisYear) {
-    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  }
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-}
-
-// ── Truncate text helper ──
-function truncate(str, max) {
-  if (!str) return "";
-  return str.length > max ? str.slice(0, max) + "..." : str;
-}
+// formatDate and truncate imported from utils/helpers.js
 
 // ── Component ──
 
@@ -333,7 +311,7 @@ export default function GmailView() {
                       {truncate(email.from || email.sender || "(unknown)", 28)}
                     </span>
                     <span style={S.emailDate}>
-                      {formatDate(email.date || email.internalDate)}
+                      {formatEmailDate(email.date || email.internalDate)}
                     </span>
                   </div>
                   <div style={S.emailSubject}>

@@ -7,6 +7,7 @@ import React, { useEffect, useRef, useMemo } from "react";
 import { C, FONT, RADIUS, isLightColor, VIEW_PALETTE, getSolidPillColor, mapCalendarColor } from "../../design/tokens.js";
 import { ANIM, TRANSITION } from "../../design/animations.js";
 import { isSameDay, formatTime, parseDate } from "../taskHelpers.js";
+import { DAY_NAMES, MONTH_NAMES } from "../../utils/helpers.js";
 
 // Priority → palette index mapping
 const PRIORITY_IDX = { High: 9, Medium: 3, Normal: 4, Low: 6 };
@@ -21,8 +22,7 @@ function getTaskBarColor(t) {
   return idx !== undefined ? VIEW_PALETTE[idx].hex : null;
 }
 
-const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// DAY_NAMES and MONTH_NAMES imported from utils/helpers.js
 
 function formatDayLabel(date, today) {
   if (isSameDay(date, today)) return "Today";

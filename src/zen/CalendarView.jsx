@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { C, FONT, RADIUS, VIEW_PALETTE } from "../design/tokens.js";
+import { DAY_NAMES, MONTH_NAMES } from "../utils/helpers.js";
 import { IconEdit } from "../design/icons.jsx";
 import { getGoogleStatus, listCalendarEvents } from "../lib/api.js";
 import { isSameDay, getWeekRange, getMonthRange, getListViewRange, formatWeekDateHeader, formatMonthHeader } from "./taskHelpers.js";
@@ -20,8 +21,7 @@ const ViewSettingsPanel = React.lazy(() => import("../components/ViewSettingsPan
   new Promise(r => setTimeout(r, 200)).then(() => import("../components/ViewSettingsPanel.jsx"))
 ));
 
-const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// DAY_NAMES and MONTH_NAMES imported from utils/helpers.js
 const HIDDEN_KEY = "wasabi-hidden-calendars";
 
 function formatDayHeader(date) {

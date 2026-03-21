@@ -1,5 +1,9 @@
 // ─── Wasabi Platform Utilities ───
 
+// ── Date Constants ──
+export const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+export const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
 /**
  * Generate a UUID v4
  */
@@ -96,6 +100,29 @@ export function timeAgo(dateStr) {
 /**
  * Truncate text with ellipsis
  */
+/**
+ * Email-style date: time if today, "Mon 5" if this year, "Mon 5, 2024" otherwise.
+ * Used by Gmail views and email thread drawers.
+ */
+export function formatEmailDate(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  const now = new Date();
+  const isToday =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  if (isToday) {
+    return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+  const isThisYear = d.getFullYear() === now.getFullYear();
+  if (isThisYear) {
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
 export function truncate(str, max = 80) {
   if (!str || str.length <= max) return str || "";
   return str.slice(0, max).trimEnd() + "...";
