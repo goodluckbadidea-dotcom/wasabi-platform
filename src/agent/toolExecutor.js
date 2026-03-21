@@ -239,6 +239,20 @@ const _sbFormatDate = (dateStr, fmt) => {
  * @param {string} code
  * @returns {string[]} Array of error messages (empty = safe)
  */
+// ── Sandbox Timeout ──
+// Injected into every sandboxed function body to prevent infinite loops.
+// The guard checks Date.now() periodically — user code cannot bypass it
+// because the deadline variable is in the outer closure scope.
+const SANDBOX_TIMEOUT_MS = 5000;
+const TIMEOUT_GUARD = `
+var __deadline = Date.now() + ${SANDBOX_TIMEOUT_MS};
+var __checkCount = 0;
+var __checkTimeout = function() {
+  if (++__checkCount % 1000 === 0 && Date.now() > __deadline)
+    throw new Error("Execution timeout: code exceeded ${SANDBOX_TIMEOUT_MS / 1000}s limit");
+};
+`;
+
 export function validatePluginCode(code) {
   const FORBIDDEN = [
     [/\beval\s*\(/, "eval() is forbidden"],
@@ -263,6 +277,10 @@ export function validatePluginCode(code) {
     [/\bReflect\b/, "Reflect access is forbidden"],
     [/\bProxy\b/, "Proxy access is forbidden"],
     [/\bObject\.getPrototypeOf\b/, "prototype traversal is forbidden"],
+    // Block obvious infinite loop patterns
+    [/\bwhile\s*\(\s*true\s*\)/, "while(true) loops are forbidden"],
+    [/\bwhile\s*\(\s*1\s*\)/, "while(1) loops are forbidden"],
+    [/\bfor\s*\(\s*;\s*;\s*\)/, "for(;;) loops are forbidden"],
   ];
   const errors = [];
   for (const [pattern, msg] of FORBIDDEN) {
@@ -330,7 +348,7 @@ export function executePluginSandbox(code, datasets, manifest, config = {}, desc
       fnBody = `return ${trimmed};`;
     }
 
-    const fn = new Function("datasets", "config", ...helperNames, `"use strict";\n${fnBody}`);
+    const fn = new Function("datasets", "config", ...helperNames, `"use strict";\n${TIMEOUT_GUARD}${fnBody}`);
     // Freeze inputs to prevent prototype pollution
     const frozenDatasets = Object.freeze(datasets ? { ...datasets } : {});
     const frozenConfig = Object.freeze(config ? { ...config } : {});
@@ -393,9 +411,9 @@ export function executeSandbox(code, datasets, description = "Calculation comple
     _sbNormalize, _sbSimilarity, _sbFuzzyMatch, _sbBestMatch, _sbMatchRows,
   ];
   try {
-    fn = new Function("datasets", ...helperNames, fnBody);
+    fn = new Function("datasets", ...helperNames, TIMEOUT_GUARD + fnBody);
   } catch {
-    fn = new Function("datasets", ...helperNames, `"use strict";\n${trimmed}`);
+    fn = new Function("datasets", ...helperNames, TIMEOUT_GUARD + `"use strict";\n${trimmed}`);
   }
 
   const frozenDatasets = Object.freeze(datasets ? { ...datasets } : {});

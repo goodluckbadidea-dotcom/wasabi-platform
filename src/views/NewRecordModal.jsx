@@ -153,7 +153,7 @@ export default function NewRecordModal({ schema, onClose, onCreate, databaseId, 
 
         {/* Footer */}
         <div style={ms.footer}>
-          {error && <div style={{ flex: 1, fontSize: 11, color: "#FF6B3D", paddingTop: 4 }}>{error}</div>}
+          {error && <div style={{ flex: 1, fontSize: 11, color: C.warning, paddingTop: 4 }}>{error}</div>}
           <button style={ms.btn(false)} onClick={onClose}>Cancel</button>
           <button
             style={{ ...ms.btn(true), opacity: saving ? 0.6 : 1 }}

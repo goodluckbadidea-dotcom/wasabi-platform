@@ -310,7 +310,7 @@ function FolderTreeItem({ folder, depth, activeFolder, activePage, onSelect, onR
                 background: "transparent",
                 fontFamily: FONT,
                 fontSize: 12,
-                color: "#E05252",
+                color: C.error,
                 transition: "background 0.1s",
               }}
               onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}

@@ -624,12 +624,12 @@ function ItemCard({ item, color, onRun, onDelete }) {
         <button onClick={(e) => { e.stopPropagation(); onDelete(item.id); }} style={{
           display: "flex", alignItems: "center", gap: 4,
           background: "transparent",
-          border: `1px solid ${hovered ? "#E0525244" : C.darkBorder}`,
-          borderRadius: RADIUS.sm, color: hovered ? "#E05252" : C.darkMuted,
+          border: `1px solid ${hovered ? `${C.error}44` : C.darkBorder}`,
+          borderRadius: RADIUS.sm, color: hovered ? C.error : C.darkMuted,
           fontFamily: FONT, fontSize: 10, padding: "4px 10px",
           cursor: "pointer", outline: "none", transition: "color 0.12s, border-color 0.12s",
         }}>
-          <IconTrash size={10} color={hovered ? "#E05252" : C.darkMuted} /> Delete
+          <IconTrash size={10} color={hovered ? C.error : C.darkMuted} /> Delete
         </button>
       </div>
     </div>

@@ -231,7 +231,7 @@ const ds = {
   },
   errorMsg: {
     fontSize: 12,
-    color: "#E05252",
+    color: C.error,
     marginTop: 4,
   },
 };
@@ -576,7 +576,7 @@ export default function DatabaseBrowser({
 
             {!searching && searchError && (
               <div style={ds.emptyState}>
-                <div style={{ color: "#E05252", marginBottom: 4 }}>{searchError}</div>
+                <div style={{ color: C.error, marginBottom: 4 }}>{searchError}</div>
                 <button
                   style={{ ...S.btnGhost, fontSize: 12 }}
                   onClick={() => searchDatabases(query)}
@@ -879,7 +879,7 @@ export default function DatabaseBrowser({
                     const blob = new Blob([uploadFile.rawText], { type: "text/csv" });
                     const file = new File([blob], uploadFile.name || "import.csv", { type: "text/csv" });
                     await uploadFileToR2(file, tableId);
-                  } catch (_) { /* non-critical */ }
+                  } catch (err) { console.warn("[DatabaseBrowser] R2 file upload:", err.message || err); }
                 }
 
                 const d1Schema = buildSchemaFromFields(uploadDbTitle.trim(), schema);
@@ -909,7 +909,7 @@ export default function DatabaseBrowser({
 
           {!mondayLoading && mondayError && (
             <div style={ds.emptyState}>
-              <div style={{ color: "#E05252", marginBottom: 8 }}>{mondayError}</div>
+              <div style={{ color: C.error, marginBottom: 8 }}>{mondayError}</div>
               {!user?.mondayKey && (
                 <div style={{ fontSize: 11, color: C.darkMuted, lineHeight: 1.5 }}>
                   Go to <strong>System Manager → Connections</strong> to add your Monday.com API key.
@@ -1185,7 +1185,7 @@ function CreateDatabaseForm({
                       flexShrink: 0,
                     }}
                     onClick={() => removeField(idx)}
-                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#E05252"; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.error; }}
                     onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
                     title="Remove field"
                   >

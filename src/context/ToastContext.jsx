@@ -62,9 +62,9 @@ export function useToast() {
 import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
 
 const TYPE_CONFIG = {
-  success: { bg: "#1a2e1a", border: "#2A6B38", icon: "\u2713", color: "#4CAF50" },
-  error:   { bg: "#2e1a1a", border: "#E05252", icon: "\u2717", color: "#E05252" },
-  warning: { bg: "#2e261a", border: "#FF6B3D", icon: "\u26A0", color: "#FF6B3D" },
+  success: { bg: "#1a2e1a", border: "#2A6B38", icon: "\u2713", color: C.success },
+  error:   { bg: "#2e1a1a", border: C.error, icon: "\u2717", color: C.error },
+  warning: { bg: "#2e261a", border: C.warning, icon: "\u26A0", color: C.warning },
   info:    { bg: "#1a1a2e", border: C.accent, icon: "\u2139", color: C.accent },
 };
 

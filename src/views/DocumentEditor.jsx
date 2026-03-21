@@ -1483,7 +1483,7 @@ export default function DocumentEditor({ pageId: legacyPageId, config, pageConfi
         {/* Save indicator */}
         <span style={{
           fontSize: 11,
-          color: saveStatus === "saving" ? C.accent : saveStatus === "error" ? "#E05252" : C.darkMuted,
+          color: saveStatus === "saving" ? C.accent : saveStatus === "error" ? C.error : C.darkMuted,
           marginRight: 8,
           minWidth: 50,
         }}>

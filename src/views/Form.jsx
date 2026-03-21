@@ -200,10 +200,10 @@ export default function Form({ data = [], schema, config = {}, onCreate, pageCon
         {errors._form && (
           <div style={{
             padding: "10px 14px",
-            background: "#E0525218",
-            border: "1px solid #E0525240",
+            background: C.error + "18",
+            border: `1px solid ${C.error}40`,
             borderRadius: RADIUS.md,
-            color: "#E05252",
+            color: C.error,
             fontSize: 13,
             marginBottom: 16,
           }}>
@@ -269,7 +269,7 @@ function FormField({ field, value, error, schema, onChange }) {
   const inputStyle = {
     width: "100%",
     background: C.darkSurf,
-    border: `1px solid ${error ? "#E05252" : C.darkBorder}`,
+    border: `1px solid ${error ? C.error : C.darkBorder}`,
     borderRadius: RADIUS.md,
     padding: "10px 14px",
     fontSize: 14,
@@ -314,7 +314,7 @@ function FormField({ field, value, error, schema, onChange }) {
             <option key={opt} value={opt}>{opt}</option>
           ))}
         </select>
-        {error && <span style={{ fontSize: 11, color: "#E05252", marginTop: 4, display: "block" }}>{error}</span>}
+        {error && <span style={{ fontSize: 11, color: C.error, marginTop: 4, display: "block" }}>{error}</span>}
       </div>
     );
   }
@@ -371,7 +371,7 @@ function FormField({ field, value, error, schema, onChange }) {
           onChange={(e) => onChange(e.target.value || null)}
           style={inputStyle}
         />
-        {error && <span style={{ fontSize: 11, color: "#E05252", marginTop: 4, display: "block" }}>{error}</span>}
+        {error && <span style={{ fontSize: 11, color: C.error, marginTop: 4, display: "block" }}>{error}</span>}
       </div>
     );
   }
@@ -388,7 +388,7 @@ function FormField({ field, value, error, schema, onChange }) {
           onChange={(e) => onChange(e.target.value === "" ? null : parseFloat(e.target.value))}
           style={inputStyle}
         />
-        {error && <span style={{ fontSize: 11, color: "#E05252", marginTop: 4, display: "block" }}>{error}</span>}
+        {error && <span style={{ fontSize: 11, color: C.error, marginTop: 4, display: "block" }}>{error}</span>}
       </div>
     );
   }
@@ -398,7 +398,7 @@ function FormField({ field, value, error, schema, onChange }) {
     <div style={wrapStyle}>
       <label style={labelStyle}>
         {name}
-        {type === "title" && <span style={{ color: "#E05252", marginLeft: 3 }}>*</span>}
+        {type === "title" && <span style={{ color: C.error, marginLeft: 3 }}>*</span>}
       </label>
       <input
         type={type === "email" ? "email" : type === "url" ? "url" : "text"}
@@ -407,7 +407,7 @@ function FormField({ field, value, error, schema, onChange }) {
         placeholder={type === "title" ? "Required" : ""}
         style={inputStyle}
       />
-      {error && <span style={{ fontSize: 11, color: "#E05252", marginTop: 4, display: "block" }}>{error}</span>}
+      {error && <span style={{ fontSize: 11, color: C.error, marginTop: 4, display: "block" }}>{error}</span>}
     </div>
   );
 }

@@ -422,7 +422,7 @@ export default function CalendarView({ allTasks, refreshRef }) {
         <div style={{
           flexShrink: 0, padding: "6px 12px",
           borderTop: `1px solid ${C.darkBorder}`,
-          fontSize: 9, fontFamily: FONT, color: "#E05252",
+          fontSize: 9, fontFamily: FONT, color: C.error,
           textAlign: "center",
         }}>
           Google session expired — reconnect in Settings

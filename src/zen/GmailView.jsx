@@ -148,9 +148,9 @@ function ComposeModal({ onClose, onSent, replyTo }) {
 
           {error && (
             <div style={{
-              fontSize: 11, fontFamily: FONT, color: "#E05252",
+              fontSize: 11, fontFamily: FONT, color: C.error,
               marginBottom: 10, padding: "6px 10px",
-              background: "#E0525215", borderRadius: RADIUS.md,
+              background: C.error + "15", borderRadius: RADIUS.md,
             }}>
               {error}
             </div>
@@ -524,7 +524,7 @@ export default function GmailView() {
         ) : error ? (
           <div style={{
             padding: "40px 20px", textAlign: "center",
-            color: "#E05252", fontFamily: FONT, fontSize: 12,
+            color: C.error, fontFamily: FONT, fontSize: 12,
           }}>
             {error}
             <button
@@ -730,7 +730,7 @@ export default function GmailView() {
                       </div>
                     ) : expandedBody?.error ? (
                       <div style={{
-                        fontSize: 12, fontFamily: FONT, color: "#E05252",
+                        fontSize: 12, fontFamily: FONT, color: C.error,
                         padding: "8px 0",
                       }}>
                         Failed to load email content.
@@ -818,7 +818,7 @@ export default function GmailView() {
                               minHeight: 34,
                               transition: "background 0.12s",
                             }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = "#E0525215"; e.currentTarget.style.borderColor = "#E0525244"; }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = C.error + "15"; e.currentTarget.style.borderColor = C.error + "44"; }}
                             onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.borderColor = C.darkBorder; }}
                           >
                             <svg width="10" height="10" viewBox="0 0 12 12" fill="none">

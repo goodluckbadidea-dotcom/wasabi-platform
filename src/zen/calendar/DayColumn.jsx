@@ -172,7 +172,7 @@ export default function DayColumn({ date, events, tasks, isToday: isTodayProp, h
               right: 0,
               top: ((now.getHours() - HOUR_START) + now.getMinutes() / 60) * HOUR_HEIGHT,
               height: 2,
-              background: "#E05252",
+              background: C.error,
               borderRadius: 1,
               zIndex: 5,
             }}
@@ -180,7 +180,7 @@ export default function DayColumn({ date, events, tasks, isToday: isTodayProp, h
             <div style={{
               position: "absolute", left: -4, top: -3,
               width: 8, height: 8, borderRadius: "50%",
-              background: "#E05252",
+              background: C.error,
             }} />
           </div>
         )}

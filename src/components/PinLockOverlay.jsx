@@ -173,7 +173,7 @@ export default function PinLockOverlay({ pageConfigId, userRole, children }) {
                   borderRadius: RADIUS.md,
                   padding: "8px 12px",
                   fontSize: 12,
-                  color: "#FF6B3D",
+                  color: C.warning,
                   marginBottom: 12,
                 }}>
                   {error}

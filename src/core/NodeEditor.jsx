@@ -435,7 +435,7 @@ function ExecutionHistoryPanel({ executions, loading, onClose, onReplay }) {
                   {nodeCount > 0 && (
                     <span style={{ fontSize: 10, fontFamily: MONO, color: C.darkMuted }}>
                       {successCount}/{nodeCount} nodes
-                      {errorCount > 0 && <span style={{ color: "#E05252" }}> ({errorCount} err)</span>}
+                      {errorCount > 0 && <span style={{ color: C.error }}> ({errorCount} err)</span>}
                     </span>
                   )}
 
@@ -449,7 +449,7 @@ function ExecutionHistoryPanel({ executions, loading, onClose, onReplay }) {
                   {/* Error snippet */}
                   {exec.error && (
                     <span style={{
-                      fontSize: 10, fontFamily: MONO, color: "#E05252",
+                      fontSize: 10, fontFamily: MONO, color: C.error,
                       flex: 1, overflow: "hidden", textOverflow: "ellipsis",
                       whiteSpace: "nowrap", maxWidth: 200,
                     }}>
@@ -582,7 +582,7 @@ function NodePalette({ onAddNode, onRun, onSave, saveStatus, isRunning, onToggle
         fontSize: 10,
         color: saveStatus === "saved" ? C.accent
           : saveStatus === "saving" ? C.accent
-          : saveStatus === "error" ? "#E05252"
+          : saveStatus === "error" ? C.error
           : C.darkBorder,
         fontFamily: FONT,
         whiteSpace: "nowrap",

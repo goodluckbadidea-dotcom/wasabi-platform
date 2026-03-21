@@ -182,7 +182,7 @@ export default function PluginWidget({ functionId, width, height, refreshInterva
         justifyContent: "center", height: "100%", gap: 8,
         padding: 12, textAlign: "center",
       }}>
-        <IconWarning size={18} color="#E05252" />
+        <IconWarning size={18} color={C.error} />
         <span style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT, lineHeight: 1.4 }}>
           {error}
         </span>

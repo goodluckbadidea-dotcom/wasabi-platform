@@ -1056,7 +1056,7 @@ export default function Sheet({ pageConfig }) {
 
   if (error) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#E05252", fontSize: 13 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: C.error, fontSize: 13 }}>
         Error: {error}
       </div>
     );

@@ -207,7 +207,7 @@ export function CellDisplay({ value, type, fieldName, schema, onClick, linkInfo,
           onClick={(e) => { e.stopPropagation(); onLinkClick?.(); }}
           style={{
             width: 6, height: 6, borderRadius: "50%",
-            background: linkInfo.stale ? "#FF6B3D" : C.accent,
+            background: linkInfo.stale ? C.warning : C.accent,
             flexShrink: 0, cursor: "pointer",
             opacity: 0.8, transition: "opacity 0.15s",
           }}

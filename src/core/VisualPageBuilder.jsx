@@ -171,10 +171,10 @@ const vs = {
   }),
   error: {
     padding: "10px 14px",
-    background: "#E0525218",
-    border: "1px solid #E0525240",
+    background: C.error + "18",
+    border: `1px solid ${C.error}40`,
     borderRadius: RADIUS.md,
-    color: "#E05252",
+    color: C.error,
     fontSize: 13,
   },
   success: {

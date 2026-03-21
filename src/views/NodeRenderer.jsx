@@ -152,7 +152,7 @@ export default function NodeRenderer({
   // Execution glow
   const glowColor = executionState === "running" ? C.accent
     : executionState === "success" ? C.accent
-    : executionState === "error" ? "#E05252"
+    : executionState === "error" ? C.error
     : null;
 
   return (
@@ -311,7 +311,7 @@ export default function NodeRenderer({
       {/* Output ports (right edge) */}
       {(node.ports?.out || []).map((port, i) => {
         const portColor = port.label === "true" ? "#7DC143"
-          : port.label === "false" ? "#E05252"
+          : port.label === "false" ? C.error
           : C.accent;
 
         return (

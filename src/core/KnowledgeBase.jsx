@@ -270,7 +270,7 @@ function FileRow({ file, fileType, onDownload, onDelete }) {
           onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
           onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
         >
-          <IconTrash size={10} color="#E05252" />
+          <IconTrash size={10} color={C.error} />
         </button>
       )}
     </div>
@@ -380,7 +380,7 @@ function ContextTab() {
         <span style={{ fontSize: 11, color: C.darkMuted, fontFamily: MONO }}>
           ~{estimatedTokens.toLocaleString()} tokens
         </span>
-        <span style={{ fontSize: 11, color: totalChars > 20000 ? "#E05252" : C.darkMuted, fontFamily: MONO }}>
+        <span style={{ fontSize: 11, color: totalChars > 20000 ? C.error : C.darkMuted, fontFamily: MONO }}>
           {totalChars.toLocaleString()} chars
         </span>
         <div style={{ flex: 1 }} />
@@ -556,8 +556,8 @@ function KBEntryCard({ entry, isEditing, editContent, onStartEdit, onCancelEdit,
             <button
               onClick={onDelete}
               style={{
-                background: "transparent", border: `1px solid #E0525233`, borderRadius: RADIUS.sm,
-                color: "#E05252", fontFamily: FONT, fontSize: 10, padding: "2px 8px", cursor: "pointer", outline: "none",
+                background: "transparent", border: `1px solid ${C.error}33`, borderRadius: RADIUS.sm,
+                color: C.error, fontFamily: FONT, fontSize: 10, padding: "2px 8px", cursor: "pointer", outline: "none",
               }}
             >
               Delete

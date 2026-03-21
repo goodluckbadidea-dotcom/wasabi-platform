@@ -280,13 +280,13 @@ export default function NeuronLines() {
           }}
           style={{
             background: "none", border: "none", cursor: "pointer",
-            color: confirmDelete ? "#E05252" : C.darkMuted,
+            color: confirmDelete ? C.error : C.darkMuted,
             fontSize: confirmDelete ? 10 : 12,
             padding: "0 2px", lineHeight: 1,
             transition: "all 0.12s", outline: "none",
             fontFamily: FONT, fontWeight: confirmDelete ? 600 : 400,
           }}
-          onMouseEnter={(e) => { if (!confirmDelete) e.currentTarget.style.color = "#E05252"; }}
+          onMouseEnter={(e) => { if (!confirmDelete) e.currentTarget.style.color = C.error; }}
           onMouseLeave={(e) => { if (!confirmDelete) e.currentTarget.style.color = C.darkMuted; }}
           title={confirmDelete ? "Click again to confirm delete" : "Delete neuron"}
         >
@@ -361,7 +361,7 @@ export default function NeuronLines() {
                 color: C.darkMuted, fontSize: 13, padding: "0 1px",
                 lineHeight: 1, transition: "color 0.12s", outline: "none", flexShrink: 0,
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = "#E05252"; }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = C.error; }}
               onMouseLeave={(e) => { e.currentTarget.style.color = C.darkMuted; }}
               title="Remove from neuron"
             >

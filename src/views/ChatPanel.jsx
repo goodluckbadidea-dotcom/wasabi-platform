@@ -100,7 +100,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
         if (gStatus?.connected) {
           googleContext = await fetchGoogleContext();
         }
-      } catch (_) { /* best effort */ }
+      } catch (err) { console.warn("[ChatPanel] Google context fetch:", err.message || err); }
 
       // Auto-search KB for relevant context (call D1 API directly, not toolExecutor)
       let kbContext = "";
@@ -116,7 +116,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
             r.category && r.category !== "general"
           );
         }
-      } catch (_) { /* KB search is best-effort */ }
+      } catch (err) { console.warn("[ChatPanel] KB search:", err.message || err); }
 
       // Build database IDs list — include D1 table ID if this page IS a database
       const dbIds = [...(pageConfig.databaseIds || [])];

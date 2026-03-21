@@ -82,7 +82,7 @@ export default function SheetUrlDialog({ onConfirm, onCancel }) {
     }
     if (validation.error) {
       return (
-        <div style={{ fontSize: 12, color: "#E05252", marginTop: 8 }}>
+        <div style={{ fontSize: 12, color: C.error, marginTop: 8 }}>
           {validation.error}
         </div>
       );

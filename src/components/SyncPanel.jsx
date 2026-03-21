@@ -104,7 +104,7 @@ function buildSyncStyles() { return {
     border: `1px solid #FF480044`,
     borderRadius: RADIUS.md,
     background: "transparent",
-    color: "#FF6B3D",
+    color: C.warning,
     cursor: "pointer",
   },
   status: {
@@ -115,7 +115,7 @@ function buildSyncStyles() { return {
   },
   error: {
     fontSize: 11,
-    color: "#FF6B3D",
+    color: C.warning,
     marginTop: 8,
   },
 }; }

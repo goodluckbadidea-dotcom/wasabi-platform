@@ -24,7 +24,7 @@ export function ConnectionLine({ fromPos, toPos, isActive, executionState, onDel
   const path = getBezierPath(fromPos.x, fromPos.y, toPos.x, toPos.y);
 
   const color = executionState === "success" ? C.accent
-    : executionState === "error" ? "#E05252"
+    : executionState === "error" ? C.error
     : executionState === "running" ? C.accent
     : isActive ? C.accent
     : C.darkBorder;

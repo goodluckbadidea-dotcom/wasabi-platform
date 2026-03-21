@@ -106,7 +106,8 @@ export default function Navigation({
             }
           }
         }
-      } catch (_) {
+      } catch (err) {
+        console.warn("[Navigation] Google status check:", err.message || err);
         // Retry up to 3 times with increasing delay on initial load failure
         if (!cancelled && retryCount < 3) {
           retryCount++;
@@ -165,7 +166,7 @@ export default function Navigation({
                   }
                 }
               }
-            } catch (_) { /* skip inaccessible tables */ }
+            } catch (err) { console.warn("[Navigation] DB search table access:", err.message || err); }
           }
           if (results.length >= 25) break;
         }

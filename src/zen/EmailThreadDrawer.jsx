@@ -339,9 +339,9 @@ function Composer({ mode, replyMsg, threadId, onSent, onDiscard, onDraftStatusCh
       {/* Error */}
       {error && (
         <div style={{
-          fontSize: 11, fontFamily: FONT, color: "#E05252",
+          fontSize: 11, fontFamily: FONT, color: C.error,
           marginBottom: 8, padding: "6px 10px",
-          background: "#E0525215", borderRadius: RADIUS.md,
+          background: C.error + "15", borderRadius: RADIUS.md,
         }}>
           {error}
         </div>
@@ -584,9 +584,9 @@ export default function EmailThreadDrawer({ email, onClose }) {
           {/* Error */}
           {composeError && (
             <div style={{
-              fontSize: 11, fontFamily: FONT, color: "#E05252",
+              fontSize: 11, fontFamily: FONT, color: C.error,
               marginBottom: 8, padding: "6px 10px",
-              background: "#E0525215", borderRadius: RADIUS.md,
+              background: C.error + "15", borderRadius: RADIUS.md,
             }}>
               {composeError}
             </div>
@@ -637,7 +637,7 @@ export default function EmailThreadDrawer({ email, onClose }) {
     return (
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "center",
-        height: "100%", color: "#E05252", fontFamily: FONT, fontSize: 12,
+        height: "100%", color: C.error, fontFamily: FONT, fontSize: 12,
       }}>
         {threadError}
       </div>
@@ -689,7 +689,7 @@ export default function EmailThreadDrawer({ email, onClose }) {
             <button onClick={handleArchive} style={{ ...actionBtnStyle, color: C.darkMuted }}>
               Archive
             </button>
-            <button onClick={handleTrash} style={{ ...actionBtnStyle, color: "#E05252", borderColor: "#E0525240" }}>
+            <button onClick={handleTrash} style={{ ...actionBtnStyle, color: C.error, borderColor: C.error + "40" }}>
               Delete
             </button>
           </div>

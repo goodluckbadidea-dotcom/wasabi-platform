@@ -1167,7 +1167,8 @@ function SettingsTab() {
     try {
       // Server-side: delete all user data from D1 + R2
       await apiFactoryReset();
-    } catch (_) {
+    } catch (err) {
+      console.warn("[SystemManager] Factory reset API call:", err.message || err);
       // If server call fails, still clear local state
     }
 
@@ -2153,7 +2154,8 @@ function AuditLogTab() {
       if (resourceFilter) params.resource_type = resourceFilter;
       const res = await api.getAuditLog(params);
       setEntries(res.entries || []);
-    } catch (_) {
+    } catch (err) {
+      console.warn("[SystemManager] Audit log fetch:", err.message || err);
       setEntries([]);
     } finally {
       setLoading(false);

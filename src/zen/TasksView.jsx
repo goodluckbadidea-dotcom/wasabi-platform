@@ -261,7 +261,7 @@ export default function TasksView() {
               {aiRefreshing
                 ? <span style={{ animation: "pulse 1.5s ease-in-out infinite" }}>Updating...</span>
                 : lastUpdated ? `AI updated ${formatRelativeTime(lastUpdated)}` : ""}
-              {aiError && !aiRefreshing && <span style={{ color: "#E05252", marginLeft: lastUpdated ? 6 : 0 }}>
+              {aiError && !aiRefreshing && <span style={{ color: C.error, marginLeft: lastUpdated ? 6 : 0 }}>
                 {lastUpdated ? "· " : ""}{aiError}
               </span>}
             </span>

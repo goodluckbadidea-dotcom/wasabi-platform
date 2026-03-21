@@ -15,7 +15,7 @@ import FunctionBuilder from "./FunctionBuilder.jsx";
 // Status colors — active uses theme accent, others are semantic
 function getStatusColor(status) {
   if (status === "active") return C.accent;
-  if (status === "error") return "#E05252";
+  if (status === "error") return C.error;
   return "#FF9800"; // draft / default
 }
 
@@ -316,7 +316,7 @@ function FunctionCard({ fn, isHovered, isDeleting, onHover, onRun, onDelete }) {
           {fn.last_run_at && <span>Last run {timeAgo(fn.last_run_at)}</span>}
           {fn.last_run_status && (
             <span style={{
-              color: fn.last_run_status === "success" ? C.accent : "#E05252",
+              color: fn.last_run_status === "success" ? C.accent : C.error,
             }}>
               {fn.last_run_status}
             </span>
@@ -367,14 +367,14 @@ function FunctionCard({ fn, isHovered, isDeleting, onHover, onRun, onDelete }) {
           style={{
             display: "flex", alignItems: "center", gap: 4,
             background: "transparent",
-            border: `1px solid ${isHovered ? "#E0525244" : C.darkBorder}`,
-            borderRadius: RADIUS.sm, color: isHovered ? "#E05252" : C.darkMuted,
+            border: `1px solid ${isHovered ? `${C.error}44` : C.darkBorder}`,
+            borderRadius: RADIUS.sm, color: isHovered ? C.error : C.darkMuted,
             fontFamily: FONT, fontSize: 10, padding: "4px 10px",
             cursor: "pointer", outline: "none",
             transition: "color 0.12s, border-color 0.12s",
           }}
         >
-          <IconTrash size={10} color={isHovered ? "#E05252" : C.darkMuted} />
+          <IconTrash size={10} color={isHovered ? C.error : C.darkMuted} />
           Delete
         </button>
       </div>
@@ -399,7 +399,7 @@ function FunctionCard({ fn, isHovered, isDeleting, onHover, onRun, onDelete }) {
                 }}>
                   <span style={{
                     width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
-                    background: exec.status === "success" ? C.accent : "#E05252",
+                    background: exec.status === "success" ? C.accent : C.error,
                   }} />
                   <span style={{ minWidth: 55 }}>{timeAgo(exec.executed_at)}</span>
                   <span style={{ minWidth: 40 }}>{exec.duration_ms}ms</span>
@@ -412,7 +412,7 @@ function FunctionCard({ fn, isHovered, isDeleting, onHover, onRun, onDelete }) {
                   </span>
                   {exec.error && (
                     <span style={{
-                      color: "#E05252", flex: 1,
+                      color: C.error, flex: 1,
                       whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                     }}>
                       {exec.error}

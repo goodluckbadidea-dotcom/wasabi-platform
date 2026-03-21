@@ -227,7 +227,7 @@ function ColumnRow({ col, index, total, expanded, onToggle, onUpdate, onRemove, 
         {/* Delete */}
         <button
           onClick={(e) => { e.stopPropagation(); onRemove(); }}
-          style={{ ...miniBtn, color: "#FF6B3D" }}
+          style={{ ...miniBtn, color: C.warning }}
           title="Remove column"
         >
           <IconClose size={10} />

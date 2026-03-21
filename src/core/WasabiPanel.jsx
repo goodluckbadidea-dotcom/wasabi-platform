@@ -217,7 +217,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
               r.category && r.category !== "general"
             );
           }
-        } catch (_) { /* KB search is best-effort */ }
+        } catch (err) { console.warn("[WasabiPanel] KB search:", err.message || err); }
 
         // Build rich neuron summary (includes full node details when graph is cached)
         let neuronSummary = buildNeuronContextSummary();
@@ -229,7 +229,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
           if (gStatus?.connected) {
             googleContext = await fetchGoogleContext();
           }
-        } catch (_) { /* best effort */ }
+        } catch (err) { console.warn("[WasabiPanel] Google context fetch:", err.message || err); }
 
         // Find workspace ancestor for custom AI instructions + agent mode
         let workspaceInstructions = "";

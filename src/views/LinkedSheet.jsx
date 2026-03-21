@@ -380,7 +380,7 @@ export default function LinkedSheet({ config = {}, pageConfig }) {
     return (
       <div style={styles.wrapper}>
         <div style={styles.centered}>
-          <div style={{ fontSize: 14, color: "#E05252" }}>{error}</div>
+          <div style={{ fontSize: 14, color: C.error }}>{error}</div>
           <button
             onClick={fetchData}
             style={{

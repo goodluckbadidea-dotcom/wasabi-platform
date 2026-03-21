@@ -234,7 +234,7 @@ function AppContent() {
         if (cancelled || !status?.connected) return;
         const neurons = loadCachedNeurons();
         await cleanupGoogleNeuronNodes(neurons);
-      } catch (_) { /* best effort */ }
+      } catch (err) { console.warn("[App] Google neuron cleanup:", err.message || err); }
     })();
     return () => { cancelled = true; };
   }, [isAuthenticated, isSetup]);

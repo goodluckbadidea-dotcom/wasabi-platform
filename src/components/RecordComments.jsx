@@ -124,7 +124,7 @@ export default function RecordComments({
                 <button
                   onClick={() => handleDelete(comment.id)}
                   style={s.deleteBtn}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = "#E05252"; }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = C.error; }}
                   onMouseLeave={(e) => { e.currentTarget.style.color = C.darkMuted; }}
                   title="Delete comment"
                 >&times;</button>
@@ -198,9 +198,9 @@ const s = {
     minWidth: 28, minHeight: 28, display: "flex", alignItems: "center", justifyContent: "center",
   },
   error: {
-    fontSize: 11, fontFamily: FONT, color: "#E05252",
+    fontSize: 11, fontFamily: FONT, color: C.error,
     marginBottom: 8, padding: "6px 10px",
-    background: "#E0525215", borderRadius: RADIUS.md,
+    background: `${C.error}15`, borderRadius: RADIUS.md,
   },
   inputRow: {
     display: "flex", gap: 6, flexShrink: 0, padding: "4px 0",

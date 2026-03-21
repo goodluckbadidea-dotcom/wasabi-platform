@@ -39,7 +39,7 @@ export class ErrorBoundary extends Component {
             padding: 32,
             background: C.darkSurf,
             borderRadius: RADIUS.xl,
-            border: `1px solid #E0525233`,
+            border: `1px solid ${C.error}33`,
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
@@ -53,7 +53,7 @@ export class ErrorBoundary extends Component {
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
             <path
               d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
-              stroke="#E05252"
+              stroke={C.error}
               strokeWidth="1.5"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -64,7 +64,7 @@ export class ErrorBoundary extends Component {
             style={{
               fontSize: 13,
               fontWeight: 600,
-              color: "#E05252",
+              color: C.error,
               letterSpacing: "0.02em",
             }}
           >

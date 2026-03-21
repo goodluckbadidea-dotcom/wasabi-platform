@@ -197,7 +197,7 @@ export default function RecordFiles({ recordId, pageConfigId }) {
               <button
                 onClick={() => handleDelete(file.id)}
                 style={s.deleteBtn}
-                onMouseEnter={(e) => { e.currentTarget.style.color = "#E05252"; }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = C.error; }}
                 onMouseLeave={(e) => { e.currentTarget.style.color = C.darkMuted; }}
                 title="Remove file"
               >&times;</button>
@@ -242,9 +242,9 @@ const s = {
     padding: "20px 0", textAlign: "center",
   },
   error: {
-    fontSize: 11, fontFamily: FONT, color: "#E05252",
+    fontSize: 11, fontFamily: FONT, color: C.error,
     marginBottom: 8, padding: "6px 10px",
-    background: "#E0525215", borderRadius: RADIUS.md,
+    background: `${C.error}15`, borderRadius: RADIUS.md,
   },
   fileItem: {
     display: "flex", alignItems: "center", gap: 8,

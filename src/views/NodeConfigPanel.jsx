@@ -755,19 +755,19 @@ export default function NodeConfigPanel({ node, onChange, onDelete, onClose, def
             gap: 6,
             padding: "8px 12px",
             background: "transparent",
-            border: `1px solid #E0525244`,
+            border: `1px solid ${C.error}44`,
             borderRadius: RADIUS.pill,
-            color: "#E05252",
+            color: C.error,
             fontSize: 12,
             fontFamily: FONT,
             cursor: "pointer",
             outline: "none",
             transition: "background 0.12s",
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = "#E0525218"; }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = C.error + "18"; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
         >
-          <IconTrash size={13} color="#E05252" />
+          <IconTrash size={13} color={C.error} />
           Delete Node
         </button>
       </div>

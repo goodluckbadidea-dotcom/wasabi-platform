@@ -449,8 +449,8 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
                       onClick={() => setStatus(opt.name)}
                       style={{
                         padding: "7px 14px", borderRadius: RADIUS.pill,
-                        border: `1.5px solid ${active ? (isDone ? "#4CAF50" : C.accent) : C.darkBorder}`,
-                        background: active ? (isDone ? "#4CAF50" : C.accent) : "transparent",
+                        border: `1.5px solid ${active ? (isDone ? C.success : C.accent) : C.darkBorder}`,
+                        background: active ? (isDone ? C.success : C.accent) : "transparent",
                         color: active ? "#fff" : C.darkMuted,
                         fontSize: 12, fontWeight: 600, fontFamily: FONT,
                         cursor: "pointer", outline: "none", transition: "all 0.15s",
@@ -559,9 +559,9 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
 
           {error && (
             <div style={{
-              fontSize: 11, fontFamily: FONT, color: "#E05252",
+              fontSize: 11, fontFamily: FONT, color: C.error,
               marginBottom: 12, padding: "6px 10px",
-              background: "#E0525215", borderRadius: RADIUS.md,
+              background: C.error + "15", borderRadius: RADIUS.md,
             }}>{error}</div>
           )}
 
@@ -579,9 +579,9 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
               <button onClick={handleDelete} disabled={deleting}
                 style={{
                   padding: "10px 16px", borderRadius: RADIUS.md,
-                  background: confirmDelete ? "#E05252" : "transparent",
-                  color: confirmDelete ? "#fff" : "#E05252",
-                  border: `1.5px solid ${confirmDelete ? "#E05252" : C.darkBorder}`,
+                  background: confirmDelete ? C.error : "transparent",
+                  color: confirmDelete ? "#fff" : C.error,
+                  border: `1.5px solid ${confirmDelete ? C.error : C.darkBorder}`,
                   fontSize: 13, fontWeight: 600, fontFamily: FONT,
                   cursor: deleting ? "wait" : "pointer", outline: "none",
                   transition: "all 0.15s",
@@ -828,9 +828,9 @@ function EventEditor({ event, onSaved, onDeleted, onClose }) {
       {/* Error */}
       {error && (
         <div style={{
-          fontSize: 11, fontFamily: FONT, color: "#E05252",
+          fontSize: 11, fontFamily: FONT, color: C.error,
           marginBottom: 12, padding: "6px 10px",
-          background: "#E0525215", borderRadius: RADIUS.md,
+          background: C.error + "15", borderRadius: RADIUS.md,
         }}>
           {error}
         </div>
@@ -857,9 +857,9 @@ function EventEditor({ event, onSaved, onDeleted, onClose }) {
           disabled={deleting}
           style={{
             padding: "10px 16px", borderRadius: RADIUS.md,
-            background: confirmDelete ? "#E05252" : "transparent",
-            color: confirmDelete ? "#fff" : "#E05252",
-            border: `1.5px solid ${confirmDelete ? "#E05252" : C.darkBorder}`,
+            background: confirmDelete ? C.error : "transparent",
+            color: confirmDelete ? "#fff" : C.error,
+            border: `1.5px solid ${confirmDelete ? C.error : C.darkBorder}`,
             fontSize: 13, fontWeight: 600, fontFamily: FONT,
             cursor: deleting ? "wait" : "pointer", outline: "none",
             transition: "all 0.15s",
@@ -1016,9 +1016,9 @@ function WorkspaceSettingsEditor({ workspace, onClose }) {
       {/* Error */}
       {error && (
         <div style={{
-          fontSize: 11, fontFamily: FONT, color: "#E05252",
+          fontSize: 11, fontFamily: FONT, color: C.error,
           marginBottom: 12, padding: "6px 10px",
-          background: "#E0525215", borderRadius: RADIUS.md,
+          background: C.error + "15", borderRadius: RADIUS.md,
         }}>{error}</div>
       )}
 

@@ -356,8 +356,8 @@ export default function TopHeader() {
                 {/* Log Out */}
                 <button
                   onClick={() => { logout(); setDropdownOpen(false); }}
-                  style={{ ...dropdownItemStyle, color: "#E05252" }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = "#E0525215"; }}
+                  style={{ ...dropdownItemStyle, color: C.error }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = `${C.error}15`; }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                 >
                   Log Out
