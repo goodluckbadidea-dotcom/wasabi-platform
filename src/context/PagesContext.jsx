@@ -39,27 +39,38 @@ export function PagesProvider({ children }) {
     if (!workerConnection?.workerUrl || hasSynced.current) return;
     hasSynced.current = true;
 
-    loadPageConfigs()
-      .then(async (configs) => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const configs = await loadPageConfigs();
+        if (cancelled) return;
         let finalConfigs = configs.length > 0 ? configs : [];
 
         if (finalConfigs.length > 0 && user?.workerUrl && user?.notionKey) {
           try {
             const { valid, stale } = await validatePageConfigs(user.workerUrl, user.notionKey, finalConfigs);
+            if (cancelled) return;
             if (stale.length > 0) {
               finalConfigs = valid;
               try { localStorage.setItem("wasabi_page_configs", JSON.stringify(valid)); } catch {}
-              for (const s of stale) archivePageConfig(s.id).catch(() => {});
+              for (const s of stale) {
+                archivePageConfig(s.id).catch((err) =>
+                  console.warn(`[Pages] Failed to archive ${s.id}:`, err.message)
+                );
+              }
             }
           } catch (err) { console.warn("[Pages] Validation failed:", err); }
         }
+
+        if (cancelled) return;
 
         // Auto-create workspace
         if (!finalConfigs.some((c) => c.page_type === "workspace" || c.pageType === "workspace")) {
           try {
             const wsConfig = createWorkspaceConfig("My Workspace");
             const id = await savePageConfig(wsConfig);
-            finalConfigs = [...finalConfigs, { ...wsConfig, id }];
+            if (!cancelled) finalConfigs = [...finalConfigs, { ...wsConfig, id }];
           } catch (err) { console.warn("[Pages] Failed to create workspace:", err); }
         }
 
@@ -68,13 +79,17 @@ export function PagesProvider({ children }) {
           try {
             const dashConfig = createDashboardConfig("Dashboard", true);
             const id = await savePageConfig(dashConfig);
-            finalConfigs = [...finalConfigs, { ...dashConfig, id }];
+            if (!cancelled) finalConfigs = [...finalConfigs, { ...dashConfig, id }];
           } catch (err) { console.warn("[Pages] Failed to create dashboard:", err); }
         }
 
-        setPages(finalConfigs);
-      })
-      .catch((err) => console.warn("[Pages] Failed to sync:", err));
+        if (!cancelled) setPages(finalConfigs);
+      } catch (err) {
+        console.error("[Pages] Sync failed:", err);
+      }
+    })();
+
+    return () => { cancelled = true; };
   }, [workerConnection, user]);
 
   // ── Page tree ──

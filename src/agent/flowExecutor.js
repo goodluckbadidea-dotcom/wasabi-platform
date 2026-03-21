@@ -212,6 +212,7 @@ export async function executeFlow(flow, opts, contextData, onNodeStart, onNodeCo
       // Retry logic: if node has retryCount > 0, retry with exponential backoff
       const retryCount = node.config?.retryCount || 0;
       let retried = false;
+      let lastError = err;
 
       if (retryCount > 0) {
         for (let attempt = 1; attempt <= retryCount; attempt++) {
@@ -229,6 +230,7 @@ export async function executeFlow(flow, opts, contextData, onNodeStart, onNodeCo
             retried = true;
             break;
           } catch (retryErr) {
+            lastError = retryErr;
             if (attempt === retryCount) {
               console.error(`[FlowExecutor] Node "${node.label}" failed after ${retryCount} retries:`, retryErr);
             }
@@ -237,8 +239,8 @@ export async function executeFlow(flow, opts, contextData, onNodeStart, onNodeCo
       }
 
       if (!retried) {
-        console.error(`[FlowExecutor] Node "${node.label}" (${node.id}) failed:`, err);
-        nodeOutputs[node.id] = { _error: err.message };
+        console.error(`[FlowExecutor] Node "${node.label}" (${node.id}) failed:`, lastError);
+        nodeOutputs[node.id] = { _error: lastError.message };
         onNodeComplete?.(node.id, null, "error");
       }
     }

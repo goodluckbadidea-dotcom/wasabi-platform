@@ -256,6 +256,13 @@ export function validatePluginCode(code) {
     [/\bfetch\s*\(/, "fetch() is forbidden"],
     [/\bXMLHttpRequest\b/, "XMLHttpRequest is forbidden"],
     [/\bWebSocket\b/, "WebSocket is forbidden"],
+    // Block indirect eval bypass patterns
+    [/\(0,\s*eval\)/, "indirect eval is forbidden"],
+    [/Function\s*\.prototype/, "Function.prototype access is forbidden"],
+    [/\.constructor\b/, ".constructor access is forbidden"],
+    [/\bReflect\b/, "Reflect access is forbidden"],
+    [/\bProxy\b/, "Proxy access is forbidden"],
+    [/\bObject\.getPrototypeOf\b/, "prototype traversal is forbidden"],
   ];
   const errors = [];
   for (const [pattern, msg] of FORBIDDEN) {
@@ -274,6 +281,11 @@ export function validatePluginCode(code) {
  * @returns {{ success: boolean, result: any, error?: string }}
  */
 export function executePluginSandbox(code, datasets, manifest, config = {}, description = "Plugin executed") {
+  // Validate code safety before execution
+  const codeErrors = validatePluginCode(code);
+  if (codeErrors.length) {
+    return { success: false, error: `Blocked: ${codeErrors.join(", ")}`, result: null };
+  }
   const caps = new Set(manifest?.capabilities || []);
 
   // Build helper injection lists
@@ -349,6 +361,11 @@ export function executePluginSandbox(code, datasets, manifest, config = {}, desc
  * @returns {{ success: boolean, result: any, truncated?: boolean, totalRows?: number, description?: string }}
  */
 export function executeSandbox(code, datasets, description = "Calculation completed") {
+  // Validate code safety before execution
+  const codeErrors = validatePluginCode(code);
+  if (codeErrors.length) {
+    return { success: false, error: `Blocked: ${codeErrors.join(", ")}`, result: null };
+  }
   let fnBody;
   const trimmed = code.trim();
   if (trimmed.startsWith("(function") || trimmed.startsWith("(()")) {

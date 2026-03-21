@@ -520,16 +520,27 @@ function requireRole(user, minRole) {
 // Finds the display title from a row's cells by checking the schema's title column,
 // then falling back to common field name patterns.
 async function resolveRecordTitle(env, tableId, cells) {
-  if (!cells || typeof cells !== "object") return "";
+  if (!cells || typeof cells !== "object") return "Untitled";
   // Try schema lookup — title column is first column or type === "title"
   try {
     const schema = await env.DB.prepare("SELECT columns FROM table_schemas WHERE id = ?").bind(tableId).first();
     if (schema?.columns) {
-      const cols = JSON.parse(schema.columns);
-      const titleCol = cols.find((c) => c.type === "title") || cols[0];
-      if (titleCol?.name && cells[titleCol.name]) return String(cells[titleCol.name]);
+      let cols;
+      try {
+        cols = JSON.parse(schema.columns);
+      } catch (parseErr) {
+        console.error(`[resolveRecordTitle] Corrupted schema for table ${tableId}:`, parseErr.message);
+        // Fall through to fallback patterns
+        cols = null;
+      }
+      if (cols) {
+        const titleCol = cols.find((c) => c.type === "title") || cols[0];
+        if (titleCol?.name && cells[titleCol.name]) return String(cells[titleCol.name]).slice(0, 200);
+      }
     }
-  } catch (_) {}
+  } catch (err) {
+    console.error(`[resolveRecordTitle] DB error for table ${tableId}:`, err.message);
+  }
   // Fallback: scan common field name patterns (case-insensitive)
   const keys = Object.keys(cells);
   for (const pattern of ["task", "title", "name", "project name", "project", "subject", "item"]) {
@@ -1459,21 +1470,32 @@ export default {
       }
       // Mark all notifications read for current user
       if (path === "/d1/notifications/mark-all-read" && request.method === "POST") {
+        const freshRole = user ? await getFreshRole(env, user) : null;
+        // Multi-user: deleted/unknown users get no access
+        if (user && !freshRole) return jsonResponse({ _error: "User not found" }, 403);
         let query = "UPDATE notifications SET status = 'read' WHERE status = 'unread'";
         const params = [];
-        const freshRole = user ? await getFreshRole(env, user) : null;
         if (user && freshRole !== "admin") {
           query += " AND (target_user_id = 'all' OR target_user_id = ?)";
           params.push(user.sub);
         }
-        await env.DB.prepare(query).bind(...params).run();
+        const result = await env.DB.prepare(query).bind(...params).run();
+        // Audit log
+        if (user) {
+          try {
+            await env.DB.prepare(
+              "INSERT INTO audit_log (id, user_id, user_name, action, resource_type, details, created_at) VALUES (?, ?, ?, 'mark_all_read', 'notification', ?, datetime('now'))"
+            ).bind(crypto.randomUUID(), user.sub, user.name || "", JSON.stringify({ count: result?.changes || 0 })).run();
+          } catch (_) {}
+        }
         return jsonResponse({ success: true });
       }
       // Lightweight unread count only (for polling)
       if (path === "/d1/notifications/unread-count" && request.method === "GET") {
+        const freshRole = user ? await getFreshRole(env, user) : null;
+        if (user && !freshRole) return jsonResponse({ _error: "User not found" }, 403);
         let query = "SELECT COUNT(*) as count FROM notifications WHERE status = 'unread'";
         const params = [];
-        const freshRole = user ? await getFreshRole(env, user) : null;
         if (user && freshRole !== "admin") {
           query += " AND (target_user_id = 'all' OR target_user_id = ?)";
           params.push(user.sub);
@@ -2433,8 +2455,8 @@ async function handleAuthRegister(env, body) {
   if (!invite_code || !display_name?.trim()) {
     return jsonResponse({ _error: "invite_code and display_name required" }, 400);
   }
-  if (!password || password.length < 8 || !/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
-    return jsonResponse({ _error: "Password must be at least 8 characters with uppercase, lowercase, and a number" }, 400);
+  if (!password || password.length < 10 || !/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+    return jsonResponse({ _error: "Password must be at least 10 characters with uppercase, lowercase, and a number" }, 400);
   }
 
   try {
@@ -6079,6 +6101,10 @@ async function handleListNotifications(env, url, user) {
 
   // Filter by user: admins see all, others see 'all' + their own
   const freshRole = user ? await getFreshRole(env, user) : null;
+  // Multi-user: deleted/unknown users get no access
+  if (user && !freshRole) {
+    return jsonResponse({ notifications: [], unread_count: 0, _error: "User not found" }, 403);
+  }
   if (user && freshRole !== "admin") {
     conditions.push("(target_user_id = 'all' OR target_user_id = ?)");
     params.push(user.sub);
