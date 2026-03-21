@@ -1,8 +1,9 @@
 # Wasabi Platform: Security Vulnerabilities & Known Issues
 
-**Document Version:** 1.0
-**Last Updated:** 2026-03-20
+**Document Version:** 2.0
+**Last Updated:** 2026-03-21
 **Scope:** Complete security audit, logic bugs, design issues, and technical debt
+**Status:** Active — Phases 0-3 substantially complete, see Session Log below
 
 ---
 
@@ -1658,6 +1659,92 @@ Track these metrics after fixes:
 
 ---
 
+---
+
+## Session Log: 2026-03-21
+
+### Changes Implemented
+
+**Phase 0 — Critical Security (ALL COMPLETE):**
+| # | Issue | Status | Commit |
+|---|---|---|---|
+| 1 | XSS in PluginWidget.jsx + CustomView.jsx | ✅ FIXED | JSON.stringify + new Function sandboxing |
+| 2 | HTML Injection in iframeHelpers.js | ✅ FIXED | escapeHtml() for all user values + error messages |
+| 3 | Notification role bypass (worker.js) | ✅ FIXED | getFreshRole() from DB, not stale JWT claims |
+| 4 | JWT in localStorage → memory + HttpOnly cookie | ✅ FIXED | Refresh token pattern (15-min access + 7-day cookie) |
+| — | Unsalted SHA-256 passwords | ✅ FIXED | PBKDF2 with 16-byte salt, auto-migration on login |
+
+**Phase 1 — Major Security (ALL COMPLETE):**
+| # | Issue | Status | Commit |
+|---|---|---|---|
+| 5 | CORS origin whitelist | ✅ FIXED | corsHeaders() checks CORS_ORIGINS env var |
+| 6 | Rate limiting on auth | ✅ FIXED | D1-based, 5 failed attempts / 15 min per IP |
+| 7 | Invite code expiration | ✅ FIXED | 7-day TTL, checked on registration |
+| 8 | Password policy | ✅ FIXED | Min 8 chars, upper + lower + digit |
+| 9 | AuthContext bootstrap race | ✅ FIXED | State machine (idle→booting→ready) |
+| 10 | Code sandbox hardening | ✅ FIXED | 5s timeout via Promise.race on all execution points |
+
+**Phase 2 — Design & Accessibility (MOSTLY COMPLETE):**
+| # | Issue | Status | Notes |
+|---|---|---|---|
+| 15 | Hardcoded overlay colors | ✅ FIXED | 13 files → C.overlayBg |
+| 16 | Error/warning color tokens | ✅ FIXED | C.error, C.warning, C.success added |
+| 17 | ARIA attributes | ✅ FIXED | ConfirmDialog, CommandPalette, ViewTypePicker, SheetUrlDialog, LinkPicker |
+| 18 | Responsive design (iPad) | ✅ FIXED | ViewportContext + responsive drawers/panels/modals |
+| 19 | Loading/empty/error states | ✅ FIXED | ViewSkeleton per view type in PageShell |
+| 20 | Z-index scale | ✅ FIXED | Z token in tokens.js, 25 replacements across 17 files |
+
+**Phase 3 — Multi-User Functionality:**
+| # | Issue | Status | Notes |
+|---|---|---|---|
+| — | Notification schema fix | ✅ FIXED | All 11 columns declared explicitly |
+| — | Zen tasks data leak | ✅ FIXED | Per-user table ownership verification + stale cleanup |
+| — | Page permissions | ✅ VERIFIED | Already wired (PagePermissionsPanel in ViewSettingsPanel) |
+| — | Per-user data scoping | 🔲 PENDING | Full audit pending — name-based ownership needs review |
+
+**Phase 4 — Code Quality:**
+| # | Issue | Status | Notes |
+|---|---|---|---|
+| 4C | Test infrastructure | ✅ DONE | vitest + 29 security unit tests |
+| 4D | Silent error catches | ✅ DONE | 60 bare catches → console.warn across 27 files |
+| — | Table.jsx simplification | ✅ DONE | Extracted CellDisplay, removed 300+ lines |
+
+**Usability Improvements:**
+| Feature | Status | Notes |
+|---|---|---|
+| Breadcrumb folder navigation | ✅ FIXED | Clicking folder segments navigates correctly |
+| Toast notification system | ✅ DONE | ToastContext + globalToast(), wired into saves/errors |
+| Save indicator in header | ✅ VERIFIED | Already existed, cleaned up hardcoded colors |
+| Drawer ↔ View data sync | ✅ DONE | PageShell subscribes to RecordDrawerContext + WebSocket |
+| Table inline editing disabled | ✅ DONE | All edits via RecordDetail panel, not cell keyboard |
+| Refresh token (persistent auth) | ✅ DONE | 15-min access token + 7-day HttpOnly refresh cookie |
+
+### Deployment Issues
+
+**Cloudflare Pages build failures (5 consecutive):**
+- **Root cause:** `npm install` with npm 11 (Node 24) generated a lock file incompatible with Cloudflare's npm 10 (Node 22). Platform-specific esbuild binaries were locked as non-optional.
+- **Fix:** Deleted node_modules + package-lock.json, regenerated with `npx -y npm@10 install` to match Cloudflare's environment.
+- **Prevention:** Pin Node version in Cloudflare Pages settings, or add `.nvmrc` with `22` to repo root.
+- **Affected commits:** aa21d9b through 498aef1 (all showed ⚠️ "No deployment available")
+
+**Worker rate limiting during testing:**
+- Rate limiter blocked login during development (5 attempts exhausted quickly).
+- Fix: Changed to only count failed attempts (not all attempts). Successful logins don't consume quota.
+- Worker redeployment resets in-memory rate limit map.
+
+### Remaining Work
+
+**High priority:**
+1. **Per-user data scoping audit** — Verify all user-scoped data (tasks, dashboards, preferences, notes) is properly isolated. Name-based ownership checking may be fragile.
+2. **Refresh token on localhost** — `Secure` cookie flag prevents cookie from being sent on `http://localhost`. Test on deployed HTTPS instead, or conditionally omit `Secure` for dev.
+
+**Lower priority:**
+- Phase 4: Dead code removal (CalendarView.jsx), utility consolidation
+- Phase 4: Table.jsx/SystemManager.jsx splitting (deferred — fork-first approach for sub-items)
+- Phase 5: Documentation, development guidelines
+
+---
+
 **Document Owner:** Claude Code
-**Last Review:** 2026-03-20
-**Next Review:** After Phase 1 completion
+**Last Review:** 2026-03-21
+**Next Review:** After per-user data scoping audit
