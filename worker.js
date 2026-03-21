@@ -8886,12 +8886,10 @@ function readNotionPropValue(prop) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export class TableRoom {
-  constructor(state, env) {
-    this.state = state;
+  constructor(ctx, env) {
+    this.ctx = ctx;
     this.env = env;
     this.tableId = null; // Set from URL on first fetch
-    // Map<WebSocket, { userId, userName, role, color, activeRecordId, isTyping, typingField }>
-    this.sessions = new Map();
   }
 
   async fetch(request) {
@@ -8909,34 +8907,39 @@ export class TableRoom {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
 
-    server.accept();
-    this.sessions.set(server, { userId: null, userName: null, role: null, color: null, activeRecordId: null, isTyping: false, typingField: null });
-
-    server.addEventListener("message", (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        this.handleMessage(server, msg);
-      } catch {}
-    });
-
-    server.addEventListener("close", () => {
-      const session = this.sessions.get(server);
-      this.sessions.delete(server);
-      if (session?.userId) {
-        this.broadcast({ type: "user_left", userId: session.userId }, server);
-        this.broadcastPresence();
-      }
-    });
-
-    server.addEventListener("error", () => {
-      this.sessions.delete(server);
+    // Hibernation API: runtime manages the socket, DO sleeps between messages
+    this.ctx.acceptWebSocket(server);
+    server.serializeAttachment({
+      userId: null, userName: null, role: null, color: null,
+      activeRecordId: null, isTyping: false, typingField: null,
     });
 
     return new Response(null, { status: 101, webSocket: client });
   }
 
+  // ── Hibernation handlers (replace addEventListener) ──
+
+  webSocketMessage(ws, message) {
+    try {
+      const msg = JSON.parse(message);
+      this.handleMessage(ws, msg);
+    } catch {}
+  }
+
+  webSocketClose(ws, code, reason) {
+    const session = ws.deserializeAttachment();
+    if (session?.userId) {
+      this.broadcast({ type: "user_left", userId: session.userId }, ws);
+      this.broadcastPresence();
+    }
+  }
+
+  webSocketError(ws, error) {
+    // close handler fires after error — cleanup happens there
+  }
+
   handleMessage(ws, msg) {
-    const session = this.sessions.get(ws);
+    const session = ws.deserializeAttachment();
     if (!session) return;
 
     switch (msg.type) {
@@ -8945,6 +8948,7 @@ export class TableRoom {
         session.userName = msg.userName;
         session.role = msg.role;
         session.color = msg.color;
+        ws.serializeAttachment(session);
         this.broadcast({ type: "user_joined", userId: msg.userId, userName: msg.userName, color: msg.color }, ws);
         this.broadcastPresence();
         break;
@@ -8952,6 +8956,7 @@ export class TableRoom {
 
       case "focus": {
         session.activeRecordId = msg.recordId;
+        ws.serializeAttachment(session);
         this.broadcast({ type: "user_focus", userId: session.userId, recordId: msg.recordId }, ws);
         this.broadcastPresence();
         break;
@@ -8961,6 +8966,7 @@ export class TableRoom {
         session.activeRecordId = null;
         session.isTyping = false;
         session.typingField = null;
+        ws.serializeAttachment(session);
         this.broadcast({ type: "user_blur", userId: session.userId }, ws);
         this.broadcastPresence();
         break;
@@ -8970,6 +8976,7 @@ export class TableRoom {
         session.isTyping = true;
         session.typingField = msg.field;
         session.activeRecordId = msg.recordId || session.activeRecordId;
+        ws.serializeAttachment(session);
         this.broadcast({ type: "user_typing", userId: session.userId, recordId: session.activeRecordId, field: msg.field }, ws);
         break;
       }
@@ -8977,6 +8984,7 @@ export class TableRoom {
       case "stop_typing": {
         session.isTyping = false;
         session.typingField = null;
+        ws.serializeAttachment(session);
         this.broadcast({ type: "user_stop_typing", userId: session.userId }, ws);
         break;
       }
@@ -9076,9 +9084,10 @@ export class TableRoom {
 
   broadcast(msg, excludeWs) {
     const data = JSON.stringify(msg);
-    for (const [ws, session] of this.sessions) {
+    for (const ws of this.ctx.getWebSockets()) {
       if (ws === excludeWs) continue;
-      if (!session.userId) continue; // Skip unjoined connections
+      const session = ws.deserializeAttachment();
+      if (!session?.userId) continue; // Skip unjoined connections
       try { ws.send(data); } catch {}
     }
   }
@@ -9088,9 +9097,14 @@ export class TableRoom {
   }
 
   broadcastPresence() {
+    const allWs = this.ctx.getWebSockets();
     const users = [];
-    for (const [, session] of this.sessions) {
-      if (!session.userId) continue;
+    const joinedSockets = [];
+
+    for (const ws of allWs) {
+      const session = ws.deserializeAttachment();
+      if (!session?.userId) continue;
+      joinedSockets.push(ws);
       users.push({
         userId: session.userId,
         userName: session.userName,
@@ -9100,9 +9114,9 @@ export class TableRoom {
         typingField: session.typingField,
       });
     }
+
     const data = JSON.stringify({ type: "presence", users });
-    for (const [ws, session] of this.sessions) {
-      if (!session.userId) continue;
+    for (const ws of joinedSockets) {
       try { ws.send(data); } catch {}
     }
   }
@@ -9115,10 +9129,9 @@ export class TableRoom {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export class UserRoom {
-  constructor(state, env) {
-    this.state = state;
+  constructor(ctx, env) {
+    this.ctx = ctx;
     this.env = env;
-    this.sessions = new Map(); // ws → { sessionId, deviceInfo, connectedAt }
   }
 
   async fetch(request) {
@@ -9141,29 +9154,31 @@ export class UserRoom {
     const sessionId = url.searchParams.get("sid") || "";
     const deviceInfo = url.searchParams.get("device") || "unknown";
 
-    server.accept();
-    this.sessions.set(server, { sessionId, deviceInfo, connectedAt: Date.now() });
-
-    server.addEventListener("message", (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        this.handleMessage(server, msg);
-      } catch {}
-    });
-
-    server.addEventListener("close", () => {
-      this.sessions.delete(server);
-      this.broadcastDeviceList();
-    });
-
-    server.addEventListener("error", () => {
-      this.sessions.delete(server);
-    });
+    // Hibernation API: runtime manages the socket, DO sleeps between messages
+    this.ctx.acceptWebSocket(server);
+    server.serializeAttachment({ sessionId, deviceInfo, connectedAt: Date.now() });
 
     // Send device list to all (including new connection)
     this.broadcastDeviceList();
 
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  // ── Hibernation handlers (replace addEventListener) ──
+
+  webSocketMessage(ws, message) {
+    try {
+      const msg = JSON.parse(message);
+      this.handleMessage(ws, msg);
+    } catch {}
+  }
+
+  webSocketClose(ws, code, reason) {
+    this.broadcastDeviceList();
+  }
+
+  webSocketError(ws, error) {
+    // close handler fires after error — cleanup happens there
   }
 
   handleMessage(sender, msg) {
@@ -9185,15 +9200,15 @@ export class UserRoom {
       const msg = await request.json();
       if (msg.type === "session_revoked") {
         const revokeAll = msg.sessionIds?.includes("*");
-        for (const [ws, session] of this.sessions) {
-          if (revokeAll || msg.sessionIds?.includes(session.sessionId)) {
+        for (const ws of this.ctx.getWebSockets()) {
+          const session = ws.deserializeAttachment();
+          if (revokeAll || msg.sessionIds?.includes(session?.sessionId)) {
             this.sendTo(ws, msg);
             try { ws.close(4001, "Session revoked"); } catch {}
-            this.sessions.delete(ws);
           }
         }
       } else {
-        for (const [ws] of this.sessions) {
+        for (const ws of this.ctx.getWebSockets()) {
           try { ws.send(JSON.stringify(msg)); } catch {}
         }
       }
@@ -9203,7 +9218,7 @@ export class UserRoom {
 
   broadcast(msg, excludeWs) {
     const data = JSON.stringify(msg);
-    for (const [ws] of this.sessions) {
+    for (const ws of this.ctx.getWebSockets()) {
       if (ws === excludeWs) continue;
       try { ws.send(data); } catch {}
     }
@@ -9214,16 +9229,20 @@ export class UserRoom {
   }
 
   broadcastDeviceList() {
+    const allWs = this.ctx.getWebSockets();
     const devices = [];
-    for (const [, session] of this.sessions) {
-      devices.push({
-        sessionId: session.sessionId,
-        deviceInfo: session.deviceInfo,
-        connectedAt: session.connectedAt,
-      });
+    for (const ws of allWs) {
+      const session = ws.deserializeAttachment();
+      if (session) {
+        devices.push({
+          sessionId: session.sessionId,
+          deviceInfo: session.deviceInfo,
+          connectedAt: session.connectedAt,
+        });
+      }
     }
     const data = JSON.stringify({ type: "devices", devices });
-    for (const [ws] of this.sessions) {
+    for (const ws of allWs) {
       try { ws.send(data); } catch {}
     }
   }

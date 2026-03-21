@@ -14,6 +14,10 @@ export default class UserSocket {
     this.maxReconnectDelay = 30000;
     this.connected = false;
     this.intentionalClose = false;
+    this.idleTimeout = 10 * 60 * 1000; // 10 minutes
+    this.idleTimer = null;
+    this.idleDisconnected = false;
+    this._onActivity = null;
   }
 
   connect() {
@@ -41,6 +45,12 @@ export default class UserSocket {
     this.ws.onopen = () => {
       this.connected = true;
       this.reconnectDelay = 1000;
+      // Start or reset idle tracking
+      if (!this._onActivity) {
+        this._startIdleTracking();
+      } else {
+        this._resetIdleTimer();
+      }
     };
 
     this.ws.onmessage = (event) => {
@@ -71,7 +81,10 @@ export default class UserSocket {
   }
 
   disconnect() {
-    this.intentionalClose = true;
+    if (!this.idleDisconnected) {
+      this.intentionalClose = true;
+      this._stopIdleTracking();
+    }
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -90,6 +103,41 @@ export default class UserSocket {
       this.connect();
     }, this.reconnectDelay);
     this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
+  }
+
+  // ── Idle disconnect (reduces DO duration when user is away) ──
+
+  _startIdleTracking() {
+    const events = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"];
+    this._onActivity = () => {
+      this._resetIdleTimer();
+      if (this.idleDisconnected) {
+        this.idleDisconnected = false;
+        this.connect();
+      }
+    };
+    events.forEach(e => document.addEventListener(e, this._onActivity, { passive: true }));
+    this._resetIdleTimer();
+  }
+
+  _stopIdleTracking() {
+    if (this._onActivity) {
+      const events = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"];
+      events.forEach(e => document.removeEventListener(e, this._onActivity));
+      this._onActivity = null;
+    }
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
+  }
+
+  _resetIdleTimer() {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => {
+      this.idleDisconnected = true;
+      this.disconnect();
+    }, this.idleTimeout);
   }
 
   send(type, payload) {
