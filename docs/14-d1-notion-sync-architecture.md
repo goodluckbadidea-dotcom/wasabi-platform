@@ -1,223 +1,410 @@
-# 14 — D1/Notion Sync Architecture: Notion as Integration, Not Dependency
+# D1/Notion Sync Architecture
 
-**Created**: 2026-03-19
-**Status**: Planning → Implementation
-**Priority**: Critical — blocks conflict detection, MCP, automations, search, and all multi-user features for Notion-linked databases
+## Current State (2026-03-20)
 
-## The Problem
+Wasabi uses **Notion-linked databases in bypass mode**: data is NOT synced to D1. Instead:
 
-Wasabi has two separate data paths that should be one:
+1. **D1 is used only for:** Standalone tables, system config (pages, automations, etc.)
+2. **Notion databases are read-only** from the Wasabi frontend
+3. **All Notion reads go through the worker** (via Notion API proxy)
+4. **No real-time sync back to Notion** - changes made in Wasabi stay in D1 only
+5. **Notion data never written back to Notion** from Wasabi
 
-1. **Linked Notion databases** — `resolveSourceType()` returns `"notion"`, data fetched live from Notion API on every page load. Never written to D1.
-2. **Standalone D1 tables** — `resolveSourceType()` returns `"d1"`, data lives in `table_rows`. All features work.
+---
 
-This means Wasabi's most important databases (Projects, Vendor CRM, Core Inventory) get **none** of the platform features:
+## The Problem: Notion-Linked Databases Bypass D1
 
-| Feature | D1 tables | Linked Notion |
-|---------|:-:|:-:|
-| Conflict detection (cell_versions) | ✅ | ❌ |
-| MCP tools (all 29) | ✅ | ❌ |
-| Automations & triggers | ✅ | ❌ |
-| Notifications on changes | ✅ | ❌ |
-| Record ownership / permissions | ✅ | ❌ |
-| Search across tables | ✅ | ❌ |
-| Analytics / aggregations | ✅ | ❌ |
-| Neurons / cell links | ✅ | ❌ |
-| Comments & notes | ✅ | ❌ |
-| Dashboard widget queries | ✅ | ❌ |
-| Offline resilience | ✅ | ❌ |
-
-## Design Principle
-
-**Notion is an INTEGRATION, not a DEPENDENCY.** D1 is the source of truth. Notion is a sync target. If Notion is down, Wasabi still works.
-
-## Architecture Change
+### Current Data Flow
 
 ```
-BEFORE:
-  linked_notion page → fetchNotionDb() → Notion API → render
-  d1 page → getTableRows() → D1 → render
-
-AFTER:
-  ALL database pages → getTableRows() → D1 → render
-                                          ↑↓
-                                    Background sync
-                                          ↑↓
-                                      Notion API
+Notion Database (in Notion)
+  ↓ (frontend queries via worker proxy)
+Wasabi Frontend (displays live Notion data)
+  ↓ (user makes edits in Wasabi)
+D1 Table (stores changes locally)
+  ❌ (NOT synced back to Notion)
 ```
 
-## Implementation Plan
+### What This Blocks
 
-### Phase A: Auto-Sync on Database Link
+1. **Conflict Detection**
+   - Can't track cell versions for Notion-linked DBs
+   - Multiple users editing same Notion DB in Wasabi → lost updates
+   - No version tracking in Notion API
 
-**Goal**: When a Notion database is linked to a Wasabi page, automatically configure sync and pull all data into D1.
+2. **MCP (Model Context Protocol)**
+   - Can't grant Claude access to Notion-linked data
+   - D1 data can be passed to Claude via SQL
+   - Notion data has no versioning/sync layer
 
-**Files**: `src/core/PageShell.jsx`, `src/lib/api.js`, `worker.js`
+3. **Automations & Rules**
+   - Rules read D1 tables only
+   - Notion-linked DB changes not visible to automations
+   - No triggers on Notion data changes
 
-#### Steps:
+4. **Search & Indexing**
+   - Search only indexes D1 data
+   - Notion-linked DBs not searchable
 
-1. **Modify `handleAddDatabase` in PageShell.jsx**
-   - After updating pageConfig with the new databaseId, call:
-     ```javascript
-     await configureSyncNotionDB(pageConfig.id, { notion_db_id: dbId });
-     await syncPull(pageConfig.id, true); // full=true for initial pull
-     ```
-   - Show a loading indicator during initial sync ("Syncing database...")
+---
 
-2. **Enhance `handleSyncConfigure` in worker.js**
-   - After creating sync_config, also generate and save a `table_schemas` entry
-   - Map Notion property types → D1 column types:
-     - `title`, `rich_text` → `text`
-     - `number` → `number`
-     - `select` → `select` (with options from Notion)
-     - `multi_select` → `multi_select` (with options)
-     - `date` → `date`
-     - `checkbox` → `checkbox`
-     - `url` → `url`
-     - `email` → `email`
-     - `phone_number` → `phone`
-     - `people` → `people`
-     - `files` → `files`
-     - `relation` → `relation`
-     - `formula` → `text` (snapshot of computed value)
-     - `rollup` → `text` (snapshot of computed value)
-     - `status` → `select`
-     - `created_time`, `last_edited_time` → `date`
-     - `created_by`, `last_edited_by` → `text`
+## Planned Sync Architecture (Not Yet Implemented)
 
-3. **Enhance `handleSyncPull` in worker.js**
-   - Already transforms Notion properties to D1 cells ✅
-   - Already creates/updates rows in table_rows ✅
-   - Need to: also update the table_schemas entry when new Notion properties are detected (schema drift handling)
-   - Need to: set `page_type` to `"database"` on the page_config after successful initial pull (so resolveSourceType returns "d1")
+### Design Goal
 
-4. **Add initial sync endpoint for existing databases**
-   - `POST /sync/bootstrap` — finds all page_configs with `notion_database_id` in databaseIds that have NO sync_config, creates sync configs, and runs full pulls
-   - This handles the migration of existing linked databases
-
-### Phase B: Switch Data Source Resolution
-
-**Goal**: All synced databases read from D1 instead of Notion.
-
-**Files**: `src/lib/dataSource.js`
-
-#### Steps:
-
-1. **Modify `resolveSourceType(pageConfig)`**
-   - Current logic: checks `page_type` and presence of `notion_database_id` to return `"notion"`
-   - New logic: if the page has a sync_config (indicated by page_type being "database" or a flag), return `"d1"`
-   - Fallback: if page_type is still `"linked_notion"` (pre-migration), return `"notion"` temporarily
-
-2. **Modify `fetchDataSource()`**
-   - The `"d1"` path already works — reads from `getTableRows()` and maps to view-compatible format
-   - Verify: schema resolution works for synced databases (table_schemas populated in Phase A)
-
-3. **Modify `updateRecord()`**
-   - D1 path already writes to table_rows with merge_cells ✅
-   - The sync_dirty flag on the row triggers push to Notion via cron ✅
-   - No changes needed — just verify the sync push handles the mapped fields correctly
-
-4. **Modify `createRecord()`**
-   - D1 path creates a new table_row ✅
-   - sync_dirty=1 triggers push to Notion ✅
-   - Need to verify: the push creates a new Notion page with correct property mapping
-
-5. **Modify `deleteRecords()`**
-   - D1 path deletes/archives the row
-   - Need to: also archive the corresponding Notion page on sync push
-
-### Phase C: Migration of Existing Databases
-
-**Goal**: Populate D1 for all currently linked Notion databases.
-
-#### Steps:
-
-1. **Run bootstrap sync**
-   - Call `POST /sync/bootstrap` (from Phase A step 4)
-   - This finds all linked Notion databases, configures sync, and runs full pull
-   - Expected: Projects (32 records), Vendor CRM (~20), Core Inventory (~100+), Oregon Sell Thru (~50)
-
-2. **Verify data integrity**
-   - Compare row counts: D1 vs Notion for each synced database
-   - Spot-check cell values for correct type transformation
-   - Verify schema columns match expected types
-
-3. **Update page_configs**
-   - Set `page_type` to `"database"` for all successfully synced pages
-   - This switches `resolveSourceType` to the D1 path
-
-### Phase D: Keep D1 Fresh
-
-**Goal**: D1 stays in sync with Notion changes made outside Wasabi.
-
-#### Steps:
-
-1. **Staleness check on page load**
-   - When a synced database page is opened, check `sync_configs.last_synced_at`
-   - If older than 5 minutes, trigger an incremental pull in the background
-   - Don't block page render — show D1 data immediately, update if pull finds changes
-
-2. **Cron pull (optional)**
-   - Extend `runSyncFlushTick` to also run incremental pulls for active sync configs
-   - "Active" = last accessed within 24 hours (tracked via user_state or record_views)
-   - Rate limit: max 1 pull per table per 5 minutes
-
-3. **Schema refresh**
-   - On each pull, compare Notion database schema with D1 table_schemas
-   - If new properties found, add them as new columns
-   - If properties renamed, update column names
-   - If properties removed, mark columns as hidden (don't delete data)
-
-4. **Manual refresh button**
-   - Already exists in SyncPanel — "Pull (incremental)" and "Full Resync"
-   - Make this accessible from the page header (not buried in settings)
-
-## Data Flow After Implementation
+Make **D1 the source of truth** for ALL data:
 
 ```
-User edits record in Wasabi
-  → Write to D1 table_rows (immediate)
-  → Set sync_dirty = 1
-  → Cron pushes to Notion (within 2 minutes)
-
-User edits record in Notion
-  → Next incremental pull detects change
-  → Write to D1 table_rows
-  → Frontend receives updated data on next fetch/refresh
-
-New Notion database linked
-  → Auto-configure sync
-  → Full pull populates D1
-  → Page renders from D1
-  → Bidirectional sync active
+Notion Database
+  ↓ (periodic sync)
+D1 Table (source of truth)
+  ↓ (bidirectional sync)
+Wasabi Frontend
+  ↑ (reverse sync)
+Notion Database (optional: sync back)
 ```
 
-## Risks and Mitigations
+### Step 1: One-Way Sync (Notion → D1)
 
-| Risk | Mitigation |
-|------|-----------|
-| Large initial pull (1000+ records) | Paginated pull (Notion API returns max 100 per request). Show progress bar. |
-| Schema drift (Notion columns change) | Schema refresh on each pull. Add new columns, don't delete old ones. |
-| Relation properties (cross-DB links) | Store as text/ID references. Resolve display names via page_configs.titles endpoint. |
-| Formula/rollup properties | Store as static snapshots. Update on sync. Mark as read-only in UI. |
-| Concurrent Notion edits during sync | Incremental pull uses last_edited_time filter. Conflict detection (Phase 1) handles overlaps. |
-| Initial migration breaks existing views | Gradual rollout: run bootstrap, verify data, then flip resolveSourceType. Keep "notion" fallback. |
+**Initialization:** When user links a Notion database
 
-## File Inventory
+```javascript
+async function syncNotionDbToD1(notionDbId) {
+  // 1. Fetch schema from Notion
+  const schema = await detectSchema(workerUrl, notionKey, notionDbId);
 
-| File | Change | Phase |
-|------|--------|-------|
-| `worker.js` | handleSyncConfigure: auto-generate table_schemas. handleSyncPull: schema drift. New /sync/bootstrap endpoint. | A |
-| `src/core/PageShell.jsx` | handleAddDatabase: auto-configure + pull on link | A |
-| `src/lib/api.js` | Add bootstrapSync() function | A |
-| `src/lib/dataSource.js` | resolveSourceType: return "d1" for synced databases. Remove Notion direct-fetch path. | B |
-| `wrangler-worker.toml` | No changes needed | — |
+  // 2. Create D1 table with matching schema
+  const tableId = await createD1Table(notionDbId, schema);
 
-## Success Criteria
+  // 3. Fetch all pages from Notion
+  const pages = await queryAll(workerUrl, notionKey, notionDbId);
 
-1. All linked Notion databases have matching rows in D1 table_rows
-2. MCP tools return actual data for linked databases (not empty)
-3. Conflict detection works on Notion-sourced data
-4. Automations can trigger on Notion-sourced record changes
-5. Search finds records across all databases (not just standalone D1 tables)
-6. Data persists if Notion API is temporarily unavailable
+  // 4. Insert into D1
+  await bulkInsertRows(tableId, pages);
+
+  // 5. Mark page as "synced" (store notion_page_id in D1)
+  await savePage Config({
+    databaseIds: [notionDbId],
+    d1TableId: tableId,
+    lastSyncAt: now(),
+  });
+}
+```
+
+### Step 2: Periodic Sync (Keep D1 Updated)
+
+**Schedule:** Every 5-30 minutes (configurable)
+
+```javascript
+async function syncNotionToD1Periodic(notionDbId, d1TableId) {
+  // 1. Get cursor of last sync
+  const lastCursor = await getLastSyncCursor(d1TableId);
+
+  // 2. Query Notion for changes since last cursor
+  const changes = await queryNotion(notionDbId, { startCursor: lastCursor });
+
+  // 3. For each changed page:
+  //    - If deleted: DELETE from D1
+  //    - If updated: UPDATE in D1
+  //    - If new: INSERT into D1
+
+  // 4. Store new cursor for next sync
+  await saveLastSyncCursor(d1TableId, changes.nextCursor);
+}
+```
+
+### Step 3: Reverse Sync (D1 → Notion, Optional)
+
+**Config:** Only if user enables "two-way sync"
+
+```javascript
+async function syncD1ToNotionOnChange(tableId, rowId, changes) {
+  if (!isTwoWaySyncEnabled(tableId)) return;
+
+  const notionDbId = getLinkedNotionDbId(tableId);
+  const notionPageId = await mapRowToNotionPage(rowId);
+
+  // Update Notion page properties
+  await updatePage(notionDbId, notionPageId, changes);
+}
+```
+
+---
+
+## dataSource.js: Abstraction Layer
+
+**File:** `src/lib/dataSource.js`
+
+Normalizes reads from any source (D1, Notion, Monday) without the frontend caring about differences.
+
+### Source Type Detection
+
+```javascript
+export function resolveSourceType(pageConfig) {
+  const pt = pageConfig.page_type || pageConfig.pageType;
+
+  if (pt === "database") return "d1";
+  if (pt === "standalone_table") return "d1";
+  if (pt === "linked_notion") return "d1";  // ← Data synced to D1
+  if (pt === "linked_monday") return "monday";
+  if (pt === "linked_sheet") return "linked_sheet";
+
+  if (pageConfig.databaseIds?.length) return "d1";  // Legacy
+  return "none";
+}
+```
+
+### Fetch Normalization
+
+```javascript
+export async function fetchDataSource(pageConfig, user) {
+  const type = resolveSourceType(pageConfig);
+
+  switch (type) {
+    case "d1":
+      return await fetchD1Table(pageConfig);
+    case "notion":
+      return await fetchNotionDb(pageConfig, user);
+    case "monday":
+      return await fetchMondayBoard(pageConfig, user);
+    default:
+      return { data: [], schema: null };
+  }
+}
+```
+
+### Output Format (Normalized)
+
+All sources return same format:
+
+```javascript
+{
+  data: [
+    {
+      id: string,
+      properties: {
+        [fieldName]: {
+          type: "title" | "text" | "number" | "select" | "multi_select" | ...,
+          [typeSpecific]: value,
+        },
+      },
+      created_time: ISO8601,
+      last_edited_time: ISO8601,
+      _databaseId?: string,  // for multi-db queries
+    },
+  ],
+  schema: {
+    id: string,
+    title: string,
+    fields: [
+      {
+        id: string,
+        name: string,
+        type: "title" | "text" | "number" | ...,
+        config?: {},
+      },
+    ],
+    // ... classified schema
+  },
+  schemas: {
+    [dbId]: schema,  // multi-db support
+  },
+}
+```
+
+---
+
+## Current D1 Schema for Notion Sync
+
+```sql
+CREATE TABLE page_configs (
+  id TEXT PRIMARY KEY,
+  -- ... page config fields ...
+  databaseIds TEXT,  -- JSON array of Notion DB IDs
+  d1TableId TEXT,    -- D1 table ID if synced
+  lastSyncAt DATETIME,
+  syncStatus TEXT,  -- "idle" | "syncing" | "failed"
+);
+
+CREATE TABLE table_rows (
+  id TEXT,
+  table_id TEXT,
+  cells TEXT,  -- JSON of all cell values
+  cell_versions TEXT,  -- JSON: { fieldName: version }
+  sync_dirty BOOLEAN,  -- Needs sync back to Notion?
+  notion_page_id TEXT,  -- Maps D1 row to Notion page
+  updated_at DATETIME,
+  updated_by TEXT,
+  PRIMARY KEY (id, table_id)
+);
+
+CREATE TABLE sync_cursors (
+  table_id TEXT PRIMARY KEY,
+  notion_cursor TEXT,  -- Notion query cursor for incremental sync
+  last_sync_time DATETIME,
+);
+```
+
+---
+
+## Migration Path
+
+### Phase 1: Detection (Current)
+- Frontend knows about linked Notion DBs via `databaseIds`
+- Reads still go directly to Notion via worker proxy
+- No D1 tables created
+
+### Phase 2: One-Way Sync (Planned)
+- User clicks "Sync to D1" on Notion-linked page
+- Creates D1 table, imports all Notion data
+- Enables conflict detection (cell versioning)
+- Enables automations/search on that DB
+
+### Phase 3: Periodic Sync (Planned)
+- Standalone sync service keeps D1 in sync with Notion
+- Runs every 5-30 minutes
+- Incremental: only fetches changed pages
+
+### Phase 4: Two-Way Sync (Optional)
+- Enable reverse sync: D1 changes → Notion
+- User controls this per-table
+- Respects Notion property types (select, text, etc.)
+
+### Phase 5: Full Replacement
+- All Notion data flows through D1
+- Notion is purely a source of truth (read-only from Wasabi)
+- Wasabi can have internal-only fields in D1
+
+---
+
+## Known Issues & Gaps
+
+### 1. No Sync Conflict Resolution
+
+**Problem:** If same page edited in both Notion and Wasabi:
+
+```
+Notion: Title = "Project A"
+Wasabi: Title = "Project A Updated"
+
+Periodic sync runs → overwrites Wasabi change
+```
+
+**No detection of conflicts.** Last write wins.
+
+### 2. No Rollback Plan
+
+**Problem:** If sync corrupts data:
+
+```
+D1 table accidentally cleared
+→ Next sync overwrites it with bad data
+→ No way to restore
+```
+
+**No backups, no version history, no undo.**
+
+### 3. Notion API Limitations
+
+**Sync constraints:**
+- No cursor-based pagination for incremental syncs (Notion deprecated it)
+- No "deleted pages" marker — must query all pages each time
+- Rate limits: 3-4 requests/second
+- Schema changes not detected automatically
+
+### 4. Bidirectional Sync is Lossy
+
+**Example:**
+- Notion: "Status" = select with values ["Todo", "Done"]
+- Wasabi: Edit to "InProgress" (doesn't exist in Notion)
+- Sync back to Notion → fails or truncates
+
+**Types don't map 1:1 between systems.**
+
+### 5. Multi-DB Joins Not Supported
+
+**Problem:** Page has 2 linked Notion DBs:
+
+```
+databaseIds: ["db1", "db2"]
+```
+
+**If data synced separately:**
+- db1 → d1_table_1
+- db2 → d1_table_2
+
+**But which rows to fetch? Both? In what order?**
+
+Currently undefined behavior.
+
+---
+
+## Implementation Checklist (For Future)
+
+- [ ] Add `d1TableId` field to page_configs
+- [ ] Add sync status tracking to page_configs
+- [ ] Create `syncNotionToD1()` function in worker
+- [ ] Create periodic sync job (Cron DO or scheduled fetch)
+- [ ] Add UI: "Sync Notion DB to D1" button
+- [ ] Add UI: "Sync Status" indicator
+- [ ] Implement conflict detection using cell_versions
+- [ ] Add rollback mechanism (backup before sync)
+- [ ] Optional: bidirectional sync with conflict resolution
+- [ ] Optional: real-time webhooks from Notion (requires external server)
+
+---
+
+## Why Current Design Was Chosen
+
+### Rationale for Bypass Mode
+
+1. **Simplicity:** No sync complexity at launch
+2. **Speed:** Direct Notion reads are fast enough for small DBs
+3. **Flexibility:** Users can edit in Notion and see changes immediately
+4. **Minimal Code:** No sync service needed
+
+### Trade-offs Accepted
+
+- ❌ No conflict detection
+- ❌ No automations on Notion data
+- ❌ No full-text search on Notion data
+- ❌ No offline support
+- ✅ Simple architecture
+- ✅ Always in sync with Notion
+- ✅ Read-only changes don't require sync
+
+### When to Switch to D1 Sync
+
+**Switch when:**
+1. Multiple users need to edit same Notion DB in Wasabi
+2. Automations need to trigger on Notion data
+3. Search needs to index Notion data
+4. Offline support needed
+5. Performance becomes issue (large DBs)
+
+---
+
+## Testing Sync
+
+### Manual Test Plan
+
+```
+1. Create Notion DB with 3 pages
+2. Link to Wasabi page
+3. Verify frontend reads all 3 pages
+4. Create new page in Notion
+5. Verify Wasabi sees it (no refresh)
+6. Edit a page field in Wasabi
+7. Refresh Wasabi → verify change persisted locally
+8. Edit same field in Notion
+9. Refresh Wasabi → which wins?
+```
+
+### Automated Tests Needed
+
+- [ ] syncNotionToD1 imports all pages correctly
+- [ ] Incremental sync doesn't duplicate rows
+- [ ] Deleted pages are handled
+- [ ] Schema changes are detected
+- [ ] Cell versions match after sync
+- [ ] Conflict detection triggers correctly

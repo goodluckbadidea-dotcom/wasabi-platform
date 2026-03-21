@@ -1,445 +1,436 @@
-# 13 — Real-Time Collaboration & Conflict Resolution
+# Real-time Collaboration System
 
-**Last updated**: 2026-03-19
-**Status**: Phases 1-3 complete. Phase 4 (live record updates) and Phase 5 (polish) pending.
+## Overview
 
-### Multi-User Fixes Completed (2026-03-19)
-- ✅ Google OAuth per-user isolation: `handleGoogleStatus` no longer falls back to global token for logged-in users
-- ✅ Disconnect only removes the current user's token, not the global one
-- ✅ Field-level conflict detection deployed to production
+Wasabi implements **real-time presence and conflict detection** for multiple users editing the same table simultaneously. This is powered by:
 
-## Context
-
-Wasabi supports 5-10 concurrent users. Without real-time sync, two users editing the same record causes silent data loss (last-write-wins with no detection). This plan implements Google Docs-style collaboration: field-level merge, live presence, and conflict resolution across all views.
-
-## Requirements
-
-- **Presence**: See who has which record open (colored border + avatar badge). Typing indicator when someone is actively editing.
-- **Field-level merge**: Non-conflicting field changes merge automatically. Conflicting field changes surface a resolution UI.
-- **Soft lock with override**: When another user is editing a record, show a banner but allow edits. Changes merge on save.
-- **All views**: Table, kanban, gantt, calendar, cardGrid, form, activityFeed — all receive live updates.
-- **Scale**: 5-10 concurrent users per workspace.
-
-## Architecture Overview
-
-```
-Browser A ──WebSocket──┐
-Browser B ──WebSocket──┤── Durable Object (TableRoom) ──── D1 Database
-Browser C ──WebSocket──┘         │
-                                 ├── Presence state (in-memory)
-                                 ├── Field version tracking
-                                 └── Change broadcast hub
-```
-
-### Three Layers
-
-1. **Durable Object ("TableRoom")** — one per table, manages WebSocket connections, presence, and change broadcasting
-2. **Field-level versioning in D1** — `cell_versions` JSON on each row for conflict detection
-3. **Frontend presence + conflict UI** — colored borders, typing indicators, merge/conflict toasts
+1. **WebSocket connections** via Cloudflare Durable Objects (TableRoom)
+2. **Cell versioning** for conflict detection (stored in D1)
+3. **Presence tracking** (which users are viewing which records)
+4. **Conflict resolution UI** (ConflictToast component)
 
 ---
 
-## Layer 1: Durable Object — TableRoom
+## Architecture
 
-### Purpose
-Manages real-time WebSocket connections for a single table. Tracks who's connected, what record they're viewing/editing, and broadcasts changes to all participants.
+### Components
 
-### Location
-`worker.js` — export a new Durable Object class `TableRoom`
-
-### Wrangler Config
-```toml
-# wrangler-worker.toml
-[durable_objects]
-bindings = [
-  { name = "TABLE_ROOMS", class_name = "TableRoom" }
-]
-
-[[migrations]]
-tag = "v1"
-new_classes = ["TableRoom"]
+```
+PageShell
+  └── CollaborationProvider (wraps table)
+      ├── TableSocket (WebSocket client)
+      ├── useCollaboration() hook
+      └── ViewRenderer
+          └── TableView / KanbanView / etc.
 ```
 
-### WebSocket Endpoint
+### Server-Side: TableRoom Durable Object
+
+**File:** `worker.js` lines 8884+
+
+Manages WebSocket connections for a single table. One TableRoom instance per table (DO identity = tableId).
+
+#### Responsibilities
+
+1. Accept WebSocket upgrade requests
+2. Authenticate users (JWT validation)
+3. Broadcast presence (who's viewing, typing)
+4. Handle record saves with conflict detection
+5. Track cell versions for optimistic concurrency control
+
+#### WebSocket Lifecycle
+
 ```
-GET /ws/table/:tableId
-→ Upgrade to WebSocket
-→ Route to Durable Object instance (ID derived from tableId)
+Client connects to /ws/table/{tableId}
+  → Request validated (JWT checked)
+  → WebSocketPair created
+  → Server-side WebSocket accepted via Hibernation API
+  → Client receives 101 Upgrade response
+
+Client sends "join" message
+  → Session attached to WebSocket (userId, userName, role, etc.)
+  → "user_joined" broadcast to all other clients
+  → "presence" sent back listing all active users
+
+... (messages exchanged) ...
+
+Client disconnects or closes
+  → "user_left" broadcast to all other clients
+  → Session cleaned up
 ```
 
-### Durable Object State (in-memory)
+---
+
+## What IS Implemented
+
+### 1. Presence Tracking
+
+Users viewing the same table see each other's names and colors.
+
+**State in CollaborationContext:**
+```javascript
+activeUsers: Map<userId, {
+  userId: string,
+  userName: string,
+  color: string,  // deterministic color per user
+  activeRecordId?: string,  // which record they're editing
+  isTyping: boolean,
+  typingField?: string,
+}>
+```
+
+**Component:** `PresenceAvatars.jsx`
+
+Displays avatars of active users in the header:
 
 ```javascript
-class TableRoom {
-  constructor(state, env) {
-    this.state = state;
-    this.env = env;
-    this.sessions = new Map(); // WebSocket → { userId, userName, role, activeRecordId, isTyping, color }
-  }
-}
+// Shows colored avatars with initials
+<PresenceAvatars users={activeUsers} />
 ```
 
-### WebSocket Message Protocol
+### 2. Typing Indicators
 
-All messages are JSON with a `type` field.
+Users see real-time typing status in table cells.
 
-#### Client → Server
-
-| Type | Payload | Description |
-|------|---------|-------------|
-| `join` | `{ userId, userName, role, color }` | User connects to table |
-| `focus` | `{ recordId }` | User opened/selected a record |
-| `blur` | `{}` | User closed record / deselected |
-| `typing` | `{ recordId, field }` | User is actively editing a field |
-| `stop_typing` | `{}` | User stopped editing |
-| `save` | `{ recordId, cells, base_versions }` | User saving field changes (goes through DO for conflict check) |
-
-#### Server → Client (broadcast)
-
-| Type | Payload | Description |
-|------|---------|-------------|
-| `presence` | `{ users: [{ userId, userName, color, activeRecordId, isTyping, typingField }] }` | Full presence snapshot (sent on join/leave/focus/blur) |
-| `user_joined` | `{ userId, userName, color }` | New user connected |
-| `user_left` | `{ userId }` | User disconnected |
-| `user_focus` | `{ userId, recordId }` | User focused on a record |
-| `user_blur` | `{ userId }` | User unfocused |
-| `user_typing` | `{ userId, recordId, field }` | User is typing in a field |
-| `record_updated` | `{ recordId, cells, cell_versions, updatedBy }` | A record was saved — apply delta |
-| `conflict` | `{ recordId, field, yourValue, theirValue, theirUser, currentVersion }` | Field-level conflict detected |
-
-### Conflict Detection Flow (inside DO)
+**Flow:**
 
 ```
-1. Client sends: save { recordId, cells: { Status: "Done" }, base_versions: { Status: 13 } }
-2. DO reads current cell_versions from D1 for that row
-3. For each changed field:
-   a. If base_version matches current → accept, bump version, write to D1
-   b. If base_version < current → CONFLICT: another user changed this field
-4. For accepted fields: broadcast record_updated to all other clients
-5. For conflicted fields: send conflict message back to the saving client
-6. Return merged result to saving client
+User focuses input → startTyping(recordId, field)
+  → TableSocket.send({ type: "typing", recordId, field })
+  → TableRoom broadcasts to all clients
+  → Other users see "..." in the cell or typing color overlay
+  → User exits field → stopTyping()
+  → Broadcast "user_stop_typing"
 ```
 
-### DO Lifecycle
-- Created on first WebSocket connection to a table
-- Evicted after all connections close + idle timeout (Cloudflare manages this)
-- No persistent state needed — presence is ephemeral, versions are in D1
+### 3. Record Focus Tracking
 
----
+Shows which record each user is currently editing.
 
-## Layer 2: Field-Level Versioning in D1
+**Messages:**
+- `focus` - { recordId }
+- `blur` - {}
 
-### Schema Change
+**Display:** Avatar highlights or sidebar shows "User X is editing Record Y"
+
+### 4. Cell Versioning & Conflict Detection
+
+**Only works for D1-backed tables.** When user saves, TableRoom checks versions.
+
+**Cell Version Storage (D1):**
 
 ```sql
-ALTER TABLE table_rows ADD COLUMN cell_versions TEXT DEFAULT '{}';
+CREATE TABLE table_rows (
+  id TEXT,
+  table_id TEXT,
+  cells TEXT,  -- JSON of all cell values
+  cell_versions TEXT,  -- JSON: { fieldName: version }
+  updated_by TEXT,
+  updated_at DATETIME,
+  PRIMARY KEY (id, table_id)
+)
 ```
 
-`cell_versions` is a JSON object mapping field names to integer version counters:
-```json
-{ "Status": 14, "Title": 7, "Priority": 3, "Assignee": 1 }
-```
-
-### Modified PATCH /tables/:tableId/rows/:rowId
-
-**Current behavior**: Merge cells, write to D1, broadcast notification.
-
-**New behavior**:
+**Conflict Detection Algorithm (in TableRoom.handleSave):**
 
 ```javascript
-async function handleUpdateRow(env, tableId, rowId, body, user) {
-  const existing = await env.DB.prepare(
-    "SELECT cells, cell_versions, metadata FROM table_rows WHERE id = ? AND table_id = ?"
-  ).bind(rowId, tableId).first();
+for (field, value) in user_cells:
+  currentVersion = cell_versions[field] || 0
+  baseVersion = base_versions[field]  // version user started with
 
-  const currentCells = JSON.parse(existing.cells || "{}");
-  const currentVersions = JSON.parse(existing.cell_versions || "{}");
-  const baseVersions = body.base_versions || {}; // sent by client
-  const incomingCells = body.cells || body;
-
-  const accepted = {};
-  const conflicts = {};
-  const newVersions = { ...currentVersions };
-
-  for (const [field, value] of Object.entries(incomingCells)) {
-    const currentV = currentVersions[field] || 0;
-    const baseV = baseVersions[field];
-
-    // If no base_version sent (legacy client), accept unconditionally
-    if (baseV === undefined || baseV >= currentV) {
-      accepted[field] = value;
-      newVersions[field] = currentV + 1;
-    } else {
-      // Conflict: base version is stale
-      conflicts[field] = {
-        yourValue: value,
-        currentValue: currentCells[field],
-        currentVersion: currentV,
-      };
+  if baseVersion === undefined OR baseVersion >= currentVersion:
+    // No conflict: cell hasn't changed since user started editing
+    accepted[field] = value
+    newVersions[field] = currentVersion + 1
+  else:
+    // Conflict: cell version is stale
+    // User's base version < current version
+    // Someone else edited this cell
+    conflicts[field] = {
+      yourValue: value,
+      currentValue: currentCells[field],
+      currentVersion: currentVersion,
     }
-  }
+```
 
-  // Merge accepted fields
-  if (Object.keys(accepted).length > 0) {
-    const mergedCells = { ...currentCells, ...accepted };
-    await env.DB.prepare(
-      `UPDATE table_rows SET cells = ?, cell_versions = ?, updated_at = datetime('now'), sync_dirty = 1
-       WHERE id = ? AND table_id = ?`
-    ).bind(JSON.stringify(mergedCells), JSON.stringify(newVersions), rowId, tableId).run();
-  }
+**Conflict Response to Client:**
 
-  return jsonResponse({
-    accepted,
-    conflicts: Object.keys(conflicts).length ? conflicts : undefined,
-    cell_versions: newVersions,
-  });
+```javascript
+{
+  type: "save_result",
+  recordId: string,
+  accepted: { field: value, ... },  // Fields that were saved
+  conflicts: {
+    field: { yourValue, currentValue, currentVersion }
+  },
+  cell_versions: { field: newVersion, ... },
 }
 ```
 
-### Backward Compatibility
-- If `base_versions` is not sent (old frontend, MCP, API calls), all fields are accepted unconditionally (current behavior preserved).
-- `cell_versions` column defaults to `'{}'` — no migration needed for existing rows, versions start at 0.
+### 5. Live Record Updates
+
+When one user saves, all other clients receive the updated cells.
+
+**Message from TableRoom to all other clients:**
+
+```javascript
+{
+  type: "record_updated",
+  recordId: string,
+  cells: { field: value, ... },  // Only accepted changes
+  cell_versions: { field: version, ... },
+  updatedBy: userId,
+  updatedByName: userName,
+}
+```
+
+**Component Handling:** Tables subscribe to `onRecordUpdate()` callback and refetch affected rows.
+
+### 6. Conflict Toast UI
+
+**Component:** `ConflictToast.jsx`
+
+Displays conflicts to user with resolution options:
+
+```
+┌─────────────────────────────────────┐
+│ Conflict in "Status" field          │
+│                                     │
+│ Your version:   "In Progress"       │
+│ Current version: "Done"             │
+│                                     │
+│ [Keep Mine] [Accept Theirs] [Merge]│
+└─────────────────────────────────────┘
+```
+
+**Actions:**
+- **Keep Mine** - User's value wins (re-save after incrementing version)
+- **Accept Theirs** - Current server value wins (discard user's change)
+- **Merge** (if applicable) - Fuzzy merge or manual edit
 
 ---
 
-## Layer 3: Frontend
+## What is NOT Implemented
 
-### 3a. WebSocket Connection Manager
+### 1. ❌ Notion-Linked Database Support
 
-**New file**: `src/lib/tableSocket.js`
+Collaboration **only works with D1-backed tables**. Notion-linked databases:
+- Don't track cell versions
+- Lack conflict detection
+- Have no real-time sync from Wasabi back to Notion
 
-Singleton manager that opens/closes WebSocket connections per table.
+**Reason:** Notion API doesn't support version tracking. All Notion data flows through async sync, not real-time.
+
+### 2. ❌ Three-Way Merge
+
+Conflicts are resolved with simple version comparison. No intelligent three-way merge.
+
+**Current:** Last-write-wins after base version check
+**Missing:** Merging when both users edited different sub-fields
+
+### 3. ❌ Rollback Mechanism
+
+No way to undo a conflicted save or revert to previous version.
+
+### 4. ❌ Conflict Persistence
+
+Conflicts cleared on page reload. No history of conflicts.
+
+### 5. ❌ Automatic Conflict Resolution
+
+User must manually choose which version to keep. No AI merge.
+
+### 6. ❌ Multi-Table Transactions
+
+Saves are per-record, per-field. No transactions across records or tables.
+
+---
+
+## Implementation Details
+
+### CollaborationContext (src/context/CollaborationContext.jsx)
+
+Wraps a single table and provides collaboration state/actions.
+
+**Constructor:**
+```javascript
+<CollaborationProvider tableId={tableId} userId={userId} userName={userName} role={role}>
+  <TableView />
+</CollaborationProvider>
+```
+
+**Provides:**
+```javascript
+{
+  activeUsers,       // Map<userId, user>
+  pendingConflicts,  // Array of conflict objects
+  focusRecord,       // (recordId) => void
+  blurRecord,        // () => void
+  startTyping,       // (recordId, field) => void
+  stopTyping,        // () => void
+  saveRecord,        // (recordId, cells, baseVersions) => Promise
+  dismissConflict,   // (recordId, field) => void
+  onRecordUpdate,    // (callback) => unsubscribe
+}
+```
+
+### TableSocket (src/lib/tableSocket.js)
+
+WebSocket client for table collaboration.
+
+**Connection:**
+```javascript
+const socket = new TableSocket(tableId, userId, userName, role);
+socket.connect();
+```
+
+**Send Message:**
+```javascript
+socket.send(type, data);
+// Internally: ws.send(JSON.stringify({ type, ...data }))
+```
+
+**Subscribe to Messages:**
+```javascript
+const unsub = socket.onMessage((msg) => {
+  switch(msg.type) {
+    case "presence": handlePresence(msg); break;
+    case "user_joined": handleJoin(msg); break;
+    case "record_updated": handleRecordUpdate(msg); break;
+    case "conflict": handleConflict(msg); break;
+  }
+});
+```
+
+**Auto-Reconnect:**
+- Exponential backoff: 1s, 2s, 4s, ... up to 30s
+- Max 5 minute idle timeout (auto-disconnect if no activity)
+- Manual `disconnect()` stops reconnection attempts
+
+### Cell Version Tracking
+
+In views, when user loads a record, fetch current cell versions as "base":
 
 ```javascript
-class TableSocket {
-  constructor(tableId, userId, userName, color) { ... }
-  connect() { /* open WS to /ws/table/:tableId */ }
-  disconnect() { ... }
-  send(type, payload) { ... }
-  onMessage(handler) { ... }
+const record = await fetchRecord(tableId, recordId);
+const baseVersions = record.cell_versions;
 
-  // Presence shortcuts
-  focusRecord(recordId) { this.send("focus", { recordId }); }
-  blurRecord() { this.send("blur", {}); }
-  startTyping(recordId, field) { this.send("typing", { recordId, field }); }
-  stopTyping() { this.send("stop_typing", {}); }
+// User edits fields...
 
-  // Save with conflict detection
-  saveRecord(recordId, cells, baseVersions) {
-    this.send("save", { recordId, cells, base_versions: baseVersions });
+// On save:
+saveRecord(recordId, cells, baseVersions);
+```
+
+The TableRoom DO compares:
+- `baseVersions[field]` (what user started with)
+- Current `cell_versions[field]` in D1
+
+---
+
+## Usage Examples
+
+### In a Table View
+
+```javascript
+import { CollaborationProvider, useCollaboration } from "../context/CollaborationContext.jsx";
+
+function TableView({ tableId, userId, userName, role }) {
+  return (
+    <CollaborationProvider tableId={tableId} userId={userId} userName={userName} role={role}>
+      <TableContent />
+    </CollaborationProvider>
+  );
+}
+
+function TableContent() {
+  const { activeUsers, pendingConflicts, saveRecord, onRecordUpdate } = useCollaboration();
+
+  // Show presence
+  return (
+    <div>
+      <PresenceAvatars users={activeUsers} />
+      {/* ... table rows ... */}
+      {pendingConflicts.map(c => <ConflictToast key={`${c.recordId}-${c.field}`} conflict={c} />)}
+    </div>
+  );
+}
+```
+
+### Handling Saves
+
+```javascript
+async function handleCellSave(recordId, field, value) {
+  const record = records.find(r => r.id === recordId);
+  const baseVersions = record.cell_versions;
+
+  try {
+    const result = await saveRecord(recordId, { [field]: value }, baseVersions);
+
+    if (result.conflicts) {
+      // ConflictToast will show conflicts from pendingConflicts state
+      // User clicks "Keep Mine", "Accept Theirs", etc.
+    } else {
+      // Save successful, cells updated
+      showToast("Saved");
+    }
+  } catch (err) {
+    showError(`Save failed: ${err.message}`);
   }
 }
 ```
 
-### 3b. React Context — CollaborationContext
+---
 
-**New file**: `src/context/CollaborationContext.jsx`
+## Known Issues & Limitations
 
-Wraps `TableSocket` in React context. Provides:
+### 1. Notion-Linked Databases Don't Support Collaboration
+- No conflict detection
+- No real-time updates from Wasabi → Notion
+- All data flows through async sync only
 
-```javascript
-const {
-  // Presence
-  activeUsers,        // Map<userId, { userName, color, activeRecordId, isTyping, typingField }>
-  getUsersOnRecord,   // (recordId) => [{ userId, userName, color, isTyping }]
+### 2. No Merge Strategy for Multiple Conflicts
+- If user edits 5 fields and 3 have conflicts, all 3 must be manually resolved
+- No "merge and save" option that intelligently combines both versions
 
-  // Actions
-  focusRecord,        // (recordId) => void
-  blurRecord,         // () => void
-  startTyping,        // (recordId, field) => void
-  stopTyping,         // () => void
+### 3. Conflicts Not Persisted
+- Reload page → conflicts gone
+- No audit trail of who changed what
 
-  // Live updates
-  onRecordUpdated,    // callback when another user saves
-  pendingConflicts,   // [{ recordId, field, yourValue, theirValue, theirUser }]
-  resolveConflict,    // (recordId, field, chosenValue) => void
-} = useCollaboration();
-```
+### 4. Cell Version Overflow
+- No rotation/cleanup of version numbers
+- Over time, versions become large integers
+- Could theoretically overflow (but unlikely in practice)
 
-### 3c. Presence UI Components
+### 5. Typing Indicators Lost on Disconnect
+- If user's browser crashes, typing indicator stays until timeout
+- No graceful cleanup on network failure
 
-**Record border highlight** (all views):
-```jsx
-// In card/row rendering, check if another user has this record focused
-const othersOnRecord = getUsersOnRecord(record.id);
-const borderColor = othersOnRecord.length > 0 ? othersOnRecord[0].color : undefined;
-
-<div style={{ borderLeft: borderColor ? `3px solid ${borderColor}` : undefined }}>
-  {/* Avatar badges */}
-  {othersOnRecord.map(u => <AvatarBadge key={u.userId} user={u} />)}
-</div>
-```
-
-**Typing indicator**:
-```jsx
-{othersOnRecord.some(u => u.isTyping) && (
-  <span className="typing-indicator">
-    {othersOnRecord.filter(u => u.isTyping).map(u => u.userName).join(", ")} editing...
-  </span>
-)}
-```
-
-**Soft lock banner in RecordDrawer**:
-```jsx
-{othersOnRecord.length > 0 && (
-  <div className="collab-banner">
-    {othersOnRecord.map(u => u.userName).join(", ")} also editing.
-    Changes merge automatically.
-  </div>
-)}
-```
-
-**Conflict toast**:
-```jsx
-{pendingConflicts.map(c => (
-  <ConflictToast
-    key={`${c.recordId}-${c.field}`}
-    field={c.field}
-    yourValue={c.yourValue}
-    theirValue={c.theirValue}
-    theirUser={c.theirUser}
-    onKeepMine={() => resolveConflict(c.recordId, c.field, c.yourValue)}
-    onAcceptTheirs={() => resolveConflict(c.recordId, c.field, c.theirValue)}
-  />
-))}
-```
-
-### 3d. User Colors
-
-Each user gets a consistent color derived from their user ID (hash to palette index). Stored in `users` table or generated client-side:
-
-```javascript
-const USER_COLORS = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7", "#DDA0DD", "#98D8C8", "#F7DC6F"];
-function userColor(userId) {
-  let hash = 0;
-  for (const ch of userId) hash = ((hash << 5) - hash + ch.charCodeAt(0)) | 0;
-  return USER_COLORS[Math.abs(hash) % USER_COLORS.length];
-}
-```
+### 6. Idle Timeout Disconnect
+- After 5 minutes of inactivity, connection closes
+- User doesn't see indicator they're disconnected
+- Next edit triggers reconnect
 
 ---
 
-## Integration Points
+## Future Improvements
 
-### PageShell.jsx
-- On mount: create `TableSocket` for `pageConfig.id` (if page_type is database)
-- Pass `CollaborationContext` provider around the view tree
-- On unmount: disconnect socket, send blur
+### 1. Notion Sync Bi-Directional
+- Sync Wasabi saves back to Notion in real-time
+- Then enable conflict detection for Notion-linked DBs
 
-### ViewRenderer.jsx
-- Wrap all view components inside `CollaborationContext.Provider`
-- Each view reads `activeUsers` and `getUsersOnRecord` to render presence
+### 2. Operational Transformation (OT)
+- Replace simple versioning with OT
+- Allow true concurrent editing without conflicts
 
-### RecordDrawer.jsx
-- On open: call `focusRecord(recordId)`
-- On close: call `blurRecord()`
-- On field edit: call `startTyping(recordId, field)`
-- On field blur: call `stopTyping()`
-- On save: use `saveRecord(recordId, cells, baseVersions)` instead of direct API call
-- Show soft lock banner if others are editing
-- Show conflict resolution UI if conflicts returned
+### 3. Three-Way Merge
+- Implement smart merge when both users edited
+- Show side-by-side diff editor
 
-### dataSource.js / api.js
-- `updateRecord()` now sends `base_versions` alongside `cells`
-- Frontend tracks `cell_versions` per record (received from list/query responses and live updates)
+### 4. Undo/Rollback
+- Add version history per cell
+- Allow reverting to any past version
 
----
+### 5. Conflict History
+- Log all conflicts with timestamps
+- Show audit trail: "User A" vs "User B" in field X
 
-## Implementation Phases
-
-### Phase 1: Field-Level Versioning (no WebSocket yet) — COMPLETE ✅
-**Files**: `worker.js`, `src/lib/dataSource.js`, `src/core/PageShell.jsx`, `src/components/ConflictToast.jsx`
-**Commit**: `138b481` (2026-03-19)
-
-1. ✅ Added `cell_versions` TEXT column + `updated_by` TEXT column to `table_rows`
-2. ✅ Modified `handleUpdateRow` to support `base_versions` conflict detection
-3. ✅ `cell_versions` included in both row list and query responses (parsed from JSON)
-4. ✅ Frontend tracks `cell_versions` per record, passes `base_versions` through `dataSource.updateRecord` → `api.updateRow`
-5. ✅ `ConflictToast` component: shows conflicted fields with "Keep mine" / "Accept theirs" buttons
-6. ✅ Legacy clients (no `base_versions`) still work unconditionally — backward compatible
-7. ✅ Worker deployed, init migration runs successfully
-
-**Outcome**: Conflict detection works via polling. No real-time presence yet, but no more silent data loss.
-
-**BLOCKER for full functionality**: Notion-linked databases have empty D1 table_rows — conflict detection only works on standalone D1 tables until the D1/Notion sync architecture is fixed. See `docs/14-d1-notion-sync-architecture.md`.
-
-### Phase 2: Durable Object + WebSocket — COMPLETE ✅
-**Files**: `worker.js` (TableRoom class), `wrangler-worker.toml`, `src/lib/tableSocket.js`
-
-1. ✅ Created `TableRoom` Durable Object class with full message protocol
-2. ✅ Added `/ws/table/:tableId` WebSocket upgrade endpoint with JWT + API key auth
-3. ✅ Implemented join/leave/focus/blur/typing/save message handling
-4. ✅ Built `TableSocket` client class with auto-reconnect (exponential backoff up to 30s)
-5. ✅ Updated `wrangler-worker.toml` with DO binding + migration tag v1
-6. ✅ Save-through-DO conflict detection (reads D1, detects conflicts, broadcasts accepted changes)
-
-**Outcome**: Live WebSocket connections per table. Server can broadcast presence and record changes.
-
-### Phase 3: Presence UI — COMPLETE ✅
-**Files**: `src/context/CollaborationContext.jsx`, view components
-
-1. ✅ Created `CollaborationContext` React context wrapping `TableSocket`
-2. ✅ Wired into `PageShell` via `CollaborationProvider` (connect on mount, disconnect on unmount)
-3. ✅ Added presence rendering to Table (colored left border on rows with other users)
-4. ✅ Added presence rendering to Kanban (colored card border + name badge with typing indicator)
-5. ✅ Added typing indicator to RecordDetail (startTyping on field edit, stopTyping on commit)
-6. ✅ Added collaboration banner to RecordDetail ("X also viewing/editing. Changes merge automatically.")
-7. ✅ RecordDrawer sends focus/blur events on open/close
-
-**Outcome**: Users see who's editing what, across Table and Kanban views + record detail.
-
-### Phase 4: Live Record Updates
-**Files**: `TableRoom` DO, `CollaborationContext`, `RecordDrawer`
-
-1. Route saves through Durable Object (client → DO → D1 → broadcast)
-2. Apply incoming `record_updated` deltas to local state
-3. Conflict detection + resolution UI (keep mine / accept theirs)
-4. Handle reconnection (re-fetch state on WebSocket reconnect)
-
-**Outcome**: Full Google Docs-style collaboration.
-
-### Phase 5: Polish & Edge Cases
-1. Offline queue — buffer saves during disconnect, replay on reconnect
-2. Debounce typing indicators (don't flood WebSocket)
-3. Graceful degradation — if DO is unavailable, fall back to polling
-4. Rate limiting — prevent WebSocket spam
-5. User color consistency — store in user profile or derive from ID
-
----
-
-## File Inventory
-
-| File | Change | Phase |
-|------|--------|-------|
-| `worker.js` | Add `cell_versions` to schema, modify handleUpdateRow, add TableRoom DO class, add /ws/table/:tableId endpoint | 1, 2 |
-| `wrangler-worker.toml` | Add Durable Object binding + migration | 2 |
-| `src/lib/tableSocket.js` | NEW — WebSocket client manager | 2 |
-| `src/context/CollaborationContext.jsx` | NEW — React context for presence + conflicts | 3 |
-| `src/core/PageShell.jsx` | Connect CollaborationContext on mount | 3 |
-| `src/views/ViewRenderer.jsx` | Wrap views in CollaborationContext.Provider | 3 |
-| `src/views/TableView.jsx` | Add presence borders + badges to rows | 3 |
-| `src/views/KanbanView.jsx` | Add presence borders + badges to cards | 3 |
-| `src/zen/RecordDrawer.jsx` | Focus/blur events, typing indicator, soft lock banner, conflict UI | 3, 4 |
-| `src/lib/api.js` | Send base_versions with PATCH, track cell_versions | 1 |
-| `src/lib/dataSource.js` | Pass base_versions through updateRecord | 1 |
-| `src/components/ConflictToast.jsx` | NEW — conflict resolution UI | 1 |
-| `src/components/AvatarBadge.jsx` | NEW — user presence badge | 3 |
-| `src/components/CollabBanner.jsx` | NEW — soft lock banner for drawer | 3 |
-
----
-
-## Cost & Performance Notes
-
-- **Durable Objects pricing**: $0.15/million requests, $12.50/million GB-s duration. At 5-10 users, expect <$1/month.
-- **WebSocket messages**: Lightweight JSON, typically <200 bytes each. No bandwidth concern.
-- **D1 impact**: `cell_versions` adds ~100-500 bytes per row. Negligible.
-- **Polling fallback**: If WebSocket fails, fall back to 5-second polling on `/tables/:tableId/rows`. Already happens via existing refresh timer in PageShell.
-
----
-
-## Open Questions
-
-1. **Should saves go through the Durable Object or directly to the Worker?** Going through DO adds latency but ensures broadcast ordering. Direct to Worker is faster but requires a separate notification to DO.
-2. **Granularity of typing indicator** — field-level ("User B editing Status") or just record-level ("User B editing")?
-3. **Conflict resolution for select fields** — if both users change Status, show a dropdown picker? Or just "keep mine / accept theirs"?
-4. **Maximum concurrent WebSocket connections per DO** — Cloudflare limits to ~100 concurrent connections per DO instance. More than enough for 5-10 users per table.
