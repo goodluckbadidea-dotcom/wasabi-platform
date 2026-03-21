@@ -497,13 +497,27 @@ async function checkRateLimit(db, key, maxAttempts = 5, windowSecs = 900) {
       const retryAfter = oldestInWindow + windowSecs - nowSecs;
       return { limited: true, retryAfter: Math.max(retryAfter, 1) };
     }
-    // Record this attempt
-    await db.prepare("INSERT INTO rate_limits (key, ts) VALUES (?, ?)").bind(key, nowSecs).run();
+    // Don't record here — caller records only on failure via recordRateLimitAttempt()
     return { limited: false };
   } catch (_) {
     // If the table doesn't exist yet (pre-migration), allow the request
     return { limited: false };
   }
+}
+
+// Record a failed auth attempt for rate limiting (only call on failure)
+async function recordRateLimitAttempt(db, key) {
+  const nowSecs = Math.floor(Date.now() / 1000);
+  try {
+    await db.prepare("INSERT INTO rate_limits (key, ts) VALUES (?, ?)").bind(key, nowSecs).run();
+  } catch (_) {}
+}
+
+// Clear rate limit entries on successful login (reset the window)
+async function clearRateLimit(db, key) {
+  try {
+    await db.prepare("DELETE FROM rate_limits WHERE key = ?").bind(key).run();
+  } catch (_) {}
 }
 
 // ─── Auth Middleware ───
@@ -932,7 +946,8 @@ export default {
       // ─── Auth Endpoints (before auth gate — users can't auth to reach auth) ───
       if ((path === "/auth/register" || path === "/auth/login") && request.method === "POST") {
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-        const rl = await checkRateLimit(env.DB, `auth:${ip}`);
+        const rlKey = `auth:${ip}`;
+        const rl = await checkRateLimit(env.DB, rlKey);
         if (rl.limited) {
           return jsonResponse(
             { _error: "Too many attempts. Please try again later." },
@@ -941,8 +956,16 @@ export default {
           );
         }
         const body = await request.json();
-        if (path === "/auth/register") return await handleAuthRegister(env, body);
-        return await handleAuthLogin(env, body);
+        const result = path === "/auth/register"
+          ? await handleAuthRegister(env, body)
+          : await handleAuthLogin(env, body);
+        // Only record failed attempts; clear on success
+        if (result.status >= 400 && result.status !== 429) {
+          await recordRateLimitAttempt(env.DB, rlKey);
+        } else if (result.status === 200) {
+          await clearRateLimit(env.DB, rlKey);
+        }
+        return result;
       }
 
       // ─── Auth Gate ───
@@ -1875,17 +1898,17 @@ export default {
       if (path === "/files" && request.method === "POST") {
         return await handleFileUpload(request, env);
       }
-      // GET /files — list files, optional ?page_id= or ?record_id=
+      // GET /files — list files, requires ?page_id= or ?record_id=
       if (path === "/files" && request.method === "GET") {
-        return await handleListFiles(env, url.searchParams.get("page_id"), url.searchParams.get("record_id"));
+        return await handleListFiles(env, user, url.searchParams.get("page_id"), url.searchParams.get("record_id"));
       }
-      // GET /files/:id — download file
+      // GET /files/:id — download file (with page permission check)
       if (fileMatch && request.method === "GET") {
-        return await handleGetFile(env, fileMatch[1]);
+        return await handleGetFile(env, user, fileMatch[1]);
       }
-      // DELETE /files/:id — delete file
+      // DELETE /files/:id — delete file (with page permission check)
       if (fileMatch && request.method === "DELETE") {
-        return await handleDeleteFile(env, fileMatch[1]);
+        return await handleDeleteFile(env, user, fileMatch[1]);
       }
 
       // ─── Monday.com Proxy ───
@@ -5696,12 +5719,34 @@ async function handleFileUpload(request, env) {
   }
 }
 
-async function handleListFiles(env, pageId, recordId) {
+async function handleListFiles(env, user, pageId, recordId) {
   try {
+    // Require page_id or record_id — no bare list-all (prevents leaking all workspace files)
+    if (!pageId && !recordId) {
+      // Admin can list all; non-admin must scope to a page or record
+      const role = user ? await getFreshRole(env, user) : null;
+      if (role !== "admin") {
+        return jsonResponse({ _error: "page_id or record_id required" }, 400);
+      }
+    }
+
     let result;
     if (recordId) {
+      // Verify user has access to the page this record belongs to
+      if (user) {
+        const record = await env.DB.prepare("SELECT page_config_id FROM rows WHERE id = ?").bind(recordId).first();
+        if (record?.page_config_id) {
+          const allowed = await checkPagePermission(env, user, record.page_config_id, "viewer");
+          if (!allowed) return jsonResponse({ _error: "Access denied" }, 403);
+        }
+      }
       result = await env.DB.prepare("SELECT * FROM files WHERE record_id = ? ORDER BY created_at DESC").bind(recordId).all();
     } else if (pageId) {
+      // Verify user has access to this page
+      if (user) {
+        const allowed = await checkPagePermission(env, user, pageId, "viewer");
+        if (!allowed) return jsonResponse({ _error: "Access denied" }, 403);
+      }
       result = await env.DB.prepare("SELECT * FROM files WHERE page_id = ? ORDER BY created_at DESC").bind(pageId).all();
     } else {
       result = await env.DB.prepare("SELECT * FROM files ORDER BY created_at DESC LIMIT 200").all();
@@ -5712,10 +5757,16 @@ async function handleListFiles(env, pageId, recordId) {
   }
 }
 
-async function handleGetFile(env, id) {
+async function handleGetFile(env, user, id) {
   try {
     const row = await env.DB.prepare("SELECT * FROM files WHERE id = ?").bind(id).first();
     if (!row) return jsonResponse({ _error: "File not found" }, 404);
+
+    // Verify user has access to the page this file belongs to
+    if (user && row.page_id) {
+      const allowed = await checkPagePermission(env, user, row.page_id, "viewer");
+      if (!allowed) return jsonResponse({ _error: "Access denied" }, 403);
+    }
 
     const obj = await env.DOCS.get(row.r2_key);
     if (!obj) return jsonResponse({ _error: "File data not found in R2" }, 404);
@@ -5733,10 +5784,16 @@ async function handleGetFile(env, id) {
   }
 }
 
-async function handleDeleteFile(env, id) {
+async function handleDeleteFile(env, user, id) {
   try {
-    const row = await env.DB.prepare("SELECT r2_key FROM files WHERE id = ?").bind(id).first();
+    const row = await env.DB.prepare("SELECT r2_key, page_id FROM files WHERE id = ?").bind(id).first();
     if (!row) return jsonResponse({ _error: "File not found" }, 404);
+
+    // Verify user has editor-level access to the page this file belongs to
+    if (user && row.page_id) {
+      const allowed = await checkPagePermission(env, user, row.page_id, "editor");
+      if (!allowed) return jsonResponse({ _error: "Access denied" }, 403);
+    }
 
     await env.DOCS.delete(row.r2_key);
     await env.DB.prepare("DELETE FROM files WHERE id = ?").bind(id).run();
