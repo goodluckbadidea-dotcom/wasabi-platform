@@ -6,6 +6,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { loadCachedConfigs, loadPageConfigs, validatePageConfigs, archivePageConfig, savePageConfig, createDashboardConfig, createWorkspaceConfig } from "../config/pageConfig.js";
 import { useAuth } from "./AuthContext.jsx";
+import { globalToast } from "./ToastContext.jsx";
 
 const PagesContext = createContext(null);
 
@@ -216,6 +217,7 @@ export function PagesProvider({ children }) {
         console.error("[Pages] Persist failed, rolling back:", err);
         setSaveStatus("error");
         saveTimerRef.current = setTimeout(() => setSaveStatus("idle"), 4000);
+        globalToast("Failed to save: " + (err.message || "Unknown error"), "error");
         // Rollback: restore previous state and localStorage
         setPages(prevPages);
         try { localStorage.setItem("wasabi_page_configs", JSON.stringify(prevPages)); } catch {}

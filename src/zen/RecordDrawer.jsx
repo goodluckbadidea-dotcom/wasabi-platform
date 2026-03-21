@@ -13,6 +13,7 @@ import {
   logTaskInteraction, getInteractionSummary,
 } from "../lib/api.js";
 import { updatePage } from "../notion/client.js";
+import { globalToast } from "../context/ToastContext.jsx";
 import { buildProp } from "../notion/properties.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { useCollaboration } from "../context/CollaborationContext.jsx";
@@ -220,6 +221,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
         const updated = { ...task, title, done, status, priority, due, notes };
         onSaved?.(updated);
         notifySaved("task", updated);
+        globalToast("Task saved", "success");
         onClose();
       } else {
         const tableId = task.tableId || (task.source?.startsWith("d1:") ? task.source.split(":")[1] : null);
@@ -255,10 +257,12 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
         const updated = { ...task, title, done, status, priority, due, notes };
         onSaved?.(updated);
         notifySaved("task", updated);
+        globalToast("Task saved", "success");
         onClose();
       }
     } catch (err) {
       console.error("[RecordDrawer] Save task failed:", err);
+      globalToast("Failed to save task", "error");
       setError("Failed to save. Please try again.");
     } finally {
       setSaving(false);
@@ -274,10 +278,12 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
       await deleteRow(tableId, task.id);
       onDeleted?.(task.id);
       notifyDeleted("task", task.id);
+      globalToast("Task deleted", "info");
       onClose();
     } catch (err) {
       console.error("[RecordDrawer] Delete task failed:", err);
       setError("Failed to delete.");
+      globalToast("Failed to delete task", "error");
     } finally {
       setDeleting(false);
       setConfirmDelete(false);
@@ -705,10 +711,12 @@ function EventEditor({ event, onSaved, onDeleted, onClose }) {
       const updated = { ...event, ...updates };
       onSaved?.(updated);
       notifySaved("event", updated);
+      globalToast("Event saved", "success");
       onClose();
     } catch (err) {
       console.error("[RecordDrawer] Save event failed:", err);
       setError("Failed to save event.");
+      globalToast("Failed to save event", "error");
     } finally {
       setSaving(false);
     }
@@ -724,10 +732,12 @@ function EventEditor({ event, onSaved, onDeleted, onClose }) {
       await deleteCalendarEvent(event.id);
       onDeleted?.(event.id);
       notifyDeleted("event", event.id);
+      globalToast("Event deleted", "info");
       onClose();
     } catch (err) {
       console.error("[RecordDrawer] Delete event failed:", err);
       setError("Failed to delete event.");
+      globalToast("Failed to delete event", "error");
     } finally {
       setDeleting(false);
       setConfirmDelete(false);

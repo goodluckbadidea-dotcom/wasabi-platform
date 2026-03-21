@@ -13,6 +13,7 @@ import { ColorMappingProvider } from "./context/ColorMappingContext.jsx";
 import { ThemeProvider, useTheme } from "./context/ThemeContext.jsx";
 import { UserSyncProvider, useUserSync } from "./context/UserSyncContext.jsx";
 import { ViewportProvider, useViewport } from "./context/ViewportContext.jsx";
+import { ToastProvider } from "./context/ToastContext.jsx";
 import { injectAnimations, injectInteractionStyles, injectScrollbarStyles, updateCSSCustomProperties, ANIM, TRANSITION } from "./design/animations.js";
 import { S } from "./design/styles.js";
 import { C, Z } from "./design/tokens.js";
@@ -616,6 +617,7 @@ export default function App() {
   return (
     <ViewportProvider>
       <ThemeProvider>
+        <ToastProvider>
         <PlatformProvider>
           <UserSyncProvider>
             <ColorMappingProvider>
@@ -631,6 +633,7 @@ export default function App() {
             </ColorMappingProvider>
           </UserSyncProvider>
         </PlatformProvider>
+        </ToastProvider>
       </ThemeProvider>
     </ViewportProvider>
   );
