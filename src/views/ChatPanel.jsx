@@ -160,7 +160,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
         // User is answering a clarifying question — use the original classification
         classification = storedClassification;
         pendingClassificationRef.current = null; // consume it
-        console.log("[QueryClassifier] Reusing stored classification:", classification.strategy, classification.complexity, `est:${classification.estimated_tools} tools`);
+        // classification reused from stored ref
       } else {
         setChatStatus("Analyzing query...");
         classification = await classifyQuery({
@@ -171,7 +171,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
           claudeKey: user?.claudeKey || "",
           conversationDepth: historyRef.current.length,
         });
-        console.log("[QueryClassifier]", classification.strategy, classification.complexity, `est:${classification.estimated_tools} tools`);
+        // classification complete
       }
 
       // ── Short-circuit: clarify first (or show plan for expensive queries) ──
@@ -258,7 +258,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
 
       // Auto-escalation: if Haiku gave a weak response, retry with Sonnet
       if (tier === "haiku" && !modelOverride && shouldEscalate(reply, agentText, toolCalls.length > 0)) {
-        console.log("[AI Router] Auto-escalating to Sonnet:", reason);
+        // auto-escalating to Sonnet
         setLastTier("sonnet");
         setChatStatus("Escalating to Sonnet...");
         const escalated = await runAgent({

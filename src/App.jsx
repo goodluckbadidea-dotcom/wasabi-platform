@@ -207,9 +207,7 @@ function AppContent() {
       notionKey: user.notionKey || "",
       claudeKey: user.claudeKey || "",
       tickIntervalMs: 300_000,
-      onRuleFired: (rule, result) => {
-        console.log(`[Automation] Rule "${rule.name}" fired (${result.path})`);
-      },
+      onRuleFired: undefined,
       onError: (err, rule) => {
         console.error(`[Automation] Error${rule ? ` on "${rule.name}"` : ""}:`, err.message);
       },

@@ -137,7 +137,7 @@ export default function ConfirmDialog({
               transition: "background 0.12s",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#C94040"; // error hover (slightly darker)
+              e.currentTarget.style.background = C.errorHover;
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = C.error;

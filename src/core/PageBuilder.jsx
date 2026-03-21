@@ -118,9 +118,7 @@ export default function PageBuilder({ initialTemplate = null, WasabiFlameIcon = 
         workerUrl: user.workerUrl,
         claudeKey: user.claudeKey,
         executeTool,
-        onToolCall: (name, input, result) => {
-          console.log(`[Wasabi Tool] ${name}`, input);
-        },
+        onToolCall: undefined,
         abortRef,
         maxTokens: 3000,
       });

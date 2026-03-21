@@ -5,7 +5,7 @@ function GoogleConnectionRow({ connected, email, onConnect, onDisconnect, loadin
   return (
     <div style={{
       background: C.darkSurf,
-      border: `1px solid ${connected ? C.accent + "33" : error ? "#E0525233" : C.darkBorder}`,
+      border: `1px solid ${connected ? C.accent + "33" : error ? C.error + "33" : C.darkBorder}`,
       borderRadius: RADIUS.lg,
       padding: "14px 16px",
       marginBottom: 10,
@@ -64,8 +64,8 @@ function GoogleConnectionRow({ connected, email, onConnect, onDisconnect, loadin
         <div style={{
           fontSize: 11, color: C.error, marginTop: 8, marginLeft: 18,
           lineHeight: 1.4, padding: "6px 10px",
-          background: "#E0525210", borderRadius: RADIUS.sm,
-          border: "1px solid #E0525222",
+          background: C.error + "10", borderRadius: RADIUS.sm,
+          border: `1px solid ${C.error}22`,
         }}>
           {error}
         </div>

@@ -254,7 +254,7 @@ export default function OverviewTab() {
                             <div style={{
                               height: "100%",
                               width: `${(allSonnetCost / maxBarCost) * 100}%`,
-                              background: "linear-gradient(90deg, #E05252, #E0525288)",
+                              background: `linear-gradient(90deg, ${C.error}, ${C.error}88)`,
                               borderRadius: 3,
                             }} />
                           </div>

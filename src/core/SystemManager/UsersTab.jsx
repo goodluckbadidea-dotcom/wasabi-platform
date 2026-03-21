@@ -249,7 +249,7 @@ export default function UsersTab({ identity }) {
                     textTransform: "uppercase",
                     letterSpacing: "0.04em",
                     color: isDeactivated ? C.error : roleBadgeColor(u.role),
-                    background: isDeactivated ? "#E0525218" : roleBadgeColor(u.role) + "18",
+                    background: isDeactivated ? C.error + "18" : roleBadgeColor(u.role) + "18",
                     padding: "2px 6px",
                     borderRadius: RADIUS.pill,
                   }}>
@@ -296,7 +296,7 @@ export default function UsersTab({ identity }) {
                       <button
                         onClick={() => setConfirmHardDelete(u)}
                         style={{ ...actionBtnStyle, border: `1px solid ${C.error}44`, color: C.error }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "#E0525215"; }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = C.error + "15"; }}
                         onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                       >
                         Delete Forever
@@ -345,7 +345,7 @@ export default function UsersTab({ identity }) {
                       <button
                         onClick={() => setConfirmDeleteUser(u)}
                         style={{ ...actionBtnStyle, border: `1px solid ${C.error}44`, color: C.error }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "#E0525215"; }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = C.error + "15"; }}
                         onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                       >
                         Deactivate

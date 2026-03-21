@@ -133,8 +133,6 @@ export async function executeRule(rule, opts, contextData = {}) {
     const messageTemplate = instruction.slice("post_notification:".length).trim();
     const message = expandTemplate(messageTemplate, templateData);
 
-    console.log(LOG_PREFIX, `Fast-path notification for rule "${rule.name}":`, message);
-
     await api.createNotification({
       message,
       type: "notification",
@@ -145,7 +143,6 @@ export async function executeRule(rule, opts, contextData = {}) {
   }
 
   // ── Slow path: LLM agent ──
-  console.log(LOG_PREFIX, `Running agent for rule "${rule.name}"...`);
 
   const { runAgent } = await import("./runAgent.js");
   const { AUTO_TOOLS } = await import("./tools.js");
@@ -197,8 +194,6 @@ export async function executeRule(rule, opts, contextData = {}) {
     maxIterations: 8,
     maxTokens: 2048,
   });
-
-  console.log(LOG_PREFIX, `Agent finished for rule "${rule.name}":`, result.text?.slice(0, 200));
 
   return { path: "agent", result };
 }
@@ -350,13 +345,11 @@ export function createAutomationEngine(opts) {
 
   async function tick() {
     if (typeof document !== "undefined" && document.hidden) {
-      console.log(LOG_PREFIX, "Tab hidden — skipping tick");
       return;
     }
 
     _tickCount++;
     _lastTickTime = new Date();
-    console.log(LOG_PREFIX, `Tick #${_tickCount} at ${_lastTickTime.toISOString()}`);
 
     // 1. Query D1 for enabled rules
     let rules;
@@ -381,14 +374,12 @@ export function createAutomationEngine(opts) {
     }
     _consecutiveErrors = 0;
 
-    console.log(LOG_PREFIX, `Found ${rules.length} enabled rule(s)`);
 
     // Backoff if no rules
     if (rules.length === 0) {
       if (_lastRuleCount === 0 && _currentIntervalMs < BACKOFF_TICK_MS) {
         _currentIntervalMs = BACKOFF_TICK_MS;
         restartInterval();
-        console.log(LOG_PREFIX, `No rules found twice — backing off to ${BACKOFF_TICK_MS / 1000}s`);
       }
       _lastRuleCount = 0;
       return;
@@ -397,7 +388,6 @@ export function createAutomationEngine(opts) {
     if (_lastRuleCount === 0 && _currentIntervalMs !== tickIntervalMs) {
       _currentIntervalMs = tickIntervalMs;
       restartInterval();
-      console.log(LOG_PREFIX, `Rules found again — restoring ${tickIntervalMs / 1000}s interval`);
     }
     _lastRuleCount = rules.length;
 
@@ -407,7 +397,6 @@ export function createAutomationEngine(opts) {
 
     for (const rule of rules) {
       if (_executing.has(rule.id)) {
-        console.log(LOG_PREFIX, `Rule "${rule.name}" already executing — skipping`);
         continue;
       }
 
@@ -415,7 +404,6 @@ export function createAutomationEngine(opts) {
       if (rule.lastFired) {
         const lastFiredMs = new Date(rule.lastFired).getTime();
         if (!isNaN(lastFiredMs) && (now.getTime() - lastFiredMs) < _currentIntervalMs) {
-          console.log(LOG_PREFIX, `Rule "${rule.name}" already fired within tick window — skipping (server dedup)`);
           continue;
         }
       }
@@ -438,11 +426,8 @@ export function createAutomationEngine(opts) {
     }
 
     if (toExecute.length === 0) {
-      console.log(LOG_PREFIX, "No rules triggered this tick");
       return;
     }
-
-    console.log(LOG_PREFIX, `${toExecute.length} rule(s) triggered — executing (max ${MAX_CONCURRENT} concurrent)`);
 
     // 3. Execute triggered rules
     const batch = toExecute.slice(0, MAX_CONCURRENT);
@@ -463,7 +448,6 @@ export function createAutomationEngine(opts) {
           console.error(LOG_PREFIX, `Failed to update rule "${rule.name}" after execution:`, updateErr.message);
         }
 
-        console.log(LOG_PREFIX, `Rule "${rule.name}" fired successfully (${result.path} path)`);
         if (onRuleFired) onRuleFired(rule, result);
 
         return result;
@@ -499,7 +483,6 @@ export function createAutomationEngine(opts) {
     }
     _running = true;
     _currentIntervalMs = tickIntervalMs;
-    console.log(LOG_PREFIX, `Starting engine (interval: ${tickIntervalMs / 1000}s)`);
 
     tick().catch((err) => {
       console.error(LOG_PREFIX, "First tick error:", err.message);
@@ -518,7 +501,6 @@ export function createAutomationEngine(opts) {
       clearInterval(_intervalId);
       _intervalId = null;
     }
-    console.log(LOG_PREFIX, "Engine stopped");
   }
 
   /**
@@ -530,7 +512,6 @@ export function createAutomationEngine(opts) {
       return null;
     }
 
-    console.log(LOG_PREFIX, `Manual trigger for rule ${ruleId}`);
 
     let rule;
     try {
@@ -555,7 +536,6 @@ export function createAutomationEngine(opts) {
         console.error(LOG_PREFIX, `Failed to update rule after manual run:`, updateErr.message);
       }
 
-      console.log(LOG_PREFIX, `Manual rule "${rule.name}" completed (${result.path} path)`);
       if (onRuleFired) onRuleFired(rule, result);
 
       return result;

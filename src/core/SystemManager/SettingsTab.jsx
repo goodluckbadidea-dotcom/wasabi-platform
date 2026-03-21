@@ -455,7 +455,7 @@ export default function SettingsTab() {
       <div
         style={{
           background: C.darkSurf,
-          border: `1px solid #E0525233`,
+          border: `1px solid ${C.error}33`,
           borderRadius: RADIUS.lg,
           padding: "16px 18px",
           display: "flex",
@@ -476,7 +476,7 @@ export default function SettingsTab() {
           disabled={resetting}
           style={{
             background: "transparent",
-            border: `1px solid #E05252`,
+            border: `1px solid ${C.error}`,
             borderRadius: RADIUS.pill,
             color: C.error,
             fontFamily: FONT,
@@ -490,7 +490,7 @@ export default function SettingsTab() {
             whiteSpace: "nowrap",
             flexShrink: 0,
           }}
-          onMouseEnter={(e) => { if (!resetting) { e.currentTarget.style.background = "#E0525218"; } }}
+          onMouseEnter={(e) => { if (!resetting) { e.currentTarget.style.background = C.error + "18"; } }}
           onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
         >
           {resetting ? "Resetting..." : "Reset"}

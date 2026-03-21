@@ -89,8 +89,5 @@ export async function cleanupGoogleNeuronNodes(neurons) {
   }
 
   markCleanupDone();
-  if (cleaned > 0) {
-    console.log(`[GoogleNeuronCleanup] Cleaned ${cleaned} stale nodes from ${checked} checked`);
-  }
   return { cleaned, checked };
 }

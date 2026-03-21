@@ -31,7 +31,7 @@ export default function AuditLogTab() {
   useEffect(() => { load(); }, [load]);
 
   const ACTION_COLORS = {
-    create: "#4CAF50",
+    create: C.success,
     update: "#FF9800",
     delete: "#F44336",
     login: "#2196F3",

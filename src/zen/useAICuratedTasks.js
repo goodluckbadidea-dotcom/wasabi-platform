@@ -182,7 +182,6 @@ function scoreTaskLikeness(schema) {
     }
   }
 
-  console.log(`[AICurated] Schema score for "${schema.databaseTitle}": ${score} (${reasons.join("; ")})`);
   return score;
 }
 
@@ -247,7 +246,6 @@ function isTaskLikeD1Table(columns, pageName) {
     reasons.push(`contact-like columns: ${contactHits.join(", ")}`);
   }
 
-  console.log(`[AICurated] D1 score for "${pageName}": ${score} (${reasons.join("; ")})`);
   return score >= 20;
 }
 
@@ -422,8 +420,6 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
         }
       }
 
-      console.log(`[AICurated] Task-like databases found: ${taskDbs.length}`, taskDbs.map((d) => d.pageName));
-
       if (taskDbs.length === 0) {
         console.warn("[AICurated] No task-like databases found. Candidates checked:", candidates.length);
         // Only treat as a real "no tasks" if we didn't have errors
@@ -477,8 +473,6 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
           }
         }
       }
-
-      console.log(`[AICurated] allTasks count: ${allTasks.length}`, allTasks.map((t) => ({ title: t.title, done: t.done, nearestDate: t.nearestDate, status: t.status })));
 
       if (fetchErrors > 0) {
         setError(`Failed to fetch from ${fetchErrors} database(s)`);
@@ -636,7 +630,6 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
       // Admins: see all tasks (ownership influences AI scoring weight)
       const isAdmin = !identity || identity.role === "admin";
       const filteredTasks = applyRoleFilter(allTasks, identity);
-      console.log(`[AICurated] ${isAdmin ? "Admin/single-user" : "Non-admin"}: ${filteredTasks.length}/${allTasks.length} tasks after role filter`);
 
       // Step 2.8: Dependency awareness (Phase 1 — implicit keyword scanning)
       try {
@@ -958,7 +951,6 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
             const targetCount = Math.min(TARGET_MAX, BASE_TARGET + completedCountRef.current);
             // Filter out dismissed tasks, then slice to target
             const visible = result.filter((t) => !dismissedIdsRef.current.has(t.id));
-            console.log(`[AICurated] AI scored ${result.length} tasks, showing ${Math.min(visible.length, targetCount)} (target: ${targetCount}, dismissed: ${dismissedIdsRef.current.size})`);
             setAiTasks(visible.slice(0, targetCount));
             setCache(CACHE_KEY, result); // cache full ranked list (unfiltered)
           } else {

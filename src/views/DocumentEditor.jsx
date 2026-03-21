@@ -921,7 +921,7 @@ export default function DocumentEditor({ pageId: legacyPageId, config, pageConfi
           doc = await getDocument(docId);
         } catch (loadErr) {
           // Document doesn't exist yet — create it with empty content
-          console.log("Document not found, auto-creating:", docId);
+          // Document not found — auto-creating
           await saveDocument(docId, { version: 1, blocks: [] });
           doc = { content: { blocks: [] } };
         }

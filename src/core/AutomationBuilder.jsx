@@ -368,9 +368,7 @@ ${rulesListStr}`;
         workerUrl: user.workerUrl,
         claudeKey: user.claudeKey,
         executeTool,
-        onToolCall: (name, input, result) => {
-          console.log(`[Wasabi Automation] ${name}`, input);
-        },
+        onToolCall: undefined,
         abortRef,
         maxTokens: 2048,
       });

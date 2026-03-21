@@ -86,6 +86,7 @@ function FolderTreeItem({ folder, depth, activeFolder, activePage, onSelect, onR
               e.stopPropagation();
               setExpanded((x) => !x);
             }}
+            aria-expanded={expanded}
             style={{
               background: "none",
               border: "none",
@@ -405,6 +406,7 @@ export default function FolderDropdown({
             setOpen((o) => !o);
           }
         }}
+        aria-expanded={open}
         style={{
           display: "flex",
           alignItems: "center",

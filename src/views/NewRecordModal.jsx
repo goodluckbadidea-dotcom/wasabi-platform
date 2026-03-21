@@ -105,10 +105,10 @@ export default function NewRecordModal({ schema, onClose, onCreate, databaseId, 
 
   return (
     <div style={ms.overlay} onClick={onClose} onKeyDown={(e) => e.stopPropagation()}>
-      <div style={ms.modal} onClick={(e) => e.stopPropagation()}>
+      <div style={ms.modal} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="new-record-title" tabIndex={-1}>
         {/* Header */}
         <div style={ms.header}>
-          <div style={{ flex: 1, fontSize: 15, fontWeight: 700, color: C.darkText }}>
+          <div id="new-record-title" style={{ flex: 1, fontSize: 15, fontWeight: 700, color: C.darkText }}>
             New Record
           </div>
           <button

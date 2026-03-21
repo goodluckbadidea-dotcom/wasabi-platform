@@ -37,7 +37,7 @@ function _buildTokens(t) {
     darkBorder: t.border, darkMuted: t.textMuted, darkText: t.textPrimary,
     edgeLine, codeBlockBg, overlayBg,
     // Semantic status colors
-    error: "#E05252", errorDim: isDark ? "#E0525233" : "#E0525218",
+    error: "#E05252", errorHover: "#C94040", errorDim: isDark ? "#E0525233" : "#E0525218",
     warning: "#FF6B3D", warningDim: isDark ? "#FF6B3D33" : "#FF6B3D18",
     success: "#4CAF50", successDim: isDark ? "#4CAF5033" : "#4CAF5018",
   };

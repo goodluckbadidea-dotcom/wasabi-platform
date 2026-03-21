@@ -270,7 +270,6 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
           // User is answering a clarifying question — use the original classification
           classification = storedClassification;
           pendingClassificationRef.current = null; // consume it
-          console.log("[QueryClassifier] Reusing stored classification:", classification.strategy, classification.complexity, `est:${classification.estimated_tools} tools`);
         } else {
           setChatStatus("Analyzing query...");
           classification = await classifyQuery({
@@ -281,7 +280,6 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
             claudeKey: user?.claudeKey || "",
             conversationDepth: chatHistoryRef.current.length,
           });
-          console.log("[QueryClassifier]", classification.strategy, classification.complexity, `est:${classification.estimated_tools} tools`);
         }
 
         // ── Short-circuit: clarify first (or show plan for expensive queries) ──
@@ -369,7 +367,6 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
 
         // Auto-escalation: if Haiku gave a weak response, retry with Sonnet
         if (tier === "haiku" && !modelOverride && shouldEscalate(reply, agentText, toolCalls.length > 0)) {
-          console.log("[AI Router] Global chat auto-escalating to Sonnet:", reason);
           setLastTier("sonnet");
           setChatStatus("Escalating to Sonnet...");
           const escalated = await runAgent({
