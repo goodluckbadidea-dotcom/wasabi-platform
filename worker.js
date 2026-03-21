@@ -368,7 +368,8 @@ CREATE INDEX IF NOT EXISTS idx_record_views_user ON record_views(user_id);
 `;
 
 // ─── JWT Utilities (HS256 via Web Crypto) ───
-const JWT_EXPIRY_DAYS = 7;
+const REFRESH_TOKEN_DAYS = 7;       // Refresh token (HttpOnly cookie): 7 days
+const ACCESS_TOKEN_MINS = 15;        // Access token (in-memory): 15 minutes
 
 function base64UrlEncode(buf) {
   const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
@@ -398,11 +399,11 @@ async function getJwtKey(env) {
   );
 }
 
-async function signJwt(payload, env) {
+async function signJwt(payload, env, ttlSecs = ACCESS_TOKEN_MINS * 60) {
   const key = await getJwtKey(env);
   const header = { alg: "HS256", typ: "JWT" };
   const now = Math.floor(Date.now() / 1000);
-  const fullPayload = { ...payload, iat: now, exp: now + JWT_EXPIRY_DAYS * 86400 };
+  const fullPayload = { ...payload, iat: now, exp: now + ttlSecs };
   const segments = [
     base64UrlEncode(new TextEncoder().encode(JSON.stringify(header))),
     base64UrlEncode(new TextEncoder().encode(JSON.stringify(fullPayload))),
@@ -2493,9 +2494,11 @@ async function handleAuthRegister(env, body) {
       "UPDATE users SET display_name = ?, password_hash = ?, last_login_at = ?, invite_code = NULL WHERE id = ?"
     ).bind(display_name.trim(), passwordHash, now, invite.id).run();
 
-    // Generate JWT with session ID
+    // Generate JWT with session ID (access + refresh tokens)
     const sessionId = crypto.randomUUID();
-    const token = await signJwt({ sub: invite.id, role: invite.role, name: display_name.trim(), jti: sessionId }, env);
+    const jwtPayload = { sub: invite.id, role: invite.role, name: display_name.trim(), jti: sessionId };
+    const accessToken = await signJwt(jwtPayload, env); // 15 min
+    const refreshToken = await signJwt(jwtPayload, env, REFRESH_TOKEN_DAYS * 86400); // 7 days
     // Record session
     try {
       const deviceInfo = (body._device_info || "").slice(0, 200);
@@ -2504,9 +2507,9 @@ async function handleAuthRegister(env, body) {
       ).bind(sessionId, invite.id, deviceInfo).run();
     } catch (_) {}
     return jsonResponse(
-      { ok: true, token, user: { id: invite.id, display_name: display_name.trim(), role: invite.role } },
+      { ok: true, token: accessToken, user: { id: invite.id, display_name: display_name.trim(), role: invite.role } },
       200,
-      { "Set-Cookie": buildAuthCookie(token) }
+      { "Set-Cookie": buildAuthCookie(refreshToken) }
     );
   } catch (err) {
     return jsonResponse({ _error: `Registration failed: ${err.message}` }, 500);
@@ -2548,7 +2551,9 @@ async function handleAuthLogin(env, body) {
       .bind(new Date().toISOString(), user.id).run();
 
     const sessionId = crypto.randomUUID();
-    const token = await signJwt({ sub: user.id, role: user.role, name: user.display_name, jti: sessionId }, env);
+    const jwtPayload = { sub: user.id, role: user.role, name: user.display_name, jti: sessionId };
+    const accessToken = await signJwt(jwtPayload, env); // 15 min (default)
+    const refreshToken = await signJwt(jwtPayload, env, REFRESH_TOKEN_DAYS * 86400); // 7 days
     // Record session
     try {
       const deviceInfo = (body._device_info || "").slice(0, 200);
@@ -2557,9 +2562,9 @@ async function handleAuthLogin(env, body) {
       ).bind(sessionId, user.id, deviceInfo).run();
     } catch (_) {}
     return jsonResponse(
-      { ok: true, token, user: { id: user.id, display_name: user.display_name, role: user.role } },
+      { ok: true, token: accessToken, user: { id: user.id, display_name: user.display_name, role: user.role } },
       200,
-      { "Set-Cookie": buildAuthCookie(token) }
+      { "Set-Cookie": buildAuthCookie(refreshToken) }
     );
   } catch (err) {
     return jsonResponse({ _error: `Login failed: ${err.message}` }, 500);
@@ -2572,7 +2577,17 @@ async function handleAuthMe(env, jwtPayload) {
       "SELECT id, display_name, role, created_at, last_login_at FROM users WHERE id = ?"
     ).bind(jwtPayload.sub).first();
     if (!user) return jsonResponse({ _error: "User not found" }, 404);
-    return jsonResponse({ user });
+
+    // Issue a fresh access token so the client can repopulate memory after page refresh.
+    // Also refresh the cookie so the 7-day window resets on activity.
+    const jwtP = { sub: user.id, role: user.role, name: user.display_name, jti: jwtPayload.jti || null };
+    const accessToken = await signJwt(jwtP, env); // 15 min
+    const refreshToken = await signJwt(jwtP, env, REFRESH_TOKEN_DAYS * 86400); // 7 days
+    return jsonResponse(
+      { user, token: accessToken },
+      200,
+      { "Set-Cookie": buildAuthCookie(refreshToken) }
+    );
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
   }
@@ -2585,9 +2600,15 @@ async function handleAuthRefresh(env, jwtPayload) {
     ).bind(jwtPayload.sub).first();
     if (!user) return jsonResponse({ _error: "User not found" }, 404);
 
-    // Preserve session ID (jti) across token refreshes — same session, new token
-    const token = await signJwt({ sub: user.id, role: user.role, name: user.display_name, jti: jwtPayload.jti || null }, env);
-    return jsonResponse({ ok: true, token, user });
+    // Issue new access token, rotate refresh cookie
+    const jwtP = { sub: user.id, role: user.role, name: user.display_name, jti: jwtPayload.jti || null };
+    const accessToken = await signJwt(jwtP, env); // 15 min
+    const refreshToken = await signJwt(jwtP, env, REFRESH_TOKEN_DAYS * 86400); // 7 days
+    return jsonResponse(
+      { ok: true, token: accessToken, user: { id: user.id, display_name: user.display_name, role: user.role } },
+      200,
+      { "Set-Cookie": buildAuthCookie(refreshToken) }
+    );
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
   }

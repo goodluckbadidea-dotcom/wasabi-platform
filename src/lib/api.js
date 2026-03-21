@@ -33,8 +33,50 @@ export function saveJwt(token) {
 
 export function clearJwt() {
   _jwtInMemory = null;
-  // Clean up any lingering localStorage token
   try { localStorage.removeItem(JWT_STORAGE_KEY); } catch {}
+}
+
+// Decode JWT payload without verification (just reads exp for refresh timing)
+function decodeJwtPayload(token) {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    return JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+  } catch { return null; }
+}
+
+// Check if token expires within the next 2 minutes
+function isTokenExpiringSoon(token) {
+  const payload = decodeJwtPayload(token);
+  if (!payload?.exp) return false;
+  return payload.exp - Math.floor(Date.now() / 1000) < 120;
+}
+
+// Refresh the access token using the HttpOnly cookie
+let _refreshPromise = null; // deduplicate concurrent refresh calls
+async function refreshAccessToken() {
+  // If a refresh is already in-flight, reuse the same promise
+  if (_refreshPromise) return _refreshPromise;
+  _refreshPromise = (async () => {
+    try {
+      const conn = getConnection();
+      if (!conn?.workerUrl) return null;
+      const res = await fetch(`${conn.workerUrl}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(conn.secret ? { "X-Wasabi-Key": conn.secret } : {}) },
+        credentials: "include", // sends HttpOnly refresh cookie
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (data.token) {
+        saveJwt(data.token);
+        return data.token;
+      }
+      return null;
+    } catch { return null; }
+    finally { _refreshPromise = null; }
+  })();
+  return _refreshPromise;
 }
 
 /**
@@ -74,8 +116,14 @@ async function apiFetch(path, options = {}) {
     throw new Error("Not connected — complete setup first");
   }
 
+  // Auto-refresh access token if expiring within 2 minutes
+  let jwt = getJwt();
+  if (jwt && isTokenExpiringSoon(jwt) && path !== "/auth/refresh") {
+    const newToken = await refreshAccessToken();
+    if (newToken) jwt = newToken;
+  }
+
   const url = `${conn.workerUrl}${path}`;
-  const jwt = getJwt();
   const headers = {
     "Content-Type": "application/json",
     ...(conn.secret ? { "X-Wasabi-Key": conn.secret } : {}),
@@ -87,9 +135,30 @@ async function apiFetch(path, options = {}) {
   const res = await fetch(url, {
     ...options,
     headers,
-    credentials: "include", // send HttpOnly auth cookie
+    credentials: "include", // send HttpOnly refresh cookie
     body: options.body ? (typeof options.body === "string" ? options.body : JSON.stringify(options.body)) : undefined,
   });
+
+  // On 401, try refreshing the token and retry once (unless this IS the refresh call)
+  if (res.status === 401 && path !== "/auth/refresh" && path !== "/auth/me") {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      const retryRes = await fetch(url, {
+        ...options,
+        headers: { ...headers, "Authorization": `Bearer ${newToken}` },
+        credentials: "include",
+        body: options.body ? (typeof options.body === "string" ? options.body : JSON.stringify(options.body)) : undefined,
+      });
+      const retryData = await retryRes.json().catch(() => ({ _error: `HTTP ${retryRes.status}` }));
+      if (!retryRes.ok || retryData._error) {
+        const err = new Error(retryData._error || `API error: ${retryRes.status}`);
+        err.status = retryRes.status;
+        err.data = retryData;
+        throw err;
+      }
+      return retryData;
+    }
+  }
 
   const data = await res.json().catch(() => ({ _error: `HTTP ${res.status}` }));
 

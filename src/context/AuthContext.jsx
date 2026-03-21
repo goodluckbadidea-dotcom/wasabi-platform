@@ -63,24 +63,28 @@ export function AuthProvider({ children }) {
         console.warn("[Auth] D1 init check:", err.message || err);
       }
 
-      // Step 2: Validate JWT (only after init completes so multiUserEnabled is set)
-      const jwt = getJwt();
-      if (!jwt) {
+      // Step 2: Validate JWT — try memory first, fall back to HttpOnly cookie.
+      // On page refresh, memory is empty but the cookie authenticates /auth/me.
+      // /auth/me now returns a fresh access token so we can repopulate memory.
+      if (!isMultiUser) {
+        // Single-user mode — no auth needed
         setIdentityLoading(false);
         setBootState("ready");
         return;
       }
 
       try {
-        const { user: u } = await authMe();
-        if (u) {
-          setIdentity({ id: u.id, display_name: u.display_name, role: u.role });
+        const result = await authMe();
+        if (result?.user) {
+          setIdentity({ id: result.user.id, display_name: result.user.display_name, role: result.user.role });
           setMultiUserEnabled(true);
+          // Store the fresh access token returned by /auth/me (repopulates memory after refresh)
+          if (result.token) saveJwt(result.token);
         } else {
           clearJwt();
         }
       } catch (err) {
-        // 401/404 = expired/deleted user — clear JWT so login screen shows
+        // 401/404 = expired cookie or deleted user — clear JWT so login screen shows
         if (err.status === 401 || err.status === 404) {
           clearJwt();
         }
