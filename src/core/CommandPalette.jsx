@@ -2,7 +2,7 @@
 // Cmd+K searchable overlay: pages, system sections, shortcuts.
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
+import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import {
   IconSearch, IconGear, IconBolt, IconPlus, IconPage,
@@ -135,7 +135,7 @@ export default function CommandPalette({ open, onClose, pages = [], setActivePag
         position: "fixed",
         inset: 0,
         background: C.overlayBg,
-        zIndex: 500,
+        zIndex: Z.modal,
         display: "flex",
         justifyContent: "center",
         paddingTop: "15vh",
@@ -144,6 +144,9 @@ export default function CommandPalette({ open, onClose, pages = [], setActivePag
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
         style={{
           width: "90vw",
           maxWidth: 520,
@@ -173,6 +176,7 @@ export default function CommandPalette({ open, onClose, pages = [], setActivePag
             value={query}
             onChange={(e) => { setQuery(e.target.value); setSelectedIndex(0); }}
             onKeyDown={handleKeyDown}
+            aria-label="Search pages and commands"
             placeholder="Search pages, commands..."
             style={{
               flex: 1,
@@ -197,7 +201,7 @@ export default function CommandPalette({ open, onClose, pages = [], setActivePag
         </div>
 
         {/* Results list */}
-        <div ref={listRef} style={{ overflowY: "auto", maxHeight: 320 }}>
+        <div ref={listRef} role="listbox" aria-label="Search results" style={{ overflowY: "auto", maxHeight: 320 }}>
           {results.length === 0 && (
             <div style={{ padding: 24, textAlign: "center", color: C.darkMuted, fontSize: 13 }}>
               No results found
@@ -209,6 +213,8 @@ export default function CommandPalette({ open, onClose, pages = [], setActivePag
             return (
               <div
                 key={item.id}
+                role="option"
+                aria-selected={isActive}
                 onClick={() => executeItem(item)}
                 onMouseEnter={() => setSelectedIndex(i)}
                 style={{

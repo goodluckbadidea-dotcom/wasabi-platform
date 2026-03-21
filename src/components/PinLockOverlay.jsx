@@ -5,7 +5,7 @@
 // PIN token stored in sessionStorage for server-side verification.
 
 import React, { useState, useEffect, useCallback } from "react";
-import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
+import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { ANIM } from "../design/animations.js";
 import { verifyPin } from "../lib/api.js";
@@ -102,7 +102,7 @@ export default function PinLockOverlay({ pageConfigId, userRole, children }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        zIndex: 50,
+        zIndex: Z.lock,
         background: "rgba(0,0,0,0.3)",
       }}>
         <div style={{

@@ -14,7 +14,7 @@ import { ThemeProvider, useTheme } from "./context/ThemeContext.jsx";
 import { UserSyncProvider, useUserSync } from "./context/UserSyncContext.jsx";
 import { injectAnimations, injectInteractionStyles, injectScrollbarStyles, updateCSSCustomProperties, ANIM, TRANSITION } from "./design/animations.js";
 import { S } from "./design/styles.js";
-import { C } from "./design/tokens.js";
+import { C, Z } from "./design/tokens.js";
 
 import SetupWizard from "./core/SetupWizard.jsx";
 import LoginScreen from "./core/LoginScreen.jsx";
@@ -555,7 +555,7 @@ function AppContent() {
               style={{
                 position: "fixed", inset: 0,
                 background: C.overlayBg,
-                zIndex: 900,
+                zIndex: Z.panel,
                 animation: ANIM.backdropFade,
               }}
             />
@@ -563,7 +563,7 @@ function AppContent() {
             <div style={{
               position: "fixed", top: 0, left: 0, bottom: 0,
               width: "min(320px, 85vw)",
-              zIndex: 901,
+              zIndex: Z.panel + 1,
               display: "flex",
               paddingTop: "env(safe-area-inset-top, 0px)",
               paddingBottom: "env(safe-area-inset-bottom, 0px)",

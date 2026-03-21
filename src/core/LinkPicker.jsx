@@ -3,7 +3,7 @@
 // Pages → Views → Data Grid. Search bar filters pages by name.
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
+import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { queryAll } from "../notion/pagination.js";
@@ -263,7 +263,7 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
   // ── Styles ──
   const s = {
     overlay: {
-      position: "fixed", inset: 0, background: C.overlayBg, zIndex: 200,
+      position: "fixed", inset: 0, background: C.overlayBg, zIndex: Z.modal,
       display: "flex", alignItems: "center", justifyContent: "center",
       animation: ANIM.backdropFade,
     },
@@ -341,7 +341,7 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
 
   return (
     <div onClick={onCancel} style={s.overlay}>
-      <div onClick={(e) => e.stopPropagation()} style={s.card}>
+      <div role="dialog" aria-modal="true" aria-label={mode === "target" ? "Send value to" : "Link cell value"} onClick={(e) => e.stopPropagation()} style={s.card}>
         {/* Header */}
         <div style={s.header}>
           <div style={s.title}>
@@ -350,6 +350,7 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
           </div>
           <button
             onClick={onCancel}
+            aria-label="Close"
             style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}
           >
             <IconClose size={14} color={C.darkMuted} />
@@ -363,6 +364,7 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
             <input
               ref={searchRef}
               type="text"
+              aria-label="Search pages and views"
               placeholder="Search pages and views..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}

@@ -3,7 +3,7 @@
 // Page-level controls (record count, refresh, sync) live in ViewToolbar/SubPageNav now.
 
 import React, { useState, useEffect, useRef } from "react";
-import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
+import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
 import { useTheme } from "../context/ThemeContext.jsx";
 import { useNeurons } from "../neurons/NeuronsContext.jsx";
 import { usePages } from "../context/PagesContext.jsx";
@@ -54,7 +54,7 @@ export default function TopHeader() {
         alignItems: "center",
         padding: "env(safe-area-inset-top, 0px) 24px 0",
         position: "relative",
-        zIndex: 200,
+        zIndex: Z.header,
       }}
     >
       {/* Left: Wordmark + Breadcrumb */}
@@ -313,7 +313,7 @@ export default function TopHeader() {
                 borderRadius: RADIUS.lg,
                 boxShadow: SHADOW.dropdown,
                 minWidth: 170,
-                zIndex: 150,
+                zIndex: Z.dropdown,
                 padding: "4px 0",
                 fontFamily: FONT,
               }}>

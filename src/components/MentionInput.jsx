@@ -5,7 +5,7 @@
 // Styled with design tokens.
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
-import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
+import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
 import { listUserDirectory } from "../lib/api.js";
 
 // Cache users across instances (refreshed every 60s)
@@ -190,7 +190,7 @@ export default function MentionInput({
             border: `1px solid ${C.darkBorder}`,
             borderRadius: RADIUS.md,
             boxShadow: SHADOW.dropdown,
-            zIndex: 1000,
+            zIndex: Z.lock,
             marginBottom: 4,
           }}
         >

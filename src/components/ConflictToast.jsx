@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Z } from "../design/tokens.js";
 
 /**
  * ConflictToast — shows when two users edit the same field simultaneously.
@@ -146,7 +147,7 @@ const styles = {
     position: "fixed",
     bottom: 24,
     right: 24,
-    zIndex: 9999,
+    zIndex: Z.toast,
     maxWidth: 480,
     animation: "slideUp 0.2s ease-out",
   },

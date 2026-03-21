@@ -2,7 +2,7 @@
 // Two-panel email client: list on left, detail on right. Compose modal overlay.
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { C, FONT, RADIUS } from "../design/tokens.js";
+import { C, FONT, RADIUS, Z } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import {
   searchEmails,
@@ -747,7 +747,7 @@ const S = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 1000,
+    zIndex: Z.lock,
   },
   modal: {
     width: "100%",

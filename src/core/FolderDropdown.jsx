@@ -4,7 +4,7 @@
 // Shows: Dashboard, folder tree (max 3 levels, with color dots), + Create New Folder.
 
 import React, { useState, useRef, useEffect } from "react";
-import { C, FONT, RADIUS, SHADOW, VIEW_PALETTE } from "../design/tokens.js";
+import { C, FONT, RADIUS, SHADOW, VIEW_PALETTE, Z } from "../design/tokens.js";
 import { IconPlus, IconFolder, IconChevronDown, IconStar } from "../design/icons.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 
@@ -259,7 +259,7 @@ function FolderTreeItem({ folder, depth, activeFolder, activePage, onSelect, onR
               border: `1px solid ${C.darkBorder}`,
               borderRadius: RADIUS.lg,
               boxShadow: SHADOW.dropdown,
-              zIndex: 400,
+              zIndex: Z.modal,
               minWidth: 120,
               padding: "4px 0",
               marginTop: 2,
@@ -481,7 +481,7 @@ export default function FolderDropdown({
           {/* Backdrop */}
           <div
             onClick={() => setOpen(false)}
-            style={{ position: "fixed", inset: 0, zIndex: 299 }}
+            style={{ position: "fixed", inset: 0, zIndex: Z.modal - 1 }}
           />
           <div
             ref={dropRef}
@@ -496,7 +496,7 @@ export default function FolderDropdown({
               border: `1px solid ${C.darkBorder}`,
               boxShadow: SHADOW.dropdown,
               overflow: "hidden",
-              zIndex: 300,
+              zIndex: Z.modal,
               animation: "snapDown 0.25s cubic-bezier(0.22, 1.2, 0.36, 1)",
               marginTop: 4,
             }}

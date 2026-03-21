@@ -3,7 +3,7 @@
 // Replaces comma-separated text input with a Notion-style multi-select.
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { C, FONT, RADIUS, SHADOW, getSolidPillColor } from "../design/tokens.js";
+import { C, FONT, RADIUS, SHADOW, getSolidPillColor, Z } from "../design/tokens.js";
 
 /**
  * @param {Object} props
@@ -124,7 +124,7 @@ export default function MultiSelectPicker({
         top: anchor.top,
         left: anchor.left,
         width: Math.max(anchor.width, 260),
-        zIndex: 1000,
+        zIndex: Z.lock,
       }
     : {
         position: "absolute",
@@ -132,7 +132,7 @@ export default function MultiSelectPicker({
         left: 0,
         width: "100%",
         minWidth: 260,
-        zIndex: 1000,
+        zIndex: Z.lock,
       };
 
   return (

@@ -3,7 +3,7 @@
 // Positioned at (x, y) screen coords, auto-adjusts to fit viewport.
 
 import React, { useRef, useEffect } from "react";
-import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
+import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
 
 export default function ContextMenu({ x, y, items, onClose }) {
   const ref = useRef(null);
@@ -41,7 +41,7 @@ export default function ContextMenu({ x, y, items, onClose }) {
         borderRadius: RADIUS.lg,
         boxShadow: SHADOW.dropdown,
         padding: "4px 0",
-        zIndex: 500,
+        zIndex: Z.modal,
         animation: "snapDown 0.22s cubic-bezier(0.22, 1.2, 0.36, 1)",
       }}
     >
@@ -142,7 +142,7 @@ export function MoveToMenu({ x, y, folders, currentFolderId, onMove, onClose }) 
         borderRadius: RADIUS.lg,
         boxShadow: SHADOW.dropdown,
         padding: "4px 0",
-        zIndex: 501,
+        zIndex: Z.modal + 1,
         maxHeight: 300,
         overflowY: "auto",
       }}

@@ -3,7 +3,7 @@
 // Matches ConfirmDialog styling. Validates URL and detects type.
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
+import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { ANIM } from "../design/animations.js";
 import { validateSheetUrl } from "../sheets/sheetClient.js";
@@ -97,7 +97,7 @@ export default function SheetUrlDialog({ onConfirm, onCancel }) {
         position: "fixed",
         inset: 0,
         background: C.overlayBg,
-        zIndex: 200,
+        zIndex: Z.modal,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -105,6 +105,9 @@ export default function SheetUrlDialog({ onConfirm, onCancel }) {
       }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="sheet-url-dialog-title"
         onClick={(e) => e.stopPropagation()}
         style={{
           background: C.darkSurf,
@@ -119,7 +122,7 @@ export default function SheetUrlDialog({ onConfirm, onCancel }) {
         }}
       >
         {/* Title */}
-        <div style={{ fontSize: 16, fontWeight: 600, color: C.darkText, marginBottom: 6 }}>
+        <div id="sheet-url-dialog-title" style={{ fontSize: 16, fontWeight: 600, color: C.darkText, marginBottom: 6 }}>
           Link External Sheet
         </div>
         <div style={{ fontSize: 13, color: C.darkMuted, lineHeight: 1.5, marginBottom: 16 }}>
@@ -135,6 +138,7 @@ export default function SheetUrlDialog({ onConfirm, onCancel }) {
           onKeyDown={handleKeyDown}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
+          aria-label="Sheet or CSV URL"
           placeholder="https://docs.google.com/spreadsheets/d/..."
           style={{
             ...S.input,

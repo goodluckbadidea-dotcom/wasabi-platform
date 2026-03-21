@@ -4,7 +4,7 @@
 // On select: returns { type, label } to parent.
 
 import React, { useRef, useEffect, useState } from "react";
-import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
+import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
 import {
   IconTable, IconKanban, IconCalendar, IconTimeline,
   IconCards, IconChart, IconForm, IconSheet,
@@ -56,11 +56,14 @@ export default function ViewTypePicker({ onSelect, onClose }) {
         alignItems: "center",
         justifyContent: "center",
         background: C.overlayBg,
-        zIndex: 200,
+        zIndex: Z.modal,
       }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="view-type-picker-title"
         style={{
           background: C.darkSurf,
           border: `1px solid ${C.darkBorder}`,
@@ -76,7 +79,7 @@ export default function ViewTypePicker({ onSelect, onClose }) {
           padding: "14px 18px 10px",
           borderBottom: `1px solid ${C.darkBorder}`,
         }}>
-          <div style={{
+          <div id="view-type-picker-title" style={{
             fontSize: 13, fontWeight: 600, color: C.darkText,
             fontFamily: FONT, marginBottom: 2,
           }}>

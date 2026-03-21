@@ -4,7 +4,7 @@
 // Features: overflow menu (delete), drag & drop (reorder + cross-container move)
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { C, FONT, RADIUS } from "../design/tokens.js";
+import { C, FONT, RADIUS, Z } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { useNavigation } from "../context/NavigationContext.jsx";
@@ -53,7 +53,7 @@ function OverflowDots({ size = 16, color = C.darkMuted }) {
 function ConfirmDialog({ title, message, warning, onConfirm, onCancel }) {
   return (
     <div style={{
-      position: "fixed", inset: 0, zIndex: 9999,
+      position: "fixed", inset: 0, zIndex: Z.workspace,
       display: "flex", alignItems: "center", justifyContent: "center",
       background: C.overlayBg, backdropFilter: "blur(4px)",
     }}
@@ -142,7 +142,7 @@ function OverflowMenu({ item, onDelete, onMove, folders, onClose, anchorRect }) 
     <div
       ref={ref}
       style={{
-        position: "fixed", top, left, zIndex: 9998, minWidth: 140,
+        position: "fixed", top, left, zIndex: Z.workspace - 1, minWidth: 140,
         background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
         borderRadius: RADIUS.lg, padding: "4px 0",
         boxShadow: "0 8px 24px rgba(0,0,0,0.4)",

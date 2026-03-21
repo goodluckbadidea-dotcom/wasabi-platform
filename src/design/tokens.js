@@ -637,3 +637,17 @@ export const BP = {
   mobile: 640,
   tablet: 1024,
 };
+
+// ── Z-Index Scale ──
+// Centralized to prevent layer conflicts. Only use these for fixed/absolute overlays.
+// Component-internal relative z-indexes (1-10) are fine inline.
+export const Z = {
+  sticky:       50,   // sticky headers, toolbars
+  dropdown:    150,   // dropdowns, popovers, select pickers
+  header:      200,   // top header bar
+  modal:       500,   // modals, dialogs, command palette, context menus
+  panel:       900,   // side panels (Gmail, Wasabi chat)
+  lock:       1000,   // PIN lock overlay, document editor overlays
+  toast:      9000,   // conflict toasts, notifications
+  workspace:  9999,   // workspace browser (always on top)
+};

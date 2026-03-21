@@ -1,7 +1,7 @@
 // ─── Wasabi Platform Shared Styles ───
 // Rebuildable style system — rebuilt on theme change via rebuildStyles().
 
-import { C, FONT, FONT_DISPLAY, MONO, RADIUS, SHADOW } from "./tokens.js";
+import { C, FONT, FONT_DISPLAY, MONO, RADIUS, SHADOW, Z } from "./tokens.js";
 // Note: SHADOW is mutable (rebuilt on theme change), same pattern as C.
 
 function buildStyles() {
@@ -374,7 +374,7 @@ function buildStyles() {
       background: C.overlayBg,
       backdropFilter: "blur(4px)",
       WebkitBackdropFilter: "blur(4px)",
-      zIndex: 100,
+      zIndex: Z.modal,
       display: "flex",
       alignItems: "stretch",
       justifyContent: "flex-end",
@@ -511,7 +511,7 @@ function buildStyles() {
       borderRadius: RADIUS.sm,
       whiteSpace: "nowrap",
       pointerEvents: "none",
-      zIndex: 200,
+      zIndex: Z.header,
       boxShadow: SHADOW.dropdown,
     },
 
@@ -522,7 +522,7 @@ function buildStyles() {
       border: `1px solid ${C.darkBorder}`,
       borderRadius: RADIUS.lg,
       boxShadow: SHADOW.dropdown,
-      zIndex: 150,
+      zIndex: Z.dropdown,
       overflowY: "auto",
       maxHeight: 280,
       minWidth: 160,

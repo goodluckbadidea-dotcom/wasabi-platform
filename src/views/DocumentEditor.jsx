@@ -4,7 +4,7 @@
 // Supports: paragraph, heading_1/2/3, bulleted_list_item, numbered_list_item, code, divider.
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { C, FONT, FONT_DISPLAY, MONO, RADIUS, SHADOW } from "../design/tokens.js";
+import { C, FONT, FONT_DISPLAY, MONO, RADIUS, SHADOW, Z } from "../design/tokens.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { getBlocks, appendBlocks, updateBlock, deleteBlock } from "../notion/client.js";
 import { getDocument, saveDocument } from "../lib/api.js";
@@ -414,7 +414,7 @@ function SlashMenu({ position, filter, onSelect, onClose }) {
         border: `1px solid ${C.darkBorder}`,
         borderRadius: RADIUS.lg,
         boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
-        zIndex: 1000,
+        zIndex: Z.lock,
         padding: "4px 0",
         minWidth: 180,
         maxHeight: 260,
@@ -474,7 +474,7 @@ function LinkPopup({ position, initialUrl, onSubmit, onClose }) {
         border: `1px solid ${C.darkBorder}`,
         borderRadius: RADIUS.lg,
         boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
-        zIndex: 1000,
+        zIndex: Z.lock,
         padding: 12,
         display: "flex",
         gap: 8,

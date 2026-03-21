@@ -3,8 +3,8 @@
 // Dark theme, centered, with Cancel + Confirm buttons.
 // Supports exit animation before unmounting.
 
-import React, { useEffect, useState, useCallback } from "react";
-import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
+import React, { useEffect, useState, useCallback, useRef } from "react";
+import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 
 const EXIT_DURATION = 180; // ms — matches fadeOut CSS duration
@@ -17,6 +17,10 @@ export default function ConfirmDialog({
   onCancel,
 }) {
   const [exiting, setExiting] = useState(false);
+  const dialogRef = useRef(null);
+
+  // Auto-focus dialog on mount for keyboard accessibility
+  useEffect(() => { dialogRef.current?.focus(); }, []);
 
   const handleClose = useCallback((callback) => {
     if (exiting) return;
@@ -42,7 +46,7 @@ export default function ConfirmDialog({
         background: C.overlayBg,
         backdropFilter: "blur(4px)",
         WebkitBackdropFilter: "blur(4px)",
-        zIndex: 200,
+        zIndex: Z.modal,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -50,6 +54,11 @@ export default function ConfirmDialog({
       }}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-dialog-title"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         style={{
           background: C.darkSurf,
@@ -64,6 +73,7 @@ export default function ConfirmDialog({
         }}
       >
         <div
+          id="confirm-dialog-title"
           style={{
             fontSize: 16,
             fontWeight: 600,

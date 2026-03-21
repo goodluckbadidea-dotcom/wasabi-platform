@@ -4,7 +4,7 @@
 // Supports creating and deleting events. No external CSS -- all inline.
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { C, FONT, FONT_DISPLAY, RADIUS, SHADOW } from "../design/tokens.js";
+import { C, FONT, FONT_DISPLAY, RADIUS, SHADOW, Z } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import {
   listCalendarEvents,
@@ -458,7 +458,7 @@ const S = {
   overlay: {
     position: "fixed",
     inset: 0,
-    zIndex: 900,
+    zIndex: Z.panel,
     background: "rgba(0,0,0,0.55)",
     display: "flex",
     alignItems: "center",

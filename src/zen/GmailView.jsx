@@ -4,7 +4,7 @@
 // No search, no label tabs, no star/unstar — keeps it simple.
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { C, FONT, FONT_DISPLAY, RADIUS } from "../design/tokens.js";
+import { C, FONT, FONT_DISPLAY, RADIUS, Z } from "../design/tokens.js";
 import { ANIM, TRANSITION } from "../design/animations.js";
 import { searchEmails, getEmail, sendEmail, modifyEmail } from "../lib/api.js";
 import { useRecordDrawer } from "./RecordDrawerContext.jsx";
@@ -81,7 +81,7 @@ function ComposeModal({ onClose, onSent, replyTo }) {
 
   return (
     <div style={{
-      position: "fixed", inset: 0, zIndex: 999,
+      position: "fixed", inset: 0, zIndex: Z.panel,
       display: "flex", alignItems: "center", justifyContent: "center",
       background: C.overlayBg, animation: ANIM.fadeIn(),
     }}
