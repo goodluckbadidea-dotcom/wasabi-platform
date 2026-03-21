@@ -720,141 +720,59 @@ function CellEditor({ value, type, options, schemaOptions, onCommit, onCancel, i
 
 // ─── Cell Display Component ───
 
-function CellDisplay({ value, type, fieldName, schema, onClick, colorMapping, relationTitles }) {
-  if (value === null || value === undefined || value === "") {
-    return (
-      <span
-        style={{ color: C.darkMuted, fontSize: 12, fontStyle: "italic", cursor: onClick ? "pointer" : "default" }}
-        onClick={onClick}
-      >
-        --
-      </span>
-    );
-  }
-
-  // Select / Status pill — solid fill with Wasabi colors
-  if (type === "select" || type === "status") {
-    const optionNames = getOptionNames(schema, fieldName);
-    const schemaOptions = getFieldOptions(schema, fieldName);
-    const { fill, text } = getSolidPillColor(value, optionNames, schemaOptions, colorMapping);
-    return (
-      <span style={styles.pill(fill, text)} onClick={onClick}>
-        {value}
-      </span>
-    );
-  }
-
-  // Multi-select pills — solid fill
-  if (type === "multi_select" && Array.isArray(value)) {
-    const optionNames = getOptionNames(schema, fieldName);
-    const schemaOptions = getFieldOptions(schema, fieldName);
+// Cell type renderers — keyed by Notion property type.
+// Each receives { value, fieldName, schema, onClick, colorMapping, relationTitles }.
+// Extracted as a lookup so sub-item views can reuse individual renderers.
+const CELL_RENDERERS = {
+  select: ({ value, fieldName, schema, onClick, colorMapping }) => {
+    const { fill, text } = getSolidPillColor(value, getOptionNames(schema, fieldName), getFieldOptions(schema, fieldName), colorMapping);
+    return <span style={styles.pill(fill, text)} onClick={onClick}>{value}</span>;
+  },
+  status: (...args) => CELL_RENDERERS.select(...args),
+  multi_select: ({ value, fieldName, schema, colorMapping }) => {
+    if (!Array.isArray(value)) return null;
+    const optNames = getOptionNames(schema, fieldName);
+    const schemaOpts = getFieldOptions(schema, fieldName);
     return (
       <span style={styles.multiPillWrap}>
-        {value.map((v, i) => {
-          const { fill, text } = getSolidPillColor(v, optionNames, schemaOptions, colorMapping);
-          return <span key={i} style={styles.pill(fill, text)}>{v}</span>;
-        })}
+        {value.map((v, i) => { const { fill, text } = getSolidPillColor(v, optNames, schemaOpts, colorMapping); return <span key={i} style={styles.pill(fill, text)}>{v}</span>; })}
       </span>
     );
-  }
-
-  // Checkbox toggle
-  if (type === "checkbox") {
-    return (
-      <span style={styles.toggle(!!value)} onClick={onClick}>
-        {value ? "\u2713" : ""}
-      </span>
-    );
-  }
-
-  // Date
-  if (type === "date") {
+  },
+  checkbox: ({ value, onClick }) => <span style={styles.toggle(!!value)} onClick={onClick}>{value ? "\u2713" : ""}</span>,
+  date: ({ value, onClick }) => {
     const dateStr = typeof value === "object" ? value.start : value;
-    return (
-      <span style={{ cursor: onClick ? "pointer" : "default" }} onClick={onClick}>
-        {formatDate(dateStr, { short: true })}
-      </span>
-    );
-  }
-
-  // URL (clickable link)
-  if (type === "url" && value) {
-    return (
-      <a
-        href={value}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ color: C.accent, textDecoration: "none", fontSize: 13 }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {truncate(String(value), 40)}
-      </a>
-    );
-  }
-
-  // People
-  if (type === "people" && Array.isArray(value)) {
-    return (
-      <span style={{ fontSize: 13 }}>
-        {value.map((p) => p.name || p.email || "?").join(", ")}
-      </span>
-    );
-  }
-
-  // Files
-  if (type === "files" && Array.isArray(value)) {
-    return (
-      <span style={{ fontSize: 13, color: C.darkMuted }}>
-        {value.map((f) => f.name).join(", ") || "--"}
-      </span>
-    );
-  }
-
-  // Relation — show resolved titles as pills
-  if (type === "relation" && Array.isArray(value)) {
-    if (value.length === 0) return <span style={{ fontSize: 12, color: C.darkMuted }}>--</span>;
-    const titles = relationTitles || {};
-    const resolved = value.map(id => titles[id] || null).filter(Boolean);
-    if (resolved.length === 0) {
-      return <span style={{ fontSize: 12, color: C.darkMuted }}>{value.length} linked</span>;
-    }
+    return <span style={{ cursor: onClick ? "pointer" : "default" }} onClick={onClick}>{formatDate(dateStr, { short: true })}</span>;
+  },
+  url: ({ value }) => (
+    <a href={value} target="_blank" rel="noopener noreferrer" style={{ color: C.accent, textDecoration: "none", fontSize: 13 }} onClick={(e) => e.stopPropagation()}>
+      {truncate(String(value), 40)}
+    </a>
+  ),
+  people: ({ value }) => Array.isArray(value) ? <span style={{ fontSize: 13 }}>{value.map((p) => p.name || p.email || "?").join(", ")}</span> : null,
+  files: ({ value }) => Array.isArray(value) ? <span style={{ fontSize: 13, color: C.darkMuted }}>{value.map((f) => f.name).join(", ") || "--"}</span> : null,
+  relation: ({ value, relationTitles }) => {
+    if (!Array.isArray(value) || value.length === 0) return <span style={{ fontSize: 12, color: C.darkMuted }}>--</span>;
+    const resolved = value.map(id => (relationTitles || {})[id] || null).filter(Boolean);
+    if (resolved.length === 0) return <span style={{ fontSize: 12, color: C.darkMuted }}>{value.length} linked</span>;
     return (
       <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-        {resolved.map((name, i) => (
-          <span key={i} style={{
-            display: "inline-block", padding: "2px 8px", borderRadius: RADIUS.pill,
-            background: C.accent + "15", color: C.accent, fontSize: 11, fontWeight: 500,
-            whiteSpace: "nowrap", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis",
-          }}>{name}</span>
-        ))}
+        {resolved.map((name, i) => <span key={i} style={{ display: "inline-block", padding: "2px 8px", borderRadius: RADIUS.pill, background: C.accent + "15", color: C.accent, fontSize: 11, fontWeight: 500, whiteSpace: "nowrap", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis" }}>{name}</span>)}
       </div>
     );
-  }
+  },
+  number: ({ value, onClick }) => <span style={{ cursor: onClick ? "pointer" : "default", fontVariantNumeric: "tabular-nums" }} onClick={onClick}>{value}</span>,
+  last_edited_time: ({ value }) => <span style={{ fontSize: 12, color: C.darkMuted, fontVariantNumeric: "tabular-nums" }}>{formatDate(String(value), { short: true })}</span>,
+  created_time: ({ value }) => <span style={{ fontSize: 12, color: C.darkMuted, fontVariantNumeric: "tabular-nums" }}>{formatDate(String(value), { short: true })}</span>,
+};
 
-  // Number
-  if (type === "number") {
-    return (
-      <span style={{ cursor: onClick ? "pointer" : "default", fontVariantNumeric: "tabular-nums" }} onClick={onClick}>
-        {value}
-      </span>
-    );
+function CellDisplay({ value, type, fieldName, schema, onClick, colorMapping, relationTitles }) {
+  if (value === null || value === undefined || value === "") {
+    return <span style={{ color: C.darkMuted, fontSize: 12, fontStyle: "italic", cursor: onClick ? "pointer" : "default" }} onClick={onClick}>--</span>;
   }
-
-  // System timestamps (Last Updated / Created)
-  if (type === "last_edited_time" || type === "created_time") {
-    return (
-      <span style={{ fontSize: 12, color: C.darkMuted, fontVariantNumeric: "tabular-nums" }}>
-        {formatDate(String(value), { short: true })}
-      </span>
-    );
-  }
-
-  // Default text
-  return (
-    <span style={{ cursor: onClick ? "pointer" : "default" }} onClick={onClick}>
-      {truncate(String(value), 120)}
-    </span>
-  );
+  const renderer = CELL_RENDERERS[type];
+  if (renderer) return renderer({ value, fieldName, schema, onClick, colorMapping, relationTitles });
+  return <span style={{ cursor: onClick ? "pointer" : "default" }} onClick={onClick}>{truncate(String(value), 120)}</span>;
 }
 
 
@@ -1142,6 +1060,13 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const [ghostSaving, setGhostSaving] = useState(false);
   const [ghostError, setGhostError] = useState(null);
   const ghostActive = useRef(false); // true when user has started typing in ghost row
+
+  // Shared ghost row input style
+  const ghostInputStyle = {
+    width: "100%", border: "none", borderRadius: RADIUS.sm,
+    background: "transparent", color: C.darkText, fontFamily: FONT,
+    fontSize: 12, padding: "4px 6px", outline: "none", boxSizing: "border-box",
+  };
 
   // ── Keyboard Navigation ──
   const [focusedCell, setFocusedCell] = useState(null); // { row: number, col: number } | null
@@ -2063,6 +1988,45 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     }
   }, [onCreate, targetDatabaseId, ghostValues, schema]);
 
+  // Shared ghost row cell renderer (used by both empty state and normal ghost row)
+  const ghostKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleGhostCommit(); }
+    if (e.key === "Escape") { setGhostValues({}); ghostActive.current = false; e.target.blur(); }
+  };
+  const ghostSetVal = (col, val) => { ghostActive.current = true; setGhostValues((p) => ({ ...p, [col]: val })); };
+
+  function renderGhostCell(col, type, opts = {}) {
+    const titleField = schema?.title?.name;
+    if (type === "checkbox") {
+      return (
+        <label style={{ display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", height: "100%" }}>
+          <input type="checkbox" checked={!!ghostValues[col]} onChange={(e) => ghostSetVal(col, e.target.checked)} style={{ width: 14, height: 14, accentColor: C.accent, cursor: "pointer" }} />
+        </label>
+      );
+    }
+    if (type === "select" || type === "status") {
+      return (
+        <select value={ghostValues[col] || ""} onChange={(e) => ghostSetVal(col, e.target.value || null)} onKeyDown={ghostKeyDown} style={{ ...ghostInputStyle, cursor: "pointer", appearance: "none" }}>
+          <option value="">--</option>
+          {getFieldOptions(schema, col).map((opt) => <option key={opt.name} value={opt.name}>{opt.name}</option>)}
+        </select>
+      );
+    }
+    return (
+      <input
+        type={type === "number" ? "number" : type === "date" ? "date" : "text"}
+        style={ghostInputStyle}
+        value={ghostValues[col] ?? ""}
+        placeholder={col === titleField ? "New row..." : (opts.placeholder || "")}
+        autoFocus={opts.autoFocus}
+        onChange={(e) => { ghostSetVal(col, type === "number" ? (e.target.value ? Number(e.target.value) : "") : e.target.value); }}
+        onKeyDown={ghostKeyDown}
+        onFocus={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+        onBlur={(e) => { e.currentTarget.style.background = "transparent"; }}
+      />
+    );
+  }
+
   // ─── Render ───
 
   // Empty state
@@ -2102,50 +2066,11 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                   </thead>
                   <tbody>
                     <tr style={{ height: ROW_HEIGHT, opacity: 0.8 }}>
-                      {cols.map((col) => {
-                        const type = getFieldType(schema, col);
-                        const gib = {
-                          width: "100%", border: "none", borderRadius: RADIUS.sm,
-                          background: "transparent", color: C.darkText, fontFamily: FONT,
-                          fontSize: 12, padding: "4px 6px", outline: "none", boxSizing: "border-box",
-                        };
-                        const gkd = (e) => {
-                          if (e.key === "Enter") { e.preventDefault(); handleGhostCommit(); }
-                          if (e.key === "Escape") { setGhostValues({}); ghostActive.current = false; e.target.blur(); }
-                        };
-                        const gsv = (val) => { ghostActive.current = true; setGhostValues((p) => ({ ...p, [col]: val })); };
-                        return (
-                          <td key={col} style={{ ...styles.td, padding: "4px 6px" }}>
-                            {type === "checkbox" ? (
-                              <label style={{ display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", height: "100%" }}>
-                                <input type="checkbox" checked={!!ghostValues[col]} onChange={(e) => gsv(e.target.checked)} style={{ width: 14, height: 14, accentColor: C.accent, cursor: "pointer" }} />
-                              </label>
-                            ) : (type === "select" || type === "status") ? (
-                              <select value={ghostValues[col] || ""} onChange={(e) => gsv(e.target.value || null)} onKeyDown={gkd} style={{ ...gib, cursor: "pointer", appearance: "none" }}>
-                                <option value="">--</option>
-                                {getFieldOptions(schema, col).map((opt) => (
-                                  <option key={opt.name} value={opt.name}>{opt.name}</option>
-                                ))}
-                              </select>
-                            ) : (
-                              <input
-                                type={type === "number" ? "number" : type === "date" ? "date" : "text"}
-                                style={gib}
-                                value={ghostValues[col] ?? ""}
-                                placeholder={col === titleField ? "New row..." : col}
-                                autoFocus={col === titleField}
-                                onChange={(e) => {
-                                  const val = type === "number" ? (e.target.value ? Number(e.target.value) : "") : e.target.value;
-                                  gsv(val);
-                                }}
-                                onKeyDown={gkd}
-                                onFocus={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-                                onBlur={(e) => { e.currentTarget.style.background = "transparent"; }}
-                              />
-                            )}
-                          </td>
-                        );
-                      })}
+                      {cols.map((col) => (
+                        <td key={col} style={{ ...styles.td, padding: "4px 6px" }}>
+                          {renderGhostCell(col, getFieldType(schema, col), { placeholder: col, autoFocus: col === titleField })}
+                        </td>
+                      ))}
                     </tr>
                   </tbody>
                 </table>
@@ -2863,52 +2788,11 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                       {columns.map((col) => {
                         const type = getFieldType(schema, col);
                         const isEditable = EDITABLE_TYPES.has(type);
-                        const titleField = schema?.title?.name;
-                        const ghostInputBase = {
-                          width: "100%", border: "none", borderRadius: RADIUS.sm,
-                          background: "transparent", color: C.darkText, fontFamily: FONT,
-                          fontSize: 12, padding: "4px 6px", outline: "none", boxSizing: "border-box",
-                        };
-                        const ghostKeyDown = (e) => {
-                          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleGhostCommit(); }
-                          if (e.key === "Escape") { setGhostValues({}); ghostActive.current = false; e.target.blur(); }
-                        };
-                        const ghostSetVal = (val) => { ghostActive.current = true; setGhostValues((p) => ({ ...p, [col]: val })); };
                         return (
                           <div key={col} style={{ ...styles.gridCell, padding: "2px 6px" }}>
                             {!isEditable ? (
                               <span style={{ color: C.darkMuted, fontSize: 11, fontStyle: "italic" }}>--</span>
-                            ) : type === "checkbox" ? (
-                              <label style={{ display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", height: "100%" }}>
-                                <input type="checkbox" checked={!!ghostValues[col]} onChange={(e) => ghostSetVal(e.target.checked)} style={{ width: 14, height: 14, accentColor: C.accent, cursor: "pointer" }} />
-                              </label>
-                            ) : (type === "select" || type === "status") ? (
-                              <select
-                                value={ghostValues[col] || ""}
-                                onChange={(e) => ghostSetVal(e.target.value || null)}
-                                onKeyDown={ghostKeyDown}
-                                style={{ ...ghostInputBase, cursor: "pointer", appearance: "none" }}
-                              >
-                                <option value="">--</option>
-                                {getFieldOptions(schema, col).map((opt) => (
-                                  <option key={opt.name} value={opt.name}>{opt.name}</option>
-                                ))}
-                              </select>
-                            ) : (
-                              <input
-                                type={type === "number" ? "number" : type === "date" ? "date" : "text"}
-                                style={ghostInputBase}
-                                value={ghostValues[col] ?? ""}
-                                placeholder={col === titleField ? "New row..." : ""}
-                                onChange={(e) => {
-                                  const val = type === "number" ? (e.target.value ? Number(e.target.value) : "") : e.target.value;
-                                  ghostSetVal(val);
-                                }}
-                                onKeyDown={ghostKeyDown}
-                                onFocus={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-                                onBlur={(e) => { e.currentTarget.style.background = "transparent"; }}
-                              />
-                            )}
+                            ) : renderGhostCell(col, type)}
                           </div>
                         );
                       })}
