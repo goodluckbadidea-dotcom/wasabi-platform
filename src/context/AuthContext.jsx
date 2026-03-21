@@ -39,11 +39,12 @@ export function AuthProvider({ children }) {
   const [adminInvite, setAdminInvite] = useState(null); // first-boot invite code
   const [identityLoading, setIdentityLoading] = useState(true);
 
-  // ── D1 init + JWT validation (sequential to avoid race) ──
-  const hasBootstrapped = useRef(false);
+  // ── D1 init + JWT validation (state machine to avoid race) ──
+  // bootState: "idle" → "booting" → "ready" | "error"
+  const [bootState, setBootState] = useState("idle");
   useEffect(() => {
-    if (!workerConnection?.workerUrl || hasBootstrapped.current) return;
-    hasBootstrapped.current = true;
+    if (!workerConnection?.workerUrl || bootState !== "idle") return;
+    setBootState("booting");
 
     (async () => {
       // Step 1: Init DB and detect multi-user state
@@ -66,6 +67,7 @@ export function AuthProvider({ children }) {
       const jwt = getJwt();
       if (!jwt) {
         setIdentityLoading(false);
+        setBootState("ready");
         return;
       }
 
@@ -85,9 +87,10 @@ export function AuthProvider({ children }) {
         // On 500, assume single-user mode — don't clear JWT
       } finally {
         setIdentityLoading(false);
+        setBootState("ready");
       }
     })();
-  }, [workerConnection]);
+  }, [workerConnection, bootState]);
 
   // ── Sync connection keys from D1 ──
   const hasLoadedConnections = useRef(false);

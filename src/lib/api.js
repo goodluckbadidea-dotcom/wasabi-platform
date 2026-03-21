@@ -6,16 +6,34 @@ const STORAGE_KEY = "wasabi_connection";
 const JWT_STORAGE_KEY = "wasabi_jwt";
 
 // ─── JWT Token Helpers ───
+// JWT is stored in memory (not localStorage) to prevent XSS token theft.
+// The worker also sets an HttpOnly cookie as fallback for page refreshes.
+// Grace period: on first load, migrate any existing localStorage token to memory.
+
+let _jwtInMemory = null;
 
 export function getJwt() {
-  try { return localStorage.getItem(JWT_STORAGE_KEY) || null; } catch { return null; }
+  if (_jwtInMemory) return _jwtInMemory;
+  // Grace period: migrate from localStorage if present
+  try {
+    const stored = localStorage.getItem(JWT_STORAGE_KEY);
+    if (stored) {
+      _jwtInMemory = stored;
+      localStorage.removeItem(JWT_STORAGE_KEY); // clean up
+      return _jwtInMemory;
+    }
+  } catch {}
+  return null;
 }
 
 export function saveJwt(token) {
-  try { localStorage.setItem(JWT_STORAGE_KEY, token); } catch {}
+  _jwtInMemory = token;
+  // No longer stored in localStorage
 }
 
 export function clearJwt() {
+  _jwtInMemory = null;
+  // Clean up any lingering localStorage token
   try { localStorage.removeItem(JWT_STORAGE_KEY); } catch {}
 }
 
@@ -69,6 +87,7 @@ async function apiFetch(path, options = {}) {
   const res = await fetch(url, {
     ...options,
     headers,
+    credentials: "include", // send HttpOnly auth cookie
     body: options.body ? (typeof options.body === "string" ? options.body : JSON.stringify(options.body)) : undefined,
   });
 

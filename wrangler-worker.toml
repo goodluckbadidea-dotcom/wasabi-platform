@@ -32,4 +32,7 @@ new_sqlite_classes = ["UserRoom"]
 [triggers]
 crons = ["*/2 * * * *"]
 
+[vars]
+CORS_ORIGINS = "https://wasabi-platform.pages.dev,http://localhost:5173,http://127.0.0.1:5173"
+
 # WASABI_SECRET set via: npx wrangler secret put WASABI_SECRET -c wrangler-worker.toml

@@ -6,11 +6,31 @@ const NOTION_API = "https://api.notion.com/v1";
 const NOTION_VERSION = "2022-06-28";
 const CLAUDE_API = "https://api.anthropic.com/v1/messages";
 
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Claude-Key, X-Wasabi-Key",
-};
+// ─── CORS with Origin Whitelist ───
+// Checks request Origin against CORS_ORIGINS env var (comma-separated).
+// Falls back to allowing localhost dev origins if not set.
+const DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173";
+
+function getCorsHeaders(request, env) {
+  const origin = request.headers.get("Origin") || "";
+  const allowed = (env?.CORS_ORIGINS || DEFAULT_CORS_ORIGINS)
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+  // Allow if origin matches whitelist, or if no origin (same-origin / non-browser)
+  const allowOrigin = !origin || allowed.includes(origin) ? origin || "*" : "";
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Claude-Key, X-Wasabi-Key, X-Wasabi-Pin-Token",
+    "Access-Control-Allow-Credentials": "true",
+    ...(allowOrigin && allowOrigin !== "*" ? { "Vary": "Origin" } : {}),
+  };
+}
+
+// Legacy reference — used by jsonResponse and other helpers.
+// Initialized per-request in the fetch handler.
+let CORS = {};
 
 // ─── D1 Schema ───
 const D1_SCHEMA = `
@@ -285,7 +305,8 @@ CREATE TABLE IF NOT EXISTS users (
   invite_code TEXT UNIQUE,
   password_hash TEXT,
   created_at TEXT DEFAULT (datetime('now')),
-  last_login_at TEXT
+  last_login_at TEXT,
+  invite_expires_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS user_connections (
@@ -403,13 +424,30 @@ async function verifyJwt(token, env) {
   }
 }
 
-// Extract user from JWT in Authorization header (returns null if no JWT)
+// Build Set-Cookie header for JWT (HttpOnly, Secure, SameSite=Strict)
+function buildAuthCookie(token, maxAgeSecs = 7 * 24 * 60 * 60) {
+  return `wasabi_jwt=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${maxAgeSecs}`;
+}
+function buildClearAuthCookie() {
+  return "wasabi_jwt=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0";
+}
+
+// Extract user from JWT in Authorization header OR HttpOnly cookie (returns null if no JWT)
 // Also validates session hasn't been revoked (multi-device session management)
 async function extractUser(request, env) {
+  // Prefer Authorization header, fall back to cookie
+  let token = null;
   const authHeader = request.headers.get("Authorization") || "";
   const match = authHeader.match(/^Bearer\s+(.+)$/i);
-  if (!match) return null;
-  const token = match[1];
+  if (match) {
+    token = match[1];
+  } else {
+    // Check cookie
+    const cookies = request.headers.get("Cookie") || "";
+    const cookieMatch = cookies.match(/(?:^|;\s*)wasabi_jwt=([^;]+)/);
+    if (cookieMatch) token = cookieMatch[1];
+  }
+  if (!token) return null;
   // Skip if it looks like a Notion API key (ntn_ prefix)
   if (token.startsWith("ntn_") || token.startsWith("secret_")) return null;
   const payload = await verifyJwt(token, env);
@@ -431,6 +469,31 @@ async function extractUser(request, env) {
     }
   }
   return payload;
+}
+
+// ─── Rate Limiting (in-memory, resets on cold start) ───
+const _rateLimitMap = new Map(); // key -> [timestamp, ...]
+
+function checkRateLimit(key, maxAttempts = 5, windowSecs = 900) {
+  const now = Date.now();
+  const windowMs = windowSecs * 1000;
+  let timestamps = _rateLimitMap.get(key) || [];
+  // Prune expired entries
+  timestamps = timestamps.filter((t) => now - t < windowMs);
+  if (timestamps.length >= maxAttempts) {
+    const oldestInWindow = timestamps[0];
+    const retryAfter = Math.ceil((oldestInWindow + windowMs - now) / 1000);
+    return { limited: true, retryAfter };
+  }
+  timestamps.push(now);
+  _rateLimitMap.set(key, timestamps);
+  // Periodic cleanup: remove stale keys every 100 checks
+  if (_rateLimitMap.size > 1000) {
+    for (const [k, v] of _rateLimitMap) {
+      if (v.every((t) => now - t >= windowMs)) _rateLimitMap.delete(k);
+    }
+  }
+  return { limited: false };
 }
 
 // ─── Auth Middleware ───
@@ -616,12 +679,21 @@ function checkRoutePermission(path, method, user) {
   return method === "GET" ? true : requireRole(user, "editor");
 }
 
+// ─── Fresh Role Lookup ───
+// JWT role can become stale after demotion. Use this for data-scoping decisions.
+async function getFreshRole(env, user) {
+  if (!user?.sub) return null;
+  const row = await env.DB.prepare("SELECT role FROM users WHERE id = ?").bind(user.sub).first();
+  return row?.role || user.role;
+}
+
 // ─── Tier 2: Page-Level Permission Check ───
 const PERM_LEVEL = { owner: 4, editor: 3, viewer: 2, none: 0 };
 
 async function checkPagePermission(env, user, pageId, requiredLevel) {
   if (!user) return true;                    // single-user / MCP — full access
-  if (user.role === "admin") return true;    // admin bypasses page permissions
+  const role = await getFreshRole(env, user);
+  if (role === "admin") return true;         // admin bypasses page permissions
   // Shared workspace: all authenticated users with sufficient route-level role
   // can read/write pages. Page-level permission records are optional overrides.
   const perm = await env.DB.prepare(
@@ -633,7 +705,7 @@ async function checkPagePermission(env, user, pageId, requiredLevel) {
   }
   // No explicit permission record — grant access based on route-level role
   // Editors can edit, viewers can view
-  return (PERM_LEVEL[user.role] || 0) >= (PERM_LEVEL[requiredLevel] || 99);
+  return (PERM_LEVEL[role] || 0) >= (PERM_LEVEL[requiredLevel] || 99);
 }
 
 // ─── Tier 2b: PIN Protection Check ───
@@ -641,7 +713,8 @@ async function checkPagePermission(env, user, pageId, requiredLevel) {
 // Admin bypasses, non-protected pages pass, otherwise requires valid pin_sessions token.
 async function checkPinProtection(env, user, request, tableId) {
   if (!user) return true;                      // single-user / MCP — no PIN needed
-  if (user.role === "admin") return true;       // admin bypasses PIN
+  const role = await getFreshRole(env, user);
+  if (role === "admin") return true;            // admin bypasses PIN
   const page = await env.DB.prepare(
     "SELECT pin_protected FROM page_configs WHERE id = ?"
   ).bind(tableId).first();
@@ -666,11 +739,43 @@ async function auditLog(env, user, action, resourceType, resourceId, details) {
   } catch (_) {} // never break the request
 }
 
-// SHA-256 hash for PIN storage
+// Legacy SHA-256 hash (kept for backward-compat migration detection)
 async function sha256(text) {
   const data = new TextEncoder().encode(text);
   const hash = await crypto.subtle.digest("SHA-256", data);
   return base64UrlEncode(hash);
+}
+
+// ─── PBKDF2 Password Hashing ───
+// Replaces plain SHA-256. Stores as "salt:hash" (both base64url-encoded).
+// 100k iterations, SHA-256, 16-byte salt.
+async function hashPassword(text) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(text), "PBKDF2", false, ["deriveBits"]
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
+    keyMaterial, 256
+  );
+  return base64UrlEncode(salt) + ":" + base64UrlEncode(bits);
+}
+
+async function verifyPassword(text, stored) {
+  // Detect legacy format: no ":" means old unsalted SHA-256
+  if (!stored.includes(":")) {
+    return (await sha256(text)) === stored;
+  }
+  const [saltB64, hashB64] = stored.split(":");
+  const salt = base64UrlDecode(saltB64);
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(text), "PBKDF2", false, ["deriveBits"]
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
+    keyMaterial, 256
+  );
+  return base64UrlEncode(bits) === hashB64;
 }
 
 // ─── Get Notion key: from D1 connections or request header ───
@@ -727,6 +832,9 @@ export default {
   },
 
   async fetch(request, env, ctx) {
+    // Set CORS headers for this request (origin-checked)
+    CORS = getCorsHeaders(request, env);
+
     // CORS preflight
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS });
@@ -804,13 +912,19 @@ export default {
         return await handleInit(env);
       }
 
-      // ─── Auth Endpoints ───
-      if (path === "/auth/register" && request.method === "POST") {
+      // ─── Auth Endpoints (rate-limited) ───
+      if ((path === "/auth/register" || path === "/auth/login") && request.method === "POST") {
+        const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+        const rl = checkRateLimit(`auth:${ip}`);
+        if (rl.limited) {
+          return jsonResponse(
+            { _error: "Too many attempts. Please try again later." },
+            429,
+            { "Retry-After": String(rl.retryAfter) }
+          );
+        }
         const body = await request.json();
-        return await handleAuthRegister(env, body);
-      }
-      if (path === "/auth/login" && request.method === "POST") {
-        const body = await request.json();
+        if (path === "/auth/register") return await handleAuthRegister(env, body);
         return await handleAuthLogin(env, body);
       }
       if (path === "/auth/me" && request.method === "GET") {
@@ -1337,7 +1451,8 @@ export default {
       if (path === "/d1/notifications/mark-all-read" && request.method === "POST") {
         let query = "UPDATE notifications SET status = 'read' WHERE status = 'unread'";
         const params = [];
-        if (user && user.role !== "admin") {
+        const freshRole = user ? await getFreshRole(env, user) : null;
+        if (user && freshRole !== "admin") {
           query += " AND (target_user_id = 'all' OR target_user_id = ?)";
           params.push(user.sub);
         }
@@ -1348,7 +1463,8 @@ export default {
       if (path === "/d1/notifications/unread-count" && request.method === "GET") {
         let query = "SELECT COUNT(*) as count FROM notifications WHERE status = 'unread'";
         const params = [];
-        if (user && user.role !== "admin") {
+        const freshRole = user ? await getFreshRole(env, user) : null;
+        if (user && freshRole !== "admin") {
           query += " AND (target_user_id = 'all' OR target_user_id = ?)";
           params.push(user.sub);
         }
@@ -2188,10 +2304,18 @@ async function handleInit(env) {
       // Multi-device sync: active sessions
       "CREATE TABLE IF NOT EXISTS active_sessions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, device_info TEXT DEFAULT '', ip_address TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')), last_seen_at TEXT DEFAULT (datetime('now')), revoked_at TEXT DEFAULT NULL)",
       "CREATE INDEX IF NOT EXISTS idx_sessions_user ON active_sessions(user_id)",
+      // Phase 2C: Invite code expiration
+      "ALTER TABLE users ADD COLUMN invite_expires_at TEXT",
     ];
     for (const sql of migrations) {
       try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }
     }
+    // Cleanup expired unused invites (no password_hash = never registered)
+    try {
+      await env.DB.prepare(
+        "DELETE FROM users WHERE invite_code IS NOT NULL AND password_hash IS NULL AND invite_expires_at IS NOT NULL AND invite_expires_at < datetime('now')"
+      ).run();
+    } catch (_) {}
 
     // Create indexes (after migrations so new columns exist)
     for (const sql of indexStatements) {
@@ -2296,18 +2420,19 @@ async function handleAuthRegister(env, body) {
   if (!invite_code || !display_name?.trim()) {
     return jsonResponse({ _error: "invite_code and display_name required" }, 400);
   }
-  if (!password || password.length < 6) {
-    return jsonResponse({ _error: "Password must be at least 6 characters" }, 400);
+  if (!password || password.length < 8 || !/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+    return jsonResponse({ _error: "Password must be at least 8 characters with uppercase, lowercase, and a number" }, 400);
   }
 
   try {
     // Find the invite (pending user with unused invite code, OR existing user with cleared password for re-registration)
+    // Also check invite hasn't expired (NULL invite_expires_at = no expiry for legacy invites)
     const invite = await env.DB.prepare(
-      "SELECT id, role, display_name, password_hash FROM users WHERE invite_code = ? AND deleted_at IS NULL"
+      "SELECT id, role, display_name, password_hash FROM users WHERE invite_code = ? AND deleted_at IS NULL AND (invite_expires_at IS NULL OR invite_expires_at > datetime('now'))"
     ).bind(invite_code.trim()).first();
 
     if (!invite) {
-      return jsonResponse({ _error: "Invalid or already used invite code" }, 400);
+      return jsonResponse({ _error: "Invalid, expired, or already used invite code" }, 400);
     }
 
     // Check display name uniqueness (exclude this user's own record)
@@ -2318,8 +2443,8 @@ async function handleAuthRegister(env, body) {
       return jsonResponse({ _error: "Display name already taken" }, 400);
     }
 
-    // Hash password
-    const passwordHash = await sha256(password);
+    // Hash password with PBKDF2
+    const passwordHash = await hashPassword(password);
 
     // Update the user record: set display name, password, mark as registered
     const now = new Date().toISOString();
@@ -2337,7 +2462,11 @@ async function handleAuthRegister(env, body) {
         "INSERT INTO active_sessions (id, user_id, device_info) VALUES (?, ?, ?)"
       ).bind(sessionId, invite.id, deviceInfo).run();
     } catch (_) {}
-    return jsonResponse({ ok: true, token, user: { id: invite.id, display_name: display_name.trim(), role: invite.role } });
+    return jsonResponse(
+      { ok: true, token, user: { id: invite.id, display_name: display_name.trim(), role: invite.role } },
+      200,
+      { "Set-Cookie": buildAuthCookie(token) }
+    );
   } catch (err) {
     return jsonResponse({ _error: `Registration failed: ${err.message}` }, 500);
   }
@@ -2360,10 +2489,17 @@ async function handleAuthLogin(env, body) {
       return jsonResponse({ _error: "Invalid credentials" }, 401);
     }
 
-    // Verify password
-    const inputHash = await sha256(password);
-    if (inputHash !== user.password_hash) {
+    // Verify password (supports both legacy SHA-256 and PBKDF2)
+    const valid = await verifyPassword(password, user.password_hash);
+    if (!valid) {
       return jsonResponse({ _error: "Invalid credentials" }, 401);
+    }
+
+    // Auto-migrate legacy hash to PBKDF2 on successful login
+    if (!user.password_hash.includes(":")) {
+      const newHash = await hashPassword(password);
+      await env.DB.prepare("UPDATE users SET password_hash = ? WHERE id = ?")
+        .bind(newHash, user.id).run();
     }
 
     // Update last login
@@ -2379,7 +2515,11 @@ async function handleAuthLogin(env, body) {
         "INSERT INTO active_sessions (id, user_id, device_info) VALUES (?, ?, ?)"
       ).bind(sessionId, user.id, deviceInfo).run();
     } catch (_) {}
-    return jsonResponse({ ok: true, token, user: { id: user.id, display_name: user.display_name, role: user.role } });
+    return jsonResponse(
+      { ok: true, token, user: { id: user.id, display_name: user.display_name, role: user.role } },
+      200,
+      { "Set-Cookie": buildAuthCookie(token) }
+    );
   } catch (err) {
     return jsonResponse({ _error: `Login failed: ${err.message}` }, 500);
   }
@@ -2415,7 +2555,7 @@ async function handleAuthRefresh(env, jwtPayload) {
 // ─── User Management Handlers (admin only) ───
 
 async function handleCreateInvite(env, body) {
-  const { role = "viewer", display_name = "Invited User" } = body || {};
+  const { role = "viewer", display_name = "Invited User", expires_in_days = 7 } = body || {};
   if (!["admin", "editor", "viewer"].includes(role)) {
     return jsonResponse({ _error: "Invalid role. Must be admin, editor, or viewer." }, 400);
   }
@@ -2424,12 +2564,15 @@ async function handleCreateInvite(env, body) {
     const id = crypto.randomUUID();
     // Generate a short, readable invite code
     const code = crypto.randomUUID().slice(0, 8).toUpperCase();
+    // Set expiration (default 7 days, max 90 days)
+    const days = Math.min(Math.max(parseInt(expires_in_days) || 7, 1), 90);
+    const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 
     await env.DB.prepare(
-      "INSERT INTO users (id, display_name, role, invite_code) VALUES (?, ?, ?, ?)"
-    ).bind(id, display_name, role, code).run();
+      "INSERT INTO users (id, display_name, role, invite_code, invite_expires_at) VALUES (?, ?, ?, ?, ?)"
+    ).bind(id, display_name, role, code, expiresAt).run();
 
-    return jsonResponse({ ok: true, invite: { id, invite_code: code, role, display_name } });
+    return jsonResponse({ ok: true, invite: { id, invite_code: code, role, display_name, expires_at: expiresAt } });
   } catch (err) {
     return jsonResponse({ _error: `Failed to create invite: ${err.message}` }, 500);
   }
@@ -2634,7 +2777,7 @@ async function handleLogoutAllDevices(env, user) {
         body: JSON.stringify({ type: "session_revoked", sessionIds: ["*"] }),
       }));
     } catch (_) {}
-    return jsonResponse({ ok: true });
+    return jsonResponse({ ok: true }, 200, { "Set-Cookie": buildClearAuthCookie() });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
   }
@@ -2761,7 +2904,7 @@ async function handleSetPin(env, body) {
     return jsonResponse({ _error: "PIN must be at least 4 characters" }, 400);
   }
   try {
-    const hashed = await sha256(pin);
+    const hashed = await hashPassword(pin);
     await env.DB.prepare(
       "INSERT OR REPLACE INTO connections (key, value, updated_at) VALUES ('table_pin', ?, datetime('now'))"
     ).bind(hashed).run();
@@ -2777,8 +2920,16 @@ async function handleVerifyPin(env, body, user) {
   try {
     const row = await env.DB.prepare("SELECT value FROM connections WHERE key = 'table_pin'").first();
     if (!row) return jsonResponse({ _error: "No PIN configured" }, 404);
-    const hashed = await sha256(pin);
-    if (hashed !== row.value) return jsonResponse({ _error: "Incorrect PIN" }, 403);
+    const valid = await verifyPassword(pin, row.value);
+    if (!valid) return jsonResponse({ _error: "Incorrect PIN" }, 403);
+
+    // Auto-migrate legacy PIN hash to PBKDF2
+    if (!row.value.includes(":")) {
+      const newHash = await hashPassword(pin);
+      await env.DB.prepare(
+        "UPDATE connections SET value = ?, updated_at = datetime('now') WHERE key = 'table_pin'"
+      ).bind(newHash).run();
+    }
 
     // Issue a server-side PIN session token (15 minute TTL)
     const pinToken = crypto.randomUUID();
@@ -5666,10 +5817,10 @@ async function claudeFetch(claudeKey, body) {
 }
 
 // ─── Utilities ───
-function jsonResponse(data, status = 200) {
+function jsonResponse(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { ...CORS, "Content-Type": "application/json" },
+    headers: { ...CORS, "Content-Type": "application/json", ...extraHeaders },
   });
 }
 
@@ -5914,7 +6065,8 @@ async function handleListNotifications(env, url, user) {
   }
 
   // Filter by user: admins see all, others see 'all' + their own
-  if (user && user.role !== "admin") {
+  const freshRole = user ? await getFreshRole(env, user) : null;
+  if (user && freshRole !== "admin") {
     conditions.push("(target_user_id = 'all' OR target_user_id = ?)");
     params.push(user.sub);
   }
@@ -5929,7 +6081,7 @@ async function handleListNotifications(env, url, user) {
   // Unread count (scoped to same user filter)
   let countQuery = "SELECT COUNT(*) as count FROM notifications WHERE status = 'unread'";
   const countParams = [];
-  if (user && user.role !== "admin") {
+  if (user && freshRole !== "admin") {
     countQuery += " AND (target_user_id = 'all' OR target_user_id = ?)";
     countParams.push(user.sub);
   }

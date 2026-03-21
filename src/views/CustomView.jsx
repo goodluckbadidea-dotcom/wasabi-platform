@@ -455,13 +455,14 @@ window.wasabi = {
 };
 ${IFRAME_SANDBOX_HELPERS}
 try {
-  ${code}
+  var __userCode = ${JSON.stringify(code)};
+  (new Function('wasabi', __userCode)).call(null, window.wasabi);
 
   ${IFRAME_AUTO_EXECUTE}
 } catch(err) {
   document.getElementById('root').innerHTML =
     '<div style="color:#E05252;padding:12px;font-size:12px;">' +
-    '<strong>Render Error:</strong> ' + err.message + '</div>';
+    '<strong>Render Error:</strong> ' + _escapeHtml(err.message) + '</div>';
 }
 </script>
 </body>

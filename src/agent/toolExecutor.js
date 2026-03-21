@@ -251,6 +251,11 @@ export function validatePluginCode(code) {
     [/\bprocess\b/, "process access is forbidden"],
     [/\b__proto__\b/, "__proto__ access is forbidden"],
     [/\bconstructor\s*\[/, "constructor bracket access is forbidden"],
+    // Block bracket-notation bypass attempts (e.g. this["eval"], self["Function"])
+    [/\bself\b/, "self access is forbidden"],
+    [/\bfetch\s*\(/, "fetch() is forbidden"],
+    [/\bXMLHttpRequest\b/, "XMLHttpRequest is forbidden"],
+    [/\bWebSocket\b/, "WebSocket is forbidden"],
   ];
   const errors = [];
   for (const [pattern, msg] of FORBIDDEN) {
@@ -314,7 +319,10 @@ export function executePluginSandbox(code, datasets, manifest, config = {}, desc
     }
 
     const fn = new Function("datasets", "config", ...helperNames, `"use strict";\n${fnBody}`);
-    let result = fn(datasets, config, ...helperValues);
+    // Freeze inputs to prevent prototype pollution
+    const frozenDatasets = Object.freeze(datasets ? { ...datasets } : {});
+    const frozenConfig = Object.freeze(config ? { ...config } : {});
+    let result = fn(frozenDatasets, frozenConfig, ...helperValues);
 
     // Enforce output row limit
     const maxRows = manifest?.permissions?.maxOutputRows || 1000;
@@ -373,7 +381,8 @@ export function executeSandbox(code, datasets, description = "Calculation comple
     fn = new Function("datasets", ...helperNames, `"use strict";\n${trimmed}`);
   }
 
-  const result = fn(datasets || {}, ...helperVals);
+  const frozenDatasets = Object.freeze(datasets ? { ...datasets } : {});
+  const result = fn(frozenDatasets, ...helperVals);
 
   const serialized = JSON.stringify(result);
   const maxOutputBytes = 200000; // 200KB — generous for function outputs

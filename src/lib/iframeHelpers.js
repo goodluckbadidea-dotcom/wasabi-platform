@@ -11,6 +11,10 @@
  * startOfWeek, formatDate, trim, upper, lower
  */
 export const IFRAME_SANDBOX_HELPERS = `
+function _escapeHtml(s) {
+  if (typeof s !== 'string') s = String(s == null ? '' : s);
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
 function sum(arr) { return (arr||[]).reduce(function(a,b){return a+(Number(b)||0);},0); }
 function avg(arr) { return arr&&arr.length ? sum(arr)/arr.length : 0; }
 function min(arr) { return Math.min.apply(null,(arr||[]).map(Number).filter(function(n){return !isNaN(n);})); }
@@ -70,19 +74,19 @@ if (typeof execute === 'function') {
           var display = typeof val === 'number' ? (val < 1 && val > 0 ? percent(val * 100, 1) : compact(val)) : (typeof val === 'object' && val !== null ? JSON.stringify(val) : String(val));
           var label = key.replace(/([A-Z])/g,' $1').replace(/^./,function(s){return s.toUpperCase();});
           _html += '<div style="text-align:center;min-width:80px;padding:12px 16px;background:rgba(255,255,255,0.04);border-radius:12px;border:1px solid rgba(255,255,255,0.06);">';
-          _html += '<div style="font-size:24px;font-weight:700;margin-bottom:4px;color:' + window.wasabi.colors.accent + ';">' + display + '</div>';
-          _html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.06em;opacity:0.6;">' + label + '</div>';
+          _html += '<div style="font-size:24px;font-weight:700;margin-bottom:4px;color:' + _escapeHtml(window.wasabi.colors.accent) + ';">' + _escapeHtml(display) + '</div>';
+          _html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.06em;opacity:0.6;">' + _escapeHtml(label) + '</div>';
           _html += '</div>';
         });
         _html += '</div>';
         _root.innerHTML = _html;
       } else if (_data !== undefined && _data !== null) {
-        _root.innerHTML = '<div style="text-align:center;padding:20px;font-size:24px;font-weight:700;color:' + window.wasabi.colors.accent + ';">' + (typeof _data === 'object' && _data !== null ? JSON.stringify(_data, null, 2) : String(_data)) + '</div>';
+        _root.innerHTML = '<div style="text-align:center;padding:20px;font-size:24px;font-weight:700;color:' + _escapeHtml(window.wasabi.colors.accent) + ';">' + _escapeHtml(typeof _data === 'object' && _data !== null ? JSON.stringify(_data, null, 2) : String(_data)) + '</div>';
       }
     }
   } catch(execErr) {
     var _root = document.getElementById('root');
-    if (_root) _root.innerHTML = '<div style="color:#E05252;padding:12px;font-size:12px;"><strong>Execute Error:</strong> ' + execErr.message + '</div>';
+    if (_root) _root.innerHTML = '<div style="color:#E05252;padding:12px;font-size:12px;"><strong>Execute Error:</strong> ' + _escapeHtml(execErr.message) + '</div>';
   }
 }
 `;
