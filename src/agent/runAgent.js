@@ -9,6 +9,26 @@ import { getConnection } from "../lib/api.js";
 
 const MAX_BACKOFF = 60000;
 
+/** Sleep that checks abortRef every 500ms instead of blocking for the full duration. */
+function sleepWithAbort(ms, abortRef) {
+  if (abortRef?.current) return Promise.reject(new Error("Aborted"));
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    let elapsed = 0;
+    const tick = 500;
+    const interval = setInterval(() => {
+      elapsed += tick;
+      if (abortRef?.current) {
+        clearInterval(interval);
+        reject(new Error("Aborted"));
+      } else if (elapsed >= ms) {
+        clearInterval(interval);
+        resolve();
+      }
+    }, tick);
+  });
+}
+
 /**
  * Trim conversation history to prevent stale data from poisoning responses.
  * Keeps the last N user/assistant message pairs. Tool-result messages (which
@@ -276,7 +296,7 @@ async function callClaude({
       // Rate limited — backoff and retry
       if (res.status === 429 || res.status === 529) {
         const wait = Math.min(2000 * Math.pow(2, attempt), MAX_BACKOFF);
-        await sleep(wait);
+        await sleepWithAbort(wait, abortRef);
         continue;
       }
 
@@ -311,7 +331,7 @@ async function callClaude({
       if (err.message === "Aborted") throw err;
       // Network error — retry with backoff
       const wait = Math.min(2000 * Math.pow(2, attempt), MAX_BACKOFF);
-      await sleep(wait);
+      await sleepWithAbort(wait, abortRef);
     }
   }
 

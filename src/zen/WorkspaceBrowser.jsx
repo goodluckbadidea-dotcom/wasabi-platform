@@ -55,7 +55,7 @@ function ConfirmDialog({ title, message, warning, onConfirm, onCancel }) {
     <div style={{
       position: "fixed", inset: 0, zIndex: 9999,
       display: "flex", alignItems: "center", justifyContent: "center",
-      background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
+      background: C.overlayBg, backdropFilter: "blur(4px)",
     }}
       onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
     >

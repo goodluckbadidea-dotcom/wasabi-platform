@@ -96,7 +96,7 @@ export default function SheetUrlDialog({ onConfirm, onCancel }) {
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.55)",
+        background: C.overlayBg,
         zIndex: 200,
         display: "flex",
         alignItems: "center",

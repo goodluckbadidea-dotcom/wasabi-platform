@@ -554,7 +554,7 @@ function AppContent() {
               onClick={() => setWasabiPanelOpen(false)}
               style={{
                 position: "fixed", inset: 0,
-                background: "rgba(0,0,0,0.5)",
+                background: C.overlayBg,
                 zIndex: 900,
                 animation: ANIM.backdropFade,
               }}

@@ -190,7 +190,7 @@ function ConnectionRow({ def, connected, onSave, onDelete }) {
               disabled={saving}
               style={{
                 background: "transparent", border: `1px solid #FF480044`, borderRadius: RADIUS.sm,
-                color: "#FF6B3D", fontFamily: FONT, fontSize: 11, padding: "3px 10px", cursor: saving ? "default" : "pointer",
+                color: C.warning, fontFamily: FONT, fontSize: 11, padding: "3px 10px", cursor: saving ? "default" : "pointer",
                 opacity: saving ? 0.5 : 1,
               }}
             >
@@ -294,7 +294,7 @@ function GoogleConnectionRow({ connected, email, onConnect, onDisconnect, loadin
             disabled={loading}
             style={{
               background: "transparent", border: `1px solid #FF480044`, borderRadius: RADIUS.sm,
-              color: "#FF6B3D", fontFamily: FONT, fontSize: 11, padding: "3px 10px",
+              color: C.warning, fontFamily: FONT, fontSize: 11, padding: "3px 10px",
               cursor: loading ? "default" : "pointer", opacity: loading ? 0.5 : 1,
             }}
           >
@@ -322,7 +322,7 @@ function GoogleConnectionRow({ connected, email, onConnect, onDisconnect, loadin
       </p>
       {error && (
         <div style={{
-          fontSize: 11, color: "#E05252", marginTop: 8, marginLeft: 18,
+          fontSize: 11, color: C.error, marginTop: 8, marginLeft: 18,
           lineHeight: 1.4, padding: "6px 10px",
           background: "#E0525210", borderRadius: RADIUS.sm,
           border: "1px solid #E0525222",
@@ -769,7 +769,7 @@ export default function SystemManager() {
                           {[
                             { label: "Cache Hits", count: displayTier.cacheHits || 0, color: C.accent, cost: "$0.00" },
                             { label: "Haiku", count: displayTier.haikuCalls || 0, color: C.accent, cost: formatCost(displayTier.haikuCost || 0) },
-                            { label: "Sonnet", count: displayTier.sonnetCalls || 0, color: "#E05252", cost: formatCost(displayTier.sonnetCost || 0) },
+                            { label: "Sonnet", count: displayTier.sonnetCalls || 0, color: C.error, cost: formatCost(displayTier.sonnetCost || 0) },
                           ].map((row) => (
                             <div key={row.label} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                               <span style={{ width: 8, height: 8, borderRadius: "50%", background: row.color, flexShrink: 0 }} />
@@ -800,7 +800,7 @@ export default function SystemManager() {
                               <div style={{ marginBottom: 6 }}>
                                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
                                   <span style={{ fontSize: 10, color: C.darkMuted, fontFamily: FONT }}>If all Sonnet</span>
-                                  <span style={{ fontSize: 10, color: "#E05252", fontFamily: MONO }}>{formatCost(allSonnetCost)}</span>
+                                  <span style={{ fontSize: 10, color: C.error, fontFamily: MONO }}>{formatCost(allSonnetCost)}</span>
                                 </div>
                                 <div style={{ height: 14, background: C.darkSurf2, borderRadius: 3, overflow: "hidden" }}>
                                   <div style={{
@@ -979,12 +979,12 @@ export default function SystemManager() {
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                 <span style={{
                   width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
-                  background: health?.ok ? C.accent : "#FF6B3D",
+                  background: health?.ok ? C.accent : C.warning,
                 }} />
                 <span style={{ fontSize: 13, fontWeight: 500, color: C.darkText, fontFamily: FONT }}>
                   Worker
                 </span>
-                <span style={{ fontSize: 10, color: health?.ok ? C.accent : "#FF6B3D", fontFamily: FONT }}>
+                <span style={{ fontSize: 10, color: health?.ok ? C.accent : C.warning, fontFamily: FONT }}>
                   {health?.ok ? "Healthy" : "Unreachable"}
                 </span>
               </div>
@@ -1131,7 +1131,7 @@ function PinSetupSection() {
               {status === "saving" ? "Saving..." : status === "saved" ? "Saved" : "Set PIN"}
             </button>
             {status === "error" && (
-              <span style={{ fontSize: 11, color: "#E05252" }}>Min 4 characters</span>
+              <span style={{ fontSize: 11, color: C.error }}>Min 4 characters</span>
             )}
           </div>
         </div>
@@ -1532,7 +1532,7 @@ function SettingsTab() {
             background: "transparent",
             border: `1px solid #E05252`,
             borderRadius: RADIUS.pill,
-            color: "#E05252",
+            color: C.error,
             fontFamily: FONT,
             fontSize: 12,
             fontWeight: 600,
@@ -1899,7 +1899,7 @@ function UsersTab({ identity }) {
                     fontWeight: 600,
                     textTransform: "uppercase",
                     letterSpacing: "0.04em",
-                    color: isDeactivated ? "#E05252" : roleBadgeColor(u.role),
+                    color: isDeactivated ? C.error : roleBadgeColor(u.role),
                     background: isDeactivated ? "#E0525218" : roleBadgeColor(u.role) + "18",
                     padding: "2px 6px",
                     borderRadius: RADIUS.pill,
@@ -1946,7 +1946,7 @@ function UsersTab({ identity }) {
                       </button>
                       <button
                         onClick={() => setConfirmHardDelete(u)}
-                        style={{ ...actionBtnStyle, border: `1px solid #E0525244`, color: "#E05252" }}
+                        style={{ ...actionBtnStyle, border: `1px solid ${C.error}44`, color: C.error }}
                         onMouseEnter={(e) => { e.currentTarget.style.background = "#E0525215"; }}
                         onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                       >
@@ -1995,7 +1995,7 @@ function UsersTab({ identity }) {
                       )}
                       <button
                         onClick={() => setConfirmDeleteUser(u)}
-                        style={{ ...actionBtnStyle, border: `1px solid #E0525244`, color: "#E05252" }}
+                        style={{ ...actionBtnStyle, border: `1px solid ${C.error}44`, color: C.error }}
                         onMouseEnter={(e) => { e.currentTarget.style.background = "#E0525215"; }}
                         onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                       >
@@ -2053,7 +2053,7 @@ function UsersTab({ identity }) {
                   Cancel
                 </button>
                 {claimError && (
-                  <span style={{ fontSize: 11, color: "#E05252" }}>{claimError}</span>
+                  <span style={{ fontSize: 11, color: C.error }}>{claimError}</span>
                 )}
               </div>
             )}

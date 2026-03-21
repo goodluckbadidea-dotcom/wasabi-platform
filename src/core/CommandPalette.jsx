@@ -134,7 +134,7 @@ export default function CommandPalette({ open, onClose, pages = [], setActivePag
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.55)",
+        background: C.overlayBg,
         zIndex: 500,
         display: "flex",
         justifyContent: "center",

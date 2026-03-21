@@ -365,7 +365,7 @@ function WidgetPickerInline({ onClose, onAddWidget }) {
         onClick={onClose}
         style={{
           position: "fixed", inset: 0,
-          background: "rgba(0,0,0,0.4)", zIndex: 299,
+          background: C.overlayBg, zIndex: 299,
           animation: ANIM.backdropFade,
         }}
       />

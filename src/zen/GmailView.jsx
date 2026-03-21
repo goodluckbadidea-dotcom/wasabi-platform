@@ -83,7 +83,7 @@ function ComposeModal({ onClose, onSent, replyTo }) {
     <div style={{
       position: "fixed", inset: 0, zIndex: 999,
       display: "flex", alignItems: "center", justifyContent: "center",
-      background: "rgba(0,0,0,0.6)", animation: ANIM.fadeIn(),
+      background: C.overlayBg, animation: ANIM.fadeIn(),
     }}
       onClick={onClose}
     >

@@ -299,7 +299,7 @@ function FieldRow({ field, value, options, onChange, isTitle }) {
 const ms = {
   overlay: {
     position: "fixed", inset: 0,
-    background: "rgba(0,0,0,0.55)", zIndex: 100,
+    background: C.overlayBg, zIndex: 100,
     display: "flex", alignItems: "center", justifyContent: "center",
   },
   modal: {

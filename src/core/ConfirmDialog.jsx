@@ -39,7 +39,7 @@ export default function ConfirmDialog({
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.55)",
+        background: C.overlayBg,
         backdropFilter: "blur(4px)",
         WebkitBackdropFilter: "blur(4px)",
         zIndex: 200,

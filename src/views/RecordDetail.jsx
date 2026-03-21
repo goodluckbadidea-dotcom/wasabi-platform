@@ -52,7 +52,7 @@ const ds = {
   overlay: {
     position: "fixed",
     inset: 0,
-    background: "rgba(0,0,0,0.55)",
+    background: C.overlayBg,
     zIndex: 100,
     display: "flex",
     alignItems: "stretch",

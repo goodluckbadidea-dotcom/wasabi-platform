@@ -55,7 +55,7 @@ export default function ViewTypePicker({ onSelect, onClose }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "rgba(0,0,0,0.45)",
+        background: C.overlayBg,
         zIndex: 200,
       }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
