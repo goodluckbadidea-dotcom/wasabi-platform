@@ -45,7 +45,7 @@ import PageBuilder from "./core/PageBuilder.jsx";
 import PageShell from "./core/PageShell.jsx";
 import WasabiFlame from "./core/WasabiFlame.jsx";
 import WasabiOrb from "./core/WasabiOrb.jsx";
-import SystemManager from "./core/SystemManager.jsx";
+import SystemManager from "./core/SystemManager";
 import NotificationFeed from "./views/NotificationFeed.jsx";
 import WorkspaceSettings from "./views/WorkspaceSettings.jsx";
 import WidgetGrid from "./components/WidgetGrid.jsx";
