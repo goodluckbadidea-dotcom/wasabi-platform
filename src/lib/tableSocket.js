@@ -80,7 +80,7 @@ export default class TableSocket {
         for (const handler of this.handlers) {
           handler(msg);
         }
-      } catch {}
+      } catch (err) { console.warn("[WS] message handler error:", err); }
     };
 
     this.ws.onclose = () => {

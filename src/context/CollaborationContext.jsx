@@ -21,7 +21,7 @@ export function CollaborationProvider({ tableId, userId, userName, role, childre
     socketRef.current = socket;
 
     const unsub = socket.onMessage((msg) => {
-      switch (msg.type) {
+      try { switch (msg.type) {
         case "presence": {
           const map = new Map();
           for (const u of msg.users) {
@@ -116,6 +116,7 @@ export function CollaborationProvider({ tableId, userId, userName, role, childre
           break;
         }
       }
+      } catch (err) { console.warn("[Collab] message handler error:", err); }
     });
 
     socket.connect();

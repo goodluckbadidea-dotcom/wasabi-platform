@@ -232,7 +232,7 @@ export function PagesProvider({ children }) {
           const cleaned = p.widgets.filter((w) => w.pageId !== id);
           if (cleaned.length !== p.widgets.length) {
             const result = { ...p, widgets: cleaned };
-            savePageConfig(result).catch(() => {});
+            savePageConfig(result).catch((err) => console.warn("[Pages] dashboard widget cleanup failed:", err.message));
             return result;
           }
         }

@@ -130,6 +130,12 @@ CREATE TABLE IF NOT EXISTS notifications (
   type TEXT DEFAULT 'notification',
   status TEXT DEFAULT 'unread',
   source TEXT DEFAULT '',
+  target_user_id TEXT DEFAULT 'all',
+  record_id TEXT DEFAULT '',
+  record_name TEXT DEFAULT '',
+  page_config_id TEXT DEFAULT '',
+  page_name TEXT DEFAULT '',
+  actor_name TEXT DEFAULT '',
   created_at TEXT DEFAULT (datetime('now'))
 );
 
