@@ -516,3 +516,26 @@ src/
 └── zen/                    — Zen mode components
     └── calendar/           — Calendar sub-components
 ```
+
+---
+
+## views/ vs zen/ Pattern
+
+- **`src/views/`** — Database-bound view components. Each renders a specific view type
+  (Table, Calendar, Kanban, Gantt, CardGrid, Form, etc.) for a database page. These are
+  loaded by `ViewRenderer.jsx` based on the page config's active view type. Views receive
+  `data`, `schema`, `onUpdate`, `onRefresh` props from `PageShell.jsx`.
+
+- **`src/zen/`** — Standalone workspace panels and personal productivity views.
+  These are top-level screens not tied to a specific database: `TasksView` (unified
+  to-do + calendar), `GmailView` (email client), `NotesView`, `DashboardView`,
+  `KnowledgeHub`, `WorkspaceBrowser`, `ChatPanel`, and the `RecordDrawer` system.
+  Zen views manage their own data fetching and state.
+
+**Naming convention:** If a component renders database data through the view system,
+it belongs in `views/`. If it is a standalone panel or personal workspace feature,
+it belongs in `zen/`.
+
+**Shared components:** Some components exist in both directories with different
+implementations (e.g., `CalendarView`). The `zen/` version is the primary one used
+by the app; `views/` versions may be legacy or database-specific variants.

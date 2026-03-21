@@ -11,6 +11,7 @@ import { usePlatform } from "../context/PlatformContext.jsx";
 import { isAdmin } from "../lib/roles.js";
 import Breadcrumb from "../components/Breadcrumb.jsx";
 import { useViewport } from "../context/ViewportContext.jsx";
+import { focusRing } from "../design/interactions.js";
 
 export default function TopHeader() {
   const { themeName, toggleMode } = useTheme();
@@ -116,6 +117,7 @@ export default function TopHeader() {
             window.location.reload();
           }}
           title="Hard refresh — clear caches & reload"
+          {...focusRing()}
           style={{
             background: "transparent",
             border: "none",
@@ -143,6 +145,7 @@ export default function TopHeader() {
         <button
           onClick={toggleOverlay}
           title={overlayActive ? "Exit Neurons mode (Esc)" : "Enter Neurons mode"}
+          {...focusRing()}
           style={{
             background: overlayActive ? C.accent + "22" : "transparent",
             border: `1px solid ${overlayActive ? C.accent : C.darkBorder}`,
@@ -245,6 +248,7 @@ export default function TopHeader() {
           <div ref={dropdownRef} style={{ position: "relative" }}>
             <button
               onClick={() => setDropdownOpen((p) => !p)}
+              {...focusRing()}
               style={{
                 background: dropdownOpen ? C.accent + "22" : "transparent",
                 border: `1px solid ${dropdownOpen ? C.accent : C.darkBorder}`,

@@ -25,7 +25,7 @@ const TYPE_CONFIG = {
   mention:       { Icon: IconMention,   label: "Mention",      color: "#9B7BEA", tier: "urgent" },
   assignment:    { Icon: IconUser,      label: "Assigned",     color: "#5BAF7C", tier: "urgent" },
   comment:       { Icon: IconChat,      label: "Comment",      color: "#5B8DEF", tier: "urgent" },
-  alert:         { Icon: IconWarning,   label: "Alert",        color: "#E05252", tier: "urgent" },
+  alert:         { Icon: IconWarning,   label: "Alert",        color: C.error, tier: "urgent" },
   status_change: { Icon: IconRefresh,   label: "Status",       color: "#E0A052", tier: "info" },
   summary:       { Icon: IconClipboard, label: "Summary",      color: "#7BA0C4", tier: "info" },
   notification:  { Icon: IconBell,      label: "Notification", color: C.darkMuted, tier: "info" },
@@ -226,7 +226,7 @@ function NotificationCard({ notif, expanded, onToggle, onMarkRead, onDismiss, on
               <button onClick={handleReply} disabled={!replyText.trim() || replying}
                 style={{
                   padding: "8px 16px", borderRadius: RADIUS.pill,
-                  background: replySuccess ? "#4CAF50" : `linear-gradient(135deg, ${cfg.color}, ${cfg.color}cc)`,
+                  background: replySuccess ? C.success : `linear-gradient(135deg, ${cfg.color}, ${cfg.color}cc)`,
                   color: "#fff", border: "none", fontSize: 12, fontWeight: 600, fontFamily: FONT,
                   cursor: replying ? "wait" : "pointer", opacity: (!replyText.trim() || replying) ? 0.5 : 1,
                   outline: "none", transition: "all 0.15s", flexShrink: 0,
@@ -268,7 +268,7 @@ function NotificationGroup({ group, expandedId, onToggle, onMarkRead, onDismiss,
       >
         {/* Unread dot */}
         <div style={{ width: 8, flexShrink: 0 }}>
-          {unreadInGroup > 0 && <div style={{ width: 8, height: 8, borderRadius: "50%", background: hasUrgent ? "#E05252" : cfg.color }} />}
+          {unreadInGroup > 0 && <div style={{ width: 8, height: 8, borderRadius: "50%", background: hasUrgent ? C.error : cfg.color }} />}
         </div>
 
         {/* Stacked icon */}
@@ -281,7 +281,7 @@ function NotificationGroup({ group, expandedId, onToggle, onMarkRead, onDismiss,
           <span style={{
             position: "absolute", top: -4, right: -6,
             minWidth: 16, height: 16, borderRadius: 99,
-            background: hasUrgent ? "#E05252" : cfg.color, color: "#fff",
+            background: hasUrgent ? C.error : cfg.color, color: "#fff",
             fontSize: 9, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center",
             padding: "0 3px", lineHeight: 1,
           }}>{group.items.length}</span>
@@ -308,7 +308,7 @@ function NotificationGroup({ group, expandedId, onToggle, onMarkRead, onDismiss,
             {hasUrgent && unreadInGroup > 0 && (
               <span style={{
                 fontSize: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em",
-                color: "#fff", background: "#E05252", borderRadius: RADIUS.pill,
+                color: "#fff", background: C.error, borderRadius: RADIUS.pill,
                 padding: "1px 5px", lineHeight: "14px",
               }}>Action needed</span>
             )}

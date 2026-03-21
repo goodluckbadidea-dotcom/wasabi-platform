@@ -6,6 +6,7 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
+import { focusRing } from "../design/interactions.js";
 
 const EXIT_DURATION = 180; // ms — matches fadeOut CSS duration
 
@@ -96,6 +97,7 @@ export default function ConfirmDialog({
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
           <button
             onClick={() => handleClose(onCancel)}
+            {...focusRing()}
             style={{
               background: C.darkSurf2,
               color: C.darkText,
@@ -120,8 +122,9 @@ export default function ConfirmDialog({
           </button>
           <button
             onClick={() => handleClose(onConfirm)}
+            {...focusRing()}
             style={{
-              background: "#E05252",
+              background: C.error,
               color: "#fff",
               border: "none",
               borderRadius: RADIUS.pill,
@@ -134,10 +137,10 @@ export default function ConfirmDialog({
               transition: "background 0.12s",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#C94040";
+              e.currentTarget.style.background = "#C94040"; // error hover (slightly darker)
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = "#E05252";
+              e.currentTarget.style.background = C.error;
             }}
           >
             {confirmLabel}

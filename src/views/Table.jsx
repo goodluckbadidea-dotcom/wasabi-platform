@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import { C, FONT, RADIUS, SHADOW, getStatusColor, getSolidPillColor } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { ANIM, injectAnimations } from "../design/animations.js";
+import { hoverBg } from "../design/interactions.js";
 import { readProp, buildProp, extractProperties, getPageTitle } from "../notion/properties.js";
 import { debounce, formatDate, truncate } from "../utils/helpers.js";
 import {
@@ -353,12 +354,6 @@ const ctxItem = {
   transition: "background 0.1s",
   fontFamily: FONT,
 };
-
-// ── Reusable hover handlers ──
-const hoverBg = (bg = C.darkSurf2, reset = "transparent") => ({
-  onMouseEnter: (e) => { e.currentTarget.style.background = bg; },
-  onMouseLeave: (e) => { e.currentTarget.style.background = reset; },
-});
 
 // ── Shared input field style ──
 const inputFieldStyle = {
@@ -2041,7 +2036,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                   </tbody>
                 </table>
                 {ghostError && (
-                  <div style={{ fontSize: 11, color: "#E05252", padding: "4px 12px" }}>{ghostError}</div>
+                  <div style={{ fontSize: 11, color: C.error, padding: "4px 12px" }}>{ghostError}</div>
                 )}
               </div>
             );
@@ -2104,13 +2099,13 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                 ...S.btnGhost,
                 fontSize: 11,
                 padding: "3px 10px",
-                color: "#E05252",
+                color: C.error,
                 display: "flex",
                 alignItems: "center",
                 gap: 4,
               }}
             >
-              <IconTrash size={12} color="#E05252" />
+              <IconTrash size={12} color={C.error} />
               Delete
             </button>
           )}
@@ -2767,7 +2762,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                     </div>
                   )}
                   {ghostError && (
-                    <div style={{ padding: "4px 12px", fontSize: 11, color: "#E05252" }}>
+                    <div style={{ padding: "4px 12px", fontSize: 11, color: C.error }}>
                       {ghostError}
                     </div>
                   )}
@@ -2892,7 +2887,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
             {canEditSchema && (
               <>
                 <div style={{ borderTop: `1px solid ${C.edgeLine}`, margin: "2px 0" }} />
-                <div style={{ ...ctxItem, color: "#FF6B3D" }} onClick={() => { if (confirm(`Delete column "${colCtxMenu.col}"?`)) handleDeleteCol(colCtxMenu.col); }} {...hoverBg("#FF6B3D10")}>{"\uD83D\uDDD1"} Delete Column</div>
+                <div style={{ ...ctxItem, color: C.warning }} onClick={() => { if (confirm(`Delete column "${colCtxMenu.col}"?`)) handleDeleteCol(colCtxMenu.col); }} {...hoverBg(C.warningDim)}>{"\uD83D\uDDD1"} Delete Column</div>
               </>
             )}
           </div>

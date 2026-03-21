@@ -680,7 +680,7 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
                     style={{
                       ...ds.propRow,
                       background: hasConflict ? "#c9822a08" : hasPending ? `${C.accent}08` : "transparent",
-                      borderLeft: hasConflict ? "3px solid #c9822a" : isLinked ? `3px solid ${linkData.stale ? "#FF6B3D" : C.accent}` : "3px solid transparent",
+                      borderLeft: hasConflict ? "3px solid #c9822a" : isLinked ? `3px solid ${linkData.stale ? C.warning : C.accent}` : "3px solid transparent",
                       cursor: isEditable ? "pointer" : "default",
                       position: "relative",
                     }}
@@ -746,7 +746,7 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
                             flexShrink: 0,
                           }}
                         >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={linkData.stale ? "#FF6B3D" : C.accent} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={linkData.stale ? C.warning : C.accent} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
                             <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
                           </svg>
@@ -785,9 +785,9 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
                 <button
                   style={{
                     ...ds.btn(false),
-                    color: confirmDelete ? "#fff" : "#FF6B3D",
-                    borderColor: "#FF6B3D",
-                    background: confirmDelete ? "#FF6B3D" : "transparent",
+                    color: confirmDelete ? "#fff" : C.warning,
+                    borderColor: C.warning,
+                    background: confirmDelete ? C.warning : "transparent",
                     marginRight: "auto",
                     fontSize: 11,
                   }}

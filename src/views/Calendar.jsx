@@ -9,14 +9,9 @@ import { IconChevronLeft, IconChevronRight } from "../design/icons.jsx";
 import { useRecordDetail } from "../hooks/useRecordDetail.js";
 import RecordDetailPortals from "../components/RecordDetailPortals.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
+import { DAY_NAMES, MONTH_NAMES_FULL } from "../utils/helpers.js";
 
 // ── Helpers ──
-
-const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
 
 function getMonthGrid(year, month) {
   const firstDay = new Date(year, month, 1).getDay();
@@ -382,7 +377,7 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
           <IconChevronLeft size={14} color={C.darkMuted} />
         </button>
         <div style={cal.monthLabel}>
-          {MONTHS[month]} {year}
+          {MONTH_NAMES_FULL[month]} {year}
         </div>
         <button
           style={cal.navBtn}
@@ -425,7 +420,7 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
 
       {/* Day headers */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", flexShrink: 0 }}>
-        {DAYS.map((d) => (
+        {DAY_NAMES.map((d) => (
           <div key={d} style={cal.dayHeader}>{d}</div>
         ))}
       </div>

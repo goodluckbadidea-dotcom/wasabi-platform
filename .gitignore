@@ -4,3 +4,4 @@ dist/
 *.local
 mcp-server/config.json
 mcp-server/node_modules/
+.wrangler/

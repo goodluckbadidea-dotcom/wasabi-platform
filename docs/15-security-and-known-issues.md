@@ -1739,9 +1739,23 @@ Track these metrics after fixes:
 2. **Refresh token on localhost** — `Secure` cookie flag prevents cookie from being sent on `http://localhost`. Test on deployed HTTPS instead, or conditionally omit `Secure` for dev.
 
 **Lower priority:**
-- Phase 4: Dead code removal (CalendarView.jsx), utility consolidation
-- Phase 4: Table.jsx/SystemManager.jsx splitting (deferred — fork-first approach for sub-items)
-- Phase 5: Documentation, development guidelines
+- Table.jsx/SystemManager.jsx splitting (deferred — fork-first approach for sub-items)
+- Refresh token on localhost (Secure cookie flag — test on deployed HTTPS instead)
+
+### Code Polish (2026-03-21, continued)
+
+| # | Change | Status | Scope |
+|---|---|---|---|
+| 1 | Dead code: delete views/GmailView.jsx | ✅ DONE | 819 lines removed |
+| 2 | Dead code: 7 unused helpers.js exports | ✅ DONE | throttle, capitalize, clamp, hashString, groupBy, sortBy, clone |
+| 3 | Dead code: 2 unused roles.js exports | ✅ DONE | hasRole, isViewer, ROLE_LEVEL |
+| 4 | Date constants: MONTH_NAMES_FULL | ✅ DONE | Calendar.jsx imports from helpers.js |
+| 5 | Hardcoded colors → tokens | ✅ DONE | 15 replacements: Table (5), NotificationFeed (5), RecordDetail (5) |
+| 6 | ConfirmDialog confirm button | ✅ DONE | #E05252 → C.error |
+| 7 | Interaction utilities | ✅ DONE | src/design/interactions.js: hoverBg + focusRing |
+| 8 | Table.jsx hoverBg extraction | ✅ DONE | Local → imported from interactions.js |
+| 9 | Focus rings on priority components | ✅ DONE | TopHeader (3), ConfirmDialog (2) |
+| 10 | Architecture docs | ✅ DONE | views/ vs zen/ pattern documented |
 
 ---
 
