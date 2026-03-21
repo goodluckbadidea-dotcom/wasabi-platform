@@ -22,10 +22,29 @@ import ViewSettingsPanel from "../components/ViewSettingsPanel.jsx";
 import ConflictToast from "../components/ConflictToast.jsx";
 import PinLockOverlay, { getPinToken } from "../components/PinLockOverlay.jsx";
 import { useColorMapping } from "../context/ColorMappingContext.jsx";
-import { CollaborationProvider } from "../context/CollaborationContext.jsx";
+import { CollaborationProvider, useCollaboration } from "../context/CollaborationContext.jsx";
+import { useRecordDrawer } from "../zen/RecordDrawerContext.jsx";
 import useViewPrefs from "../hooks/useViewPrefs.js";
 
 const DEFAULT_REFRESH_MS = 30000;
+
+// Bridge: subscribes to WebSocket record_updated inside CollaborationProvider scope,
+// calls the parent's fetchData. Debounced to avoid rapid re-fetches.
+function CollabSyncBridge({ onRefresh }) {
+  const { onRecordUpdated } = useCollaboration();
+  const timerRef = useRef(null);
+  useEffect(() => {
+    if (!onRecordUpdated) return;
+    return onRecordUpdated((msg) => {
+      if (msg.type === "record_updated" || msg.type === "save_result") {
+        // Debounce: wait 300ms before refreshing (coalesce rapid edits)
+        clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => onRefresh?.(), 300);
+      }
+    });
+  }, [onRecordUpdated, onRefresh]);
+  return null; // Renders nothing — pure side-effect component
+}
 
 export default function PageShell({
   pageConfig,
@@ -121,6 +140,14 @@ export default function PageShell({
     refreshTimer.current = setInterval(fetchData, refreshMs);
     return () => clearInterval(refreshTimer.current);
   }, [fetchData, refreshMs]);
+
+  // Re-fetch when a record is saved/deleted via RecordDrawer (same-user sync)
+  const { onSaved, onDeleted } = useRecordDrawer();
+  useEffect(() => {
+    const unsubSave = onSaved?.(() => fetchData());
+    const unsubDelete = onDeleted?.(() => fetchData());
+    return () => { unsubSave?.(); unsubDelete?.(); };
+  }, [onSaved, onDeleted, fetchData]);
 
   // ── Handle refresh interval change ──
   const handleRefreshChange = useCallback(
@@ -427,6 +454,7 @@ export default function PageShell({
         userName={identity?.display_name}
         role={identity?.role}
       >
+      <CollabSyncBridge onRefresh={fetchData} />
       <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
         {pageConfig.pin_protected && identity && identity.role !== "admin" ? (
           <PinLockOverlay key={pinRelockKey} pageConfigId={pageConfig.id} userRole={identity.role}>

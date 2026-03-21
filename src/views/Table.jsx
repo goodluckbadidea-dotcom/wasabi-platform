@@ -1722,57 +1722,23 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           }
           break;
         case "Enter":
-          if (focusedCell && !editCell) {
+          // Enter on focused cell → open record detail panel
+          if (focusedCell) {
             e.preventDefault();
             const page = processedData[row];
-            const field = columns[col];
-            const type = getFieldType(schema, field);
-            if (page && field && EDITABLE_TYPES.has(type) && onUpdate) {
-              if (type === "checkbox") {
-                handleCheckboxToggle(page.id, field, readField(page, field));
-              } else {
-                setEditCell({ pageId: page.id, field });
-                setInitialChar("");
-              }
-            }
+            if (page) setDetailPage(page);
           }
           break;
         case "Escape":
-          if (editCell) {
-            setEditCell(null);
-          } else {
-            setFocusedCell(null);
-          }
-          break;
-        case "Delete":
-        case "Backspace":
-          if (focusedCell && !editCell) {
-            e.preventDefault();
-            const page = processedData[row];
-            const field = columns[col];
-            const type = getFieldType(schema, field);
-            if (page && field && EDITABLE_TYPES.has(type) && onUpdate && type !== "checkbox") {
-              handleEditCommit(page.id, field, null);
-            }
-          }
+          setFocusedCell(null);
           break;
         default:
-          // Printable character → open editor with that char
-          if (focusedCell && !editCell && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            const page = processedData[row];
-            const field = columns[col];
-            const type = getFieldType(schema, field);
-            if (page && field && EDITABLE_TYPES.has(type) && onUpdate && type !== "checkbox") {
-              setEditCell({ pageId: page.id, field });
-              setInitialChar(e.key);
-            }
-          }
           break;
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [focusedCell, editCell, processedData, columns, schema, onUpdate, handleCheckboxToggle, handleEditCommit]);
+  }, [focusedCell, processedData, columns]);
 
   // Scroll focused cell into view (for virtualization compatibility)
   useEffect(() => {
