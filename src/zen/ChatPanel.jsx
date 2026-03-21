@@ -23,7 +23,10 @@ const MIN_WIDTH = 280;
 const MAX_WIDTH = 640;
 const TABLET_MAX_WIDTH = 400;
 
-const TASK_CACHE_KEY = "wasabi_ai_tasks_v4";
+// Per-user cache key — must match useAICuratedTasks.js cacheKeyForUser()
+function getTaskCacheKey(userId) {
+  return userId ? `wasabi_ai_tasks_v10_${userId}` : "wasabi_ai_tasks_v10";
+}
 const TASK_CACHE_TTL = 15 * 60 * 1000;
 
 // ── Get role-based tool set ──
@@ -50,7 +53,7 @@ function buildWorkspaceSummary(pages) {
 }
 
 // ── Build enhanced system prompt with task + Google + workspace context ──
-function buildZenSystemPrompt(googleContext, role, pages) {
+function buildZenSystemPrompt(googleContext, role, pages, userId) {
   const roleCapabilities = role === "viewer"
     ? "You can query databases (read-only), search emails, and view calendar events. You CANNOT create, update, or delete any data."
     : role === "editor"
@@ -84,7 +87,7 @@ User role: ${role || "admin"}`,
 
   // Inject AI-curated tasks from cache
   try {
-    const raw = localStorage.getItem(TASK_CACHE_KEY);
+    const raw = localStorage.getItem(getTaskCacheKey(userId));
     if (raw) {
       const { data, ts } = JSON.parse(raw);
       if (Date.now() - ts < TASK_CACHE_TTL && Array.isArray(data) && data.length > 0) {
@@ -297,7 +300,7 @@ export default function ChatPanel({
       } catch { /* best effort */ }
 
       const role = identity?.role || "admin";
-      const systemPrompt = buildZenSystemPrompt(googleContextRef.current, role, pages);
+      const systemPrompt = buildZenSystemPrompt(googleContextRef.current, role, pages, identity?.id);
 
       const result = await runAgent({
         messages: newHistory,

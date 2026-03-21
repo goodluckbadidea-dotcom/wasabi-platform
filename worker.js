@@ -1314,7 +1314,7 @@ export default {
       const commentDeleteMatch = path.match(/^\/records\/([^/]+)\/comments\/([^/]+)$/);
       if (commentDeleteMatch && request.method === "DELETE") {
         const [, recordId, commentId] = commentDeleteMatch;
-        return await handleDeleteComment(env, recordId, commentId);
+        return await handleDeleteComment(env, user, recordId, commentId);
       }
 
       const commentMatch = path.match(/^\/records\/([^/]+)\/comments$/);
@@ -1326,7 +1326,7 @@ export default {
         }
         if (request.method === "POST") {
           const body = await request.json();
-          return await handleCreateComment(env, recordId, body);
+          return await handleCreateComment(env, user, recordId, body);
         }
       }
 
@@ -4746,15 +4746,18 @@ function extractMentions(text) {
   return matches.map((m) => m.slice(1).trim());
 }
 
-async function handleCreateComment(env, recordId, body) {
+async function handleCreateComment(env, user, recordId, body) {
   try {
-    const { page_config_id, content, user_id, user_name } = body;
+    const { page_config_id, content } = body;
     if (!page_config_id || !content) return jsonResponse({ _error: "page_config_id and content required" }, 400);
+    // Use authenticated user from JWT — never trust user_id from request body
+    const user_id = user?.sub || "default";
+    const user_name = user?.name || "User";
     const id = crypto.randomUUID();
     await env.DB.prepare(
       `INSERT INTO record_comments (id, record_id, page_config_id, user_id, user_name, content)
        VALUES (?, ?, ?, ?, ?, ?)`
-    ).bind(id, recordId, page_config_id, user_id || "default", user_name || "User", content).run();
+    ).bind(id, recordId, page_config_id, user_id, user_name, content).run();
 
     // ── Notification triggers ──
     const commenterName = user_name || "Someone";
@@ -4831,8 +4834,14 @@ async function handleCreateComment(env, recordId, body) {
   }
 }
 
-async function handleDeleteComment(env, recordId, commentId) {
+async function handleDeleteComment(env, user, recordId, commentId) {
   try {
+    // Only the comment author or admin can delete
+    const comment = await env.DB.prepare("SELECT user_id FROM record_comments WHERE id = ? AND record_id = ?").bind(commentId, recordId).first();
+    if (!comment) return jsonResponse({ _error: "Comment not found" }, 404);
+    if (comment.user_id !== user?.sub && user?.role !== "admin") {
+      return jsonResponse({ _error: "Cannot delete another user's comment" }, 403);
+    }
     await env.DB.prepare("DELETE FROM record_comments WHERE id = ? AND record_id = ?").bind(commentId, recordId).run();
     return jsonResponse({ ok: true });
   } catch (err) {
