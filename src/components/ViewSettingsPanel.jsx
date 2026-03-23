@@ -858,6 +858,32 @@ export default function ViewSettingsPanel({
                 </>
               )}
 
+              {/* Sub-Items (Table only) */}
+              {isTable && (
+                <>
+                  <SectionLabel>Sub-Items</SectionLabel>
+                  <FieldToggle
+                    label="Enable sub-items"
+                    checked={config.enableSubItems === true}
+                    onChange={(checked) => onConfigChange?.({ enableSubItems: checked })}
+                  />
+                  {config.enableSubItems && (
+                    <>
+                      <FieldToggle
+                        label="Show ancestors when filtering"
+                        checked={config.filterShowAncestors !== false}
+                        onChange={(checked) => onConfigChange?.({ filterShowAncestors: checked })}
+                      />
+                      <FieldToggle
+                        label="Start expanded"
+                        checked={config.defaultExpanded === true}
+                        onChange={(checked) => onConfigChange?.({ defaultExpanded: checked })}
+                      />
+                    </>
+                  )}
+                </>
+              )}
+
               {/* Sort */}
               {sortableFields.length > 0 && (
                 <>

@@ -273,8 +273,9 @@ export async function updateRowOwner(tableId, rowId, ownerUserIds) {
   });
 }
 
-export async function deleteRow(tableId, rowId, { pinToken } = {}) {
-  return apiFetch(`/tables/${tableId}/rows/${rowId}`, { method: "DELETE", pinToken });
+export async function deleteRow(tableId, rowId, { pinToken, cascade } = {}) {
+  const qs = cascade ? `?cascade=${cascade}` : "";
+  return apiFetch(`/tables/${tableId}/rows/${rowId}${qs}`, { method: "DELETE", pinToken });
 }
 
 export async function queryTable(tableId, { filters, sorts, limit, offset } = {}) {

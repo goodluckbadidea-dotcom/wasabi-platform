@@ -229,10 +229,10 @@ export default function PageShell({
   );
 
   const handleCreate = useCallback(
-    async (databaseId, properties) => {
+    async (databaseId, properties, { parentRowId } = {}) => {
       try {
         const pinToken = getPinToken(pageConfig?.id);
-        await createRecord(pageConfig, properties, user, { pinToken });
+        await createRecord(pageConfig, properties, user, { pinToken, parentRowId });
         await fetchData();
       } catch (err) {
         console.error("Create failed:", err);

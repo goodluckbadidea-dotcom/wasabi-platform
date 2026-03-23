@@ -1265,7 +1265,7 @@ export default {
           if (!await checkPinProtection(env, user, request, tableId)) {
             return jsonResponse({ _error: "PIN verification required", pin_required: true }, 403);
           }
-          return await handleDeleteRow(env, tableId, rowId);
+          return await handleDeleteRow(env, tableId, rowId, url.searchParams.get("cascade"));
         }
       }
 
@@ -2371,6 +2371,9 @@ async function handleInit(env) {
       // D1-backed rate limiting (persists across worker isolates)
       "CREATE TABLE IF NOT EXISTS rate_limits (key TEXT NOT NULL, ts INTEGER NOT NULL)",
       "CREATE INDEX IF NOT EXISTS idx_rate_limits_key_ts ON rate_limits(key, ts)",
+      // Sub-items: parent-child row hierarchy
+      "ALTER TABLE table_rows ADD COLUMN parent_row_id TEXT DEFAULT NULL",
+      "CREATE INDEX IF NOT EXISTS idx_rows_parent ON table_rows(table_id, parent_row_id)",
     ];
     for (const sql of migrations) {
       try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }
@@ -4347,15 +4350,16 @@ async function handleCreateRows(env, tableId, body, user) {
     for (const row of rows) {
       const id = row.id || crypto.randomUUID();
       await env.DB.prepare(
-        `INSERT INTO table_rows (id, table_id, cells, sort_order, metadata, sync_dirty, owner_user_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 1, ?, datetime('now'), datetime('now'))`
+        `INSERT INTO table_rows (id, table_id, cells, sort_order, metadata, sync_dirty, owner_user_id, parent_row_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 1, ?, ?, datetime('now'), datetime('now'))`
       ).bind(
         id,
         tableId,
         JSON.stringify(row.cells || {}),
         row.sort_order || 0,
         JSON.stringify(row.metadata || {}),
-        ownerId
+        ownerId,
+        row.parent_row_id || null
       ).run();
       created.push(id);
     }
@@ -4437,6 +4441,7 @@ async function handleUpdateRow(env, tableId, rowId, body, user) {
       }
     }
     if (body.sort_order !== undefined) { sets.push("sort_order = ?"); binds.push(body.sort_order); }
+    if (body.parent_row_id !== undefined) { sets.push("parent_row_id = ?"); binds.push(body.parent_row_id); }
     if (body.archived !== undefined) { sets.push("archived = ?"); binds.push(body.archived ? 1 : 0); }
     if (body.metadata !== undefined) { sets.push("metadata = ?"); binds.push(JSON.stringify(body.metadata)); }
     if (body.owner_user_id !== undefined) {
@@ -4610,7 +4615,7 @@ async function handleUpdateRow(env, tableId, rowId, body, user) {
   }
 }
 
-async function handleDeleteRow(env, tableId, rowId) {
+async function handleDeleteRow(env, tableId, rowId, cascade) {
   try {
     // Check if row has a linked Notion page — archive it too
     const row = await env.DB.prepare(
@@ -4618,6 +4623,37 @@ async function handleDeleteRow(env, tableId, rowId) {
     ).bind(rowId, tableId).first();
     const metadata = row ? safeParseJSON(row.metadata) : {};
 
+    // Check for children (sub-items)
+    const childCheck = await env.DB.prepare(
+      "SELECT COUNT(*) as cnt FROM table_rows WHERE parent_row_id = ? AND table_id = ? AND archived = 0"
+    ).bind(rowId, tableId).first();
+    const childCount = childCheck?.cnt || 0;
+
+    if (childCount > 0 && !cascade) {
+      // Has children and no cascade specified — ask the client what to do
+      return jsonResponse({ hasChildren: true, childCount }, 409);
+    }
+
+    if (childCount > 0 && cascade === "orphan") {
+      // Move children to top level before archiving parent
+      await env.DB.prepare(
+        "UPDATE table_rows SET parent_row_id = NULL, updated_at = datetime('now') WHERE parent_row_id = ? AND table_id = ? AND archived = 0"
+      ).bind(rowId, tableId).run();
+    }
+
+    if (childCount > 0 && cascade === "delete") {
+      // Archive all descendants recursively
+      await env.DB.prepare(
+        `WITH RECURSIVE descendants(id) AS (
+          SELECT id FROM table_rows WHERE parent_row_id = ? AND table_id = ? AND archived = 0
+          UNION ALL
+          SELECT tr.id FROM table_rows tr JOIN descendants d ON tr.parent_row_id = d.id WHERE tr.table_id = ? AND tr.archived = 0
+        )
+        UPDATE table_rows SET archived = 1, sync_dirty = 0, updated_at = datetime('now') WHERE id IN (SELECT id FROM descendants)`
+      ).bind(rowId, tableId, tableId).run();
+    }
+
+    // Archive the row itself
     await env.DB.prepare(
       "UPDATE table_rows SET archived = 1, sync_dirty = 0, updated_at = datetime('now') WHERE id = ? AND table_id = ?"
     ).bind(rowId, tableId).run();

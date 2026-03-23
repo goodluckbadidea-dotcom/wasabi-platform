@@ -213,7 +213,7 @@ export async function updateRecord(pageConfig, recordId, fieldName, propPayload,
 
 // ─── Create a record in any source ───
 
-export async function createRecord(pageConfig, properties, user, { pinToken } = {}) {
+export async function createRecord(pageConfig, properties, user, { pinToken, parentRowId } = {}) {
   const type = resolveSourceType(pageConfig);
 
   if (type === "d1") {
@@ -229,7 +229,7 @@ export async function createRecord(pageConfig, properties, user, { pinToken } = 
       }
     }
 
-    const result = await createRows(tableId, { cells }, { pinToken });
+    const result = await createRows(tableId, { cells, parent_row_id: parentRowId || null }, { pinToken });
     return result.ids?.[0];
   }
 
@@ -251,13 +251,15 @@ export async function createRecord(pageConfig, properties, user, { pinToken } = 
 
 // ─── Delete records in any source ───
 
-export async function deleteRecords(pageConfig, recordIds, user, { pinToken } = {}) {
+export async function deleteRecords(pageConfig, recordIds, user, { pinToken, cascade } = {}) {
   const type = resolveSourceType(pageConfig);
 
   if (type === "d1") {
     const tableId = pageConfig.id;
     for (const id of recordIds) {
-      await deleteRow(tableId, id, { pinToken });
+      const result = await deleteRow(tableId, id, { pinToken, cascade });
+      // If server returns 409 (has children, needs cascade decision), propagate it
+      if (result?.hasChildren) return result;
     }
     return true;
   }
@@ -439,6 +441,7 @@ function d1RowToPage(row, columns) {
     _tableId: row.table_id,
     _sortOrder: row.sort_order,
     _ownerUserIds: ownerUserIds,
+    _parentRowId: row.parent_row_id || null,
   };
 }
 
