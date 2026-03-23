@@ -128,7 +128,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
   const pageConfigId = task.tableId
     || (task.source?.startsWith("d1:") ? task.source.split(":")[1] : null)
     || (task.source?.startsWith("notion:") ? task.source.split(":")[1] : null)
-    || "sashimi";
+    || null;
 
   // Whether notes must be stored in wasabi-internal (no mapped Notion field)
   const notesAreLocal = isNotion && !fieldMap.notes;
@@ -339,52 +339,80 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
 
   const canGoToTask = task.source !== "manual" && !!findSourcePage();
 
-  // ── AI attention summary enriched with interaction context ──
+  // ── AI attention summary — forward-looking, action-oriented ──
   const attentionSummary = (() => {
+    // If the AI curation provided a reason, use it as the primary summary
     const reason = task._aiReason;
-    const clean = reason ? reason.replace(/\[[^\]]+\]\s*/g, "").trim() : null;
+    const aiText = reason ? reason.replace(/\[[^\]]+\]\s*/g, "").trim() : null;
 
-    // Build interaction context from summary
-    const interactionHints = [];
-    if (interactionSummary.length > 0) {
-      const myInteractions = interactionSummary.filter((s) => s.user_id === identity?.id);
-      const otherInteractions = interactionSummary.filter((s) => s.user_id !== identity?.id && s.user_id !== "default");
-
-      // Check if user commented but didn't change status
-      const lastComment = myInteractions.find((s) => s.interaction_type === "comment");
-      const lastStatusChange = myInteractions.find((s) => s.interaction_type === "status_change");
-      if (lastComment && (!lastStatusChange || lastComment.last_at > lastStatusChange.last_at)) {
-        interactionHints.push(`You commented but status is still "${status || "unchanged"}".`);
-      }
-
-      // Show other user interactions
-      for (const other of otherInteractions) {
-        if (other.interaction_type === "comment") {
-          interactionHints.push(`${other.user_id} commented.`);
-        } else if (other.interaction_type === "status_change") {
-          interactionHints.push(`${other.user_id} updated status${other.detail ? `: ${other.detail}` : ""}.`);
-        }
-      }
-    }
-
-    const hint = interactionHints.length > 0 ? interactionHints.join(" ") : null;
-    if (hint && clean) return `${hint} ${clean}`;
-    if (hint || clean) return hint || clean;
-
-    // Fallback: generate a contextual summary from task metadata
+    // Build forward-looking context from task metadata
     const parts = [];
+
+    // 1. Deadlines — lead with what's coming
     if (task.nearestDate || task.due) {
       const d = new Date(task.nearestDate || task.due);
       const now = new Date(); now.setHours(0, 0, 0, 0);
       const diff = Math.round((d - now) / 86400000);
-      if (diff < 0) parts.push(`${Math.abs(diff)} day${Math.abs(diff) !== 1 ? "s" : ""} overdue.`);
-      else if (diff === 0) parts.push("Due today.");
-      else if (diff === 1) parts.push("Due tomorrow.");
-      else if (diff <= 7) parts.push(`Due in ${diff} days.`);
-      else parts.push(`Due ${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}.`);
+      const fieldLabel = task.nearestDateField || "deadline";
+      if (diff < 0) {
+        parts.push(`${fieldLabel} was ${Math.abs(diff)} day${Math.abs(diff) !== 1 ? "s" : ""} ago and needs attention.`);
+      } else if (diff === 0) {
+        parts.push(`${fieldLabel} is today.`);
+      } else if (diff === 1) {
+        parts.push(`${fieldLabel} is tomorrow.`);
+      } else if (diff <= 7) {
+        parts.push(`${fieldLabel} is in ${diff} days.`);
+      } else {
+        parts.push(`${fieldLabel} is ${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}.`);
+      }
     }
-    if (task.priority) parts.push(`Priority: ${task.priority}.`);
-    if (task.status) parts.push(`Status: ${task.status}.`);
+
+    // 2. Interaction context — frame as action items
+    if (interactionSummary.length > 0) {
+      const myInteractions = interactionSummary.filter((s) => s.user_id === identity?.id);
+      const otherInteractions = interactionSummary.filter((s) => s.user_id !== identity?.id && s.user_id !== "default");
+
+      // Gap detection: commented but status unchanged → needs action
+      const lastComment = myInteractions.find((s) => s.interaction_type === "comment");
+      const lastStatusChange = myInteractions.find((s) => s.interaction_type === "status_change");
+      if (lastComment && (!lastStatusChange || lastComment.last_at > lastStatusChange.last_at)) {
+        const commentDate = new Date(lastComment.last_at);
+        const daysSince = Math.round((Date.now() - commentDate) / 86400000);
+        if (daysSince > 0) {
+          parts.push(`Status needs updating — you commented ${daysSince} day${daysSince !== 1 ? "s" : ""} ago but it's still "${status || "unchanged"}".`);
+        }
+      }
+
+      // Last interaction recency
+      const myLatest = myInteractions[0];
+      if (myLatest?.last_at) {
+        const daysSince = Math.round((Date.now() - new Date(myLatest.last_at)) / 86400000);
+        if (daysSince > 3 && !parts.some((p) => p.includes("commented"))) {
+          parts.push(`It's been ${daysSince} days since you last touched this.`);
+        }
+      }
+
+      // Other users' recent activity
+      for (const other of otherInteractions) {
+        const name = other.display_name || "A team member";
+        if (other.interaction_type === "status_change" && other.detail) {
+          parts.push(`${name} moved status to ${other.detail.split("→").pop()?.trim() || other.detail}.`);
+        } else if (other.interaction_type === "comment") {
+          parts.push(`${name} left a comment.`);
+        }
+      }
+    }
+
+    // 3. If AI reason exists, prefer it but append interaction context
+    if (aiText) {
+      const context = parts.length > 0 ? " " + parts.join(" ") : "";
+      return aiText + context;
+    }
+
+    // 4. Fallback — forward-looking from metadata only
+    if (parts.length === 0) {
+      if (task.status) parts.push(`Currently "${task.status}"${task.priority ? `, ${task.priority} priority` : ""}.`);
+    }
     return parts.length > 0 ? parts.join(" ") : null;
   })();
 

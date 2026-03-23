@@ -106,7 +106,7 @@ export default function RecordComments({
           <div style={s.empty}>No comments yet</div>
         )}
         {comments.map((comment) => {
-          const canDelete = !userId || comment.user_id === userId || userRole === "admin";
+          const canDelete = (userId && comment.user_id === userId) || userRole === "admin";
           return (
             <div key={comment.id} style={s.commentItem}>
               <div style={{ flex: 1, minWidth: 0 }}>

@@ -5028,11 +5028,14 @@ async function handleListInteractions(env, url) {
 
 async function handleGetInteractionSummary(env, taskId) {
   try {
-    // Return the most recent interaction per user per type for this task
+    // Return the most recent interaction per user per type, with display names
     const { results } = await env.DB.prepare(
-      `SELECT user_id, interaction_type, detail, MAX(created_at) as last_at, COUNT(*) as count
-       FROM task_interactions WHERE task_id = ?
-       GROUP BY user_id, interaction_type
+      `SELECT ti.user_id, u.display_name, ti.interaction_type, ti.detail,
+              MAX(ti.created_at) as last_at, COUNT(*) as count
+       FROM task_interactions ti
+       LEFT JOIN users u ON ti.user_id = u.id
+       WHERE ti.task_id = ?
+       GROUP BY ti.user_id, ti.interaction_type
        ORDER BY last_at DESC`
     ).bind(taskId).all();
     return jsonResponse({ summary: results || [] });

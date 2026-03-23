@@ -105,7 +105,7 @@ export default function TasksView() {
 
   // ── Task click → open drawer ──
   const handleTaskClick = useCallback((task) => {
-    openDrawer("task", { ...task, tableId });
+    openDrawer("task", { ...task, ...(task.source === "manual" ? { tableId } : {}) });
   }, [openDrawer, tableId]);
 
   // ── Drawer callbacks ──

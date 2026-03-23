@@ -783,15 +783,42 @@ export async function uploadFileToRecord(file, recordId, pageConfigId = "") {
   formData.append("record_id", recordId);
   if (pageConfigId) formData.append("page_id", pageConfigId);
 
-  const jwt = getJwt();
+  // Refresh JWT if expiring (can't use apiFetch since body is FormData, not JSON)
+  let jwt = getJwt();
+  if (jwt && isTokenExpiringSoon(jwt)) {
+    const newToken = await refreshAccessToken();
+    if (newToken) jwt = newToken;
+  }
+
   const res = await fetch(`${conn.workerUrl}/files`, {
     method: "POST",
     headers: {
       ...(conn.secret ? { "X-Wasabi-Key": conn.secret } : {}),
       ...(jwt ? { "Authorization": `Bearer ${jwt}` } : {}),
     },
+    credentials: "include",
     body: formData,
   });
+
+  // Retry once on 401 (token may have expired during upload)
+  if (res.status === 401) {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      const retryRes = await fetch(`${conn.workerUrl}/files`, {
+        method: "POST",
+        headers: {
+          ...(conn.secret ? { "X-Wasabi-Key": conn.secret } : {}),
+          "Authorization": `Bearer ${newToken}`,
+        },
+        credentials: "include",
+        body: formData,
+      });
+      const retryData = await retryRes.json().catch(() => ({ _error: `HTTP ${retryRes.status}` }));
+      if (!retryRes.ok || retryData._error) throw new Error(retryData._error || `Upload error: ${retryRes.status}`);
+      return retryData;
+    }
+  }
+
   const data = await res.json().catch(() => ({ _error: `HTTP ${res.status}` }));
   if (!res.ok || data._error) throw new Error(data._error || `Upload error: ${res.status}`);
   return data;
