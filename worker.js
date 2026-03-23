@@ -431,12 +431,12 @@ async function verifyJwt(token, env) {
   }
 }
 
-// Build Set-Cookie header for JWT (HttpOnly, Secure, SameSite=Strict)
+// Build Set-Cookie header for JWT (HttpOnly, Secure, SameSite=None for cross-origin)
 function buildAuthCookie(token, maxAgeSecs = 7 * 24 * 60 * 60) {
-  return `wasabi_jwt=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${maxAgeSecs}`;
+  return `wasabi_jwt=${token}; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=${maxAgeSecs}`;
 }
 function buildClearAuthCookie() {
-  return "wasabi_jwt=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0";
+  return "wasabi_jwt=; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=0";
 }
 
 // Extract user from JWT in Authorization header OR HttpOnly cookie (returns null if no JWT)
