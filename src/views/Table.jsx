@@ -1069,7 +1069,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const ghostInputStyle = {
     width: "100%", border: "none", borderRadius: RADIUS.sm,
     background: "transparent", color: C.darkText, fontFamily: FONT,
-    fontSize: 12, padding: "4px 6px", outline: "none", boxSizing: "border-box",
+    fontSize: 13, padding: "4px 6px", outline: "none", boxSizing: "border-box",
   };
 
   // ── Keyboard Navigation ──
@@ -2845,7 +2845,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                 {/* Checkbox-aligned spacer */}
                                 <div style={{ padding: "0 8px", fontSize: 10, color: C.darkMuted }} />
                                 {subColsList.map((col) => (
-                                  <div key={col} style={{ padding: "0 8px", fontSize: 10, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                  <div key={col} style={{ padding: "0 8px", fontSize: 11, fontWeight: 700, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                                     {col}
                                   </div>
                                 ))}
@@ -2855,7 +2855,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                   <div
                                     style={{
                                       display: "flex", alignItems: "center", justifyContent: "center",
-                                      cursor: "pointer", fontSize: 10, color: C.darkMuted,
+                                      cursor: "pointer", fontSize: 11, color: C.darkMuted,
                                       gap: 4, padding: "0 4px",
                                     }}
                                     onClick={(e) => { e.stopPropagation(); setAddSubColOpen(true); }}
@@ -2863,9 +2863,9 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                     onMouseEnter={(e) => { e.currentTarget.style.color = C.accent; }}
                                     onMouseLeave={(e) => { e.currentTarget.style.color = C.darkMuted; }}
                                   >
-                                    <IconPlus size={10} />
+                                    <IconPlus size={13} />
                                     {subColumns.length === 0 && (
-                                      <span style={{ fontSize: 10, whiteSpace: "nowrap" }}>Add column</span>
+                                      <span style={{ fontSize: 11, whiteSpace: "nowrap" }}>Add column</span>
                                     )}
                                   </div>
                                 )}
@@ -2882,7 +2882,6 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                   borderLeft: `2px solid ${C.accent}22`,
                                   marginLeft: 22,
                                   borderRadius: `0 ${RADIUS.lg} ${RADIUS.lg} 0`,
-                                  fontSize: 12,
                                 } : {}),
                                 ...(isHovered ? { boxShadow: `0 1px 4px rgba(0,0,0,0.08)` } : {}),
                                 ...presenceBorder,
@@ -2972,7 +2971,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                             }}
                                           >
                                             <IconChevronDown
-                                              size={8}
+                                              size={10}
                                               color={C.darkMuted}
                                               style={{
                                                 transition: "transform 0.15s",
@@ -3065,7 +3064,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                               >
                                 {/* Checkbox spacer + dismiss button */}
                                 <div style={{ ...styles.gridCell, justifyContent: "center", padding: 0, gap: 2 }}>
-                                  <IconPlus size={9} color={C.accent} style={{ opacity: 0.5 }} />
+                                  <IconPlus size={12} color={C.accent} style={{ opacity: 0.5 }} />
                                   <button
                                     title="Cancel"
                                     onClick={(e) => { e.stopPropagation(); setSubItemGhostParent(null); setSubItemGhostValues({}); subItemGhostActive.current = false; }}
