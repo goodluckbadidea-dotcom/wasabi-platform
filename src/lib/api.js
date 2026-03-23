@@ -238,6 +238,10 @@ export async function updateTableSchema(id, columns) {
   return apiFetch(`/pages/${id}/schema`, { method: "PATCH", body: { columns } });
 }
 
+export async function updateSubColumnSchema(id, sub_columns) {
+  return apiFetch(`/pages/${id}/schema`, { method: "PATCH", body: { sub_columns } });
+}
+
 // ─── Table Rows ───
 
 export async function listRows(tableId, { limit, offset, archived } = {}) {

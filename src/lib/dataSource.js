@@ -67,9 +67,14 @@ async function fetchD1Table(pageConfig) {
   }
 
   const columns = schemaRes.columns || [];
+  const subColumns = schemaRes.sub_columns || [];
   const rows = rowsRes.rows || [];
 
   const schema = d1SchemaToClassified(tableId, pageConfig.title || pageConfig.name, columns);
+  schema._subColumns = subColumns;
+  if (subColumns.length > 0) {
+    schema._subSchema = d1SchemaToClassified(tableId, pageConfig.title || pageConfig.name, subColumns);
+  }
   const data = rows.map((row) => d1RowToPage(row, columns));
 
   return { data, schema, schemas: { [tableId]: schema } };

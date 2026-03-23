@@ -2374,6 +2374,8 @@ async function handleInit(env) {
       // Sub-items: parent-child row hierarchy
       "ALTER TABLE table_rows ADD COLUMN parent_row_id TEXT DEFAULT NULL",
       "CREATE INDEX IF NOT EXISTS idx_rows_parent ON table_rows(table_id, parent_row_id)",
+      // Sub-item independent schema
+      "ALTER TABLE table_schemas ADD COLUMN sub_columns TEXT DEFAULT '[]'",
     ];
     for (const sql of migrations) {
       try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }
@@ -4292,21 +4294,33 @@ async function handleGetSchema(env, id) {
   try {
     const row = await env.DB.prepare("SELECT * FROM table_schemas WHERE id = ?").bind(id).first();
     if (!row) return jsonResponse({ _error: "Schema not found" }, 404);
-    return jsonResponse({ ...row, columns: JSON.parse(row.columns) });
+    return jsonResponse({ ...row, columns: JSON.parse(row.columns), sub_columns: JSON.parse(row.sub_columns || "[]") });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
   }
 }
 
 async function handleUpdateSchema(env, id, body) {
-  if (!body.columns) return jsonResponse({ _error: "Missing columns" }, 400);
+  if (!body.columns && !body.sub_columns) return jsonResponse({ _error: "Missing columns or sub_columns" }, 400);
 
   try {
-    await env.DB.prepare(
-      `INSERT INTO table_schemas (id, columns, created_at, updated_at)
-       VALUES (?, ?, datetime('now'), datetime('now'))
-       ON CONFLICT(id) DO UPDATE SET columns = excluded.columns, updated_at = datetime('now')`
-    ).bind(id, JSON.stringify(body.columns)).run();
+    if (body.columns && body.sub_columns) {
+      await env.DB.prepare(
+        `INSERT INTO table_schemas (id, columns, sub_columns, created_at, updated_at)
+         VALUES (?, ?, ?, datetime('now'), datetime('now'))
+         ON CONFLICT(id) DO UPDATE SET columns = excluded.columns, sub_columns = excluded.sub_columns, updated_at = datetime('now')`
+      ).bind(id, JSON.stringify(body.columns), JSON.stringify(body.sub_columns)).run();
+    } else if (body.columns) {
+      await env.DB.prepare(
+        `INSERT INTO table_schemas (id, columns, created_at, updated_at)
+         VALUES (?, ?, datetime('now'), datetime('now'))
+         ON CONFLICT(id) DO UPDATE SET columns = excluded.columns, updated_at = datetime('now')`
+      ).bind(id, JSON.stringify(body.columns)).run();
+    } else {
+      await env.DB.prepare(
+        `UPDATE table_schemas SET sub_columns = ?, updated_at = datetime('now') WHERE id = ?`
+      ).bind(JSON.stringify(body.sub_columns), id).run();
+    }
     return jsonResponse({ ok: true, id });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);

@@ -21,7 +21,7 @@ import { useLinks } from "../context/LinksContext.jsx";
 import LinkPicker from "../core/LinkPicker.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
-import { updateTableSchema, getTableSchema, listUserDirectory, updateRowOwner, notionProxy, getRecordBadgeCounts, deleteRow } from "../lib/api.js";
+import { updateTableSchema, updateSubColumnSchema, getTableSchema, listUserDirectory, updateRowOwner, notionProxy, getRecordBadgeCounts, deleteRow } from "../lib/api.js";
 import { useTreeData } from "../lib/useTreeData.js";
 import { getPinToken } from "../components/PinLockOverlay.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
@@ -1572,6 +1572,40 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     expandedRows, getChildren, childMap,
   } = useTreeData(processedData, { enabled: subItemsEnabled, sortFn: treeSortFn });
 
+  // ── Sub-Item Independent Schema ──
+  const subColumns = useMemo(() => schema?._subColumns || [], [schema]);
+  const subSchema = useMemo(() => schema?._subSchema || null, [schema]);
+  const subTitleField = useMemo(() => {
+    if (subColumns.length === 0) return schema?.title?.name || null;
+    const titleCol = subColumns.find(c => c.type === "title");
+    return titleCol?.name || subColumns[0]?.name || null;
+  }, [subColumns, schema]);
+  const subVisibleColumns = useMemo(() => {
+    if (subColumns.length === 0) return [];
+    return subColumns.map(c => c.name);
+  }, [subColumns]);
+
+  // ── Add sub-column state ──
+  const [addSubColOpen, setAddSubColOpen] = useState(false);
+  const [addSubColName, setAddSubColName] = useState("");
+  const [addSubColType, setAddSubColType] = useState("text");
+
+  const handleAddSubCol = useCallback(async () => {
+    if (!addSubColName.trim() || !pageConfig?.id) return;
+    try {
+      const schemaRes = await getTableSchema(pageConfig.id);
+      const existingSub = schemaRes?.sub_columns || [];
+      const newSub = [...existingSub, { id: `subcol_${Date.now()}`, name: addSubColName.trim(), type: addSubColType }];
+      await updateSubColumnSchema(pageConfig.id, newSub);
+      setAddSubColOpen(false);
+      setAddSubColName("");
+      setAddSubColType("text");
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      console.error("Add sub-column failed:", err);
+    }
+  }, [addSubColName, addSubColType, pageConfig, onRefresh]);
+
   // ── Record badge counts (comments, notes, files) ──
   const [badgeCounts, setBadgeCounts] = useState({});
   const badgeFetchRef = useRef(null);
@@ -2463,6 +2497,11 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           (() => {
             const gtc = `52px ${columns.map(col => `${colWidths[col] || (col === OWNER_COL_NAME ? OWNER_COL_WIDTH : 120)}px`).join(" ")} 56px 40px${canEditSchema ? " 44px" : ""}`;
             const totalTableWidth = 52 + columns.reduce((sum, col) => sum + (colWidths[col] || (col === OWNER_COL_NAME ? OWNER_COL_WIDTH : 120)), 0) + 40 + (canEditSchema ? 44 : 0);
+            // Sub-item grid: checkbox + indent + sub-columns + badge + neuron + optional add-col
+            const subColsList = subVisibleColumns.length > 0 ? subVisibleColumns : (subTitleField ? [subTitleField] : []);
+            const subGtc = subColsList.length > 0
+              ? `52px ${subColsList.map(() => "120px").join(" ")} 56px 40px${canEditSchema ? " 44px" : ""}`
+              : gtc;
 
             return (
               <div style={{ minWidth: totalTableWidth }}>
@@ -2756,6 +2795,12 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                           const pageId = page.id;
                           const isHovered = hoveredRow === pageId;
                           const isSelected = selectedRows.has(pageId);
+                          const isSubItem = rowDepth > 0;
+                          const prevEntry = localIdx > 0 ? visibleEntries[localIdx - 1] : (visibleStart > 0 ? displayList[visibleStart + localIdx - 1] : null);
+                          const isFirstChild = isSubItem && (!prevEntry || prevEntry.depth === 0);
+                          const activeGtc = isSubItem ? subGtc : gtc;
+                          const activeCols = isSubItem ? subColsList : columns;
+                          const activeSchema = isSubItem && subSchema ? subSchema : schema;
 
                           const childBgTint = rowDepth > 0 ? "rgba(255,255,255,0.015)" : "transparent";
                           const cardBg = isSelected ? C.accent + "10" : isHovered ? C.darkSurf2 : childBgTint;
@@ -2767,11 +2812,47 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
 
                           return (
                             <React.Fragment key={pageId}>
+                            {/* Sub-item mini-header (before first child row) */}
+                            {isFirstChild && subItemsEnabled && (
+                              <div
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: subGtc,
+                                  height: 28,
+                                  alignItems: "center",
+                                  paddingLeft: 24,
+                                  marginBottom: 2,
+                                  borderBottom: `1px solid ${C.darkBorder}44`,
+                                  opacity: 0.7,
+                                }}
+                              >
+                                <div style={{ padding: "0 8px", fontSize: 10, color: C.darkMuted }} />
+                                {subColsList.map((col) => (
+                                  <div key={col} style={{ padding: "0 8px", fontSize: 10, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                    {col}
+                                  </div>
+                                ))}
+                                <div />
+                                <div />
+                                {canEditSchema && (
+                                  <div
+                                    style={{
+                                      display: "flex", alignItems: "center", justifyContent: "center",
+                                      cursor: "pointer", fontSize: 10, color: C.darkMuted,
+                                    }}
+                                    onClick={(e) => { e.stopPropagation(); setAddSubColOpen(true); }}
+                                    title="Add sub-item column"
+                                  >
+                                    <IconPlus size={10} />
+                                  </div>
+                                )}
+                              </div>
+                            )}
                             <div
                               data-neuron-node={`row:${pageId}`}
                               style={{
                                 ...styles.gridRow,
-                                gridTemplateColumns: gtc,
+                                gridTemplateColumns: activeGtc,
                                 height: ROW_HEIGHT,
                                 background: cardBg,
                                 ...(isHovered ? { boxShadow: `0 1px 4px rgba(0,0,0,0.08)` } : {}),
@@ -2818,7 +2899,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                 )}
                               </div>
                               {/* Data cells */}
-                              {columns.map((col, colIdx) => {
+                              {activeCols.map((col, colIdx) => {
                                 if (col === OWNER_COL_NAME && showOwnerColumn) {
                                   const ownerIds = page._ownerUserIds || [];
                                   return (
@@ -2833,7 +2914,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                     </div>
                                   );
                                 }
-                                const type = getFieldType(schema, col);
+                                const type = getFieldType(activeSchema, col);
                                 const value = readField(page, col);
                                 const cellKey = `${pageId}:${col}`;
                                 const linkData = resolvedLinks.get(cellKey);
@@ -2875,7 +2956,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                             value={value}
                                             type={type}
                                             fieldName={col}
-                                            schema={schema}
+                                            schema={activeSchema}
                                             colorMapping={config.colorMapping}
                                             relationTitles={relationTitles}
                                             linkInfo={linkData ? { sourceName: linkData.link?.name, stale: linkData.stale } : undefined}
@@ -2898,7 +2979,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                         value={value}
                                         type={type}
                                         fieldName={col}
-                                        schema={schema}
+                                        schema={activeSchema}
                                         colorMapping={config.colorMapping}
                                         relationTitles={relationTitles}
                                         linkInfo={linkData ? { sourceName: linkData.link?.name, stale: linkData.stale } : undefined}
@@ -2938,7 +3019,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                 key={`ghost-sub-${pageId}`}
                                 style={{
                                   ...styles.gridRow,
-                                  gridTemplateColumns: gtc,
+                                  gridTemplateColumns: subGtc,
                                   height: ROW_HEIGHT,
                                   opacity: subItemGhostSaving ? 0.5 : 0.8,
                                   transition: "opacity 0.15s",
@@ -2952,18 +3033,17 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                   <div style={{ width: (rowDepth + 1) * 24, flexShrink: 0 }} />
                                   <IconPlus size={9} color={C.accent} style={{ opacity: 0.5 }} />
                                 </div>
-                                {/* Editable cells */}
-                                {columns.map((col, ci) => {
-                                  const type = getFieldType(schema, col);
-                                  const isEditable = EDITABLE_TYPES.has(type);
-                                  const titleField = schema?.title?.name;
-                                  const isTitle = col === titleField;
+                                {/* Editable cells — uses sub-item columns */}
+                                {subColsList.map((col, ci) => {
+                                  const ghostSchema = subSchema || schema;
+                                  const type = getFieldType(ghostSchema, col);
+                                  const isEditable = EDITABLE_TYPES.has(type) || type === "title" || ci === 0;
+                                  const isTitle = ci === 0;
                                   return (
                                     <div key={col} style={{ ...styles.gridCell, padding: "2px 6px" }}>
                                       {!isEditable ? (
                                         <span style={{ color: C.darkMuted, fontSize: 11, fontStyle: "italic" }}>--</span>
                                       ) : (() => {
-                                        // Inline ghost cell (mirrors renderGhostCell but with sub-item state)
                                         const subGhostKeyDown = (e) => {
                                           if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubItemGhostCommit(); }
                                           if (e.key === "Escape") { setSubItemGhostParent(null); setSubItemGhostValues({}); subItemGhostActive.current = false; }
@@ -2980,7 +3060,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                           return (
                                             <select value={subItemGhostValues[col] || ""} onChange={(e) => subGhostSetVal(col, e.target.value || null)} onKeyDown={subGhostKeyDown} style={{ ...ghostInputStyle, cursor: "pointer", appearance: "none" }}>
                                               <option value="">--</option>
-                                              {getFieldOptions(schema, col).map((opt) => <option key={opt.name} value={opt.name}>{opt.name}</option>)}
+                                              {getFieldOptions(ghostSchema, col).map((opt) => <option key={opt.name} value={opt.name}>{opt.name}</option>)}
                                             </select>
                                           );
                                         }
@@ -3246,6 +3326,78 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                   padding: "8px 16px", fontSize: 12, fontFamily: FONT, color: "#fff", cursor: "pointer", fontWeight: 600,
                 }}
               >Delete all</button>
+            </div>
+          </div>
+        </>,
+        document.body
+      )}
+
+      {/* ── Add Sub-Item Column Dialog ── */}
+      {addSubColOpen && createPortal(
+        <>
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.3)", zIndex: 9998 }} onClick={() => { setAddSubColOpen(false); setAddSubColName(""); setAddSubColType("text"); }} />
+          <div style={{
+            position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+            background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
+            borderRadius: RADIUS.lg, boxShadow: SHADOW.dropdown,
+            padding: "24px", minWidth: 300, maxWidth: 380, zIndex: 9999, fontFamily: FONT,
+          }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: C.darkText, marginBottom: 16 }}>
+              Add Sub-Item Column
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 4 }}>Column Name</label>
+              <input
+                autoFocus
+                value={addSubColName}
+                onChange={(e) => setAddSubColName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleAddSubCol(); if (e.key === "Escape") { setAddSubColOpen(false); setAddSubColName(""); setAddSubColType("text"); } }}
+                placeholder="e.g. Status, Due Date..."
+                style={{
+                  width: "100%", padding: "8px 10px", fontSize: 13,
+                  background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
+                  borderRadius: RADIUS.sm, color: C.darkText, outline: "none",
+                  fontFamily: FONT, boxSizing: "border-box",
+                }}
+              />
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 4 }}>Type</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {COLUMN_TYPES.filter(t => t.value !== "relation").map((t) => (
+                  <button
+                    key={t.value}
+                    onClick={() => setAddSubColType(t.value)}
+                    style={{
+                      padding: "4px 10px", fontSize: 11, border: `1px solid ${addSubColType === t.value ? C.accent : C.darkBorder}`,
+                      borderRadius: RADIUS.pill, cursor: "pointer", fontFamily: FONT,
+                      background: addSubColType === t.value ? C.accent + "18" : "transparent",
+                      color: addSubColType === t.value ? C.accent : C.darkMuted,
+                      fontWeight: addSubColType === t.value ? 600 : 400,
+                    }}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => { setAddSubColOpen(false); setAddSubColName(""); setAddSubColType("text"); }}
+                style={{
+                  background: "transparent", border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
+                  padding: "8px 16px", fontSize: 12, fontFamily: FONT, color: C.darkMuted, cursor: "pointer",
+                }}
+              >Cancel</button>
+              <button
+                onClick={handleAddSubCol}
+                disabled={!addSubColName.trim()}
+                style={{
+                  background: addSubColName.trim() ? C.accent : C.darkBorder, border: "none", borderRadius: RADIUS.sm,
+                  padding: "8px 16px", fontSize: 12, fontFamily: FONT, color: "#fff", cursor: addSubColName.trim() ? "pointer" : "default",
+                  fontWeight: 600, opacity: addSubColName.trim() ? 1 : 0.5,
+                }}
+              >Add Column</button>
             </div>
           </div>
         </>,
