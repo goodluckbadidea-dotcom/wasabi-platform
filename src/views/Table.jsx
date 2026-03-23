@@ -1543,8 +1543,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   }, [data, filters, chipFilters, debouncedSearch, sortField, sortDir, columns, schema]);
 
   // ── Sub-Items Tree ──
-  const isD1 = pageConfig?.page_type === "database";
-  const subItemsEnabled = isD1;
+  const subItemsEnabled = isD1Table;
 
   const treeSortFn = useMemo(() => {
     if (!sortField || !sortDir) return null;
