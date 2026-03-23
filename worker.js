@@ -8776,19 +8776,21 @@ async function handleDisconnect(env, pageId) {
     "UPDATE page_configs SET page_type = 'database', config = ? WHERE id = ?"
   ).bind(JSON.stringify(config), pageId).run();
 
-  // Clear notion_page_id from all row metadata (sever row-level links)
+  // Clear all Notion metadata from rows and reset sync_dirty (sever row-level links)
   const { results: rows } = await env.DB.prepare(
-    "SELECT id, metadata FROM table_rows WHERE table_id = ? AND archived = 0"
+    "SELECT id, metadata FROM table_rows WHERE table_id = ?"
   ).bind(pageId).all();
 
   let clearedRows = 0;
   for (const row of rows || []) {
     const meta = safeParseJSON(row.metadata);
-    if (meta.notion_page_id) {
+    const hasNotion = meta.notion_page_id || meta.last_synced_at || meta.notion_last_edited;
+    if (hasNotion) {
       delete meta.notion_page_id;
       delete meta.last_synced_at;
+      delete meta.notion_last_edited;
       await env.DB.prepare(
-        "UPDATE table_rows SET metadata = ? WHERE id = ?"
+        "UPDATE table_rows SET metadata = ?, sync_dirty = 0 WHERE id = ?"
       ).bind(JSON.stringify(meta), row.id).run();
       clearedRows++;
     }
