@@ -739,7 +739,12 @@ export async function uploadFile(file, pageId = "") {
   formData.append("file", file);
   if (pageId) formData.append("page_id", pageId);
 
-  const jwt = getJwt();
+  // Refresh JWT if expiring (can't use apiFetch since body is FormData, not JSON)
+  let jwt = getJwt();
+  if (jwt && isTokenExpiringSoon(jwt)) {
+    const newToken = await refreshAccessToken();
+    if (newToken) jwt = newToken;
+  }
   const res = await fetch(`${conn.workerUrl}/files`, {
     method: "POST",
     headers: {

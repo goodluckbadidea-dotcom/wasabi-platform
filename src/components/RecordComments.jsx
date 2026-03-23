@@ -16,7 +16,9 @@ import MentionInput from "./MentionInput.jsx";
 
 function renderCommentContent(text) {
   if (!text) return null;
-  const parts = text.split(/(@\w+)/g);
+  // Match @mentions — display names can contain spaces and special chars
+  // Mentions are inserted as "@Display Name " (with trailing space) by MentionInput
+  const parts = text.split(/(@[\w][\w\s]*[\w]|@\w+)/g);
   return parts.map((part, i) =>
     part.startsWith("@") ? (
       <span key={i} style={{ color: C.accent, fontWeight: 600 }}>{part}</span>

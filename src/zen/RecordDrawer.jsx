@@ -348,70 +348,74 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
     // Build forward-looking context from task metadata
     const parts = [];
 
-    // 1. Deadlines — lead with what's coming
+    // 1. Deadlines — lead with what's coming, frame as action
     if (task.nearestDate || task.due) {
       const d = new Date(task.nearestDate || task.due);
       const now = new Date(); now.setHours(0, 0, 0, 0);
       const diff = Math.round((d - now) / 86400000);
-      const fieldLabel = task.nearestDateField || "deadline";
+      const fieldLabel = task.nearestDateField || "Deadline";
       if (diff < 0) {
-        parts.push(`${fieldLabel} was ${Math.abs(diff)} day${Math.abs(diff) !== 1 ? "s" : ""} ago and needs attention.`);
+        parts.push(`${fieldLabel} passed ${Math.abs(diff)} day${Math.abs(diff) !== 1 ? "s" : ""} ago — you need to update this or escalate.`);
       } else if (diff === 0) {
-        parts.push(`${fieldLabel} is today.`);
+        parts.push(`${fieldLabel} is today — this needs your attention now.`);
       } else if (diff === 1) {
         parts.push(`${fieldLabel} is tomorrow.`);
       } else if (diff <= 7) {
-        parts.push(`${fieldLabel} is in ${diff} days.`);
+        parts.push(`${fieldLabel} is coming up in ${diff} days.`);
       } else {
         parts.push(`${fieldLabel} is ${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}.`);
       }
     }
 
-    // 2. Interaction context — frame as action items
+    // 2. Interaction context — frame as what YOU need to do
     if (interactionSummary.length > 0) {
       const myInteractions = interactionSummary.filter((s) => s.user_id === identity?.id);
       const otherInteractions = interactionSummary.filter((s) => s.user_id !== identity?.id && s.user_id !== "default");
 
-      // Gap detection: commented but status unchanged → needs action
+      // Gap detection: commented but status unchanged → needs follow-through
       const lastComment = myInteractions.find((s) => s.interaction_type === "comment");
       const lastStatusChange = myInteractions.find((s) => s.interaction_type === "status_change");
       if (lastComment && (!lastStatusChange || lastComment.last_at > lastStatusChange.last_at)) {
-        const commentDate = new Date(lastComment.last_at);
-        const daysSince = Math.round((Date.now() - commentDate) / 86400000);
+        const daysSince = Math.round((Date.now() - new Date(lastComment.last_at)) / 86400000);
         if (daysSince > 0) {
-          parts.push(`Status needs updating — you commented ${daysSince} day${daysSince !== 1 ? "s" : ""} ago but it's still "${status || "unchanged"}".`);
+          parts.push(`You commented ${daysSince} day${daysSince !== 1 ? "s" : ""} ago but status is still "${status || "unchanged"}" — update it or follow up.`);
         }
       }
 
-      // Last interaction recency
+      // Recency — only if no other interaction signal
       const myLatest = myInteractions[0];
-      if (myLatest?.last_at) {
+      if (myLatest?.last_at && !lastComment) {
         const daysSince = Math.round((Date.now() - new Date(myLatest.last_at)) / 86400000);
-        if (daysSince > 3 && !parts.some((p) => p.includes("commented"))) {
+        if (daysSince > 3) {
           parts.push(`It's been ${daysSince} days since you last touched this.`);
         }
       }
 
-      // Other users' recent activity
-      for (const other of otherInteractions) {
-        const name = other.display_name || "A team member";
-        if (other.interaction_type === "status_change" && other.detail) {
-          parts.push(`${name} moved status to ${other.detail.split("→").pop()?.trim() || other.detail}.`);
-        } else if (other.interaction_type === "comment") {
-          parts.push(`${name} left a comment.`);
+      // Other users' recent activity — keep brief
+      const recentOther = otherInteractions[0];
+      if (recentOther) {
+        const name = recentOther.display_name || "A team member";
+        if (recentOther.interaction_type === "comment") {
+          parts.push(`${name} commented — check if it needs your response.`);
+        } else if (recentOther.interaction_type === "status_change" && recentOther.detail) {
+          parts.push(`${name} moved this to ${recentOther.detail.split("→").pop()?.trim() || recentOther.detail}.`);
         }
       }
     }
 
-    // 3. If AI reason exists, prefer it but append interaction context
+    // 3. If AI reason exists, prefer it but append deadline/interaction context
     if (aiText) {
       const context = parts.length > 0 ? " " + parts.join(" ") : "";
       return aiText + context;
     }
 
-    // 4. Fallback — forward-looking from metadata only
+    // 4. Fallback — forward-looking from metadata
     if (parts.length === 0) {
-      if (task.status) parts.push(`Currently "${task.status}"${task.priority ? `, ${task.priority} priority` : ""}.`);
+      if (task.status && task.priority) {
+        parts.push(`${task.priority} priority, currently "${task.status}".`);
+      } else if (task.status) {
+        parts.push(`Currently "${task.status}".`);
+      }
     }
     return parts.length > 0 ? parts.join(" ") : null;
   })();

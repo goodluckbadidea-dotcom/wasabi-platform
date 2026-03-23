@@ -14,6 +14,7 @@ import RecordNotes from "../components/RecordNotes.jsx";
 import RecordComments from "../components/RecordComments.jsx";
 import RecordFiles from "../components/RecordFiles.jsx";
 import { useCollaboration } from "../context/CollaborationContext.jsx";
+import { usePlatform } from "../context/PlatformContext.jsx";
 import PresenceAvatars from "../components/PresenceAvatars.jsx";
 import { listUserDirectory, updateRowOwner, listChildRows } from "../lib/api.js";
 import { IconPlus, IconChevronDown } from "../design/icons.jsx";
@@ -419,6 +420,7 @@ const OwnerPickerDropdown = React.forwardRef(function OwnerPickerDropdown({ owne
 // ── Main Component ──
 export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete, pageConfigId, resolvedLinks, onLinkField, onUnlinkField, onRefresh }) {
   const { isTablet } = useViewport();
+  const { identity } = usePlatform();
   const [editingField, setEditingField] = useState(null);
   const [editValue, setEditValue] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -854,7 +856,7 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
         {activeTab === "notes" && <RecordNotes recordId={page.id} pageConfigId={pageConfigId} />}
 
         {/* Comments Tab */}
-        {activeTab === "comments" && <RecordComments recordId={page.id} pageConfigId={pageConfigId} />}
+        {activeTab === "comments" && <RecordComments recordId={page.id} pageConfigId={pageConfigId} userId={identity?.id} userName={identity?.display_name} userRole={identity?.role} />}
 
         {/* Files Tab */}
         {activeTab === "files" && <RecordFiles recordId={page.id} pageConfigId={pageConfigId} />}

@@ -798,7 +798,7 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
             // Other user signals (shared signals)
             if (otherInteractions.length > 0) {
               task._otherUserActions = otherInteractions.slice(0, 3).map((i) => ({
-                user: i.user_id,
+                user: i.display_name || "A team member",
                 type: i.interaction_type,
                 detail: i.detail,
               }));
