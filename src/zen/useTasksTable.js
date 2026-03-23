@@ -29,7 +29,6 @@ export default function useTasksTable() {
   // ── Find or create per-user Zen Tasks table ──
   useEffect(() => {
     let cancelled = false;
-    hasInitRef.current = false;
 
     async function initTable() {
       if (hasInitRef.current) return;

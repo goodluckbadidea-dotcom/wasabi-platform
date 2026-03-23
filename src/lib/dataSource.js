@@ -8,7 +8,6 @@
 
 import { queryAll } from "../notion/pagination.js";
 import { detectSchema } from "../notion/schema.js";
-import { updatePage, createPage, archivePage } from "../notion/client.js";
 import { listRows, createRows, updateRow, deleteRow, queryTable, getTableSchema, getConnection } from "./api.js";
 import { fetchBoardItems, fetchBoardColumns } from "../monday/client.js";
 import { mondayColumnsToSchema, mondayItemToPage } from "../monday/schema.js";
@@ -202,18 +201,7 @@ export async function updateRecord(pageConfig, recordId, fieldName, propPayload,
     return result;
   }
 
-  // Notion: propPayload is already a Notion property object
-  {
-    const conn = getConnection();
-    const wUrl = user?.workerUrl || conn?.workerUrl;
-    const nKey = user?.notionKey || "";
-    if (wUrl) {
-      await updatePage(wUrl, nKey, recordId, { [fieldName]: propPayload });
-      return true;
-    }
-  }
-
-  throw new Error("Cannot update: no connection available");
+  throw new Error(`Cannot update: unsupported source type "${type}" for page "${pageConfig.id}"`);
 }
 
 // ─── Create a record in any source ───
@@ -238,20 +226,7 @@ export async function createRecord(pageConfig, properties, user, { pinToken, par
     return result.ids?.[0];
   }
 
-  // Notion: properties are already Notion-formatted
-  {
-    const conn = getConnection();
-    const wUrl = user?.workerUrl || conn?.workerUrl;
-    const nKey = user?.notionKey || "";
-    if (wUrl) {
-      const dbId = pageConfig.databaseIds?.[0];
-      if (!dbId) throw new Error("No database connected");
-      const page = await createPage(wUrl, nKey, dbId, properties);
-      return page.id;
-    }
-  }
-
-  throw new Error("Cannot create: no connection available");
+  throw new Error(`Cannot create: unsupported source type "${type}" for page "${pageConfig.id}"`);
 }
 
 // ─── Delete records in any source ───
@@ -269,20 +244,7 @@ export async function deleteRecords(pageConfig, recordIds, user, { pinToken, cas
     return true;
   }
 
-  // Notion: archive pages
-  {
-    const conn = getConnection();
-    const wUrl = user?.workerUrl || conn?.workerUrl;
-    const nKey = user?.notionKey || "";
-    if (wUrl) {
-      for (const id of recordIds) {
-        await archivePage(wUrl, nKey, id);
-      }
-      return true;
-    }
-  }
-
-  throw new Error("Cannot delete: no connection available");
+  throw new Error(`Cannot delete: unsupported source type "${type}" for page "${pageConfig.id}"`);
 }
 
 // ─── Build Notion-compatible property payload for D1 ───
@@ -513,6 +475,7 @@ function extractRawValue(prop, targetType) {
   switch (kind) {
     case "title":
       return prop.title?.map((t) => t.plain_text || t.text?.content || "").join("") || "";
+    case "text":
     case "rich_text":
       return prop.rich_text?.map((t) => t.plain_text || t.text?.content || "").join("") || "";
     case "number":
@@ -529,6 +492,7 @@ function extractRawValue(prop, targetType) {
       return prop.url || null;
     case "email":
       return prop.email || null;
+    case "phone":
     case "phone_number":
       return prop.phone_number || null;
     case "status":

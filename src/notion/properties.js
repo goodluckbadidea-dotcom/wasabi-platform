@@ -111,6 +111,7 @@ export function buildProp(type, value) {
         title: [{ type: "text", text: { content: String(value) } }],
       };
 
+    case "text":
     case "rich_text":
       return {
         rich_text: [{ type: "text", text: { content: String(value) } }],
@@ -147,6 +148,7 @@ export function buildProp(type, value) {
     case "email":
       return { email: value ? String(value) : null };
 
+    case "phone":
     case "phone_number":
       return { phone_number: value ? String(value) : null };
 
