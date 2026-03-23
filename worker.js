@@ -4585,7 +4585,7 @@ async function handleUpdateRow(env, tableId, rowId, body, user) {
     // When a status/done field changes, notify all users to refresh their task caches
     if (body.cells !== undefined && !body._fromSync) {
       const STATUS_FIELDS = ["status", "stage", "state", "phase", "done", "complete", "completed"];
-      const schema = await env.DB.prepare("SELECT columns FROM table_schemas WHERE table_id = ?").bind(tableId).first();
+      const schema = await env.DB.prepare("SELECT columns FROM table_schemas WHERE id = ?").bind(tableId).first();
       const cols = schema ? JSON.parse(schema.columns || "[]") : [];
       const colMap = Object.fromEntries(cols.map((c) => [c.id, c]));
       const changedStatusField = Object.keys(body.cells).some((colId) => {
