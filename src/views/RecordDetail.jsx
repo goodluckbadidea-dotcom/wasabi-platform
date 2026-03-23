@@ -15,7 +15,8 @@ import RecordComments from "../components/RecordComments.jsx";
 import RecordFiles from "../components/RecordFiles.jsx";
 import { useCollaboration } from "../context/CollaborationContext.jsx";
 import PresenceAvatars from "../components/PresenceAvatars.jsx";
-import { listUserDirectory, updateRowOwner } from "../lib/api.js";
+import { listUserDirectory, updateRowOwner, listChildRows } from "../lib/api.js";
+import { IconPlus, IconChevronDown } from "../design/icons.jsx";
 
 // ── Property type labels ──
 const TYPE_LABELS = {
@@ -583,6 +584,7 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
         <div style={ds.tabBar}>
           {[
             { key: "properties", label: "Properties" },
+            ...(page?._source === "d1" ? [{ key: "subitems", label: "Sub-Items" }] : []),
             { key: "notes", label: "Notes" },
             { key: "comments", label: "Comments" },
             { key: "files", label: "Files" },
@@ -660,6 +662,20 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
                         onClose={() => setOwnerPickerOpen(false)}
                       />
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* Parent Record Link */}
+              {page?._parentRowId && (
+                <div className="prop-row-hover" style={ds.propRow}>
+                  <div style={{ ...ds.propLabel, display: "flex", alignItems: "center", gap: 6 }}>
+                    <span>Parent</span>
+                    <span style={ds.propType}>Relation</span>
+                  </div>
+                  <div style={{ ...ds.propValue, color: C.accent, fontSize: 13 }}>
+                    {page._parentRowId.slice(0, 8)}...
+                    <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.7 }}>&#x2197;</span>
                   </div>
                 </div>
               )}
@@ -824,6 +840,16 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
           </>
         )}
 
+        {/* Sub-Items Tab */}
+        {activeTab === "subitems" && (
+          <RecordSubItems
+            parentId={page.id}
+            tableId={page._tableId || pageConfigId}
+            schema={schema}
+            onRefresh={onRefresh}
+          />
+        )}
+
         {/* Notes Tab */}
         {activeTab === "notes" && <RecordNotes recordId={page.id} pageConfigId={pageConfigId} />}
 
@@ -837,9 +863,74 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
   );
 }
 
-// ── Notes Tab ──
-// NotesTab and CommentsTab have been extracted to shared components:
-// src/components/RecordNotes.jsx and src/components/RecordComments.jsx
+// ── Sub-Items Tab Component ──
+function RecordSubItems({ parentId, tableId, schema, onRefresh }) {
+  const [children, setChildren] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!tableId || !parentId) return;
+    setLoading(true);
+    listChildRows(tableId, parentId, { limit: 200 })
+      .then((res) => {
+        const kids = (res?.rows || [])
+          .filter((r) => !r.archived)
+          .map((r) => ({
+            id: r.id,
+            title: (() => {
+              const cells = typeof r.cells === "string" ? JSON.parse(r.cells) : (r.cells || {});
+              const titleField = schema?.title?.name;
+              return titleField && cells[titleField] ? String(cells[titleField]) : r.id.slice(0, 8);
+            })(),
+            cells: typeof r.cells === "string" ? JSON.parse(r.cells) : (r.cells || {}),
+          }));
+        setChildren(kids);
+      })
+      .catch((err) => console.warn("[RecordSubItems] fetch:", err.message || err))
+      .finally(() => setLoading(false));
+  }, [parentId, tableId, schema]);
+
+  if (loading) {
+    return (
+      <div style={{ padding: "24px 16px", color: C.darkMuted, fontSize: 13, fontFamily: FONT }}>
+        Loading sub-items...
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: "12px 16px" }}>
+      {children.length === 0 ? (
+        <div style={{ color: C.darkMuted, fontSize: 13, fontFamily: FONT, padding: "12px 0" }}>
+          No sub-items yet.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {children.map((child) => (
+            <div
+              key={child.id}
+              style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "8px 12px", borderRadius: RADIUS.sm,
+                background: C.darkSurf2, cursor: "default",
+                fontSize: 13, fontFamily: FONT, color: C.darkText,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2 + "cc"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+            >
+              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {child.title}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ marginTop: 8, fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>
+        {children.length} sub-item{children.length !== 1 ? "s" : ""}
+      </div>
+    </div>
+  );
+}
 
 // ── Display a property value (read mode) ──
 function DisplayValue({ prop, fieldName, schema, pendingValue, linkedValue }) {

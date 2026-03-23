@@ -278,6 +278,10 @@ export async function deleteRow(tableId, rowId, { pinToken, cascade } = {}) {
   return apiFetch(`/tables/${tableId}/rows/${rowId}${qs}`, { method: "DELETE", pinToken });
 }
 
+export async function listChildRows(tableId, parentRowId, { limit = 200 } = {}) {
+  return apiFetch(`/tables/${tableId}/rows?parent_row_id=${encodeURIComponent(parentRowId)}&limit=${limit}`);
+}
+
 export async function queryTable(tableId, { filters, sorts, limit, offset } = {}) {
   return apiFetch(`/tables/${tableId}/query`, {
     method: "POST",

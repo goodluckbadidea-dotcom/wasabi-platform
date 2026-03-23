@@ -4315,18 +4315,43 @@ async function handleUpdateSchema(env, id, body) {
 
 // ─── Table Row Handlers ───
 
+async function checkCircularReference(db, tableId, rowId, proposedParentId) {
+  let currentId = proposedParentId;
+  const visited = new Set();
+  while (currentId) {
+    if (currentId === rowId) return true;
+    if (visited.has(currentId)) return false;
+    visited.add(currentId);
+    const row = await db.prepare(
+      "SELECT parent_row_id FROM table_rows WHERE id = ? AND table_id = ?"
+    ).bind(currentId, tableId).first();
+    currentId = row?.parent_row_id;
+  }
+  return false;
+}
+
 async function handleListRows(env, tableId, url) {
   const limit = Math.min(parseInt(url.searchParams.get("limit")) || 100, 10000);
   const offset = parseInt(url.searchParams.get("offset")) || 0;
   const includeArchived = url.searchParams.get("archived") === "true";
+  const parentRowId = url.searchParams.get("parent_row_id");
 
   try {
     let sql = "SELECT * FROM table_rows WHERE table_id = ?";
+    const binds = [tableId];
     if (!includeArchived) sql += " AND archived = 0";
+    if (parentRowId !== null && parentRowId !== undefined) {
+      if (parentRowId === "null" || parentRowId === "") {
+        sql += " AND parent_row_id IS NULL";
+      } else {
+        sql += " AND parent_row_id = ?";
+        binds.push(parentRowId);
+      }
+    }
     sql += " ORDER BY sort_order, created_at";
     sql += ` LIMIT ${limit} OFFSET ${offset}`;
 
-    const rows = await env.DB.prepare(sql).bind(tableId).all();
+    const rows = await env.DB.prepare(sql).bind(...binds).all();
 
     const parsed = rows.results.map((r) => ({
       ...r,
@@ -4384,6 +4409,17 @@ async function handleUpdateRow(env, tableId, rowId, body, user) {
     ).bind(rowId, tableId).first();
     const oldCells = existing ? JSON.parse(existing.cells || "{}") : {};
     const currentVersions = existing ? JSON.parse(existing.cell_versions || "{}") : {};
+
+    // ── Circular reference check for parent_row_id ──
+    if (body.parent_row_id) {
+      if (body.parent_row_id === rowId) {
+        return jsonResponse({ _error: "A record cannot be its own parent" }, 400);
+      }
+      const isCircular = await checkCircularReference(env.DB, tableId, rowId, body.parent_row_id);
+      if (isCircular) {
+        return jsonResponse({ _error: "Circular reference: this record is an ancestor of the target parent" }, 400);
+      }
+    }
 
     let newCells = oldCells;
     let conflicts = null;

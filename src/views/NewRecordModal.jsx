@@ -39,7 +39,7 @@ if (typeof document !== "undefined") {
  *   databaseId    — target database/table ID
  *   prefill       — optional { fieldName: value } for pre-populated fields
  */
-export default function NewRecordModal({ schema, onClose, onCreate, databaseId, prefill = {} }) {
+export default function NewRecordModal({ schema, onClose, onCreate, databaseId, prefill = {}, parentRowId = null }) {
   const [values, setValues] = useState(() => {
     const init = {};
     // Pre-fill any provided values
@@ -94,7 +94,7 @@ export default function NewRecordModal({ schema, onClose, onCreate, databaseId, 
           if (built) props[field.name] = built;
         }
       }
-      await onCreate(databaseId, props);
+      await onCreate(databaseId, props, parentRowId ? { parentRowId } : undefined);
       onClose();
     } catch (err) {
       setError(err.message || "Failed to create record");

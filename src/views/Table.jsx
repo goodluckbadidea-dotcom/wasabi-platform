@@ -21,7 +21,9 @@ import { useLinks } from "../context/LinksContext.jsx";
 import LinkPicker from "../core/LinkPicker.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
-import { updateTableSchema, getTableSchema, listUserDirectory, updateRowOwner, notionProxy, getRecordBadgeCounts } from "../lib/api.js";
+import { updateTableSchema, getTableSchema, listUserDirectory, updateRowOwner, notionProxy, getRecordBadgeCounts, deleteRow } from "../lib/api.js";
+import { useTreeData } from "../lib/useTreeData.js";
+import { getPinToken } from "../components/PinLockOverlay.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { updateDatabase, searchDatabases } from "../notion/client.js";
 import SelectPicker from "../components/SelectPicker.jsx";
@@ -1006,6 +1008,13 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const [detailPage, setDetailPage] = useState(null);
   const lastRowClickRef = useRef({ id: null, time: 0 });
 
+  // ── Sub-Items: Inline Ghost Row & Cascade Dialog ──
+  const [subItemGhostParent, setSubItemGhostParent] = useState(null); // parent row ID
+  const [subItemGhostValues, setSubItemGhostValues] = useState({});
+  const [subItemGhostSaving, setSubItemGhostSaving] = useState(false);
+  const subItemGhostActive = useRef(false);
+  const [cascadeDialog, setCascadeDialog] = useState(null); // { rowIds, childCount }
+
   // ── Column Resize (persisted) ──
   const [colWidths, setColWidths] = useState(() => config.colWidths || {}); // { fieldName: px }
   const resizeDrag = useRef(null); // { col, startX, startW }
@@ -1533,6 +1542,37 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     return rows;
   }, [data, filters, chipFilters, debouncedSearch, sortField, sortDir, columns, schema]);
 
+  // ── Sub-Items Tree ──
+  const isD1 = pageConfig?.page_type === "database";
+  const subItemsEnabled = isD1;
+
+  const treeSortFn = useMemo(() => {
+    if (!sortField || !sortDir) return null;
+    const type = getFieldType(schema, sortField);
+    return (a, b) => {
+      let va = readField(a, sortField);
+      let vb = readField(b, sortField);
+      if (type === "date") {
+        va = typeof va === "object" ? va?.start : va;
+        vb = typeof vb === "object" ? vb?.start : vb;
+      }
+      if (va === null && vb === null) return 0;
+      if (va === null) return 1;
+      if (vb === null) return -1;
+      if (type === "number") return sortDir === "asc" ? va - vb : vb - va;
+      const sa = String(va).toLowerCase();
+      const sb = String(vb).toLowerCase();
+      if (sa < sb) return sortDir === "asc" ? -1 : 1;
+      if (sa > sb) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    };
+  }, [sortField, sortDir, schema]);
+
+  const {
+    displayList, toggleExpand, expandAll, collapseAll,
+    expandedRows, getChildren, childMap,
+  } = useTreeData(processedData, { enabled: subItemsEnabled, sortFn: treeSortFn });
+
   // ── Record badge counts (comments, notes, files) ──
   const [badgeCounts, setBadgeCounts] = useState({});
   const badgeFetchRef = useRef(null);
@@ -1553,11 +1593,11 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   // Re-sync visible range when data or container size changes
   useEffect(() => {
     const st = scrollTopRef.current;
-    const totalRows = processedData.length;
+    const totalRows = displayList.length;
     const newStart = Math.min(totalRows, Math.max(0, Math.floor(st / ROW_HEIGHT) - VIRT_BUFFER));
     const newEnd = Math.min(totalRows, Math.ceil((st + containerHeight) / ROW_HEIGHT) + VIRT_BUFFER);
     setVisibleRange({ start: newStart, end: newEnd });
-  }, [processedData.length, containerHeight]);
+  }, [displayList.length, containerHeight]);
 
   // Column sort handler — cycles asc -> desc -> none
   const handleSort = useCallback((field) => {
@@ -1619,12 +1659,12 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     // Advance focus down after commit (Notion behavior)
     if (focusedCell) {
       setFocusedCell((prev) =>
-        prev && prev.row < processedData.length - 1
+        prev && prev.row < displayList.length - 1
           ? { row: prev.row + 1, col: prev.col }
           : prev
       );
     }
-  }, [schema, onUpdate, focusedCell, processedData.length]);
+  }, [schema, onUpdate, focusedCell, displayList.length]);
 
   // Owner column update handler
   const handleOwnerCommit = useCallback(async (pageId, ownerIds) => {
@@ -1681,7 +1721,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if (!focusedCell && !e.key.startsWith("Arrow")) return;
 
-      const rowCount = processedData.length;
+      const rowCount = displayList.length;
       const colCount = columns.length;
       if (rowCount === 0 || colCount === 0) return;
 
@@ -1720,8 +1760,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           // Enter on focused cell → open record detail panel
           if (focusedCell) {
             e.preventDefault();
-            const page = processedData[row];
-            if (page) setDetailPage(page);
+            const entry = displayList[row];
+            if (entry) setDetailPage(entry.row);
           }
           break;
         case "Escape":
@@ -1733,7 +1773,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [focusedCell, processedData, columns]);
+  }, [focusedCell, displayList, columns]);
 
   // Scroll focused cell into view (for virtualization compatibility)
   useEffect(() => {
@@ -1772,10 +1812,10 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
 
   const toggleAllRows = useCallback(() => {
     setSelectedRows((prev) => {
-      if (prev.size === processedData.length && prev.size > 0) return new Set();
-      return new Set(processedData.map((p) => p.id));
+      if (prev.size === displayList.length && prev.size > 0) return new Set();
+      return new Set(displayList.map((e) => e.row.id));
     });
-  }, [processedData]);
+  }, [displayList]);
 
   // ── Bulk Delete ──
   const handleBulkDelete = useCallback(() => {
@@ -1785,6 +1825,85 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     onDelete([...selectedRows]);
     setSelectedRows(new Set());
   }, [onDelete, selectedRows]);
+
+  // ── Sub-Item: Delete with cascade awareness ──
+  const handleDeleteWithCascade = useCallback(async (rowIds) => {
+    if (!onDelete || !rowIds?.length) return;
+    try {
+      await onDelete(rowIds);
+    } catch (err) {
+      if (err?.status === 409 && err?.data?.hasChildren) {
+        setCascadeDialog({ rowIds, childCount: err.data.childCount });
+        return;
+      }
+      throw err;
+    }
+  }, [onDelete]);
+
+  const handleCascadeDelete = useCallback(async (cascade) => {
+    if (!cascadeDialog) return;
+    const { rowIds } = cascadeDialog;
+    const tableId = pageConfig?.id;
+    if (!tableId) return;
+    try {
+      const pinToken = getPinToken(pageConfig?.id);
+      for (const id of rowIds) {
+        await deleteRow(tableId, id, { pinToken, cascade });
+      }
+      setCascadeDialog(null);
+      setSelectedRows(new Set());
+      if (onRefresh) await onRefresh();
+    } catch (err) {
+      console.error("Cascade delete failed:", err);
+      setCascadeDialog(null);
+    }
+  }, [cascadeDialog, pageConfig, onRefresh]);
+
+  // ── Sub-Item: Open inline ghost row ──
+  const handleCreateSubItem = useCallback((parentId) => {
+    if (!onCreate || !pageConfig?.id) return;
+    setSubItemGhostParent(parentId);
+    setSubItemGhostValues({});
+    subItemGhostActive.current = false;
+    if (!expandedRows.has(parentId)) toggleExpand(parentId);
+  }, [onCreate, pageConfig, expandedRows, toggleExpand]);
+
+  // ── Sub-Item: Commit inline ghost row ──
+  const handleSubItemGhostCommit = useCallback(async () => {
+    if (!onCreate || !pageConfig?.id || !subItemGhostParent) return;
+    const titleField = schema?.title?.name;
+    if (titleField && !subItemGhostValues[titleField]?.toString().trim()) {
+      setSubItemGhostParent(null);
+      setSubItemGhostValues({});
+      subItemGhostActive.current = false;
+      return;
+    }
+    const hasAnyValue = Object.values(subItemGhostValues).some((v) => v !== "" && v !== null && v !== undefined);
+    if (!hasAnyValue) {
+      setSubItemGhostParent(null);
+      subItemGhostActive.current = false;
+      return;
+    }
+    setSubItemGhostSaving(true);
+    try {
+      const properties = {};
+      for (const [fieldName, val] of Object.entries(subItemGhostValues)) {
+        if (val === "" || val === null || val === undefined) continue;
+        const type = getFieldType(schema, fieldName);
+        if (!type) continue;
+        const prop = buildProp(type, val);
+        if (prop !== undefined) properties[fieldName] = prop;
+      }
+      await onCreate(pageConfig.id, properties, { parentRowId: subItemGhostParent });
+      setSubItemGhostValues({});
+      subItemGhostActive.current = false;
+      // Keep ghost parent open for rapid entry — user can press Escape to close
+    } catch (err) {
+      console.error("Create sub-item failed:", err);
+    } finally {
+      setSubItemGhostSaving(false);
+    }
+  }, [onCreate, pageConfig, subItemGhostParent, subItemGhostValues, schema]);
 
   // ── CSV Export ──
   const handleExport = useCallback(() => {
@@ -2149,6 +2268,27 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           )}
         </div>
 
+        {subItemsEnabled && Object.keys(childMap).length > 0 && (
+          <div style={{ display: "flex", gap: 2 }}>
+            <button
+              onClick={expandAll}
+              title="Expand all"
+              style={styles.refreshBtn}
+            >
+              <IconChevronDown size={10} color={C.darkMuted} style={{ transform: "rotate(-90deg)" }} />
+              <span style={{ fontSize: 11, color: C.darkMuted, marginLeft: 2 }}>All</span>
+            </button>
+            <button
+              onClick={collapseAll}
+              title="Collapse all"
+              style={styles.refreshBtn}
+            >
+              <IconChevronDown size={10} color={C.darkMuted} />
+              <span style={{ fontSize: 11, color: C.darkMuted, marginLeft: 2 }}>All</span>
+            </button>
+          </div>
+        )}
+
         {filterableFields.map((field) => (
           <select
             key={field.name}
@@ -2247,7 +2387,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
               const titleField = schema?.title?.name;
               if (titleField) {
                 const colIdx = columns.indexOf(titleField);
-                setFocusedCell({ row: processedData.length, col: colIdx >= 0 ? colIdx : 0 });
+                setFocusedCell({ row: displayList.length, col: colIdx >= 0 ? colIdx : 0 });
               }
             }}
             title="Add new row"
@@ -2298,7 +2438,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           scrollRAF.current = requestAnimationFrame(() => {
             const st = target.scrollTop;
             scrollTopRef.current = st;
-            const totalRows = processedData.length;
+            const totalRows = displayList.length;
             const newStart = Math.min(totalRows, Math.max(0, Math.floor(st / ROW_HEIGHT) - VIRT_BUFFER));
             const newEnd = Math.min(totalRows, Math.ceil((st + containerHeight) / ROW_HEIGHT) + VIRT_BUFFER);
             setVisibleRange(prev =>
@@ -2334,8 +2474,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                     style={{ ...styles.gridHeaderCell, padding: "10px 8px", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" }}
                     onClick={toggleAllRows}
                   >
-                    <span style={styles.toggle(selectedRows.size === processedData.length && processedData.length > 0)}>
-                      {selectedRows.size === processedData.length && processedData.length > 0 ? "\u2713" : ""}
+                    <span style={styles.toggle(selectedRows.size === displayList.length && displayList.length > 0)}>
+                      {selectedRows.size === displayList.length && displayList.length > 0 ? "\u2713" : ""}
                     </span>
                   </div>
                   {columns.map((col) => {
@@ -2601,22 +2741,25 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                 {/* ── Virtualized Card Rows ── */}
                 <div style={{ padding: "4px 8px" }}>
                   {(() => {
-                    const totalRows = processedData.length;
+                    const totalRows = displayList.length;
                     const visibleStart = visibleRange.start;
                     const visibleEnd = Math.min(totalRows, visibleRange.end);
-                    const visibleRows = processedData.slice(visibleStart, visibleEnd);
+                    const visibleEntries = displayList.slice(visibleStart, visibleEnd);
                     const cardHeight = ROW_HEIGHT + 4; // row + marginBottom
 
                     return (
                       <>
                         {/* Top spacer */}
                         <div style={{ height: visibleStart * cardHeight }} />
-                        {visibleRows.map((page, localIdx) => {
+                        {visibleEntries.map((entry, localIdx) => {
+                          const page = entry.row;
+                          const { depth: rowDepth, hasChildren, isExpanded } = entry;
                           const pageId = page.id;
                           const isHovered = hoveredRow === pageId;
                           const isSelected = selectedRows.has(pageId);
 
-                          const cardBg = isSelected ? C.accent + "10" : isHovered ? C.darkSurf2 : C.darkSurf;
+                          const childBgTint = rowDepth > 0 ? "rgba(255,255,255,0.015)" : "transparent";
+                          const cardBg = isSelected ? C.accent + "10" : isHovered ? C.darkSurf2 : childBgTint;
                           const othersOnRow = collab?.getUsersOnRecord?.(pageId) || [];
                           const presenceColor = othersOnRow.length > 0 ? othersOnRow[0].color : null;
                           const presenceBorder = othersOnRow.length > 1
@@ -2624,8 +2767,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                             : presenceColor ? { borderLeft: `3px solid ${presenceColor}` } : {};
 
                           return (
+                            <React.Fragment key={pageId}>
                             <div
-                              key={pageId}
                               data-neuron-node={`row:${pageId}`}
                               style={{
                                 ...styles.gridRow,
@@ -2648,17 +2791,35 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                 setDetailPage(page);
                               }}
                             >
-                              {/* Checkbox cell */}
-                              <div style={{ ...styles.gridCell, justifyContent: "center", padding: 0 }}>
+                              {/* Checkbox + branch icon cell */}
+                              <div style={{ ...styles.gridCell, justifyContent: "center", padding: 0, gap: 2 }}>
                                 <span
                                   style={styles.toggle(isSelected)}
                                   onClick={(e) => { e.stopPropagation(); toggleRow(pageId); }}
                                 >
                                   {isSelected ? "\u2713" : ""}
                                 </span>
+                                {subItemsEnabled && isHovered && rowDepth < 5 && onCreate && (
+                                  <button
+                                    title="Add sub-item"
+                                    onClick={(e) => { e.stopPropagation(); handleCreateSubItem(pageId); }}
+                                    style={{
+                                      background: "none", border: "none", cursor: "pointer",
+                                      padding: 2, display: "flex", alignItems: "center",
+                                      opacity: 0.5, transition: "opacity 0.15s",
+                                    }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
+                                  >
+                                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke={C.darkMuted} strokeWidth="1.5" strokeLinecap="round">
+                                      <path d="M4 4v8M4 8h4c2 0 3 0 3-2V4" />
+                                      <path d="M4 12h4c2 0 3 0 3-2V8" />
+                                    </svg>
+                                  </button>
+                                )}
                               </div>
                               {/* Data cells */}
-                              {columns.map((col) => {
+                              {columns.map((col, colIdx) => {
                                 if (col === OWNER_COL_NAME && showOwnerColumn) {
                                   const ownerIds = page._ownerUserIds || [];
                                   return (
@@ -2679,22 +2840,73 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                 const linkData = resolvedLinks.get(cellKey);
 
                                 const cellTyping = othersOnRow.find((u) => u.isTyping && u.typingField === col);
+                                const isFirstCol = colIdx === 0;
                                 return (
                                   <div key={col} style={{
                                     ...styles.gridCell, padding: "4px 8px",
                                     ...(cellTyping ? { boxShadow: `inset 0 -2px 0 ${cellTyping.color}` } : {}),
                                   }}>
-                                    <CellDisplay
-                                      value={value}
-                                      type={type}
-                                      fieldName={col}
-                                      schema={schema}
-                                      colorMapping={config.colorMapping}
-                                      relationTitles={relationTitles}
-                                      linkInfo={linkData ? { sourceName: linkData.link?.name, stale: linkData.stale } : undefined}
-                                      linkedValue={linkData?.value}
-                                      onLinkClick={linkData ? () => removeLink(linkData.link.id) : undefined}
-                                    />
+                                    {isFirstCol && subItemsEnabled ? (
+                                      <div style={{ display: "flex", alignItems: "center", minWidth: 0, width: "100%" }}>
+                                        {rowDepth > 0 && <div style={{ width: rowDepth * 24, flexShrink: 0 }} />}
+                                        {hasChildren ? (
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); toggleExpand(pageId); }}
+                                            aria-expanded={isExpanded}
+                                            style={{
+                                              background: "none", border: "none", cursor: "pointer",
+                                              outline: "none", padding: "0 4px", display: "flex",
+                                              alignItems: "center", flexShrink: 0,
+                                            }}
+                                          >
+                                            <IconChevronDown
+                                              size={8}
+                                              color={C.darkMuted}
+                                              style={{
+                                                transition: "transform 0.15s",
+                                                transform: isExpanded ? "rotate(0deg)" : "rotate(-90deg)",
+                                              }}
+                                            />
+                                          </button>
+                                        ) : rowDepth > 0 ? (
+                                          <div style={{ width: 16, flexShrink: 0 }} />
+                                        ) : null}
+                                        <div style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
+                                          <CellDisplay
+                                            value={value}
+                                            type={type}
+                                            fieldName={col}
+                                            schema={schema}
+                                            colorMapping={config.colorMapping}
+                                            relationTitles={relationTitles}
+                                            linkInfo={linkData ? { sourceName: linkData.link?.name, stale: linkData.stale } : undefined}
+                                            linkedValue={linkData?.value}
+                                            onLinkClick={linkData ? () => removeLink(linkData.link.id) : undefined}
+                                          />
+                                        </div>
+                                        {hasChildren && !isExpanded && (
+                                          <span style={{
+                                            fontSize: 10, color: C.darkMuted, marginLeft: 4,
+                                            background: C.darkSurf2, borderRadius: 8, padding: "1px 5px",
+                                            flexShrink: 0,
+                                          }}>
+                                            {getChildren(pageId).length}
+                                          </span>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <CellDisplay
+                                        value={value}
+                                        type={type}
+                                        fieldName={col}
+                                        schema={schema}
+                                        colorMapping={config.colorMapping}
+                                        relationTitles={relationTitles}
+                                        linkInfo={linkData ? { sourceName: linkData.link?.name, stale: linkData.stale } : undefined}
+                                        linkedValue={linkData?.value}
+                                        onLinkClick={linkData ? () => removeLink(linkData.link.id) : undefined}
+                                      />
+                                    )}
                                   </div>
                                 );
                               })}
@@ -2721,6 +2933,80 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                 <NeuronBadge nodeId={pageId} />
                               </div>
                             </div>
+                            {/* Inline sub-item ghost row */}
+                            {subItemGhostParent === pageId && onCreate && (
+                              <div
+                                key={`ghost-sub-${pageId}`}
+                                style={{
+                                  ...styles.gridRow,
+                                  gridTemplateColumns: gtc,
+                                  height: ROW_HEIGHT,
+                                  opacity: subItemGhostSaving ? 0.5 : 0.8,
+                                  transition: "opacity 0.15s",
+                                  cursor: "default",
+                                  background: C.accent + "06",
+                                  borderLeft: `2px solid ${C.accent}44`,
+                                }}
+                              >
+                                {/* Checkbox spacer with indent */}
+                                <div style={{ ...styles.gridCell, justifyContent: "center", padding: 0 }}>
+                                  <div style={{ width: (rowDepth + 1) * 24, flexShrink: 0 }} />
+                                  <IconPlus size={9} color={C.accent} style={{ opacity: 0.5 }} />
+                                </div>
+                                {/* Editable cells */}
+                                {columns.map((col, ci) => {
+                                  const type = getFieldType(schema, col);
+                                  const isEditable = EDITABLE_TYPES.has(type);
+                                  const titleField = schema?.title?.name;
+                                  const isTitle = col === titleField;
+                                  return (
+                                    <div key={col} style={{ ...styles.gridCell, padding: "2px 6px" }}>
+                                      {!isEditable ? (
+                                        <span style={{ color: C.darkMuted, fontSize: 11, fontStyle: "italic" }}>--</span>
+                                      ) : (() => {
+                                        // Inline ghost cell (mirrors renderGhostCell but with sub-item state)
+                                        const subGhostKeyDown = (e) => {
+                                          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubItemGhostCommit(); }
+                                          if (e.key === "Escape") { setSubItemGhostParent(null); setSubItemGhostValues({}); subItemGhostActive.current = false; }
+                                        };
+                                        const subGhostSetVal = (c, v) => { subItemGhostActive.current = true; setSubItemGhostValues((p) => ({ ...p, [c]: v })); };
+                                        if (type === "checkbox") {
+                                          return (
+                                            <label style={{ display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", height: "100%" }}>
+                                              <input type="checkbox" checked={!!subItemGhostValues[col]} onChange={(e) => subGhostSetVal(col, e.target.checked)} style={{ width: 14, height: 14, accentColor: C.accent, cursor: "pointer" }} />
+                                            </label>
+                                          );
+                                        }
+                                        if (type === "select" || type === "status") {
+                                          return (
+                                            <select value={subItemGhostValues[col] || ""} onChange={(e) => subGhostSetVal(col, e.target.value || null)} onKeyDown={subGhostKeyDown} style={{ ...ghostInputStyle, cursor: "pointer", appearance: "none" }}>
+                                              <option value="">--</option>
+                                              {getFieldOptions(schema, col).map((opt) => <option key={opt.name} value={opt.name}>{opt.name}</option>)}
+                                            </select>
+                                          );
+                                        }
+                                        return (
+                                          <input
+                                            type={type === "number" ? "number" : type === "date" ? "date" : "text"}
+                                            style={ghostInputStyle}
+                                            value={subItemGhostValues[col] ?? ""}
+                                            placeholder={isTitle ? "New sub-item..." : ""}
+                                            autoFocus={isTitle}
+                                            onChange={(e) => { subGhostSetVal(col, type === "number" ? (e.target.value ? Number(e.target.value) : "") : e.target.value); }}
+                                            onKeyDown={subGhostKeyDown}
+                                            onFocus={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                                            onBlur={(e) => { e.currentTarget.style.background = "transparent"; }}
+                                          />
+                                        );
+                                      })()}
+                                    </div>
+                                  );
+                                })}
+                                <div style={{ ...styles.gridCell, padding: "4px 2px" }} />
+                                <div style={{ ...styles.gridCell, padding: "4px 2px" }} />
+                              </div>
+                            )}
+                          </React.Fragment>
                           );
                         })}
                         {/* Bottom spacer */}
@@ -2921,6 +3207,50 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
             setLinkPickerCell(null);
           }}
         />
+      )}
+
+      {/* ── Sub-Items: Cascade Delete Dialog ── */}
+      {cascadeDialog && createPortal(
+        <>
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9998 }} onClick={() => setCascadeDialog(null)} />
+          <div style={{
+            position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+            background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
+            borderRadius: RADIUS.lg, boxShadow: SHADOW.dropdown,
+            padding: "24px", minWidth: 340, maxWidth: 420, zIndex: 9999,
+          }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: C.darkText, marginBottom: 8, fontFamily: FONT }}>
+              This record has sub-items
+            </div>
+            <div style={{ fontSize: 13, color: C.darkMuted, marginBottom: 20, fontFamily: FONT, lineHeight: 1.5 }}>
+              This record has {cascadeDialog.childCount} sub-item{cascadeDialog.childCount !== 1 ? "s" : ""}. What would you like to do?
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+              <button
+                onClick={() => setCascadeDialog(null)}
+                style={{
+                  background: "transparent", border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
+                  padding: "8px 16px", fontSize: 12, fontFamily: FONT, color: C.darkText, cursor: "pointer",
+                }}
+              >Cancel</button>
+              <button
+                onClick={() => handleCascadeDelete("orphan")}
+                style={{
+                  background: "transparent", border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
+                  padding: "8px 16px", fontSize: 12, fontFamily: FONT, color: C.darkText, cursor: "pointer",
+                }}
+              >Keep sub-items</button>
+              <button
+                onClick={() => handleCascadeDelete("delete")}
+                style={{
+                  background: C.error, border: "none", borderRadius: RADIUS.sm,
+                  padding: "8px 16px", fontSize: 12, fontFamily: FONT, color: "#fff", cursor: "pointer", fontWeight: 600,
+                }}
+              >Delete all</button>
+            </div>
+          </div>
+        </>,
+        document.body
       )}
     </div>
   );
