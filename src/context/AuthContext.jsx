@@ -7,7 +7,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { loadPlatformIds, savePlatformIds } from "../config/setup.js";
 import {
   getConnection, saveConnection, getConnections, initDatabase,
-  getJwt, saveJwt, clearJwt, authMe, authLogin, authRegister as apiAuthRegister,
+  getJwt, saveJwt, clearJwt, saveRefreshToken, authMe, authLogin, authRegister as apiAuthRegister,
 } from "../lib/api.js";
 
 const AuthContext = createContext(null);
@@ -78,8 +78,9 @@ export function AuthProvider({ children }) {
         if (result?.user) {
           setIdentity({ id: result.user.id, display_name: result.user.display_name, role: result.user.role });
           setMultiUserEnabled(true);
-          // Store the fresh access token returned by /auth/me (repopulates memory after refresh)
+          // Store fresh tokens returned by /auth/me (repopulates memory after refresh)
           if (result.token) saveJwt(result.token);
+          if (result.refreshToken) saveRefreshToken(result.refreshToken);
         } else {
           clearJwt();
         }
@@ -162,6 +163,7 @@ export function AuthProvider({ children }) {
     const result = await authLogin(displayName, password);
     if (result.token) {
       saveJwt(result.token);
+      if (result.refreshToken) saveRefreshToken(result.refreshToken);
       setIdentity({ id: result.user.id, display_name: result.user.display_name, role: result.user.role });
       setMultiUserEnabled(true);
     }
@@ -172,6 +174,7 @@ export function AuthProvider({ children }) {
     const result = await apiAuthRegister(inviteCode, displayName, password);
     if (result.token) {
       saveJwt(result.token);
+      if (result.refreshToken) saveRefreshToken(result.refreshToken);
       setIdentity({ id: result.user.id, display_name: result.user.display_name, role: result.user.role });
       setMultiUserEnabled(true);
       setAdminInvite(null); // Clear first-boot invite

@@ -4,22 +4,24 @@
 
 const STORAGE_KEY = "wasabi_connection";
 const JWT_STORAGE_KEY = "wasabi_jwt";
+const REFRESH_TOKEN_KEY = "wasabi_refresh_token";
 
 // ─── JWT Token Helpers ───
-// JWT is stored in memory (not localStorage) to prevent XSS token theft.
-// The worker also sets an HttpOnly cookie as fallback for page refreshes.
-// Grace period: on first load, migrate any existing localStorage token to memory.
+// Access token: stored in memory only (short-lived, 15 min).
+// Refresh token: stored in localStorage (long-lived, 7 days).
+// On page reload, the refresh token from localStorage is sent to /auth/me
+// to get a fresh access token. This avoids cross-origin cookie issues on Safari.
 
 let _jwtInMemory = null;
 
 export function getJwt() {
   if (_jwtInMemory) return _jwtInMemory;
-  // Grace period: migrate from localStorage if present
+  // Grace period: migrate from old localStorage key if present
   try {
     const stored = localStorage.getItem(JWT_STORAGE_KEY);
     if (stored) {
       _jwtInMemory = stored;
-      localStorage.removeItem(JWT_STORAGE_KEY); // clean up
+      localStorage.removeItem(JWT_STORAGE_KEY);
       return _jwtInMemory;
     }
   } catch {}
@@ -28,12 +30,20 @@ export function getJwt() {
 
 export function saveJwt(token) {
   _jwtInMemory = token;
-  // No longer stored in localStorage
+}
+
+export function getRefreshToken() {
+  try { return localStorage.getItem(REFRESH_TOKEN_KEY); } catch { return null; }
+}
+
+export function saveRefreshToken(token) {
+  try { if (token) localStorage.setItem(REFRESH_TOKEN_KEY, token); } catch {}
 }
 
 export function clearJwt() {
   _jwtInMemory = null;
   try { localStorage.removeItem(JWT_STORAGE_KEY); } catch {}
+  try { localStorage.removeItem(REFRESH_TOKEN_KEY); } catch {}
 }
 
 // Decode JWT payload without verification (just reads exp for refresh timing)
@@ -52,24 +62,30 @@ function isTokenExpiringSoon(token) {
   return payload.exp - Math.floor(Date.now() / 1000) < 120;
 }
 
-// Refresh the access token using the HttpOnly cookie
+// Refresh the access token using the stored refresh token
 let _refreshPromise = null; // deduplicate concurrent refresh calls
 async function refreshAccessToken() {
-  // If a refresh is already in-flight, reuse the same promise
   if (_refreshPromise) return _refreshPromise;
   _refreshPromise = (async () => {
     try {
       const conn = getConnection();
       if (!conn?.workerUrl) return null;
+      const rt = getRefreshToken();
+      if (!rt) return null;
       const res = await fetch(`${conn.workerUrl}/auth/refresh`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...(conn.secret ? { "X-Wasabi-Key": conn.secret } : {}) },
-        credentials: "include", // sends HttpOnly refresh cookie
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${rt}`,
+          ...(conn.secret ? { "X-Wasabi-Key": conn.secret } : {}),
+        },
+        credentials: "include", // still send cookie as fallback
       });
       if (!res.ok) return null;
       const data = await res.json();
       if (data.token) {
         saveJwt(data.token);
+        if (data.refreshToken) saveRefreshToken(data.refreshToken);
         return data.token;
       }
       return null;
@@ -958,7 +974,15 @@ export async function authLogin(displayName, password) {
 }
 
 export async function authMe() {
-  return apiFetch("/auth/me", { method: "GET" });
+  // On page reload, access token is gone from memory. Use the refresh token
+  // from localStorage as Bearer auth so the worker can identify us.
+  const jwt = getJwt();
+  const headers = {};
+  if (!jwt) {
+    const rt = getRefreshToken();
+    if (rt) headers["Authorization"] = `Bearer ${rt}`;
+  }
+  return apiFetch("/auth/me", { method: "GET", headers });
 }
 
 export async function authRefresh() {

@@ -2590,7 +2590,7 @@ async function handleAuthLogin(env, body) {
       ).bind(sessionId, user.id, deviceInfo).run();
     } catch (_) {}
     return jsonResponse(
-      { ok: true, token: accessToken, user: { id: user.id, display_name: user.display_name, role: user.role } },
+      { ok: true, token: accessToken, refreshToken, user: { id: user.id, display_name: user.display_name, role: user.role } },
       200,
       { "Set-Cookie": buildAuthCookie(refreshToken) }
     );
@@ -2612,7 +2612,7 @@ async function handleAuthMe(env, jwtPayload) {
     const accessToken = await signJwt(jwtP, env); // 15 min
     const refreshToken = await signJwt(jwtP, env, REFRESH_TOKEN_DAYS * 86400); // 7 days
     return jsonResponse(
-      { user, token: accessToken },
+      { user, token: accessToken, refreshToken },
       200,
       { "Set-Cookie": buildAuthCookie(refreshToken) }
     );
@@ -2633,7 +2633,7 @@ async function handleAuthRefresh(env, jwtPayload) {
     const accessToken = await signJwt(jwtP, env); // 15 min
     const refreshToken = await signJwt(jwtP, env, REFRESH_TOKEN_DAYS * 86400); // 7 days
     return jsonResponse(
-      { ok: true, token: accessToken, user: { id: user.id, display_name: user.display_name, role: user.role } },
+      { ok: true, token: accessToken, refreshToken, user: { id: user.id, display_name: user.display_name, role: user.role } },
       200,
       { "Set-Cookie": buildAuthCookie(refreshToken) }
     );
