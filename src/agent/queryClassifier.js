@@ -187,6 +187,53 @@ export async function classifyQuery({
  * @param {object} classification - Result from classifyQuery
  * @returns {string} Formatted response text
  */
+/**
+ * Map a classification result to a dispatch tier for the multi-tier router.
+ * ESCALATE is never set by the classifier — it is a runtime decision only.
+ */
+function mapToDispatch(classification) {
+  if (classification.complexity === "simple" && classification.estimated_tools <= 1) {
+    return "DIRECT_WORKER";
+  }
+  if (classification.complexity === "complex" && classification.strategy !== "parallel_fetch") {
+    return "CALCULATE";
+  }
+  return "ORCHESTRATED";
+}
+
+/**
+ * classifyAndRoute()
+ *
+ * Runs the existing classifier and writes routing metadata into the envelope.
+ * Does not change what the classifier does — just captures its output structurally.
+ *
+ * @param {object} envelope     - AgentContext envelope (mutated with dispatch metadata)
+ * @param {string} queryText    - User's message text
+ * @param {string} workerUrl    - Worker URL for Claude API
+ * @param {string} claudeKey    - Claude API key
+ * @param {number} conversationDepth - Number of messages in conversation
+ * @returns {Promise<{ envelope: object, classification: object }>}
+ */
+export async function classifyAndRoute(envelope, queryText, workerUrl, claudeKey, conversationDepth) {
+  const { WASABI_TOOLS } = await import("./tools.js");
+
+  const result = await classifyQuery({
+    text: queryText,
+    workspaceSummary: envelope.frozenContext.workspaceSummary,
+    tools: WASABI_TOOLS,
+    workerUrl,
+    claudeKey,
+    conversationDepth,
+  });
+
+  envelope.dispatch = mapToDispatch(result);
+  envelope.routeReason = result.plan_summary || null;
+  envelope.estimatedWorkerCount = result.estimated_tools;
+  envelope.dataDomains = result.data_sources || [];
+
+  return { envelope, classification: result };
+}
+
 export function formatClassifierResponse(classification) {
   const hasQuestions = classification.clarifying_questions?.length > 0;
   const hasPlan = !!classification.plan_summary;

@@ -17,7 +17,8 @@ import { WASABI_TOOLS } from "../agent/tools.js";
 import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createToolExecutor } from "../agent/toolExecutor.js";
 import { routeWithClassification, shouldEscalate, SONNET } from "../agent/aiRouter.js";
-import { classifyQuery, formatClassifierResponse } from "../agent/queryClassifier.js";
+import { classifyQuery, classifyAndRoute, formatClassifierResponse } from "../agent/queryClassifier.js";
+import { buildAgentContext } from "../agent/agentContext.js";
 import { buildNeuronContextSummary } from "../neurons/neuronStorage.js";
 import { buildDataSummary, getTokenBudget, findWorkspaceAncestor } from "../agent/dataSummary.js";
 import { fetchGoogleContext } from "../google/googleContext.js";
@@ -32,7 +33,7 @@ const MIN_WIDTH = 280;
 const MAX_WIDTH = 640;
 
 export default function WasabiPanel({ onClose, isThinking, activePageConfig, activePageData, pendingChatMessage, onClearPendingMessage, embedded = false }) {
-  const { user, platformIds, pages, addPage } =
+  const { user, identity, platformIds, pages, addPage } =
     usePlatform();
 
   // ── Resize state ──
@@ -241,22 +242,22 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
           if (wsSettings?.agentMode) agentMode = wsSettings.agentMode;
         }
 
-        const systemPrompt = buildWasabiPrompt({
-          platformDbIds: platformIds
-            ? Object.entries(platformIds)
-                .map(([k, v]) => `${k}: ${v}`)
-                .join("\n")
-            : "",
-          workspaceSummary: workspaceSummary || undefined,
+        // ── Build context envelope (assembled once per turn) ──
+        const envelope = await buildAgentContext({
+          user,
+          identity,
+          platformIds,
           currentPageContext,
           dataSummary,
-          kbContext,
+          workspaceSummary: workspaceSummary || "",
           neuronSummary,
-          currentDate: new Date().toISOString().split("T")[0],
-          workspaceInstructions,
-          agentMode,
+          kbContext,
           googleContext,
+          agentMode,
+          workspaceInstructions,
         });
+
+        const systemPrompt = buildWasabiPrompt(envelope);
 
         const conn = api.getConnection();
         const wUrl = user?.workerUrl || conn?.workerUrl;
@@ -272,14 +273,10 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
           pendingClassificationRef.current = null; // consume it
         } else {
           setChatStatus("Analyzing query...");
-          classification = await classifyQuery({
-            text: agentText,
-            workspaceSummary: workspaceSummary || "",
-            tools: WASABI_TOOLS,
-            workerUrl: wUrl,
-            claudeKey: user?.claudeKey || "",
-            conversationDepth: chatHistoryRef.current.length,
-          });
+          const result = await classifyAndRoute(
+            envelope, agentText, wUrl, user?.claudeKey || "", chatHistoryRef.current.length
+          );
+          classification = result.classification;
         }
 
         // ── Short-circuit: clarify first (or show plan for expensive queries) ──
@@ -331,6 +328,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
 
         let { text: reply, history, toolCalls, stopReason } = useMultiPhase
           ? await runAgentMultiPhase({
+              envelope,
               messages: newHistory,
               systemPrompt: finalSystemPrompt,
               orientTools: WASABI_TOOLS,
@@ -349,6 +347,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
               preContext: neuronSummary || "",
             })
           : await runAgent({
+              envelope,
               messages: newHistory,
               systemPrompt: finalSystemPrompt,
               tools: WASABI_TOOLS,
@@ -370,6 +369,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
           setLastTier("sonnet");
           setChatStatus("Escalating to Sonnet...");
           const escalated = await runAgent({
+            envelope,
             messages: newHistory,
             systemPrompt: finalSystemPrompt,
             tools: WASABI_TOOLS,
@@ -416,7 +416,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
         setChatStatus("");
       }
     },
-    [chatLoading, user, platformIds, pages, activePageConfig, toolExecutor, modelOverride, handleToolApproval]
+    [chatLoading, user, identity, platformIds, pages, activePageConfig, toolExecutor, modelOverride, handleToolApproval]
   );
 
   const handleChatChoice = useCallback(

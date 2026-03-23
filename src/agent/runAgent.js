@@ -59,6 +59,46 @@ export function trimHistory(messages, maxPairs = 3) {
   return messages.slice(cutoff);
 }
 
+/**
+ * Envelope-aware history management. When envelope is present and iteration
+ * count reaches 3, compresses older messages into a summary (via cheap Haiku
+ * call) to reduce token usage on subsequent iterations.
+ * Falls back to trimHistory() when no envelope or too early in the loop.
+ */
+async function manageHistory(messages, envelope, workerUrl, claudeKey) {
+  if (!envelope || envelope.iterationCount < 3 || envelope.priorSummary) {
+    return trimHistory(messages);
+  }
+
+  // Compress everything except the last 2 messages into priorSummary
+  const toCompress = messages.slice(0, -2);
+  if (toCompress.length === 0) return messages;
+
+  try {
+    envelope.priorSummary = await compressHistory(toCompress, workerUrl, claudeKey);
+    return messages.slice(-2);
+  } catch (err) {
+    console.warn("[runAgent] History compression failed, falling back to trimHistory:", err.message);
+    return trimHistory(messages);
+  }
+}
+
+/**
+ * Compress a set of messages into a short summary via a cheap Haiku call.
+ * Preserves specific data values, record IDs, and decisions.
+ */
+async function compressHistory(messages, workerUrl, claudeKey) {
+  const response = await callClaude({
+    workerUrl,
+    claudeKey,
+    model: "claude-haiku-4-5-20251001",
+    systemPrompt: "Summarize the following conversation context in 4-6 sentences. Preserve all specific data values, record IDs, quantities, and decisions mentioned. Output plain text only.",
+    messages: [{ role: "user", content: JSON.stringify(messages) }],
+    maxTokens: 256,
+  });
+  return response?.content?.[0]?.text || "";
+}
+
 /** Tools that modify data — used by onToolApproval gate in "confirm" mode. */
 const WRITE_TOOL_NAMES = new Set([
   "create_page", "update_page", "batch_operations", "create_database",
@@ -94,6 +134,7 @@ const WRITE_TOOL_NAMES = new Set([
  * @returns {Promise<{ text: string, history: Array, toolCalls: Array, stopReason: string }>}
  */
 export async function runAgent({
+  envelope,
   messages,
   systemPrompt,
   tools,
@@ -124,13 +165,24 @@ export async function runAgent({
       else onStatus(`Running tools (step ${iter})...`);
     }
 
+    // Manage history: compress older messages when envelope is present and iteration >= 3
+    let effectiveHistory = history;
+    if (envelope && iter > 0) {
+      effectiveHistory = await manageHistory(history, envelope, workerUrl, claudeKey);
+    }
+
+    // Inject prior conversation summary into system prompt if available
+    const effectivePrompt = envelope?.priorSummary
+      ? `${systemPrompt}\n\n## Prior Conversation Context\n${envelope.priorSummary}`
+      : systemPrompt;
+
     // Call Claude via worker proxy
     const response = await callClaude({
       workerUrl,
       claudeKey,
       model,
-      systemPrompt,
-      messages: history,
+      systemPrompt: effectivePrompt,
+      messages: effectiveHistory,
       tools,
       maxTokens,
       abortRef,
@@ -239,6 +291,13 @@ export async function runAgent({
 
     // Append tool results as user message
     history.push({ role: "user", content: toolResults });
+
+    // Write loop state into envelope for tracking and future handoff
+    if (envelope) {
+      envelope.iterationCount++;
+      envelope.toolCallLog.push(...allToolCalls.slice(envelope.toolCallLog.length));
+      envelope.messages = history;
+    }
   }
 
   return { text: finalText, history, toolCalls: allToolCalls, stopReason: lastStopReason };
@@ -362,6 +421,7 @@ const ORIENT_TOOL_NAMES = new Set([
  * @param {Function} [opts.onStatus] - Callback: (statusText) => void — live progress updates
  */
 export async function runAgentMultiPhase({
+  envelope,
   messages,
   systemPrompt,
   orientTools,
@@ -399,6 +459,7 @@ export async function runAgentMultiPhase({
     if (onStatus) onStatus("Gathering context...");
     try {
       const orientResult = await runAgent({
+        envelope,
         messages,
         systemPrompt: orientSystemPrompt,
         tools: readOnlyTools,
@@ -437,6 +498,7 @@ export async function runAgentMultiPhase({
   if (onStatus) onStatus("Executing...");
 
   return await runAgent({
+    envelope,
     messages,
     systemPrompt: executeSystemPrompt,
     tools: executeTools || [],

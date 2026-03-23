@@ -5,19 +5,33 @@
 import { templatesToPromptText } from "../config/templates.js";
 
 /**
- * Build Wasabi's system prompt, optionally injecting KB context.
- * @param {object} opts
- * @param {string} opts.platformDbIds - Platform infrastructure DB IDs
- * @param {string} opts.kbContext - Knowledge base context
- * @param {object} opts.currentPageContext - Current page the user is viewing
- * @param {string} opts.dataSummary - Compact data summary for the active page
- * @param {string} opts.workspaceSummary - Summary of all workspace pages (for global chat)
- * @param {string} opts.currentDate - Today's date (YYYY-MM-DD)
- * @param {string} opts.workspaceInstructions - Custom AI instructions from workspace settings
- * @param {string} opts.agentMode - Agent behavior mode: "auto" | "confirm" | "plan"
- * @param {string} opts.googleContext - Google Gmail/Calendar auto-context
+ * Build Wasabi's system prompt.
+ * Accepts either the original params object OR an AgentContext envelope.
+ * When envelope is passed (detected via frozenContext property), uses
+ * frozenContext directly instead of individual params.
+ *
+ * @param {object} paramsOrEnvelope - Original params OR AgentContext envelope
  */
-export function buildWasabiPrompt({ platformDbIds, kbContext = "", currentPageContext, dataSummary, workspaceSummary, neuronSummary, currentDate, workspaceInstructions, agentMode, googleContext }) {
+export function buildWasabiPrompt(paramsOrEnvelope) {
+  if (paramsOrEnvelope?.frozenContext) {
+    const { frozenContext } = paramsOrEnvelope;
+    return _buildPrompt({
+      kbContext: frozenContext.kbEntries,
+      neuronSummary: frozenContext.neuronSummary,
+      workspaceSummary: frozenContext.workspaceSummary,
+      currentPageContext: frozenContext.currentPageContext,
+      dataSummary: frozenContext.dataSummary,
+      platformDbIds: frozenContext.platformDbIds,
+      googleContext: frozenContext.googleContext,
+      agentMode: frozenContext.agentMode,
+      workspaceInstructions: frozenContext.workspaceInstructions,
+      currentDate: new Date().toISOString().split("T")[0],
+    });
+  }
+  return _buildPrompt(paramsOrEnvelope);
+}
+
+function _buildPrompt({ platformDbIds, kbContext = "", currentPageContext, dataSummary, workspaceSummary, neuronSummary, currentDate, workspaceInstructions, agentMode, googleContext }) {
   let pageSection = "";
   if (currentPageContext) {
     const { pageName, databaseIds, schemaText } = currentPageContext;
