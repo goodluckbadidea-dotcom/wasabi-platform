@@ -1938,6 +1938,23 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     }
   }, [onCreate, pageConfig, subItemGhostParent, subItemGhostValues, schema]);
 
+  // ── Sub-Item Ghost: dismiss on click-outside ──
+  const subGhostRef = useRef(null);
+  useEffect(() => {
+    if (!subItemGhostParent) return;
+    const handleClickOutside = (e) => {
+      if (subGhostRef.current && !subGhostRef.current.contains(e.target)) {
+        // Don't dismiss if clicking the branch icon (which would re-open it)
+        if (e.target.closest('[data-sub-item-trigger]')) return;
+        setSubItemGhostParent(null);
+        setSubItemGhostValues({});
+        subItemGhostActive.current = false;
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [subItemGhostParent]);
+
   // ── CSV Export ──
   const handleExport = useCallback(() => {
     if (!processedData.length || !columns.length) return;
@@ -2820,12 +2837,12 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                   gridTemplateColumns: subGtc,
                                   height: 28,
                                   alignItems: "center",
-                                  paddingLeft: 24,
                                   marginBottom: 2,
-                                  borderBottom: `1px solid ${C.darkBorder}44`,
-                                  opacity: 0.7,
+                                  marginLeft: 24,
+                                  borderBottom: `1px solid ${C.darkBorder}33`,
                                 }}
                               >
+                                {/* Checkbox-aligned spacer */}
                                 <div style={{ padding: "0 8px", fontSize: 10, color: C.darkMuted }} />
                                 {subColsList.map((col) => (
                                   <div key={col} style={{ padding: "0 8px", fontSize: 10, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.5px" }}>
@@ -2839,11 +2856,17 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                     style={{
                                       display: "flex", alignItems: "center", justifyContent: "center",
                                       cursor: "pointer", fontSize: 10, color: C.darkMuted,
+                                      gap: 4, padding: "0 4px",
                                     }}
                                     onClick={(e) => { e.stopPropagation(); setAddSubColOpen(true); }}
                                     title="Add sub-item column"
+                                    onMouseEnter={(e) => { e.currentTarget.style.color = C.accent; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.color = C.darkMuted; }}
                                   >
                                     <IconPlus size={10} />
+                                    {subColumns.length === 0 && (
+                                      <span style={{ fontSize: 10, whiteSpace: "nowrap" }}>Add column</span>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -2855,6 +2878,12 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                 gridTemplateColumns: activeGtc,
                                 height: ROW_HEIGHT,
                                 background: cardBg,
+                                ...(isSubItem ? {
+                                  borderLeft: `2px solid ${C.accent}22`,
+                                  marginLeft: 22,
+                                  borderRadius: `0 ${RADIUS.lg} ${RADIUS.lg} 0`,
+                                  fontSize: 12,
+                                } : {}),
                                 ...(isHovered ? { boxShadow: `0 1px 4px rgba(0,0,0,0.08)` } : {}),
                                 ...presenceBorder,
                                 animation: ANIM.scrollReveal(localIdx),
@@ -2879,19 +2908,22 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                 >
                                   {isSelected ? "\u2713" : ""}
                                 </span>
-                                {subItemsEnabled && isHovered && rowDepth < 5 && onCreate && (
+                                {/* Branch icon: always visible on parent rows (not hover-only) for iPad support */}
+                                {subItemsEnabled && !isSubItem && rowDepth < 5 && onCreate && (
                                   <button
+                                    data-sub-item-trigger
                                     title="Add sub-item"
                                     onClick={(e) => { e.stopPropagation(); handleCreateSubItem(pageId); }}
                                     style={{
                                       background: "none", border: "none", cursor: "pointer",
-                                      padding: 2, display: "flex", alignItems: "center",
-                                      opacity: 0.5, transition: "opacity 0.15s",
+                                      padding: 6, display: "flex", alignItems: "center",
+                                      opacity: isHovered ? 0.8 : 0.3, transition: "opacity 0.15s",
+                                      minWidth: 28, minHeight: 28, justifyContent: "center",
                                     }}
                                     onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.opacity = isHovered ? "0.8" : "0.3"; }}
                                   >
-                                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke={C.darkMuted} strokeWidth="1.5" strokeLinecap="round">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke={C.darkMuted} strokeWidth="1.5" strokeLinecap="round">
                                       <path d="M4 4v8M4 8h4c2 0 3 0 3-2V4" />
                                       <path d="M4 12h4c2 0 3 0 3-2V8" />
                                     </svg>
@@ -3016,22 +3048,38 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                             {/* Inline sub-item ghost row */}
                             {subItemGhostParent === pageId && onCreate && (
                               <div
+                                ref={subGhostRef}
                                 key={`ghost-sub-${pageId}`}
                                 style={{
                                   ...styles.gridRow,
                                   gridTemplateColumns: subGtc,
                                   height: ROW_HEIGHT,
-                                  opacity: subItemGhostSaving ? 0.5 : 0.8,
+                                  opacity: subItemGhostSaving ? 0.5 : 0.9,
                                   transition: "opacity 0.15s",
                                   cursor: "default",
-                                  background: C.accent + "06",
+                                  background: C.accent + "08",
                                   borderLeft: `2px solid ${C.accent}44`,
+                                  marginLeft: 22,
+                                  borderRadius: `0 ${RADIUS.lg} ${RADIUS.lg} 0`,
                                 }}
                               >
-                                {/* Checkbox spacer with indent */}
-                                <div style={{ ...styles.gridCell, justifyContent: "center", padding: 0 }}>
-                                  <div style={{ width: (rowDepth + 1) * 24, flexShrink: 0 }} />
+                                {/* Checkbox spacer + dismiss button */}
+                                <div style={{ ...styles.gridCell, justifyContent: "center", padding: 0, gap: 2 }}>
                                   <IconPlus size={9} color={C.accent} style={{ opacity: 0.5 }} />
+                                  <button
+                                    title="Cancel"
+                                    onClick={(e) => { e.stopPropagation(); setSubItemGhostParent(null); setSubItemGhostValues({}); subItemGhostActive.current = false; }}
+                                    style={{
+                                      background: "none", border: "none", cursor: "pointer",
+                                      padding: 4, display: "flex", alignItems: "center",
+                                      opacity: 0.4, transition: "opacity 0.15s",
+                                      fontSize: 11, color: C.darkMuted, lineHeight: 1,
+                                    }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.8"; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.4"; }}
+                                  >
+                                    ✕
+                                  </button>
                                 </div>
                                 {/* Editable cells — uses sub-item columns */}
                                 {subColsList.map((col, ci) => {
