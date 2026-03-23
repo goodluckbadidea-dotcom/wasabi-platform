@@ -31,6 +31,79 @@ export function buildWasabiPrompt(paramsOrEnvelope) {
   return _buildPrompt(paramsOrEnvelope);
 }
 
+/**
+ * Build the Zen/Assistant system prompt from an AgentContext envelope.
+ * Lighter than the full agent prompt — no KB, neurons, system builder,
+ * view library, or tool workflow guides. Focused on conversational assistance.
+ *
+ * @param {object} envelope - AgentContext envelope (from buildZenContext)
+ * @returns {string} System prompt
+ */
+export function buildZenPrompt(envelope) {
+  const { frozenContext, userTier } = envelope;
+  const role = frozenContext.agentMode === "zen"
+    ? (envelope.userTier === "superuser" ? "admin" : envelope.userTier === "premium" ? "editor" : "viewer")
+    : "admin";
+
+  const roleCapabilities = role === "viewer"
+    ? "You can query databases (read-only), search emails, and view calendar events. You CANNOT create, update, or delete any data."
+    : role === "editor"
+      ? "You can query databases, update individual record fields, search emails, check and create calendar events. You CANNOT create new pages, databases, automations, or manage users."
+      : "You can query databases, update individual record fields, post notifications, search emails, check and create calendar events. For complex operations (creating pages, automations, bulk edits), suggest the user switch to the Agent tab.";
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+
+  const parts = [
+    `You are Wasabi — a calm, focused AI assistant.
+
+## Your Role
+You help the user stay productive by answering questions, querying their databases, summarizing information, and providing quick insights. You are conversational, concise, and mindful.
+
+## Guidelines
+- Keep responses short and focused (1-3 paragraphs max unless depth is requested)
+- Use bullet points for lists
+- Be direct — no filler phrases
+- If you don't know something, say so briefly
+- ${roleCapabilities}
+- When querying databases, use the database_id from the workspace summary below
+- NEVER fabricate data — only present numbers and values from tool call results
+- Markdown formatting is supported (bold, lists, headers, code blocks)
+
+## Context
+Today's date: ${dateStr}
+User role: ${role}`,
+  ];
+
+  // Workspace summary
+  if (frozenContext.workspaceSummary) {
+    parts.push(`\n## Workspace Databases\n${frozenContext.workspaceSummary}`);
+  }
+
+  // Active page context
+  if (frozenContext.currentPageContext) {
+    const { pageName, databaseIds, schemaText, dataSummary } = frozenContext.currentPageContext;
+    let section = `\n## Current Page: "${pageName}"`;
+    if (databaseIds?.length) section += `\nDatabase ID: ${databaseIds.join(", ")}`;
+    if (schemaText) section += `\nSchema: ${schemaText}`;
+    if (dataSummary) section += `\n${dataSummary}`;
+    parts.push(section);
+  }
+
+  // AI-curated tasks
+  if (frozenContext.taskContext) {
+    parts.push(`\n## Your Tasks (AI-prioritized)\n${frozenContext.taskContext}`);
+  }
+
+  // Google context
+  if (frozenContext.googleContext) {
+    parts.push("\n" + frozenContext.googleContext);
+  }
+
+  return parts.join("\n");
+}
+
+
 function _buildPrompt({ platformDbIds, kbContext = "", currentPageContext, dataSummary, workspaceSummary, neuronSummary, currentDate, workspaceInstructions, agentMode, googleContext }) {
   let pageSection = "";
   if (currentPageContext) {

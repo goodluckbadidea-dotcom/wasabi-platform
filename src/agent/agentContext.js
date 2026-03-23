@@ -111,6 +111,126 @@ export async function buildAgentContext({
  * @param {object} envelope - AgentContext envelope
  * @returns {object} Handoff briefing
  */
+/**
+ * buildZenContext()
+ *
+ * Assembles the context envelope for a Zen/Assistant conversation turn.
+ * Same AgentContext shape as the agent envelope — shared type, lighter fill.
+ * KB, neurons, and workspace instructions are left empty (Zen doesn't use them).
+ * Active page context IS included so the assistant knows what the user is viewing.
+ *
+ * @param {object} params
+ * @param {object} params.user             - { workerUrl, claudeKey }
+ * @param {object|null} params.identity    - { id, display_name, role } or null
+ * @param {object[]} params.pages          - Workspace pages array from PlatformContext
+ * @param {string} [params.googleContext]  - Gmail/Calendar context if available
+ * @param {object} [params.activePageConfig] - Current page config the user is viewing
+ * @param {object} [params.activePageData]   - Current page data (rows/records)
+ * @param {string} [params.taskContext]    - AI-curated tasks text (from localStorage cache)
+ * @returns {object} AgentContext envelope
+ */
+export async function buildZenContext({
+  user,
+  identity,
+  pages,
+  googleContext = "",
+  activePageConfig = null,
+  activePageData = null,
+  taskContext = "",
+}) {
+  // Generate session ID
+  let sessionId;
+  try {
+    sessionId = crypto.randomUUID();
+  } catch {
+    sessionId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+
+  const userId = identity?.id || "single-user";
+  const role = identity?.role || null;
+
+  let userTier = "standard";
+  if (role === "admin") userTier = "superuser";
+  else if (role === "editor") userTier = "premium";
+
+  // Build workspace summary from pages (same logic as ChatPanel's buildWorkspaceSummary)
+  let workspaceSummary = "";
+  if (pages?.length) {
+    const lines = pages
+      .filter((p) => !p._systemInternal)
+      .map((p) => {
+        const pt = p.page_type || p.pageType || p.type || "page";
+        const dbIds = [...(p.databaseIds || [])];
+        const localTypes = ["database", "sheet", "linked_sheet", "linked_monday", "linked_notion"];
+        if (localTypes.includes(pt) && p.id && !dbIds.includes(p.id)) dbIds.push(p.id);
+        const dbStr = dbIds.length ? ` (database_id: ${dbIds.join(", ")})` : "";
+        return `- ${p.name || "Untitled"} [${pt}]${dbStr}`;
+      });
+    if (lines.length) {
+      workspaceSummary = `Use query_database with the database_id to look up data.\n${lines.join("\n")}`;
+    }
+  }
+
+  // Build active page context if available
+  let currentPageContext = null;
+  if (activePageConfig) {
+    const pageName = activePageConfig.title || activePageConfig.name || "Untitled";
+    const databaseIds = activePageConfig.databaseIds || [];
+    const pageId = activePageConfig.id;
+    if (pageId && !databaseIds.includes(pageId)) databaseIds.push(pageId);
+
+    // Build lightweight schema text from columns if available
+    let schemaText = "";
+    if (activePageConfig.columns?.length) {
+      const cols = activePageConfig.columns.map((c) => `${c.name} (${c.type})`);
+      schemaText = cols.join(", ");
+    }
+
+    // Build data summary — record count + sample field values
+    let dataSummary = "";
+    if (activePageData?.rows?.length) {
+      dataSummary = `${activePageData.rows.length} records loaded.`;
+    }
+
+    currentPageContext = { pageName, databaseIds, schemaText, dataSummary };
+  }
+
+  return {
+    // --- Identity ---
+    sessionId,
+    userId,
+    userTier,
+
+    // --- Routing metadata (populated for future cheap-model routing) ---
+    dispatch: "DIRECT_WORKER",   // Zen always starts as direct; future router may change this
+    routeReason: "zen_assistant",
+    estimatedWorkerCount: 1,
+    dataDomains: [],
+
+    // --- Frozen context (assembled once, never mutated) ---
+    frozenContext: {
+      kbEntries: "",              // Zen doesn't use KB
+      neuronSummary: "",          // Zen doesn't use neurons
+      workspaceSummary,
+      currentPageContext,
+      dataSummary: "",
+      platformDbIds: "",
+      googleContext,
+      agentMode: "zen",
+      workspaceInstructions: "",  // Zen doesn't use workspace instructions
+      taskContext,                // AI-curated tasks (Zen-specific)
+      builtAt: Date.now(),
+    },
+
+    // --- Conversation state (mutates across the loop) ---
+    messages: [],
+    priorSummary: null,
+    toolCallLog: [],
+    iterationCount: 0,
+  };
+}
+
+
 export function buildEscalationHandoff(envelope) {
   return {
     originalRequest: envelope.messages.find((m) => m.role === "user")?.content ?? "",

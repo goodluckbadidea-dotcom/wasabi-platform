@@ -14,6 +14,8 @@ import WasabiPanel from "../core/WasabiPanel.jsx";
 import { HAIKU } from "../agent/aiRouter.js";
 import { ZEN_TOOLS_ADMIN, ZEN_TOOLS_EDITOR, ZEN_TOOLS_VIEWER } from "../agent/tools.js";
 import { runAgent } from "../agent/runAgent.js";
+import { buildZenContext } from "../agent/agentContext.js";
+import { buildZenPrompt } from "../agent/wasabiPrompt.js";
 import { fetchGoogleContext } from "../google/googleContext.js";
 import * as api from "../lib/api.js";
 import { useViewport } from "../context/ViewportContext.jsx";
@@ -36,79 +38,24 @@ function getToolsForRole(role) {
   return ZEN_TOOLS_ADMIN; // admin or single-user
 }
 
-// ── Build workspace summary for Assistant context ──
-function buildWorkspaceSummary(pages) {
-  if (!pages || pages.length === 0) return "";
-  const lines = pages
-    .filter((p) => !p._systemInternal)
-    .map((p) => {
-      const pt = p.page_type || p.pageType || p.type || "page";
-      const dbIds = [...(p.databaseIds || [])];
-      const localTypes = ["database", "sheet", "linked_sheet", "linked_monday", "linked_notion"];
-      if (localTypes.includes(pt) && p.id && !dbIds.includes(p.id)) dbIds.push(p.id);
-      const dbStr = dbIds.length ? ` (database_id: ${dbIds.join(", ")})` : "";
-      return `- ${p.name || "Untitled"} [${pt}]${dbStr}`;
-    });
-  return lines.length > 0 ? `\n## Workspace Databases\nUse query_database with the database_id to look up data.\n${lines.join("\n")}` : "";
-}
-
-// ── Build enhanced system prompt with task + Google + workspace context ──
-function buildZenSystemPrompt(googleContext, role, pages, userId) {
-  const roleCapabilities = role === "viewer"
-    ? "You can query databases (read-only), search emails, and view calendar events. You CANNOT create, update, or delete any data."
-    : role === "editor"
-      ? "You can query databases, update individual record fields, search emails, check and create calendar events. You CANNOT create new pages, databases, automations, or manage users."
-      : "You can query databases, update individual record fields, post notifications, search emails, check and create calendar events. For complex operations (creating pages, automations, bulk edits), suggest the user switch to the Agent tab.";
-
-  const parts = [
-    `You are Wasabi — a calm, focused AI assistant.
-
-## Your Role
-You help the user stay productive by answering questions, querying their databases, summarizing information, and providing quick insights. You are conversational, concise, and mindful.
-
-## Guidelines
-- Keep responses short and focused (1-3 paragraphs max unless depth is requested)
-- Use bullet points for lists
-- Be direct — no filler phrases
-- If you don't know something, say so briefly
-- ${roleCapabilities}
-- When querying databases, use the database_id from the workspace summary below
-- NEVER fabricate data — only present numbers and values from tool call results
-- Markdown formatting is supported (bold, lists, headers, code blocks)
-
-## Context
-Today's date: ${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-User role: ${role || "admin"}`,
-  ];
-
-  // Inject workspace summary so Assistant knows what databases exist
-  const wsSummary = buildWorkspaceSummary(pages);
-  if (wsSummary) parts.push(wsSummary);
-
-  // Inject AI-curated tasks from cache
+// ── Build task context from localStorage cache ──
+function getTaskContextFromCache(userId) {
   try {
     const raw = localStorage.getItem(getTaskCacheKey(userId));
     if (raw) {
       const { data, ts } = JSON.parse(raw);
       if (Date.now() - ts < TASK_CACHE_TTL && Array.isArray(data) && data.length > 0) {
-        const taskLines = data.slice(0, 10).map((t) => {
+        return data.slice(0, 10).map((t) => {
           let line = `- [${t.done ? "x" : " "}] ${t.title}`;
           if (t.due) line += ` (due ${t.due})`;
           if (t.priority) line += ` [${t.priority}]`;
           if (t._aiReason) line += ` — ${t._aiReason}`;
           return line;
-        });
-        parts.push(`\n## Your Tasks (AI-prioritized)\n${taskLines.join("\n")}`);
+        }).join("\n");
       }
     }
   } catch { /* best effort */ }
-
-  // Inject Google context
-  if (googleContext) {
-    parts.push("\n" + googleContext);
-  }
-
-  return parts.join("\n");
+  return "";
 }
 
 // ── Lightweight tool executor for Assistant tools ──
@@ -300,9 +247,23 @@ export default function ChatPanel({
       } catch { /* best effort */ }
 
       const role = identity?.role || "admin";
-      const systemPrompt = buildZenSystemPrompt(googleContextRef.current, role, pages, identity?.id);
+      const taskContext = getTaskContextFromCache(identity?.id);
+
+      // Build context envelope (assembled once per turn)
+      const envelope = await buildZenContext({
+        user,
+        identity,
+        pages,
+        googleContext: googleContextRef.current,
+        activePageConfig,
+        activePageData,
+        taskContext,
+      });
+
+      const systemPrompt = buildZenPrompt(envelope);
 
       const result = await runAgent({
+        envelope,
         messages: newHistory,
         systemPrompt,
         tools: getToolsForRole(role),
@@ -333,7 +294,7 @@ export default function ChatPanel({
       setZenLoading(false);
       setZenStatus("");
     }
-  }, [zenLoading, user, identity, pages]);
+  }, [zenLoading, user, identity, pages, activePageConfig, activePageData]);
 
   // ── Tab bar style ──
   const miniTabBtn = (active) => ({
