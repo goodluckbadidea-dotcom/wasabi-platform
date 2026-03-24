@@ -11,7 +11,7 @@ import { globalToast } from "./ToastContext.jsx";
 const PagesContext = createContext(null);
 
 export function PagesProvider({ children }) {
-  const { user, workerConnection } = useAuth();
+  const { user, workerConnection, isAuthenticated } = useAuth();
 
   const [pages, setPages] = useState(() => loadCachedConfigs());
 
@@ -37,6 +37,7 @@ export function PagesProvider({ children }) {
   // ── Sync pages from D1 ──
   const hasSynced = useRef(false);
   useEffect(() => {
+    if (!isAuthenticated) return;
     if (!workerConnection?.workerUrl || hasSynced.current) return;
     hasSynced.current = true;
 
@@ -91,7 +92,7 @@ export function PagesProvider({ children }) {
     })();
 
     return () => { cancelled = true; };
-  }, [workerConnection, user]);
+  }, [isAuthenticated, workerConnection, user]);
 
   // ── Page tree ──
   const pageTree = useMemo(() => {

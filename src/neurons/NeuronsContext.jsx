@@ -14,6 +14,7 @@ import {
   addNode as apiAddNode,
   removeNode as apiRemoveNode,
 } from "./neuronStorage.js";
+import { useAuth } from "../context/AuthContext.jsx";
 
 const NeuronsContext = createContext(null);
 
@@ -32,6 +33,8 @@ export function isNeuronsMode() {
 // ─── Provider ───
 
 export function NeuronsProvider({ children }) {
+  const { isAuthenticated } = useAuth();
+
   // Core state
   const [neurons, setNeurons] = useState(() => loadCachedNeurons());
   const [overlayActive, setOverlayActive] = useState(false);
@@ -42,13 +45,14 @@ export function NeuronsProvider({ children }) {
   const graphRef = useRef({});
   const [graphVersion, setGraphVersion] = useState(0); // bump to trigger re-derive
 
-  // ── Load on mount ──
+  // ── Load on mount (wait for auth) ──
   useEffect(() => {
+    if (!isAuthenticated) return;
     loadNeurons()
       .then((list) => setNeurons(list))
       .catch(err => console.warn("[NeuronsContext] loadNeurons:", err.message || err));
     rebuildNodeMap();
-  }, []);
+  }, [isAuthenticated]);
 
   // ── Rebuild nodeId → neuronIds map ──
   const rebuildNodeMap = useCallback(async () => {

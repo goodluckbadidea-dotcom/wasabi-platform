@@ -19,7 +19,7 @@ const LinksContext = createContext({
 });
 
 export function LinksProvider({ children }) {
-  const { user, pages } = usePlatform();
+  const { user, pages, isAuthenticated } = usePlatform();
   const [links, setLinks] = useState(() => loadCachedLinks());
 
   // Cross-page data cache: { key → { data, fetchedAt } }
@@ -27,13 +27,14 @@ export function LinksProvider({ children }) {
   const dataCacheRef = useRef({});
   const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-  // Load links from D1 on mount
+  // Load links from D1 on mount (wait for auth)
   useEffect(() => {
+    if (!isAuthenticated) return;
     if (!user?.workerUrl) return;
     loadLinks()
       .then(setLinks)
       .catch((err) => console.error("[Links] Failed to load links:", err));
-  }, [user?.workerUrl]);
+  }, [isAuthenticated, user?.workerUrl]);
 
   // Create a new link
   const createNewLink = useCallback(async (link) => {
