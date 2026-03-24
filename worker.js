@@ -2299,14 +2299,43 @@ async function handleHealth(env) {
 }
 
 async function handleInit(env) {
+  // ── Schema version fast path ──
+  // Skip all DDL if the schema is already at the current version.
+  // Reduces ~92 sequential D1 queries to 3 on returning page loads.
+  const CURRENT_SCHEMA_VERSION = "2";
+  try {
+    const row = await env.DB.prepare(
+      "SELECT value FROM connections WHERE key = 'schema_version'"
+    ).first();
+    if (row?.value === CURRENT_SCHEMA_VERSION) {
+      let multiUserEnabled = false;
+      try {
+        const registered = await env.DB.prepare(
+          "SELECT COUNT(*) as count FROM users WHERE password_hash IS NOT NULL AND deleted_at IS NULL"
+        ).first();
+        multiUserEnabled = registered && registered.count > 0;
+      } catch {}
+      const tables = await env.DB.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' ORDER BY name"
+      ).all();
+      return jsonResponse({
+        ok: true,
+        tables: tables.results.map((t) => t.name),
+        message: "Database initialized successfully",
+        multi_user: multiUserEnabled,
+      });
+    }
+  } catch {
+    // connections table doesn't exist yet (first boot) — fall through to full init
+  }
+
+  // ── Full init (first boot, factory reset, or schema version bump) ──
   const statements = D1_SCHEMA.split(";").map((s) => s.trim()).filter((s) => s.length > 0);
   const indexStatements = D1_INDEXES.split(";").map((s) => s.trim()).filter((s) => s.length > 0);
 
   try {
-    // Create tables
-    for (const sql of statements) {
-      await env.DB.prepare(sql).run();
-    }
+    // Create tables (batched — single round-trip)
+    await env.DB.batch(statements.map(sql => env.DB.prepare(sql)));
 
     // Migrations for existing databases (run BEFORE indexes, since indexes may reference new columns)
     const migrations = [
@@ -2394,10 +2423,8 @@ async function handleInit(env) {
       ).run();
     } catch (_) {}
 
-    // Create indexes (after migrations so new columns exist)
-    for (const sql of indexStatements) {
-      try { await env.DB.prepare(sql).run(); } catch (_) { /* index may already exist or column missing */ }
-    }
+    // Create indexes (batched — single round-trip, after migrations so new columns exist)
+    await env.DB.batch(indexStatements.map(sql => env.DB.prepare(sql)));
 
     // Bootstrap: if no users exist, create a default admin invite
     let adminBootstrap = null;
@@ -2423,17 +2450,23 @@ async function handleInit(env) {
         await env.DB.prepare(
           "UPDATE page_configs SET created_by = ? WHERE created_by IS NULL"
         ).bind(firstAdmin.id).run();
-        // Add owner permissions for all pages that don't have ANY permission entries
+        // Add owner permissions for all pages that don't have ANY permission entries (batched)
         const allPages = await env.DB.prepare("SELECT id FROM page_configs").all();
-        for (const page of (allPages.results || [])) {
-          try {
-            await env.DB.prepare(
-              "INSERT OR IGNORE INTO page_permissions (page_id, user_id, permission, granted_by) VALUES (?, ?, 'owner', ?)"
-            ).bind(page.id, firstAdmin.id, firstAdmin.id).run();
-          } catch (_) {}
-        }
+        const permStmts = (allPages.results || []).map(page =>
+          env.DB.prepare(
+            "INSERT OR IGNORE INTO page_permissions (page_id, user_id, permission, granted_by) VALUES (?, ?, 'owner', ?)"
+          ).bind(page.id, firstAdmin.id, firstAdmin.id)
+        );
+        if (permStmts.length > 0) await env.DB.batch(permStmts);
       }
     } catch (_) {}
+
+    // Write schema version so subsequent loads use the fast path
+    try {
+      await env.DB.prepare(
+        "INSERT INTO connections (key, value, metadata, updated_at) VALUES ('schema_version', ?, '{}', datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')"
+      ).bind(CURRENT_SCHEMA_VERSION).run();
+    } catch {}
 
     // Return table list
     const tables = await env.DB.prepare(

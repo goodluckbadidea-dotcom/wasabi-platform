@@ -60,7 +60,7 @@ export function AuthProvider({ children }) {
       // Step 1: Init DB and detect multi-user state
       let isMultiUser = false;
       try {
-        const result = await withTimeout(initDatabase(), 30_000);
+        const result = await withTimeout(initDatabase(), 10_000);
         if (result?.admin_invite) {
           setAdminInvite(result.admin_invite.invite_code);
           isMultiUser = true;
