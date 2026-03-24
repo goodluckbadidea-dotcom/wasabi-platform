@@ -109,9 +109,13 @@ export function AuthProvider({ children }) {
   }, [workerUrl, bootState]);
 
   // ── Sync connection keys from D1 ──
+  // Wait until boot completes AND identity is set (or single-user mode) before fetching.
+  // Otherwise this fires pre-auth and gets 401.
   const hasLoadedConnections = useRef(false);
   useEffect(() => {
     if (!workerUrl || hasLoadedConnections.current) return;
+    if (bootState !== "ready") return;
+    if (multiUserEnabled && !identity) return;
     hasLoadedConnections.current = true;
 
     getConnections()
@@ -133,7 +137,7 @@ export function AuthProvider({ children }) {
         });
       })
       .catch((err) => console.warn("[Auth] Failed to sync connections:", err));
-  }, [workerUrl]);
+  }, [workerUrl, bootState, multiUserEnabled, identity]);
 
   // ── Actions ──
   const setUserKeys = useCallback((keys) => {

@@ -165,15 +165,18 @@ function AppContent() {
     });
   }, [userSync, activePage, setActivePage, setActiveFolder]);
 
-  // Broadcast nav changes to other devices
+  // Broadcast nav changes to other devices (skip system-internal pages)
   useEffect(() => {
     if (!userSync?.sendNavUpdate || !activePage) return;
     if (isRemoteNavRef.current) {
       isRemoteNavRef.current = false;
       return;
     }
+    // Don't broadcast system page IDs — receiving devices would get stuck
+    const target = pages.find((p) => p.id === activePage);
+    if (target && (target._systemInternal || target.name?.startsWith("User Tasks") || target.name?.startsWith("Zen Tasks"))) return;
     userSync.sendNavUpdate(activePage, activeFolder);
-  }, [activePage, activeFolder, userSync]);
+  }, [activePage, activeFolder, userSync, pages]);
 
   // Handle session revocation (logout from another device)
   useEffect(() => {

@@ -941,22 +941,8 @@ export default {
         return room.fetch(new Request(wsUrl.toString(), request));
       }
 
-      // ─── D1 Bootstrap (before auth gate — needed for first-time setup) ───
+      // ─── D1 Bootstrap (always unauthenticated — tells frontend if login is needed) ───
       if (path === "/init" && request.method === "POST") {
-        // Allow unauthenticated /init on first boot (no registered users yet).
-        // After users exist, require auth like any other endpoint.
-        let initAllowed = false;
-        try {
-          const { count } = await env.DB.prepare(
-            "SELECT COUNT(*) as count FROM users WHERE password_hash IS NOT NULL AND deleted_at IS NULL"
-          ).first() || { count: 0 };
-          if (count === 0) initAllowed = true; // First boot — no users yet
-        } catch (_) {
-          initAllowed = true; // Table doesn't exist yet — definitely first boot
-        }
-        if (!initAllowed && !(await authenticate(request, env))) {
-          return jsonResponse({ _error: "Unauthorized" }, 401);
-        }
         return await handleInit(env);
       }
 
@@ -985,6 +971,18 @@ export default {
         return result;
       }
 
+      // ─── Session restore endpoints (before auth gate — need refresh token access) ───
+      if (path === "/auth/me" && request.method === "GET") {
+        const user = await extractUser(request, env);
+        if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
+        return await handleAuthMe(env, user);
+      }
+      if (path === "/auth/refresh" && request.method === "POST") {
+        const user = await extractUser(request, env);
+        if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
+        return await handleAuthRefresh(env, user);
+      }
+
       // ─── Auth Gate ───
       if (!(await authenticate(request, env))) {
         return jsonResponse({ _error: "Unauthorized" }, 401);
@@ -994,14 +992,6 @@ export default {
       const user = await extractUser(request, env);
       if (!checkRoutePermission(path, request.method, user)) {
         return jsonResponse({ _error: "Insufficient permissions" }, 403);
-      }
-      if (path === "/auth/me" && request.method === "GET") {
-        if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
-        return await handleAuthMe(env, user);
-      }
-      if (path === "/auth/refresh" && request.method === "POST") {
-        if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
-        return await handleAuthRefresh(env, user);
       }
 
       // ─── User Directory (any authenticated user) ───
