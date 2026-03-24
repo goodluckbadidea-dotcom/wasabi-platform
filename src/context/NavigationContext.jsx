@@ -47,7 +47,7 @@ export function NavigationProvider({ children }) {
           // Don't restore navigation to system-internal pages
           const SYSTEM_PAGE_TYPES = new Set(["color-defaults", "color-view-config"]);
           const target = pages.find((p) => p.id === state.last_page);
-          if (target && (target._systemInternal || SYSTEM_PAGE_TYPES.has(target.page_type))) return;
+          if (target && (target._systemInternal || SYSTEM_PAGE_TYPES.has(target.page_type) || (target.name && (target.name.startsWith("User Tasks") || target.name.startsWith("Zen Tasks"))))) return;
           setActivePage(state.last_page);
           saveJSON("wasabi_active_page", state.last_page);
         }
@@ -64,6 +64,10 @@ export function NavigationProvider({ children }) {
   const saveTimerRef = useRef(null);
   useEffect(() => {
     if (!identity?.id || !activePage) return;
+    // Don't persist system-internal pages as last_page
+    const SYSTEM_PAGE_TYPES = new Set(["color-defaults", "color-view-config"]);
+    const target = pages.find((p) => p.id === activePage);
+    if (target && (target._systemInternal || SYSTEM_PAGE_TYPES.has(target.page_type) || (target.name && (target.name.startsWith("User Tasks") || target.name.startsWith("Zen Tasks"))))) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       putUserState({ last_page: activePage }).catch(err => console.warn("[NavigationContext] putUserState:", err.message || err));
