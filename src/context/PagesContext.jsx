@@ -11,7 +11,7 @@ import { globalToast } from "./ToastContext.jsx";
 const PagesContext = createContext(null);
 
 export function PagesProvider({ children }) {
-  const { user, workerConnection, isAuthenticated } = useAuth();
+  const { user, workerConnection } = useAuth();
 
   const [pages, setPages] = useState(() => loadCachedConfigs());
 
@@ -35,11 +35,9 @@ export function PagesProvider({ children }) {
   const [batchQueue, setBatchQueue] = useState([]);
 
   // ── Sync pages from D1 ──
-  // Wait for auth to complete before fetching — otherwise requests hit
-  // the auth gate with no JWT and return 401.
   const hasSynced = useRef(false);
   useEffect(() => {
-    if (!workerConnection?.workerUrl || !isAuthenticated || hasSynced.current) return;
+    if (!workerConnection?.workerUrl || hasSynced.current) return;
     hasSynced.current = true;
 
     let cancelled = false;

@@ -487,11 +487,6 @@ function AppContent() {
   };
 
   return (
-    <UserSyncProvider>
-    <ColorMappingProvider>
-    <LinksProvider>
-    <NeuronsProvider>
-    <RecordDrawerProvider>
     <div
       style={{
         display: "flex",
@@ -616,11 +611,6 @@ function AppContent() {
         </div>
       </div>
     </div>
-    </RecordDrawerProvider>
-    </NeuronsProvider>
-    </LinksProvider>
-    </ColorMappingProvider>
-    </UserSyncProvider>
   );
 }
 
@@ -630,9 +620,19 @@ export default function App() {
       <ThemeProvider>
         <ToastProvider>
         <PlatformProvider>
-          <ErrorBoundary fallbackLabel="Wasabi Platform">
-            <AppContent />
-          </ErrorBoundary>
+          <UserSyncProvider>
+            <ColorMappingProvider>
+              <LinksProvider>
+                <NeuronsProvider>
+                  <RecordDrawerProvider>
+                    <ErrorBoundary fallbackLabel="Wasabi Platform">
+                      <AppContent />
+                    </ErrorBoundary>
+                  </RecordDrawerProvider>
+                </NeuronsProvider>
+              </LinksProvider>
+            </ColorMappingProvider>
+          </UserSyncProvider>
         </PlatformProvider>
         </ToastProvider>
       </ThemeProvider>

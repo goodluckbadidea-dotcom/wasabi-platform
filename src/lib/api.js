@@ -134,6 +134,11 @@ export function clearConnection() {
 }
 
 /**
+ * Paths that don't require auth — they work without any JWT or refresh token.
+ */
+const AUTH_EXEMPT_PATHS = new Set(["/init", "/auth/login", "/auth/register", "/auth/me", "/auth/refresh"]);
+
+/**
  * Core fetch wrapper — adds auth header + handles errors.
  */
 async function apiFetch(path, options = {}) {
@@ -142,8 +147,17 @@ async function apiFetch(path, options = {}) {
     throw new Error("Worker URL not configured — set VITE_WORKER_URL");
   }
 
-  // Auto-refresh access token if expiring within 2 minutes
+  // Block non-auth API calls if we have no credentials at all.
+  // This prevents 401 storms from providers that mount before login completes.
   let jwt = getJwt();
+  const rt = getRefreshToken();
+  if (!jwt && !rt && !AUTH_EXEMPT_PATHS.has(path)) {
+    const err = new Error("Not authenticated");
+    err.status = 401;
+    throw err;
+  }
+
+  // Auto-refresh access token if expiring within 2 minutes
   if (jwt && isTokenExpiringSoon(jwt) && path !== "/auth/refresh") {
     const newToken = await refreshAccessToken();
     if (newToken) jwt = newToken;
