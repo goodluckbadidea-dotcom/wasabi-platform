@@ -9436,7 +9436,6 @@ export class TableRoom {
         session.activeRecordId = msg.recordId;
         ws.serializeAttachment(session);
         this.broadcast({ type: "user_focus", userId: session.userId, recordId: msg.recordId }, ws);
-        this.broadcastPresence();
         break;
       }
 
@@ -9446,7 +9445,6 @@ export class TableRoom {
         session.typingField = null;
         ws.serializeAttachment(session);
         this.broadcast({ type: "user_blur", userId: session.userId }, ws);
-        this.broadcastPresence();
         break;
       }
 

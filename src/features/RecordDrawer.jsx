@@ -1087,6 +1087,8 @@ export default function RecordDrawer({ onTaskUpdated, onTaskDeleted, onEventUpda
   const { identity } = usePlatform();
   const { isTablet } = useViewport();
   const collab = useCollaboration();
+  const collabRef = useRef(collab);
+  collabRef.current = collab;
 
   // Track record view for read receipts + collaboration focus
   const lastTrackedRef = useRef(null);
@@ -1096,9 +1098,9 @@ export default function RecordDrawer({ onTaskUpdated, onTaskDeleted, onEventUpda
     if (lastTrackedRef.current === recordId) return;
     lastTrackedRef.current = recordId;
     putRecordView(recordId).catch(err => console.warn("[RecordDrawer] putRecordView:", err.message || err));
-    if (collab) collab.focusRecord(recordId);
-    return () => { if (collab) collab.blurRecord(); };
-  }, [drawerItem, identity, collab]);
+    if (collabRef.current) collabRef.current.focusRecord(recordId);
+    return () => { if (collabRef.current) collabRef.current.blurRecord(); };
+  }, [drawerItem, identity]);
 
   if (!drawerItem) return null;
 

@@ -2,7 +2,7 @@
 // React context wrapping TableSocket for real-time presence + conflict detection.
 // Provides activeUsers, typing indicators, and live record updates to all views.
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from "react";
 import TableSocket, { userColor } from "../lib/tableSocket.js";
 
 const CollaborationContext = createContext(null);
@@ -173,7 +173,9 @@ export function CollaborationProvider({ tableId, userId, userName, role, childre
     return () => recordUpdateHandlers.current.delete(handler);
   }, []);
 
-  const value = {
+  const isConnected = socketRef.current?.connected || false;
+
+  const value = useMemo(() => ({
     activeUsers,
     getUsersOnRecord,
     focusRecord,
@@ -184,8 +186,8 @@ export function CollaborationProvider({ tableId, userId, userName, role, childre
     pendingConflicts,
     resolveConflict,
     onRecordUpdated,
-    isConnected: socketRef.current?.connected || false,
-  };
+    isConnected,
+  }), [activeUsers, pendingConflicts, isConnected, getUsersOnRecord, focusRecord, blurRecord, startTyping, stopTyping, saveRecord, resolveConflict, onRecordUpdated]);
 
   return (
     <CollaborationContext.Provider value={value}>
