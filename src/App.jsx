@@ -1,5 +1,5 @@
 // ─── Wasabi Platform App Shell ───
-// Root component: auth gate → layout → routing.
+// Root component: auth gate → layout → routing
 // Layout: TopHeader + [ChatPanel | Sidebar | Content]
 // Top header: WASABI wordmark + page-level controls (right side).
 // Sidebar: Icon-bar navigation, expandable.
