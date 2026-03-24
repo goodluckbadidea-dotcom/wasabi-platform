@@ -4930,7 +4930,7 @@ async function createNotificationInternal(env, {
 // ─── Extract @mentions from text ───
 function extractMentions(text) {
   if (!text) return [];
-  const matches = text.match(/@[\w\s]+(?=\s|$|[.,!?;:])/g);
+  const matches = text.match(/@[\w]+(?=\s|$|[.,!?;:])/g);
   if (!matches) return [];
   return matches.map((m) => m.slice(1).trim());
 }
@@ -5001,6 +5001,14 @@ async function handleCreateComment(env, user, recordId, body) {
           const mentionLower = mentionName.toLowerCase();
           const matched = userList.find((u) => u.display_name.toLowerCase() === mentionLower);
           if (matched) {
+            // Dedup: skip if same mention notification exists within last 5 minutes
+            const existing = await env.DB.prepare(
+              `SELECT id FROM notifications
+               WHERE type = 'mention' AND record_id = ? AND target_user_id = ? AND actor_name = ?
+               AND created_at > datetime('now', '-5 minutes')`
+            ).bind(recordId, matched.id, commenterName).first();
+            if (existing) continue;
+
             await createNotificationInternal(env, {
               message: `${commenterName} mentioned you on "${recordTitle || "a record"}": "${preview}"`,
               type: "mention",
