@@ -23,9 +23,26 @@ export function NavigationProvider({ children }) {
   const { pages } = usePages();
   const { identity } = useAuth();
 
-  const [activePage, setActivePage] = useState(() => loadJSON("wasabi_active_page", null));
+  const [activePage, setActivePageRaw] = useState(() => loadJSON("wasabi_active_page", null));
   const [activeFolder, setActiveFolder] = useState(() => loadJSON("wasabi_active_folder", null));
   const [expandedNodes, setExpandedNodes] = useState(new Set());
+
+  // ── Guarded setter: rejects system-internal pages at the gate ──
+  const SYSTEM_PAGE_TYPES = new Set(["color-defaults", "color-view-config"]);
+  const setActivePage = useCallback((pageId) => {
+    // Allow null, special string IDs ("tasks", "workspaces", "gmail", etc.)
+    if (pageId === null || (typeof pageId === "string" && !/^[0-9a-f]{8}-/.test(pageId))) {
+      setActivePageRaw(pageId);
+      return;
+    }
+    // Block system-internal pages (User Tasks, color configs, etc.)
+    const target = pages.find((p) => p.id === pageId);
+    if (target && (target._systemInternal || SYSTEM_PAGE_TYPES.has(target.page_type) || (target.name && (target.name.startsWith("User Tasks") || target.name.startsWith("Zen Tasks"))))) {
+      console.warn("[NavigationContext] Blocked navigation to system page:", target.name || pageId);
+      return;
+    }
+    setActivePageRaw(pageId);
+  }, [pages]);
 
   // Navigation signal for breadcrumb → WorkspaceBrowser path sync
   const [targetFolderPath, setTargetFolderPath] = useState(null);
@@ -35,6 +52,19 @@ export function NavigationProvider({ children }) {
   useEffect(() => { saveJSON("wasabi_active_folder", activeFolder); }, [activeFolder]);
   // Clean up vestigial localStorage key (no longer used)
   useEffect(() => { try { localStorage.removeItem("wasabi_expanded_nodes"); } catch {} }, []);
+
+  // ── Evict stale system page from activePage once pages load ──
+  const hasEvicted = useRef(false);
+  useEffect(() => {
+    if (hasEvicted.current || pages.length === 0 || !activePage) return;
+    hasEvicted.current = true;
+    const target = pages.find((p) => p.id === activePage);
+    if (target && (target._systemInternal || SYSTEM_PAGE_TYPES.has(target.page_type) || (target.name && (target.name.startsWith("User Tasks") || target.name.startsWith("Zen Tasks"))))) {
+      console.warn("[NavigationContext] Evicting system page from activePage:", target.name);
+      setActivePageRaw(null);
+      saveJSON("wasabi_active_page", null);
+    }
+  }, [pages, activePage]);
 
   // ── Restore per-user state from D1 on login ──
   const hasRestoredUserState = useRef(false);
