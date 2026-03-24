@@ -24,6 +24,7 @@ import PinLockOverlay, { getPinToken } from "../components/PinLockOverlay.jsx";
 import { useColorMapping } from "../context/ColorMappingContext.jsx";
 import { CollaborationProvider, useCollaboration } from "../context/CollaborationContext.jsx";
 import { useRecordDrawer } from "../features/RecordDrawerContext.jsx";
+import { useNavigation } from "../context/NavigationContext.jsx";
 import useViewPrefs from "../hooks/useViewPrefs.js";
 
 const DEFAULT_REFRESH_MS = 30000;
@@ -54,7 +55,11 @@ export default function PageShell({
 }) {
   const { user, updatePageConfig, identity } = usePlatform();
   const { globalColorMapping, globalColorField } = useColorMapping();
+  const { consumePendingRecordId } = useNavigation();
   const viewPrefs = useViewPrefs();
+
+  // Pending record from notification click-through
+  const [initialDetailRecordId, setInitialDetailRecordId] = useState(() => consumePendingRecordId());
 
   const [data, setData] = useState([]);
   const [schema, setSchema] = useState(null);
@@ -469,6 +474,8 @@ export default function PageShell({
               onDelete={handleDelete}
               pageConfig={pageConfig}
               onViewConfigChange={handleViewConfigChange}
+              initialDetailRecordId={initialDetailRecordId}
+              onInitialDetailConsumed={() => setInitialDetailRecordId(null)}
             />
           </PinLockOverlay>
         ) : (
@@ -483,6 +490,8 @@ export default function PageShell({
             onDelete={handleDelete}
             pageConfig={pageConfig}
             onViewConfigChange={handleViewConfigChange}
+            initialDetailRecordId={initialDetailRecordId}
+            onInitialDetailConsumed={() => setInitialDetailRecordId(null)}
           />
         )}
 

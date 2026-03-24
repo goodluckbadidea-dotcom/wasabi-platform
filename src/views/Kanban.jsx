@@ -16,13 +16,23 @@ import NeuronBadge from "../neurons/NeuronBadge.jsx";
 import { useCollaboration } from "../context/CollaborationContext.jsx";
 import PresenceAvatars from "../components/PresenceAvatars.jsx";
 
-export default function Kanban({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, onViewConfigChange, pageConfig }) {
+export default function Kanban({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, onViewConfigChange, pageConfig, initialDetailRecordId, onInitialDetailConsumed }) {
   const collab = useCollaboration();
   const [dragState, setDragState] = useState(null); // { pageId, fromCol, startX, startY, isDragging }
   const [dropTarget, setDropTarget] = useState(null); // column option name
   const [colDrag, setColDrag] = useState(null); // { colName, startX } — column reorder drag
   const [colDropTarget, setColDropTarget] = useState(null); // target column name for reorder
   const record = useRecordDetail();
+
+  // Open record from notification click-through
+  useEffect(() => {
+    if (!initialDetailRecordId || !data.length) return;
+    const row = data.find((r) => r.id === initialDetailRecordId);
+    if (row) {
+      record.openDetail(row);
+      if (onInitialDetailConsumed) onInitialDetailConsumed();
+    }
+  }, [initialDetailRecordId, data]);
   const ghostRef = useRef(null);
   const columnRefs = useRef({});
 

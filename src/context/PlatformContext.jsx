@@ -116,6 +116,7 @@ export function usePlatform() {
     setActiveFolder: nav.setActiveFolder,
     expandedNodes: nav.expandedNodes,
     toggleExpand: nav.toggleExpand,
+    navigateToRecord: nav.navigateToRecord,
 
     // Batch queue
     batchQueue: pagesCtx.batchQueue,

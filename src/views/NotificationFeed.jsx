@@ -419,7 +419,7 @@ function PreferencesPanel({ prefs, onUpdate, onClose }) {
 }
 
 export default function NotificationFeed() {
-  const { user, pages, setActivePage, identity } = usePlatform();
+  const { user, pages, setActivePage, navigateToRecord, identity } = usePlatform();
   const { openDrawer } = useRecordDrawer();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -502,19 +502,16 @@ export default function NotificationFeed() {
     }
 
     if (matchedPage) {
-      setActivePage(matchedPage.id);
       if (notif.record_id) {
-        const tableId = notif.page_config_id || matchedPage.id;
-        setTimeout(() => {
-          openDrawer({ type: "task", id: notif.record_id, title: notif.record_name || "Record",
-            source: `d1:${tableId}`, sourceName: notif.page_name || matchedPage.name || "", tableId });
-        }, 300);
+        navigateToRecord(matchedPage.id, notif.record_id);
+      } else {
+        setActivePage(matchedPage.id);
       }
       return;
     }
 
     console.warn("[NotificationFeed] Could not find page for notification:", notif.id, { page_config_id: notif.page_config_id, page_name: notif.page_name, record_id: notif.record_id });
-  }, [pages, setActivePage, openDrawer, markAsRead]);
+  }, [pages, setActivePage, navigateToRecord, markAsRead]);
 
   const handleReply = useCallback(async (notif, text) => {
     const userId = identity?.id || "default";

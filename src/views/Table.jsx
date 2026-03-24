@@ -967,7 +967,7 @@ function OwnerPicker({ ownerIds, users, onCommit, onClose }) {
 
 // ─── Main Table Component ───
 
-export default function Table({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onSaveFilters, onViewConfigChange }) {
+export default function Table({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onSaveFilters, onViewConfigChange, initialDetailRecordId, onInitialDetailConsumed }) {
   const { user } = usePlatform();
   const collab = useCollaboration();
   const [search, setSearch] = useState("");
@@ -1007,6 +1007,16 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   // ── Record Detail Panel ──
   const [detailPage, setDetailPage] = useState(null);
   const lastRowClickRef = useRef({ id: null, time: 0 });
+
+  // Open record from notification click-through
+  useEffect(() => {
+    if (!initialDetailRecordId || !data.length) return;
+    const row = data.find((r) => r.id === initialDetailRecordId);
+    if (row) {
+      setDetailPage(row);
+      if (onInitialDetailConsumed) onInitialDetailConsumed();
+    }
+  }, [initialDetailRecordId, data]);
 
   // ── Sub-Items: Inline Ghost Row & Cascade Dialog ──
   const [subItemGhostParent, setSubItemGhostParent] = useState(null); // parent row ID

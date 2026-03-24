@@ -4,7 +4,7 @@
 // Uses usePages() internally for auto-expand.
 // Persists navigation state to localStorage + D1 (per-user) so the app feels like a persistent desk.
 
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { usePages } from "./PagesContext.jsx";
 import { useAuth } from "./AuthContext.jsx";
 import { getUserState, putUserState } from "../lib/api.js";
@@ -46,6 +46,18 @@ export function NavigationProvider({ children }) {
 
   // Navigation signal for breadcrumb → WorkspaceBrowser path sync
   const [targetFolderPath, setTargetFolderPath] = useState(null);
+
+  // Pending record to open after page navigation (e.g. notification click-through)
+  const pendingRecordIdRef = useRef(null);
+  const navigateToRecord = useCallback((pageId, recordId) => {
+    pendingRecordIdRef.current = recordId;
+    setActivePage(pageId);
+  }, [setActivePage]);
+  const consumePendingRecordId = useCallback(() => {
+    const id = pendingRecordIdRef.current;
+    pendingRecordIdRef.current = null;
+    return id;
+  }, []);
 
   // ── Persist to localStorage ──
   useEffect(() => { saveJSON("wasabi_active_page", activePage); }, [activePage]);
@@ -138,6 +150,8 @@ export function NavigationProvider({ children }) {
     toggleExpand,
     targetFolderPath,
     setTargetFolderPath,
+    navigateToRecord,
+    consumePendingRecordId,
   };
 
   return <NavigationContext.Provider value={value}>{children}</NavigationContext.Provider>;
