@@ -2,7 +2,7 @@
 // Client-side API for the Linked Sheet feature.
 // Pure functions — no React dependencies.
 
-import { getConnection } from "../lib/api.js";
+// No direct connection import needed — JWT auth handled by apiFetch.
 
 /**
  * Detect the type of sheet URL.
@@ -63,9 +63,7 @@ export function validateSheetUrl(url) {
  * Returns: { columns: string[], rows: string[][], cachedAt: number, sheetType: string, truncated?: boolean }
  */
 export async function fetchSheetData(workerUrl, sheetUrl) {
-  const conn = getConnection();
   const headers = { "Content-Type": "application/json" };
-  if (conn?.secret) headers["X-Wasabi-Key"] = conn.secret;
 
   const res = await fetch(`${workerUrl}/sheets/fetch`, {
     method: "POST",

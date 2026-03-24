@@ -521,12 +521,18 @@ async function clearRateLimit(db, key) {
 }
 
 // ─── Auth Middleware ───
-function authenticate(request, env) {
+// Accepts either X-Wasabi-Key (MCP server, backward compat) or a valid JWT (browser clients).
+async function authenticate(request, env) {
   const secret = env.WASABI_SECRET;
   // If no secret is configured, allow all requests (first-time setup)
   if (!secret) return true;
+  // Check X-Wasabi-Key (MCP server / server-to-server)
   const provided = request.headers.get("X-Wasabi-Key");
-  return provided === secret;
+  if (provided === secret) return true;
+  // Check JWT (browser clients)
+  const user = await extractUser(request, env);
+  if (user) return true;
+  return false;
 }
 
 // Role permission levels
@@ -898,10 +904,10 @@ export default {
       // ─── WebSocket Upgrade (real-time collaboration) ───
       const wsMatch = path.match(/^\/ws\/table\/(.+)$/);
       if (wsMatch && request.headers.get("Upgrade") === "websocket") {
-        // Auth via query param (browsers can't send headers on WS upgrade)
+        // Auth via query param — JWT token (primary) or X-Wasabi-Key (MCP/backward compat)
         const wsToken = url.searchParams.get("token");
         const wsKey = url.searchParams.get("key");
-        if (!wsKey || wsKey !== env.WASABI_SECRET) {
+        if (!(wsKey && wsKey === env.WASABI_SECRET)) {
           if (!wsToken) return new Response("Unauthorized", { status: 401 });
           const wsUser = await verifyJwt(wsToken, env);
           if (!wsUser) return new Response("Unauthorized", { status: 401 });
@@ -917,7 +923,7 @@ export default {
       if (wsUserMatch && request.headers.get("Upgrade") === "websocket") {
         const wsToken = url.searchParams.get("token");
         const wsKey = url.searchParams.get("key");
-        if (!wsKey || wsKey !== env.WASABI_SECRET) {
+        if (!(wsKey && wsKey === env.WASABI_SECRET)) {
           if (!wsToken) return new Response("Unauthorized", { status: 401 });
           const wsUser = await verifyJwt(wsToken, env);
           if (!wsUser) return new Response("Unauthorized", { status: 401 });
@@ -937,7 +943,18 @@ export default {
 
       // ─── D1 Bootstrap (before auth gate — needed for first-time setup) ───
       if (path === "/init" && request.method === "POST") {
-        if (!authenticate(request, env)) {
+        // Allow unauthenticated /init on first boot (no registered users yet).
+        // After users exist, require auth like any other endpoint.
+        let initAllowed = false;
+        try {
+          const { count } = await env.DB.prepare(
+            "SELECT COUNT(*) as count FROM users WHERE password_hash IS NOT NULL AND deleted_at IS NULL"
+          ).first() || { count: 0 };
+          if (count === 0) initAllowed = true; // First boot — no users yet
+        } catch (_) {
+          initAllowed = true; // Table doesn't exist yet — definitely first boot
+        }
+        if (!initAllowed && !(await authenticate(request, env))) {
           return jsonResponse({ _error: "Unauthorized" }, 401);
         }
         return await handleInit(env);
@@ -969,7 +986,7 @@ export default {
       }
 
       // ─── Auth Gate ───
-      if (!authenticate(request, env)) {
+      if (!(await authenticate(request, env))) {
         return jsonResponse({ _error: "Unauthorized" }, 401);
       }
 

@@ -1,12 +1,11 @@
 // ─── Auth Context ───
-// User credentials, worker connection, platform IDs, setup state.
 // JWT identity layer for multi-user support.
+// Worker URL comes from VITE_WORKER_URL (build-time config via getWorkerUrl()).
 // Split from PlatformContext for focused re-renders.
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
-import { loadPlatformIds, savePlatformIds } from "../config/setup.js";
 import {
-  getConnection, saveConnection, getConnections, initDatabase,
+  getWorkerUrl, getConnections, initDatabase,
   getJwt, saveJwt, clearJwt, saveRefreshToken, authMe, authLogin, authRegister as apiAuthRegister,
 } from "../lib/api.js";
 
@@ -28,10 +27,13 @@ function saveUserKeys(keys) {
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => loadUserKeys());
-  const [workerConnection, setWorkerConnection] = useState(() => getConnection());
-  const [platformIds, setPlatformIds] = useState(() => loadPlatformIds());
+  // platformIds: legacy Notion setup IDs. Kept as null for backward compat with consumers.
+  const platformIds = null;
   const [isLoading, setIsLoading] = useState(false);
   const [setupError, setSetupError] = useState(null);
+
+  // Worker URL from build-time config (no state needed — it's constant)
+  const workerUrl = getWorkerUrl();
 
   // ── Multi-user identity ──
   const [identity, setIdentity] = useState(null); // { id, display_name, role }
@@ -43,7 +45,7 @@ export function AuthProvider({ children }) {
   // bootState: "idle" → "booting" → "ready" | "error"
   const [bootState, setBootState] = useState("idle");
   useEffect(() => {
-    if (!workerConnection?.workerUrl || bootState !== "idle") return;
+    if (!workerUrl || bootState !== "idle") return;
     setBootState("booting");
 
     (async () => {
@@ -63,9 +65,8 @@ export function AuthProvider({ children }) {
         console.warn("[Auth] D1 init check:", err.message || err);
       }
 
-      // Step 2: Validate JWT — try memory first, fall back to HttpOnly cookie.
-      // On page refresh, memory is empty but the cookie authenticates /auth/me.
-      // /auth/me now returns a fresh access token so we can repopulate memory.
+      // Step 2: Validate JWT — try memory first, fall back to refresh token.
+      // On page refresh, memory is empty but the refresh token restores the session.
       if (!isMultiUser) {
         // Single-user mode — no auth needed
         setIdentityLoading(false);
@@ -78,29 +79,26 @@ export function AuthProvider({ children }) {
         if (result?.user) {
           setIdentity({ id: result.user.id, display_name: result.user.display_name, role: result.user.role });
           setMultiUserEnabled(true);
-          // Store fresh tokens returned by /auth/me (repopulates memory after refresh)
           if (result.token) saveJwt(result.token);
           if (result.refreshToken) saveRefreshToken(result.refreshToken);
         } else {
           clearJwt();
         }
       } catch (err) {
-        // 401/404 = expired cookie or deleted user — clear JWT so login screen shows
         if (err.status === 401 || err.status === 404) {
           clearJwt();
         }
-        // On 500, assume single-user mode — don't clear JWT
       } finally {
         setIdentityLoading(false);
         setBootState("ready");
       }
     })();
-  }, [workerConnection, bootState]);
+  }, [workerUrl, bootState]);
 
   // ── Sync connection keys from D1 ──
   const hasLoadedConnections = useRef(false);
   useEffect(() => {
-    if (!workerConnection?.workerUrl || hasLoadedConnections.current) return;
+    if (!workerUrl || hasLoadedConnections.current) return;
     hasLoadedConnections.current = true;
 
     getConnections()
@@ -111,18 +109,18 @@ export function AuthProvider({ children }) {
         const mondayConn = connections.find((c) => c.key === "monday");
 
         setUser((prev) => {
-          const updated = { ...(prev || { workerUrl: workerConnection.workerUrl }) };
+          const updated = { ...(prev || { workerUrl }) };
           let changed = false;
           if (notionConn?.value && updated.notionKey !== notionConn.value) { updated.notionKey = notionConn.value; changed = true; }
           if (claudeConn?.value && updated.claudeKey !== claudeConn.value) { updated.claudeKey = claudeConn.value; changed = true; }
           if (mondayConn?.value && updated.mondayKey !== mondayConn.value) { updated.mondayKey = mondayConn.value; changed = true; }
-          if (!updated.workerUrl && workerConnection.workerUrl) { updated.workerUrl = workerConnection.workerUrl; changed = true; }
+          if (!updated.workerUrl && workerUrl) { updated.workerUrl = workerUrl; changed = true; }
           if (changed) { saveUserKeys(updated); return updated; }
           return prev;
         });
       })
       .catch((err) => console.warn("[Auth] Failed to sync connections:", err));
-  }, [workerConnection]);
+  }, [workerUrl]);
 
   // ── Actions ──
   const setUserKeys = useCallback((keys) => {
@@ -130,23 +128,11 @@ export function AuthProvider({ children }) {
     saveUserKeys(keys);
   }, []);
 
-  const setIds = useCallback((ids) => {
-    setPlatformIds(ids);
-    savePlatformIds(ids);
-  }, []);
+  /** @deprecated Legacy Notion setup. No-op. */
+  const setIds = useCallback(() => {}, []);
 
-  const completeSetup = useCallback((workerUrl, secret) => {
-    const conn = saveConnection(workerUrl, secret);
-    setWorkerConnection(conn);
-    const keys = { workerUrl, notionKey: user?.notionKey || "", claudeKey: user?.claudeKey || "" };
-    setUser(keys);
-    saveUserKeys(keys);
-    if (!platformIds) {
-      const stubIds = { d1Initialized: true };
-      setPlatformIds(stubIds);
-      savePlatformIds(stubIds);
-    }
-  }, [user, platformIds]);
+  /** @deprecated No longer needed — worker URL comes from VITE_WORKER_URL. */
+  const completeSetup = useCallback(() => {}, []);
 
   const updateConnectionKey = useCallback((key, value) => {
     setUser((prev) => {
@@ -193,20 +179,20 @@ export function AuthProvider({ children }) {
   }, [identity]);
 
   // ── Derived ──
-  const isWorkerConnected = !!(workerConnection?.workerUrl);
-  const isLegacySetup = !!(platformIds?.rootPageId);
-  const isLegacyAuth = !!(user?.notionKey && user?.claudeKey && user?.workerUrl);
+  const isWorkerConnected = !!workerUrl;
+  // Backward-compat: expose workerConnection as object for consumers that destructure it
+  const workerConnection = workerUrl ? { workerUrl } : null;
 
   const value = {
     user,
     setUserKeys,
-    isAuthenticated: isWorkerConnected && (!multiUserEnabled || !!identity) || isLegacyAuth,
+    isAuthenticated: isWorkerConnected && (!multiUserEnabled || !!identity),
     workerConnection,
     completeSetup,
     updateConnectionKey,
     platformIds,
     setPlatformIds: setIds,
-    isSetup: isWorkerConnected || isLegacySetup,
+    isSetup: isWorkerConnected,
     isLoading,
     setIsLoading,
     setupError,

@@ -1,7 +1,7 @@
 // ─── Login Screen ───
-// Shown after worker connection when multi-user is enabled but no JWT identity.
+// Sole entry point when user is not authenticated.
 // Two modes: Register (invite code + display name + password) or Login (name + password).
-// Matches SetupWizard visual design: centered card, WasabiFlame, dark bg.
+// If VITE_WORKER_URL is not set, shows a configuration error.
 
 import React, { useState, useCallback } from "react";
 import { C, FONT, FONT_DISPLAY, RADIUS, SHADOW } from "../design/tokens.js";
@@ -11,7 +11,7 @@ import { usePlatform } from "../context/PlatformContext.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
 import Spinner from "../components/Spinner.jsx";
 
-export default function LoginScreen() {
+export default function LoginScreen({ configError }) {
   const { register, login, adminInvite } = usePlatform();
 
   const [mode, setMode] = useState(adminInvite ? "register" : "login"); // "register" | "login"
@@ -74,6 +74,153 @@ export default function LoginScreen() {
     }
   };
 
+  const renderForm = () => (
+    <>
+      {/* First-boot banner */}
+      {adminInvite && mode === "register" && (
+        <div style={{
+          background: C.accent + "18",
+          border: `1px solid ${C.accent}44`,
+          borderRadius: RADIUS.pill,
+          padding: "10px 14px",
+          fontSize: 12,
+          color: C.accent,
+          marginBottom: 16,
+          lineHeight: 1.5,
+        }}>
+          First-time setup — use the invite code below to create your admin account.
+        </div>
+      )}
+
+      {/* Form */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {mode === "register" && (
+          <div>
+            <label style={{ ...S.label, color: C.darkMuted, display: "block", marginBottom: 6 }}>
+              Invite Code
+            </label>
+            <input
+              type="text"
+              value={inviteCode}
+              onChange={(e) => setInviteCode(e.target.value)}
+              placeholder="Enter your invite code"
+              style={inputStyle}
+              disabled={isLoading}
+              onKeyDown={handleKeyDown}
+            />
+          </div>
+        )}
+
+        <div>
+          <label style={{ ...S.label, color: C.darkMuted, display: "block", marginBottom: 6 }}>
+            Display Name
+          </label>
+          <input
+            type="text"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder="Your name"
+            style={inputStyle}
+            disabled={isLoading}
+            onKeyDown={handleKeyDown}
+          />
+        </div>
+
+        <div>
+          <label style={{ ...S.label, color: C.darkMuted, display: "block", marginBottom: 6 }}>
+            Password
+          </label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder={mode === "register" ? "Min 6 characters" : "Enter your password"}
+            style={inputStyle}
+            disabled={isLoading}
+            onKeyDown={handleKeyDown}
+          />
+        </div>
+
+        {error && (
+          <div style={{
+            background: C.orange + "18",
+            border: `1px solid ${C.orange}44`,
+            borderRadius: RADIUS.pill,
+            padding: "10px 14px",
+            fontSize: 13,
+            color: C.orange,
+          }}>
+            {error}
+          </div>
+        )}
+
+        {isLoading && (
+          <div style={{
+            background: C.accent + "18",
+            border: `1px solid ${C.accent}44`,
+            borderRadius: RADIUS.pill,
+            padding: "10px 14px",
+            fontSize: 13,
+            color: C.accent,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}>
+            <Spinner size={14} color={C.accent} />
+            {mode === "register" ? "Creating account..." : "Signing in..."}
+          </div>
+        )}
+
+        <button
+          onClick={mode === "register" ? handleRegister : handleLogin}
+          disabled={isLoading}
+          style={{
+            ...S.btnPrimary,
+            width: "100%",
+            padding: "12px 20px",
+            fontSize: 15,
+            marginTop: 8,
+            opacity: isLoading ? 0.6 : 1,
+            cursor: isLoading ? "default" : "pointer",
+          }}
+        >
+          {isLoading ? "Please wait..." : mode === "register" ? "Register" : "Sign In"}
+        </button>
+      </div>
+
+      {/* Mode toggle */}
+      <p style={{
+        fontSize: 12,
+        color: C.darkMuted,
+        textAlign: "center",
+        marginTop: 20,
+        lineHeight: 1.5,
+      }}>
+        {mode === "register" ? (
+          <>
+            Already registered?{" "}
+            <span
+              onClick={() => { setMode("login"); setError(""); setPassword(""); }}
+              style={{ color: C.accent, cursor: "pointer" }}
+            >
+              Sign in
+            </span>
+          </>
+        ) : (
+          <>
+            Have an invite code?{" "}
+            <span
+              onClick={() => { setMode("register"); setError(""); setPassword(""); }}
+              style={{ color: C.accent, cursor: "pointer" }}
+            >
+              Register
+            </span>
+          </>
+        )}
+      </p>
+    </>
+  );
+
   return (
     <div style={{
       display: "flex",
@@ -101,152 +248,27 @@ export default function LoginScreen() {
             Wasabi
           </h1>
           <p style={{ fontSize: 13, color: C.darkMuted, marginTop: 6 }}>
-            {mode === "register" ? "Create your account" : "Sign in to continue"}
+            {configError ? "Configuration required" : mode === "register" ? "Create your account" : "Sign in to continue"}
           </p>
         </div>
 
-        {/* First-boot banner */}
-        {adminInvite && mode === "register" && (
+        {/* Config error — worker URL not set */}
+        {configError && (
           <div style={{
-            background: C.accent + "18",
-            border: `1px solid ${C.accent}44`,
+            background: C.orange + "18",
+            border: `1px solid ${C.orange}44`,
             borderRadius: RADIUS.pill,
-            padding: "10px 14px",
-            fontSize: 12,
-            color: C.accent,
-            marginBottom: 16,
-            lineHeight: 1.5,
+            padding: "14px 16px",
+            fontSize: 13,
+            color: C.orange,
+            lineHeight: 1.6,
+            textAlign: "center",
           }}>
-            First-time setup — use the invite code below to create your admin account.
+            {configError}
           </div>
         )}
 
-        {/* Form */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {mode === "register" && (
-            <div>
-              <label style={{ ...S.label, color: C.darkMuted, display: "block", marginBottom: 6 }}>
-                Invite Code
-              </label>
-              <input
-                type="text"
-                value={inviteCode}
-                onChange={(e) => setInviteCode(e.target.value)}
-                placeholder="Enter your invite code"
-                style={inputStyle}
-                disabled={isLoading}
-                onKeyDown={handleKeyDown}
-              />
-            </div>
-          )}
-
-          <div>
-            <label style={{ ...S.label, color: C.darkMuted, display: "block", marginBottom: 6 }}>
-              Display Name
-            </label>
-            <input
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Your name"
-              style={inputStyle}
-              disabled={isLoading}
-              onKeyDown={handleKeyDown}
-            />
-          </div>
-
-          <div>
-            <label style={{ ...S.label, color: C.darkMuted, display: "block", marginBottom: 6 }}>
-              Password
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={mode === "register" ? "Min 6 characters" : "Enter your password"}
-              style={inputStyle}
-              disabled={isLoading}
-              onKeyDown={handleKeyDown}
-            />
-          </div>
-
-          {error && (
-            <div style={{
-              background: C.orange + "18",
-              border: `1px solid ${C.orange}44`,
-              borderRadius: RADIUS.pill,
-              padding: "10px 14px",
-              fontSize: 13,
-              color: C.orange,
-            }}>
-              {error}
-            </div>
-          )}
-
-          {isLoading && (
-            <div style={{
-              background: C.accent + "18",
-              border: `1px solid ${C.accent}44`,
-              borderRadius: RADIUS.pill,
-              padding: "10px 14px",
-              fontSize: 13,
-              color: C.accent,
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}>
-              <Spinner size={14} color={C.accent} />
-              {mode === "register" ? "Creating account..." : "Signing in..."}
-            </div>
-          )}
-
-          <button
-            onClick={mode === "register" ? handleRegister : handleLogin}
-            disabled={isLoading}
-            style={{
-              ...S.btnPrimary,
-              width: "100%",
-              padding: "12px 20px",
-              fontSize: 15,
-              marginTop: 8,
-              opacity: isLoading ? 0.6 : 1,
-              cursor: isLoading ? "default" : "pointer",
-            }}
-          >
-            {isLoading ? "Please wait..." : mode === "register" ? "Register" : "Sign In"}
-          </button>
-        </div>
-
-        {/* Mode toggle */}
-        <p style={{
-          fontSize: 12,
-          color: C.darkMuted,
-          textAlign: "center",
-          marginTop: 20,
-          lineHeight: 1.5,
-        }}>
-          {mode === "register" ? (
-            <>
-              Already registered?{" "}
-              <span
-                onClick={() => { setMode("login"); setError(""); setPassword(""); }}
-                style={{ color: C.accent, cursor: "pointer" }}
-              >
-                Sign in
-              </span>
-            </>
-          ) : (
-            <>
-              Have an invite code?{" "}
-              <span
-                onClick={() => { setMode("register"); setError(""); setPassword(""); }}
-                style={{ color: C.accent, cursor: "pointer" }}
-              >
-                Register
-              </span>
-            </>
-          )}
-        </p>
+        {!configError && renderForm()}
       </div>
     </div>
   );

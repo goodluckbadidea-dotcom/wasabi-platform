@@ -357,7 +357,6 @@ export default function DatabaseBrowser({
       try {
         const searchHeaders = { "Content-Type": "application/json" };
         if (user?.notionKey) searchHeaders["Authorization"] = `Bearer ${user.notionKey}`;
-        if (conn?.secret) searchHeaders["X-Wasabi-Key"] = conn.secret;
 
         const res = await fetch(`${workerUrl}/search`, {
           method: "POST",

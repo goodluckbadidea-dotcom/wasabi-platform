@@ -2,7 +2,7 @@
 // WebSocket client for multi-device sync via UserRoom Durable Object.
 // One connection per user session. Handles dashboard sync, nav sync, and session revocation.
 
-import { getConnection, getJwt } from "./api.js";
+import { getWorkerUrl, getJwt } from "./api.js";
 
 export default class UserSocket {
   constructor(userId) {
@@ -24,14 +24,13 @@ export default class UserSocket {
     if (this.ws) return;
     this.intentionalClose = false;
 
-    const conn = getConnection();
-    if (!conn?.workerUrl) return;
+    const workerUrl = getWorkerUrl();
+    if (!workerUrl) return;
 
-    const base = conn.workerUrl.replace(/^http/, "ws");
+    const base = workerUrl.replace(/^http/, "ws");
     const jwt = getJwt();
     const params = new URLSearchParams();
     if (jwt) params.set("token", jwt);
-    if (conn.secret) params.set("key", conn.secret);
 
     const wsUrl = `${base}/ws/user/${this.userId}?${params.toString()}`;
 

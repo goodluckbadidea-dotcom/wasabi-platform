@@ -5,7 +5,7 @@
 
 import { sleep } from "../utils/helpers.js";
 import { recordUsage } from "../utils/costTracker.js";
-import { getConnection } from "../lib/api.js";
+// JWT auth handled by apiFetch — no shared secret needed here.
 
 const MAX_BACKOFF = 60000;
 
@@ -338,12 +338,10 @@ async function callClaude({
     if (abortRef?.current) throw new Error("Aborted");
 
     try {
-      const conn = getConnection();
       const authHeaders = {
         "Content-Type": "application/json",
         "X-Claude-Key": claudeKey,
       };
-      if (conn?.secret) authHeaders["X-Wasabi-Key"] = conn.secret;
       if (cacheable) authHeaders["X-Cache-Hint"] = "cacheable";
 
       const res = await fetch(`${workerUrl}/claude`, {

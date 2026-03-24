@@ -2,20 +2,19 @@
 // All calls proxied through the Wasabi worker to avoid CORS.
 // Worker route: POST /monday/graphql
 
-import { getConnection } from "../lib/api.js";
+import { getWorkerUrl } from "../lib/api.js";
 
 /**
  * Execute a Monday.com GraphQL query through the worker proxy.
  */
 async function mondayQuery(query, variables = {}, mondayKey) {
-  const conn = getConnection();
-  if (!conn?.workerUrl) throw new Error("Not connected — complete setup first");
+  const workerUrl = getWorkerUrl();
+  if (!workerUrl) throw new Error("Worker URL not configured");
 
-  const res = await fetch(`${conn.workerUrl}/monday/graphql`, {
+  const res = await fetch(`${workerUrl}/monday/graphql`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(conn.secret ? { "X-Wasabi-Key": conn.secret } : {}),
     },
     body: JSON.stringify({ query, variables, mondayKey }),
   });

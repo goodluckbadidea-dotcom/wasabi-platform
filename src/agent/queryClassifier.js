@@ -5,7 +5,6 @@
 //   "clarify"       — complex query, ask clarifying questions first
 //   "parallel_fetch" — multi-source query, use parallel sub-agents
 
-import { getConnection } from "../lib/api.js";
 import { recordUsage } from "../utils/costTracker.js";
 
 const HAIKU = "claude-haiku-4-5-20251001";
@@ -106,12 +105,10 @@ export async function classifyQuery({
     .replace("{TOOL_NAMES}", toolNames || "(none)");
 
   try {
-    const conn = getConnection();
     const authHeaders = {
       "Content-Type": "application/json",
       "X-Claude-Key": claudeKey,
     };
-    if (conn?.secret) authHeaders["X-Wasabi-Key"] = conn.secret;
 
     const res = await fetch(`${workerUrl}/claude`, {
       method: "POST",

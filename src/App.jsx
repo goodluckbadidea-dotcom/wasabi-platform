@@ -18,7 +18,6 @@ import { injectAnimations, injectInteractionStyles, injectScrollbarStyles, updat
 import { S } from "./design/styles.js";
 import { C, Z } from "./design/tokens.js";
 
-import SetupWizard from "./core/SetupWizard.jsx";
 import LoginScreen from "./core/LoginScreen.jsx";
 import TopHeader from "./core/TopHeader.jsx";
 import Navigation from "./core/Navigation.jsx";
@@ -307,15 +306,12 @@ function AppContent() {
     },
   ], [handleAddPage, wasabiPanelOpen, activePage, pages, activeFolder, getFolderPages, toggleNeurons, setActivePage]);
 
-  // Auth gate: 3-tier — setup → login → app
+  // Auth gate: 2-tier — config check → login → app
   if (!isSetup) {
-    return <SetupWizard />;
+    return <LoginScreen configError="Wasabi worker not configured. Set VITE_WORKER_URL in your build environment." />;
   }
-  if (multiUserEnabled && !identity && !identityLoading) {
+  if (!isAuthenticated && !identityLoading) {
     return <LoginScreen />;
-  }
-  if (!isAuthenticated) {
-    return <SetupWizard />;
   }
 
   // Find active page config

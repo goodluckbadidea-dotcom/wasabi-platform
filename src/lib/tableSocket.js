@@ -2,7 +2,7 @@
 // WebSocket client for real-time collaboration via TableRoom Durable Object.
 // One connection per table. Handles join, presence, typing, and saves.
 
-import { getConnection, getJwt } from "./api.js";
+import { getWorkerUrl, getJwt } from "./api.js";
 
 const USER_COLORS = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7", "#DDA0DD", "#98D8C8", "#F7DC6F"];
 
@@ -37,15 +37,14 @@ export default class TableSocket {
     if (this.ws) return;
     this.intentionalClose = false;
 
-    const conn = getConnection();
-    if (!conn?.workerUrl) return;
+    const workerUrl = getWorkerUrl();
+    if (!workerUrl) return;
 
     // Build WS URL — convert https:// to wss:// (or http to ws)
-    const base = conn.workerUrl.replace(/^http/, "ws");
+    const base = workerUrl.replace(/^http/, "ws");
     const jwt = getJwt();
     const params = new URLSearchParams();
     if (jwt) params.set("token", jwt);
-    if (conn.secret) params.set("key", conn.secret);
 
     const wsUrl = `${base}/ws/table/${this.tableId}?${params.toString()}`;
 

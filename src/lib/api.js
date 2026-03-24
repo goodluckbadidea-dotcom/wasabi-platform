@@ -1,10 +1,18 @@
 // ─── Wasabi API Client ───
-// Centralized fetch wrapper with X-Wasabi-Key + JWT auth.
+// Centralized fetch wrapper with JWT auth.
+// Worker URL comes from VITE_WORKER_URL (build-time config).
 // All backend calls go through here.
 
-const STORAGE_KEY = "wasabi_connection";
 const JWT_STORAGE_KEY = "wasabi_jwt";
 const REFRESH_TOKEN_KEY = "wasabi_refresh_token";
+
+// ─── Worker URL ───
+// Always resolved from VITE_WORKER_URL (set at build time).
+// No more user-entered worker URL or shared secret in the browser.
+
+export function getWorkerUrl() {
+  return (import.meta.env.VITE_WORKER_URL || "").replace(/\/+$/, "") || null;
+}
 
 // ─── JWT Token Helpers ───
 // Access token: stored in memory only (short-lived, 15 min).
@@ -68,16 +76,15 @@ async function refreshAccessToken() {
   if (_refreshPromise) return _refreshPromise;
   _refreshPromise = (async () => {
     try {
-      const conn = getConnection();
-      if (!conn?.workerUrl) return null;
+      const workerUrl = getWorkerUrl();
+      if (!workerUrl) return null;
       const rt = getRefreshToken();
       if (!rt) return null;
-      const res = await fetch(`${conn.workerUrl}/auth/refresh`, {
+      const res = await fetch(`${workerUrl}/auth/refresh`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${rt}`,
-          ...(conn.secret ? { "X-Wasabi-Key": conn.secret } : {}),
         },
         credentials: "include", // still send cookie as fallback
       });
@@ -96,40 +103,36 @@ async function refreshAccessToken() {
 }
 
 /**
- * Get saved connection info (worker URL + secret).
+ * Get connection info — backward-compat shim.
+ * Returns { workerUrl } from VITE_WORKER_URL. No secret.
+ * TODO: Migrate callers to use getWorkerUrl() directly, then remove this.
  */
 export function getConnection() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+  const workerUrl = getWorkerUrl();
+  return workerUrl ? { workerUrl } : null;
 }
 
 /**
- * Save connection info.
+ * @deprecated No longer needed — worker URL is set via VITE_WORKER_URL at build time.
  */
-export function saveConnection(workerUrl, secret) {
-  const conn = { workerUrl: workerUrl.replace(/\/+$/, ""), secret };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(conn));
-  return conn;
+export function saveConnection() {
+  // No-op: worker URL comes from VITE_WORKER_URL
 }
 
 /**
- * Clear connection info.
+ * @deprecated No longer needed.
  */
 export function clearConnection() {
-  localStorage.removeItem(STORAGE_KEY);
+  // No-op
 }
 
 /**
  * Core fetch wrapper — adds auth header + handles errors.
  */
 async function apiFetch(path, options = {}) {
-  const conn = getConnection();
-  if (!conn?.workerUrl) {
-    throw new Error("Not connected — complete setup first");
+  const workerUrl = getWorkerUrl();
+  if (!workerUrl) {
+    throw new Error("Worker URL not configured — set VITE_WORKER_URL");
   }
 
   // Auto-refresh access token if expiring within 2 minutes
@@ -139,10 +142,9 @@ async function apiFetch(path, options = {}) {
     if (newToken) jwt = newToken;
   }
 
-  const url = `${conn.workerUrl}${path}`;
+  const url = `${workerUrl}${path}`;
   const headers = {
     "Content-Type": "application/json",
-    ...(conn.secret ? { "X-Wasabi-Key": conn.secret } : {}),
     ...(jwt ? { "Authorization": `Bearer ${jwt}` } : {}),
     ...(options.pinToken ? { "X-Wasabi-Pin-Token": options.pinToken } : {}),
     ...(options.headers || {}),
@@ -732,8 +734,8 @@ export async function getNeuronGraph() {
 // ─── File Storage (R2) ───
 
 export async function uploadFile(file, pageId = "") {
-  const conn = getConnection();
-  if (!conn?.workerUrl) throw new Error("Not connected");
+  const workerUrl = getWorkerUrl();
+  if (!workerUrl) throw new Error("Worker URL not configured");
 
   const formData = new FormData();
   formData.append("file", file);
@@ -745,10 +747,9 @@ export async function uploadFile(file, pageId = "") {
     const newToken = await refreshAccessToken();
     if (newToken) jwt = newToken;
   }
-  const res = await fetch(`${conn.workerUrl}/files`, {
+  const res = await fetch(`${workerUrl}/files`, {
     method: "POST",
     headers: {
-      ...(conn.secret ? { "X-Wasabi-Key": conn.secret } : {}),
       ...(jwt ? { "Authorization": `Bearer ${jwt}` } : {}),
     },
     body: formData,
@@ -764,9 +765,9 @@ export async function listFiles(pageId) {
 }
 
 export function getFileUrl(fileId) {
-  const conn = getConnection();
-  if (!conn?.workerUrl) return "";
-  return `${conn.workerUrl}/files/${fileId}`;
+  const workerUrl = getWorkerUrl();
+  if (!workerUrl) return "";
+  return `${workerUrl}/files/${fileId}`;
 }
 
 export async function deleteFile(fileId) {
@@ -780,8 +781,8 @@ export async function listFilesByRecord(recordId) {
 }
 
 export async function uploadFileToRecord(file, recordId, pageConfigId = "") {
-  const conn = getConnection();
-  if (!conn?.workerUrl) throw new Error("Not connected");
+  const workerUrl = getWorkerUrl();
+  if (!workerUrl) throw new Error("Worker URL not configured");
 
   const formData = new FormData();
   formData.append("file", file);
@@ -795,10 +796,9 @@ export async function uploadFileToRecord(file, recordId, pageConfigId = "") {
     if (newToken) jwt = newToken;
   }
 
-  const res = await fetch(`${conn.workerUrl}/files`, {
+  const res = await fetch(`${workerUrl}/files`, {
     method: "POST",
     headers: {
-      ...(conn.secret ? { "X-Wasabi-Key": conn.secret } : {}),
       ...(jwt ? { "Authorization": `Bearer ${jwt}` } : {}),
     },
     credentials: "include",
@@ -809,10 +809,9 @@ export async function uploadFileToRecord(file, recordId, pageConfigId = "") {
   if (res.status === 401) {
     const newToken = await refreshAccessToken();
     if (newToken) {
-      const retryRes = await fetch(`${conn.workerUrl}/files`, {
+      const retryRes = await fetch(`${workerUrl}/files`, {
         method: "POST",
         headers: {
-          ...(conn.secret ? { "X-Wasabi-Key": conn.secret } : {}),
           "Authorization": `Bearer ${newToken}`,
         },
         credentials: "include",
