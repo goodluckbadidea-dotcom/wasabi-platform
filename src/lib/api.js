@@ -7,11 +7,18 @@ const JWT_STORAGE_KEY = "wasabi_jwt";
 const REFRESH_TOKEN_KEY = "wasabi_refresh_token";
 
 // ─── Worker URL ───
-// Always resolved from VITE_WORKER_URL (set at build time).
-// No more user-entered worker URL or shared secret in the browser.
+// VITE_WORKER_URL overrides at build time. Falls back to production worker.
+// Local dev: use localhost automatically.
 
 export function getWorkerUrl() {
-  return (import.meta.env.VITE_WORKER_URL || "").replace(/\/+$/, "") || null;
+  if (import.meta.env.VITE_WORKER_URL) {
+    return import.meta.env.VITE_WORKER_URL.replace(/\/+$/, "");
+  }
+  const h = typeof location !== "undefined" && location.hostname;
+  if (h === "localhost" || h === "127.0.0.1") {
+    return "http://localhost:8787";
+  }
+  return "https://wasabi-worker.goodluckbadidea.workers.dev";
 }
 
 // ─── JWT Token Helpers ───
