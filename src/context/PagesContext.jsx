@@ -91,7 +91,7 @@ export function PagesProvider({ children }) {
     })();
 
     return () => { cancelled = true; };
-  }, [workerConnection, user, isAuthenticated]);
+  }, [workerConnection, user]);
 
   // ── Page tree ──
   const pageTree = useMemo(() => {
