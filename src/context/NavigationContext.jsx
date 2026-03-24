@@ -44,6 +44,10 @@ export function NavigationProvider({ children }) {
     getUserState()
       .then(({ state }) => {
         if (state?.last_page) {
+          // Don't restore navigation to system-internal pages
+          const SYSTEM_PAGE_TYPES = new Set(["color-defaults", "color-view-config"]);
+          const target = pages.find((p) => p.id === state.last_page);
+          if (target && (target._systemInternal || SYSTEM_PAGE_TYPES.has(target.page_type))) return;
           setActivePage(state.last_page);
           saveJSON("wasabi_active_page", state.last_page);
         }

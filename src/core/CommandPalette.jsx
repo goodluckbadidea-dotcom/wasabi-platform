@@ -57,8 +57,10 @@ export default function CommandPalette({ open, onClose, pages = [], setActivePag
     const q = query.toLowerCase().trim();
     const items = [];
 
-    // Pages
+    // Pages (exclude system-internal pages)
+    const SYSTEM_PAGE_TYPES = new Set(["color-defaults", "color-view-config"]);
     for (const page of pages) {
+      if (page._systemInternal || SYSTEM_PAGE_TYPES.has(page.page_type)) continue;
       const label = page.name || page.id;
       if (q && !label.toLowerCase().includes(q)) continue;
       items.push({ id: page.id, label, icon: IconPage, type: "page", pageIcon: page.icon });
