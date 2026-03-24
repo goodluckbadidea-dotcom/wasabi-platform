@@ -44,15 +44,23 @@ export function AuthProvider({ children }) {
   // ── D1 init + JWT validation (state machine to avoid race) ──
   // bootState: "idle" → "booting" → "ready" | "error"
   const [bootState, setBootState] = useState("idle");
+  const [bootError, setBootError] = useState(null);
   useEffect(() => {
     if (!workerUrl || bootState !== "idle") return;
     setBootState("booting");
+
+    // Timeout helper — prevents hanging forever if worker is unresponsive
+    const withTimeout = (promise, ms) =>
+      Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Request timed out")), ms)),
+      ]);
 
     (async () => {
       // Step 1: Init DB and detect multi-user state
       let isMultiUser = false;
       try {
-        const result = await initDatabase();
+        const result = await withTimeout(initDatabase(), 10_000);
         if (result?.admin_invite) {
           setAdminInvite(result.admin_invite.invite_code);
           isMultiUser = true;
@@ -63,6 +71,11 @@ export function AuthProvider({ children }) {
         if (isMultiUser) setMultiUserEnabled(true);
       } catch (err) {
         console.warn("[Auth] D1 init check:", err.message || err);
+        // CRITICAL: still complete boot so LoginScreen shows (with error)
+        setBootError("Could not reach Wasabi server. Check your connection and reload.");
+        setIdentityLoading(false);
+        setBootState("error");
+        return;
       }
 
       // Step 2: Validate JWT — try memory first, fall back to refresh token.
@@ -75,7 +88,7 @@ export function AuthProvider({ children }) {
       }
 
       try {
-        const result = await authMe();
+        const result = await withTimeout(authMe(), 10_000);
         if (result?.user) {
           setIdentity({ id: result.user.id, display_name: result.user.display_name, role: result.user.role });
           setMultiUserEnabled(true);
@@ -186,7 +199,7 @@ export function AuthProvider({ children }) {
   const value = {
     user,
     setUserKeys,
-    isAuthenticated: isWorkerConnected && (!multiUserEnabled || !!identity),
+    isAuthenticated: isWorkerConnected && !bootError && (!multiUserEnabled || !!identity),
     workerConnection,
     completeSetup,
     updateConnectionKey,
@@ -202,6 +215,7 @@ export function AuthProvider({ children }) {
     multiUserEnabled,
     adminInvite,
     identityLoading,
+    bootError,
     login,
     register,
     logout,

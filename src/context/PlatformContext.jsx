@@ -69,6 +69,7 @@ export function usePlatform() {
     multiUserEnabled: auth.multiUserEnabled,
     adminInvite: auth.adminInvite,
     identityLoading: auth.identityLoading,
+    bootError: auth.bootError,
     login: auth.login,
     register: auth.register,
     logout: auth.logout,

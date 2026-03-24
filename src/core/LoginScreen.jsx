@@ -11,8 +11,8 @@ import { usePlatform } from "../context/PlatformContext.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
 import Spinner from "../components/Spinner.jsx";
 
-export default function LoginScreen({ configError }) {
-  const { register, login, adminInvite } = usePlatform();
+export default function LoginScreen({ configError, loading }) {
+  const { register, login, adminInvite, bootError } = usePlatform();
 
   const [mode, setMode] = useState(adminInvite ? "register" : "login"); // "register" | "login"
   const [inviteCode, setInviteCode] = useState(adminInvite || "");
@@ -248,7 +248,10 @@ export default function LoginScreen({ configError }) {
             Wasabi
           </h1>
           <p style={{ fontSize: 13, color: C.darkMuted, marginTop: 6 }}>
-            {configError ? "Configuration required" : mode === "register" ? "Create your account" : "Sign in to continue"}
+            {configError ? "Configuration required"
+              : loading ? "Connecting..."
+              : mode === "register" ? "Create your account"
+              : "Sign in to continue"}
           </p>
         </div>
 
@@ -268,7 +271,39 @@ export default function LoginScreen({ configError }) {
           </div>
         )}
 
-        {!configError && renderForm()}
+        {/* Loading state — waiting for worker init */}
+        {!configError && loading && !bootError && (
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 10,
+            padding: "20px 0",
+            color: C.darkMuted,
+            fontSize: 13,
+          }}>
+            <Spinner size={16} color={C.accent} />
+            Connecting to server...
+          </div>
+        )}
+
+        {/* Boot error — worker unreachable */}
+        {!configError && bootError && (
+          <div style={{
+            background: C.orange + "18",
+            border: `1px solid ${C.orange}44`,
+            borderRadius: RADIUS.pill,
+            padding: "14px 16px",
+            fontSize: 13,
+            color: C.orange,
+            lineHeight: 1.6,
+            textAlign: "center",
+          }}>
+            {bootError}
+          </div>
+        )}
+
+        {!configError && !loading && !bootError && renderForm()}
       </div>
     </div>
   );

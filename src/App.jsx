@@ -306,11 +306,15 @@ function AppContent() {
     },
   ], [handleAddPage, wasabiPanelOpen, activePage, pages, activeFolder, getFolderPages, toggleNeurons, setActivePage]);
 
-  // Auth gate: 2-tier — config check → login → app
+  // Auth gate: 3-tier — config check → loading → login → app
+  // CRITICAL: never fall through to the app while auth is pending.
   if (!isSetup) {
     return <LoginScreen configError="Wasabi worker not configured. Set VITE_WORKER_URL in your build environment." />;
   }
-  if (!isAuthenticated && !identityLoading) {
+  if (identityLoading) {
+    return <LoginScreen loading />;
+  }
+  if (!isAuthenticated) {
     return <LoginScreen />;
   }
 
