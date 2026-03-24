@@ -7,12 +7,12 @@ import React, { useState, useCallback } from "react";
 import { C, FONT, FONT_DISPLAY, RADIUS, SHADOW } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { ANIM } from "../design/animations.js";
-import { usePlatform } from "../context/PlatformContext.jsx";
+import { useAuth } from "../context/AuthContext.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
 import Spinner from "../components/Spinner.jsx";
 
 export default function LoginScreen({ configError, loading }) {
-  const { register, login, adminInvite, bootError } = usePlatform();
+  const { register, login, adminInvite, bootError } = useAuth();
 
   const [mode, setMode] = useState(adminInvite ? "register" : "login"); // "register" | "login"
   const [inviteCode, setInviteCode] = useState(adminInvite || "");

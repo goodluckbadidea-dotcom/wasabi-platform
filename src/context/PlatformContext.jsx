@@ -8,15 +8,37 @@ import React, { useCallback } from "react";
 import { AuthProvider, useAuth } from "./AuthContext.jsx";
 import { PagesProvider, usePages } from "./PagesContext.jsx";
 import { NavigationProvider, useNavigation } from "./NavigationContext.jsx";
+import LoginScreen from "../core/LoginScreen.jsx";
+
+/**
+ * Auth gate — sits between AuthProvider and data-fetching providers.
+ * Nothing below this boundary mounts until authentication is confirmed.
+ */
+function AuthGate({ children }) {
+  const { isSetup, isAuthenticated, identityLoading, bootError } = useAuth();
+
+  if (!isSetup) {
+    return <LoginScreen configError="Wasabi worker not configured. Set VITE_WORKER_URL in your build environment." />;
+  }
+  if (identityLoading) {
+    return <LoginScreen loading />;
+  }
+  if (!isAuthenticated) {
+    return <LoginScreen />;
+  }
+  return children;
+}
 
 export function PlatformProvider({ children }) {
   return (
     <AuthProvider>
-      <PagesProvider>
-        <NavigationProvider>
-          {children}
-        </NavigationProvider>
-      </PagesProvider>
+      <AuthGate>
+        <PagesProvider>
+          <NavigationProvider>
+            {children}
+          </NavigationProvider>
+        </PagesProvider>
+      </AuthGate>
     </AuthProvider>
   );
 }

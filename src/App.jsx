@@ -309,17 +309,8 @@ function AppContent() {
     },
   ], [handleAddPage, wasabiPanelOpen, activePage, pages, activeFolder, getFolderPages, toggleNeurons, setActivePage]);
 
-  // Auth gate: 3-tier — config check → loading → login → app
-  // CRITICAL: never fall through to the app while auth is pending.
-  if (!isSetup) {
-    return <LoginScreen configError="Wasabi worker not configured. Set VITE_WORKER_URL in your build environment." />;
-  }
-  if (identityLoading) {
-    return <LoginScreen loading />;
-  }
-  if (!isAuthenticated) {
-    return <LoginScreen />;
-  }
+  // Auth gate is now in PlatformContext (AuthGate component).
+  // AppContent only renders when isAuthenticated is true.
 
   // Find active page config
   const activePageConfig = pages.find((p) => p.id === activePage);
