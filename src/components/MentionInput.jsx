@@ -35,6 +35,7 @@ export default function MentionInput({
   style = {},
   disabled = false,
   onKeyDown,
+  onBlur,
   autoFocus = false,
 }) {
   const [showDropdown, setShowDropdown] = useState(false);
@@ -169,6 +170,7 @@ export default function MentionInput({
         value={value}
         onChange={handleChange}
         onKeyDown={handleKeyDownInternal}
+        onBlur={onBlur}
         placeholder={placeholder}
         disabled={disabled}
         autoFocus={autoFocus}

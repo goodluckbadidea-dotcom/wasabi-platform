@@ -10,6 +10,7 @@ import React, { useState, useCallback, useEffect, useRef } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { getRecordNote, saveRecordNote } from "../lib/api.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
+import MentionInput from "./MentionInput.jsx";
 
 // ─── Data helpers ───
 
@@ -61,7 +62,6 @@ export default function RecordNotes({ recordId, pageConfigId, compact = false, p
   const [loading, setLoading] = useState(true);
   const debounceRef = useRef(null);
   const latestFreeRef = useRef("");
-  const logInputRef = useRef(null);
 
   // Fetch note on mount
   useEffect(() => {
@@ -95,8 +95,7 @@ export default function RecordNotes({ recordId, pageConfigId, compact = false, p
 
   // ─── Free-form handlers ───
 
-  const handleFreeChange = useCallback((e) => {
-    const val = e.target.value;
+  const handleFreeChange = useCallback((val) => {
     setFreeText(val);
     latestFreeRef.current = val;
     setStatus("");
@@ -123,7 +122,6 @@ export default function RecordNotes({ recordId, pageConfigId, compact = false, p
     setLogEntries(updated);
     setLogInput("");
     doSave(serializeLog(updated));
-    logInputRef.current?.focus();
   }, [logInput, logEntries, identity, doSave]);
 
   const handleDeleteEntry = useCallback((idx) => {
@@ -217,14 +215,14 @@ export default function RecordNotes({ recordId, pageConfigId, compact = false, p
       {/* ─── Free-form mode ─── */}
       {mode === "free" && (
         <>
-          <textarea
-            style={{ ...s.textarea, minHeight: compact ? 60 : 160 }}
+          <MentionInput
             value={freeText}
             onChange={handleFreeChange}
             onBlur={handleFreeBlur}
-            placeholder={placeholder || "Write notes about this record..."}
-            onFocus={(e) => { e.currentTarget.style.borderColor = C.accent; }}
-            onBlurCapture={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
+            placeholder={placeholder || "Write notes about this record... (type @ to mention)"}
+            multiline={true}
+            rows={compact ? 3 : 8}
+            style={{ ...s.textarea, minHeight: compact ? 60 : 160 }}
           />
           <div style={s.status}>{status}</div>
         </>
@@ -237,13 +235,11 @@ export default function RecordNotes({ recordId, pageConfigId, compact = false, p
           <div style={{
             display: "flex", gap: 8, marginBottom: 12,
           }}>
-            <input
-              ref={logInputRef}
-              type="text"
+            <MentionInput
               value={logInput}
-              onChange={(e) => setLogInput(e.target.value)}
+              onChange={setLogInput}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAddEntry(); } }}
-              placeholder="Add a log entry..."
+              placeholder="Add a log entry... (type @ to mention)"
               style={{
                 flex: 1,
                 background: C.dark,
@@ -256,8 +252,6 @@ export default function RecordNotes({ recordId, pageConfigId, compact = false, p
                 outline: "none",
                 transition: "border-color 0.15s",
               }}
-              onFocus={(e) => { e.currentTarget.style.borderColor = C.accent; }}
-              onBlur={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
             />
             <button
               onClick={handleAddEntry}

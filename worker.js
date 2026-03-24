@@ -1314,7 +1314,7 @@ export default {
         }
         if (request.method === "PUT") {
           const body = await request.json();
-          return await handleSaveNote(env, recordId, body);
+          return await handleSaveNote(env, user, recordId, body);
         }
       }
 
@@ -1512,7 +1512,7 @@ export default {
         if (user && !freshRole) return jsonResponse({ _error: "User not found" }, 403);
         let query = "UPDATE notifications SET status = 'read' WHERE status = 'unread'";
         const params = [];
-        if (user && freshRole !== "admin") {
+        if (user) {
           query += " AND (target_user_id = 'all' OR target_user_id = ?)";
           params.push(user.sub);
         }
@@ -1533,7 +1533,7 @@ export default {
         if (user && !freshRole) return jsonResponse({ _error: "User not found" }, 403);
         let query = "SELECT COUNT(*) as count FROM notifications WHERE status = 'unread'";
         const params = [];
-        if (user && freshRole !== "admin") {
+        if (user) {
           query += " AND (target_user_id = 'all' OR target_user_id = ?)";
           params.push(user.sub);
         }
@@ -4810,7 +4810,7 @@ async function handleGetNote(env, recordId, pageConfigId) {
   }
 }
 
-async function handleSaveNote(env, recordId, body) {
+async function handleSaveNote(env, user, recordId, body) {
   try {
     const { page_config_id, content } = body;
     if (!page_config_id) return jsonResponse({ _error: "page_config_id required" }, 400);
@@ -4820,6 +4820,69 @@ async function handleSaveNote(env, recordId, body) {
        VALUES (?, ?, ?, ?, datetime('now'))
        ON CONFLICT(id) DO UPDATE SET content = excluded.content, updated_at = datetime('now')`
     ).bind(id, recordId, page_config_id, content || "").run();
+
+    // ── @mention notifications for notes ──
+    try {
+      // For log mode (JSON), scan only the most recent entry; for free mode, scan raw content
+      let textToScan = content || "";
+      try {
+        const parsed = JSON.parse(content);
+        if (parsed._mode === "log" && parsed.entries?.length > 0) {
+          textToScan = parsed.entries[0].text || "";
+        }
+      } catch (_) {} // Not JSON — free mode, use content as-is
+
+      const mentions = extractMentions(textToScan);
+      if (mentions.length > 0) {
+        const authorName = user?.name || "Someone";
+        const authorId = user?.sub || "default";
+        const preview = (textToScan || "").length > 60 ? textToScan.slice(0, 60) + "..." : textToScan;
+
+        // Resolve record title and page name for enriched notifications
+        let recordTitle = "";
+        let pageName = "";
+        try {
+          const rowData = await env.DB.prepare("SELECT cells, table_id FROM table_rows WHERE id = ?").bind(recordId).first();
+          if (rowData?.cells) {
+            const c = typeof rowData.cells === "string" ? JSON.parse(rowData.cells) : rowData.cells;
+            recordTitle = await resolveRecordTitle(env, rowData.table_id || "", c);
+          }
+          if (rowData?.table_id) {
+            const pc = await env.DB.prepare("SELECT name FROM page_configs WHERE id = ?").bind(rowData.table_id).first();
+            pageName = pc?.name || "";
+          }
+        } catch (_) {}
+
+        const users = await env.DB.prepare("SELECT id, display_name FROM users WHERE deleted_at IS NULL").all();
+        const userList = users.results || [];
+        for (const mentionName of mentions) {
+          const mentionLower = mentionName.toLowerCase();
+          const matched = userList.find((u) => u.display_name.toLowerCase() === mentionLower);
+          if (matched && matched.id !== authorId) {
+            // Dedup: skip if same mention notification exists within last 5 minutes (prevents duplicates from free-mode debounce auto-save)
+            const existing = await env.DB.prepare(
+              `SELECT id FROM notifications
+               WHERE type = 'mention' AND record_id = ? AND target_user_id = ? AND actor_name = ?
+               AND created_at > datetime('now', '-5 minutes')`
+            ).bind(recordId, matched.id, authorName).first();
+            if (existing) continue;
+
+            await createNotificationInternal(env, {
+              message: `${authorName} mentioned you in a note on "${recordTitle || "a record"}": "${preview}"`,
+              type: "mention",
+              source: recordId,
+              target_user_id: matched.id,
+              record_id: recordId,
+              record_name: recordTitle,
+              page_config_id: page_config_id,
+              page_name: pageName,
+              actor_name: authorName,
+            });
+          }
+        }
+      }
+    } catch (_) {} // Non-critical — don't fail the save if notification creation fails
+
     return jsonResponse({ ok: true });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
@@ -6327,7 +6390,7 @@ async function handleListNotifications(env, url, user) {
   if (user && !freshRole) {
     return jsonResponse({ notifications: [], unread_count: 0, _error: "User not found" }, 403);
   }
-  if (user && freshRole !== "admin") {
+  if (user) {
     conditions.push("(target_user_id = 'all' OR target_user_id = ?)");
     params.push(user.sub);
   }
@@ -6342,7 +6405,7 @@ async function handleListNotifications(env, url, user) {
   // Unread count (scoped to same user filter)
   let countQuery = "SELECT COUNT(*) as count FROM notifications WHERE status = 'unread'";
   const countParams = [];
-  if (user && freshRole !== "admin") {
+  if (user) {
     countQuery += " AND (target_user_id = 'all' OR target_user_id = ?)";
     countParams.push(user.sub);
   }
