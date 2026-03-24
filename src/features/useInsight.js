@@ -1,4 +1,4 @@
-// ─── useZenInsight Hook ───
+// ─── useInsight Hook ───
 // Lightweight hook that reads the AI-generated workspace insight from cache.
 // The insight is produced by useAICuratedTasks and stored in localStorage.
 // This hook allows components (like the sidebar) to display it without

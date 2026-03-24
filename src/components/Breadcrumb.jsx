@@ -93,7 +93,7 @@ export default function Breadcrumb() {
             onClick={() => {
               if (seg.isCurrent) return;
               if (seg.isFolder) {
-                // Compute the path from root to this folder for ZenWorkspaces
+                // Compute the path from root to this folder for WorkspaceBrowser
                 const byId = {};
                 for (const p of pages) byId[p.id] = p;
                 const folderPath = [];

@@ -287,7 +287,7 @@ function compressTask(task) {
 const BASE_TARGET = 15;
 const TARGET_MAX = 25;
 
-export default function useAICuratedTasks({ dismissedIds, completedCount, zenTableId } = {}) {
+export default function useAICuratedTasks({ dismissedIds, completedCount, userTasksTableId } = {}) {
   const { user, pages, identity } = usePlatform();
   const userSync = useUserSync();
   const CACHE_KEY = cacheKeyForUser(identity?.id);
@@ -326,8 +326,8 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
     if (!identity?.id) return;
     const cached = getCached(CACHE_KEY, CACHE_TTL);
     if (cached) {
-      let filtered = zenTableId
-        ? cached.filter((t) => t.source !== `d1:${zenTableId}` && t.source !== "manual")
+      let filtered = userTasksTableId
+        ? cached.filter((t) => t.source !== `d1:${userTasksTableId}` && t.source !== "manual")
         : cached.filter((t) => t.source !== "manual");
       filtered = applyRoleFilter(filtered, identity);
       setAiTasks(filtered);
@@ -386,10 +386,10 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
           candidates.push({ type: "d1", tableId: page.id, pageName: page.name });
         }
         if (pt === "database" && page.id) {
-          // Skip the zen tasks table — it's the user's manual task list, not a source DB
+          // Skip the user tasks table — it's the user's manual task list, not a source DB
           // Check by ID, name pattern, and _systemInternal flag for robustness
-          if (zenTableId && page.id === zenTableId) continue;
-          if (page.name && page.name.startsWith("Zen Tasks")) continue;
+          if (userTasksTableId && page.id === userTasksTableId) continue;
+          if (page.name && (page.name.startsWith("User Tasks") || page.name.startsWith("Zen Tasks"))) continue;
           candidates.push({ type: "d1", tableId: page.id, pageName: page.name });
         }
       }
@@ -458,12 +458,12 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, zenTab
 
       const fetchResults = await Promise.allSettled(fetchPromises);
       const tasksBySource = {};
-      // Build set of sources to exclude (zen tasks table)
+      // Build set of sources to exclude (user tasks table)
       const excludedSources = new Set();
-      if (zenTableId) excludedSources.add(`d1:${zenTableId}`);
+      if (userTasksTableId) excludedSources.add(`d1:${userTasksTableId}`);
       for (const r of fetchResults) {
         if (r.status === "fulfilled" && r.value) {
-          // Safety: never include zen/manual tasks in AI-curated list
+          // Safety: never include user/manual tasks in AI-curated list
           const safeTasks = r.value.tasks.filter((t) =>
             t.source !== "manual" && !excludedSources.has(t.source)
           );
@@ -885,7 +885,7 @@ Bad examples (too generic, don't do this):
 - "This task is overdue and stale."
 - "High priority task that needs attention."
 
-2. Generate ONE short workspace insight (max 120 chars) personalized for this user. This appears in a zen/mindfulness sidebar. It should feel illuminating — not a status report. Observe patterns, convergences, risks, or perspective. Be specific to the actual data. If neuron clusters have overdue items, prioritize mentioning the campaign health.${neuronClusterSummary}
+2. Generate ONE short workspace insight (max 120 chars) personalized for this user. This appears in the navigation sidebar. It should feel illuminating — not a status report. Observe patterns, convergences, risks, or perspective. Be specific to the actual data. If neuron clusters have overdue items, prioritize mentioning the campaign health.${neuronClusterSummary}
 
 Return valid JSON only, no markdown: { "tasks": [{ "title": "exact title", "priority_score": 1-5, "reason": "tagged reason" }], "insight": "your insight here" }
 

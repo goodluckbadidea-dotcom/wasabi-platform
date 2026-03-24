@@ -1,6 +1,6 @@
 // ─── Day Column ───
 // Renders a single day's hour grid (7 AM – 10 PM) with events and tasks.
-// Used by the day view in ZenCalendar. Includes current time indicator.
+// Used by the day view in CalendarView. Includes current time indicator.
 // Supports per-calendar colors and calendar filtering.
 
 import React, { useEffect, useRef, useMemo } from "react";

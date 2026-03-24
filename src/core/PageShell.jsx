@@ -23,7 +23,7 @@ import ConflictToast from "../components/ConflictToast.jsx";
 import PinLockOverlay, { getPinToken } from "../components/PinLockOverlay.jsx";
 import { useColorMapping } from "../context/ColorMappingContext.jsx";
 import { CollaborationProvider, useCollaboration } from "../context/CollaborationContext.jsx";
-import { useRecordDrawer } from "../zen/RecordDrawerContext.jsx";
+import { useRecordDrawer } from "../features/RecordDrawerContext.jsx";
 import useViewPrefs from "../hooks/useViewPrefs.js";
 
 const DEFAULT_REFRESH_MS = 30000;

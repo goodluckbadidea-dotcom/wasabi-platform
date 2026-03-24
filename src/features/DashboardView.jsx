@@ -1,4 +1,4 @@
-// ─── Zen Dashboard ───
+// ─── Dashboard View ───
 // Generic widget dashboard.
 // Wraps WidgetGrid with D1 per-user persistence (localStorage as write-through cache).
 // Users can pin views, shortcuts, text blocks, and plugin widgets.

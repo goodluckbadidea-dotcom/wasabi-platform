@@ -436,7 +436,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
       )}
 
       {/* Sync badge for linked databases */}
-      {task.sourceName && task.sourceName !== "Zen Tasks" && task.source !== "manual" && (
+      {task.sourceName && task.sourceName !== "User Tasks" && task.source !== "manual" && (
         <div style={{
           background: C.accent + "15", border: `1px solid ${C.accent}33`,
           borderRadius: RADIUS.md, padding: "8px 12px", marginBottom: 16,

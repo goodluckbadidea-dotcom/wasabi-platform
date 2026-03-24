@@ -12,10 +12,10 @@ import WasabiFlame from "../core/WasabiFlame.jsx";
 import ChatUI from "../core/ChatUI.jsx";
 import WasabiPanel from "../core/WasabiPanel.jsx";
 import { HAIKU } from "../agent/aiRouter.js";
-import { ZEN_TOOLS_ADMIN, ZEN_TOOLS_EDITOR, ZEN_TOOLS_VIEWER } from "../agent/tools.js";
+import { ASSISTANT_TOOLS_ADMIN, ASSISTANT_TOOLS_EDITOR, ASSISTANT_TOOLS_VIEWER } from "../agent/tools.js";
 import { runAgent } from "../agent/runAgent.js";
-import { buildZenContext } from "../agent/agentContext.js";
-import { buildZenPrompt } from "../agent/wasabiPrompt.js";
+import { buildAssistantContext } from "../agent/agentContext.js";
+import { buildAssistantPrompt } from "../agent/wasabiPrompt.js";
 import { fetchGoogleContext } from "../google/googleContext.js";
 import * as api from "../lib/api.js";
 import { useViewport } from "../context/ViewportContext.jsx";
@@ -33,9 +33,9 @@ const TASK_CACHE_TTL = 15 * 60 * 1000;
 
 // ── Get role-based tool set ──
 function getToolsForRole(role) {
-  if (role === "viewer") return ZEN_TOOLS_VIEWER;
-  if (role === "editor") return ZEN_TOOLS_EDITOR;
-  return ZEN_TOOLS_ADMIN; // admin or single-user
+  if (role === "viewer") return ASSISTANT_TOOLS_VIEWER;
+  if (role === "editor") return ASSISTANT_TOOLS_EDITOR;
+  return ASSISTANT_TOOLS_ADMIN; // admin or single-user
 }
 
 // ── Build task context from localStorage cache ──
@@ -59,7 +59,7 @@ function getTaskContextFromCache(userId) {
 }
 
 // ── Lightweight tool executor for Assistant tools ──
-async function executeZenTool(name, input) {
+async function executeChatTool(name, input) {
   try {
     switch (name) {
       case "query_database": {
@@ -168,11 +168,11 @@ export default function ChatPanel({
     try { localStorage.setItem("wasabi_chat_tab", activeTab); } catch {}
   }, [activeTab]);
 
-  // ── Zen chat state ──
-  const [zenMessages, setZenMessages] = useState([]);
-  const [zenLoading, setZenLoading] = useState(false);
-  const [zenStatus, setZenStatus] = useState("");
-  const zenHistoryRef = useRef([]);
+  // ── Chat state ──
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatStatus, setChatStatus] = useState("");
+  const chatHistoryRef = useRef([]);
   const googleContextRef = useRef("");
 
   // ── Resize (persisted) ──
@@ -223,17 +223,17 @@ export default function ChatPanel({
     }
   }, [pendingChatMessage]);
 
-  // ── Zen send handler ──
-  const handleZenSend = useCallback(async ({ text }) => {
-    if (zenLoading || !text?.trim()) return;
+  // ── Chat send handler ──
+  const handleChatSend = useCallback(async ({ text }) => {
+    if (chatLoading || !text?.trim()) return;
 
-    setZenMessages((prev) => [...prev, { role: "user", content: text }]);
-    setZenLoading(true);
-    setZenStatus("Thinking...");
+    setChatMessages((prev) => [...prev, { role: "user", content: text }]);
+    setChatLoading(true);
+    setChatStatus("Thinking...");
 
     // Build history (keep last 6 exchanges = 12 messages)
     const newHistory = [
-      ...zenHistoryRef.current.slice(-12),
+      ...chatHistoryRef.current.slice(-12),
       { role: "user", content: text },
     ];
 
@@ -250,7 +250,7 @@ export default function ChatPanel({
       const taskContext = getTaskContextFromCache(identity?.id);
 
       // Build context envelope (assembled once per turn)
-      const envelope = await buildZenContext({
+      const envelope = await buildAssistantContext({
         user,
         identity,
         pages,
@@ -260,7 +260,7 @@ export default function ChatPanel({
         taskContext,
       });
 
-      const systemPrompt = buildZenPrompt(envelope);
+      const systemPrompt = buildAssistantPrompt(envelope);
 
       const result = await runAgent({
         envelope,
@@ -270,8 +270,8 @@ export default function ChatPanel({
         model: HAIKU,
         workerUrl: user?.workerUrl || "",
         claudeKey: user?.claudeKey || "",
-        executeTool: executeZenTool,
-        onStatus: setZenStatus,
+        executeTool: executeChatTool,
+        onStatus: setChatStatus,
         maxIterations: 3,
         maxTokens: 1024,
       });
@@ -279,22 +279,22 @@ export default function ChatPanel({
       const reply = result.text || "I couldn't generate a response. Please try again.";
 
       // Update history from agent result (includes tool exchanges)
-      zenHistoryRef.current = result.history
+      chatHistoryRef.current = result.history
         ? result.history.slice(-12)
         : [...newHistory, { role: "assistant", content: reply }];
 
-      setZenMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      setChatMessages((prev) => [...prev, { role: "assistant", content: reply }]);
     } catch (err) {
       console.error("[ChatPanel] Assistant error:", err);
-      setZenMessages((prev) => [
+      setChatMessages((prev) => [
         ...prev,
         { role: "assistant", content: `Something went wrong: ${err.message}` },
       ]);
     } finally {
-      setZenLoading(false);
-      setZenStatus("");
+      setChatLoading(false);
+      setChatStatus("");
     }
-  }, [zenLoading, user, identity, pages, activePageConfig, activePageData]);
+  }, [chatLoading, user, identity, pages, activePageConfig, activePageData]);
 
   // ── Tab bar style ──
   const miniTabBtn = (active) => ({
@@ -382,13 +382,13 @@ export default function ChatPanel({
 
       </div>
 
-      {/* ── Zen Tab ── */}
+      {/* ── Assistant Tab ── */}
       {activeTab === "assistant" && (
         <ChatUI
-          messages={zenMessages}
-          onSend={handleZenSend}
-          isLoading={zenLoading}
-          statusText={zenStatus}
+          messages={chatMessages}
+          onSend={handleChatSend}
+          isLoading={chatLoading}
+          statusText={chatStatus}
           allowFiles={false}
           agentName="Wasabi"
           agentIcon={<WasabiFlame size={20} />}

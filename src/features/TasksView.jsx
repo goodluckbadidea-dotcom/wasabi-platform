@@ -1,5 +1,5 @@
-// ─── Zen Tasks View ───
-// Main orchestrator for the Zen To-Do split view.
+// ─── Tasks View ───
+// Main orchestrator for the To-Do split view.
 // Left 40%: AI-curated to-do list + quick-add.
 // Right 60%: Today's schedule / calendar.
 
@@ -22,13 +22,13 @@ const ViewSettingsPanel = React.lazy(() => import("../components/ViewSettingsPan
 
 export default function TasksView() {
   const {
-    tasks: zenTasks,
-    loading: zenLoading,
+    tasks: userTasks,
+    loading: tasksLoading,
     tableId,
     addTask,
-    toggleTask: toggleZenTask,
+    toggleTask: toggleTask,
     deleteTask,
-    refresh: refreshZen,
+    refresh: refreshTasks,
   } = useTasksTable();
 
   const { dismissedIds, completedCount, dismiss, clear: clearDismissed } = useDismissedTasks();
@@ -42,7 +42,7 @@ export default function TasksView() {
     debouncedRefresh,
     error: aiError,
     recordInteraction,
-  } = useAICuratedTasks({ dismissedIds, completedCount, zenTableId: tableId });
+  } = useAICuratedTasks({ dismissedIds, completedCount, userTasksTableId: tableId });
 
   const { openDrawer, onSaved, onDeleted } = useRecordDrawer();
   const calendarRefreshRef = useRef(null);
@@ -52,7 +52,7 @@ export default function TasksView() {
   useEffect(() => {
     const unsubSave = onSaved((type, data) => {
       if (type === "task") {
-        refreshZen();
+        refreshTasks();
         // "Remove from To Do" → dismiss + debounced refresh (not immediate full refresh)
         if (data?._removedFromTodo) {
           dismiss(data.id);
@@ -64,11 +64,11 @@ export default function TasksView() {
       if (type === "event") calendarRefreshRef.current?.();
     });
     const unsubDelete = onDeleted((type) => {
-      if (type === "task") { refreshZen(); refreshAI(); }
+      if (type === "task") { refreshTasks(); refreshAI(); }
       if (type === "event") calendarRefreshRef.current?.();
     });
     return () => { unsubSave(); unsubDelete(); };
-  }, [onSaved, onDeleted, refreshZen, refreshAI, debouncedRefresh, dismiss]);
+  }, [onSaved, onDeleted, refreshTasks, refreshAI, debouncedRefresh, dismiss]);
   const { globalColorMapping, globalColorField, getViewColorConfig, updateViewColorConfig, resetViewColorConfig } = useColorMapping();
 
   // Build colorMapping object for TaskRow color resolution
@@ -87,16 +87,16 @@ export default function TasksView() {
     debouncedRefresh();
   }, [dismiss, debouncedRefresh]);
 
-  // ── Toggle for Zen (manual) tasks ──
+  // ── Toggle for user (manual) tasks ──
   // When toggling to done, also trigger debounced AI refresh to surface new tasks
-  const handleToggleZen = useCallback((taskId) => {
-    const task = zenTasks.find((t) => t.id === taskId);
-    toggleZenTask(taskId);
+  const handleToggleTask = useCallback((taskId) => {
+    const task = userTasks.find((t) => t.id === taskId);
+    toggleTask(taskId);
     if (task && !task.done) {
       // Toggling to done → trigger AI re-scan after debounce
       debouncedRefresh();
     }
-  }, [zenTasks, toggleZenTask, debouncedRefresh]);
+  }, [userTasks, toggleTask, debouncedRefresh]);
 
   // ── Add task handler ──
   const handleAddTask = useCallback((title) => {
@@ -110,13 +110,13 @@ export default function TasksView() {
 
   // ── Drawer callbacks ──
   const handleTaskUpdated = useCallback(() => {
-    refreshZen();
+    refreshTasks();
     refreshAI();
-  }, [refreshZen, refreshAI]);
+  }, [refreshTasks, refreshAI]);
 
   const handleTaskDeleted = useCallback(() => {
-    refreshZen();
-  }, [refreshZen]);
+    refreshTasks();
+  }, [refreshTasks]);
 
   const handleEventUpdated = useCallback(() => {
     calendarRefreshRef.current?.();
@@ -129,12 +129,12 @@ export default function TasksView() {
   // ── Combined refresh ──
   const handleRefresh = useCallback(() => {
     clearDismissed(); // reset session dismissed state on manual refresh
-    refreshZen();
+    refreshTasks();
     refreshAI();
-  }, [refreshZen, refreshAI, clearDismissed]);
+  }, [refreshTasks, refreshAI, clearDismissed]);
 
   // ── Collect tasks due today for the schedule panel ──
-  const allTasks = useMemo(() => [...zenTasks, ...aiTasks], [zenTasks, aiTasks]);
+  const allTasks = useMemo(() => [...userTasks, ...aiTasks], [userTasks, aiTasks]);
 
   // ── Build synthetic schema from task status options for ViewSettingsPanel ──
   const taskSchema = useMemo(() => {
@@ -233,12 +233,12 @@ export default function TasksView() {
         {/* Task list content */}
         <ErrorBoundary fallbackLabel="Task List">
           <TaskList
-            zenTasks={zenTasks}
+            userTasks={userTasks}
             aiTasks={aiTasks}
             aiLoading={aiLoading}
             aiRefreshing={aiRefreshing}
             dismissedIds={dismissedIds}
-            onToggleZen={handleToggleZen}
+            onToggleTask={handleToggleTask}
             onToggleAI={handleToggleAI}
             onAddTask={handleAddTask}
             onDeleteTask={deleteTask}

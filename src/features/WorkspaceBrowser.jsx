@@ -1,5 +1,5 @@
-// ─── Zen Workspaces Browser ───
-// Drill-down card browser for Sashimi mode.
+// ─── Workspace Browser ───
+// Drill-down card browser for workspace navigation.
 // Levels: Workspaces → Folders → Pages
 // Features: overflow menu (delete), drag & drop (reorder + cross-container move)
 

@@ -112,11 +112,11 @@ export async function buildAgentContext({
  * @returns {object} Handoff briefing
  */
 /**
- * buildZenContext()
+ * buildAssistantContext()
  *
- * Assembles the context envelope for a Zen/Assistant conversation turn.
+ * Assembles the context envelope for an Assistant conversation turn.
  * Same AgentContext shape as the agent envelope — shared type, lighter fill.
- * KB, neurons, and workspace instructions are left empty (Zen doesn't use them).
+ * KB, neurons, and workspace instructions are left empty (assistant doesn't use them).
  * Active page context IS included so the assistant knows what the user is viewing.
  *
  * @param {object} params
@@ -129,7 +129,7 @@ export async function buildAgentContext({
  * @param {string} [params.taskContext]    - AI-curated tasks text (from localStorage cache)
  * @returns {object} AgentContext envelope
  */
-export async function buildZenContext({
+export async function buildAssistantContext({
   user,
   identity,
   pages,
@@ -202,23 +202,23 @@ export async function buildZenContext({
     userTier,
 
     // --- Routing metadata (populated for future cheap-model routing) ---
-    dispatch: "DIRECT_WORKER",   // Zen always starts as direct; future router may change this
-    routeReason: "zen_assistant",
+    dispatch: "DIRECT_WORKER",
+    routeReason: "assistant",
     estimatedWorkerCount: 1,
     dataDomains: [],
 
     // --- Frozen context (assembled once, never mutated) ---
     frozenContext: {
-      kbEntries: "",              // Zen doesn't use KB
-      neuronSummary: "",          // Zen doesn't use neurons
+      kbEntries: "",
+      neuronSummary: "",
       workspaceSummary,
       currentPageContext,
       dataSummary: "",
       platformDbIds: "",
       googleContext,
-      agentMode: "zen",
-      workspaceInstructions: "",  // Zen doesn't use workspace instructions
-      taskContext,                // AI-curated tasks (Zen-specific)
+      agentMode: "assistant",
+      workspaceInstructions: "",
+      taskContext,
       builtAt: Date.now(),
     },
 

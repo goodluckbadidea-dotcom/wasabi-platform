@@ -32,16 +32,16 @@ export function buildWasabiPrompt(paramsOrEnvelope) {
 }
 
 /**
- * Build the Zen/Assistant system prompt from an AgentContext envelope.
+ * Build the Assistant system prompt from an AgentContext envelope.
  * Lighter than the full agent prompt — no KB, neurons, system builder,
  * view library, or tool workflow guides. Focused on conversational assistance.
  *
- * @param {object} envelope - AgentContext envelope (from buildZenContext)
+ * @param {object} envelope - AgentContext envelope (from buildAssistantContext)
  * @returns {string} System prompt
  */
-export function buildZenPrompt(envelope) {
+export function buildAssistantPrompt(envelope) {
   const { frozenContext, userTier } = envelope;
-  const role = frozenContext.agentMode === "zen"
+  const role = frozenContext.agentMode === "assistant"
     ? (envelope.userTier === "superuser" ? "admin" : envelope.userTier === "premium" ? "editor" : "viewer")
     : "admin";
 

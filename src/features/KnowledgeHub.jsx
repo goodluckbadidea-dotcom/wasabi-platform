@@ -1,4 +1,4 @@
-// ─── Zen Knowledge Hub ───
+// ─── Knowledge Hub ───
 // Tabbed container for Knowledge Base, Automations, Functions, and Build
 // Reuses the exact same components with tabbed navigation.
 

@@ -1,5 +1,5 @@
-// ─── Zen Gmail ───
-// Simplified single-column Gmail inbox for Sashimi mode.
+// ─── Gmail View ───
+// Simplified single-column Gmail inbox.
 // Supports: inbox list, inline expand, reply, compose, archive.
 // No search, no label tabs, no star/unstar — keeps it simple.
 
@@ -51,7 +51,7 @@ function ComposeModal({ onClose, onSent, replyTo }) {
       onSent?.();
       onClose();
     } catch (err) {
-      console.error("[ZenGmail] Send failed:", err);
+      console.error("[Gmail] Send failed:", err);
       setError("Failed to send. Please try again.");
     } finally {
       setSending(false);
@@ -206,7 +206,7 @@ export default function GmailView() {
       const result = await searchEmails(fullQuery, 30);
       setMessages(Array.isArray(result?.messages) ? result.messages : []);
     } catch (err) {
-      console.error("[ZenGmail] Fetch failed:", err);
+      console.error("[Gmail] Fetch failed:", err);
       setError("Failed to load emails.");
       setMessages([]);
     } finally {
@@ -260,7 +260,7 @@ export default function GmailView() {
         );
       }
     } catch (err) {
-      console.error("[ZenGmail] Get email failed:", err);
+      console.error("[Gmail] Get email failed:", err);
       setExpandedBody({ error: true });
     } finally {
       setBodyLoading(false);
@@ -279,7 +279,7 @@ export default function GmailView() {
     try {
       await modifyEmail(msgId, "archive");
     } catch (err) {
-      console.error("[ZenGmail] Archive failed:", err);
+      console.error("[Gmail] Archive failed:", err);
       // Refresh to restore
       fetchInbox();
     }
@@ -296,7 +296,7 @@ export default function GmailView() {
     try {
       await modifyEmail(msgId, "trash");
     } catch (err) {
-      console.error("[ZenGmail] Trash failed:", err);
+      console.error("[Gmail] Trash failed:", err);
       fetchInbox();
     }
   }, [expandedId, fetchInbox]);
@@ -318,7 +318,7 @@ export default function GmailView() {
     try {
       await modifyEmail(msgId, action);
     } catch (err) {
-      console.error("[ZenGmail] Star toggle failed:", err);
+      console.error("[Gmail] Star toggle failed:", err);
       fetchInbox();
     }
   }, [messages, fetchInbox]);
@@ -340,7 +340,7 @@ export default function GmailView() {
     try {
       await modifyEmail(msgId, action);
     } catch (err) {
-      console.error("[ZenGmail] Read toggle failed:", err);
+      console.error("[Gmail] Read toggle failed:", err);
       fetchInbox();
     }
   }, [messages, fetchInbox]);

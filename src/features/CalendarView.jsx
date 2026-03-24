@@ -1,5 +1,5 @@
-// ─── Zen Calendar ───
-// Smart calendar for the Zen split view. Replaces TodaySchedule.
+// ─── Calendar View ───
+// Smart calendar for the tasks split view. Replaces TodaySchedule.
 // Supports day, week, and month views with Google Calendar events + task due dates.
 // Fetches events from ALL connected Google calendars with per-calendar colors.
 // Includes a filter dropdown to toggle individual calendars on/off.
@@ -126,7 +126,7 @@ export default function CalendarView({ allTasks, refreshRef }) {
           }
         }
       } catch (err) {
-        console.error("[ZenCalendar] Failed to load:", err);
+        console.error("[Calendar] Failed to load:", err);
         if (cancelled) return;
 
         if (attempt === 0) {

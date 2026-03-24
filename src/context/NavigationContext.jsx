@@ -27,7 +27,7 @@ export function NavigationProvider({ children }) {
   const [activeFolder, setActiveFolder] = useState(() => loadJSON("wasabi_active_folder", null));
   const [expandedNodes, setExpandedNodes] = useState(new Set());
 
-  // Navigation signal for breadcrumb → ZenWorkspaces path sync
+  // Navigation signal for breadcrumb → WorkspaceBrowser path sync
   const [targetFolderPath, setTargetFolderPath] = useState(null);
 
   // ── Persist to localStorage ──

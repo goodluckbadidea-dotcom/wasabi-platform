@@ -1,5 +1,5 @@
-// ─── Zen Notes ───
-// Full block editor scratchpad for Zen mode.
+// ─── Notes View ───
+// Full block editor scratchpad.
 // Uses DocumentEditor in standalone mode with R2 storage.
 // "Save to" copies the scratchpad into a new page.
 
@@ -30,7 +30,7 @@ export default function NotesView() {
     try {
       await saveDocument(DOC_ID, { version: 1, blocks: [], word_count: 0 });
     } catch (err) {
-      console.warn("[ZenNotes] Clear failed:", err);
+      console.warn("[Notes] Clear failed:", err);
     }
     setResetKey((k) => k + 1);
   }, []);
@@ -67,7 +67,7 @@ export default function NotesView() {
         setSaveToFolder("");
       }, 1200);
     } catch (err) {
-      console.error("[ZenNotes] Save to failed:", err);
+      console.error("[Notes] Save to failed:", err);
       setSaveToStatus("error");
       setTimeout(() => setSaveToStatus(null), 2000);
     }

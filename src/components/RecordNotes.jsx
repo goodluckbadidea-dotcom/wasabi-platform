@@ -4,7 +4,7 @@
 //   1. Free-form: single textarea with auto-save (1s debounce)
 //   2. Timestamped log: append-only entries with author + timestamp
 // Mode toggle persists with the note data.
-// Used by RecordDetail (database drawer) and RecordDrawer (zen task drawer).
+// Used by RecordDetail (database drawer) and RecordDrawer (task drawer).
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";

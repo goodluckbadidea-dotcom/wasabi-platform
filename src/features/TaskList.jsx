@@ -1,5 +1,5 @@
-// ─── Zen Task List ───
-// Left panel of the Zen Tasks split view.
+// ─── Task List ───
+// Left panel of the To-Do split view.
 // Quick-add input at top, manual tasks, AI-curated tasks, completed section.
 
 import React, { useState, useRef, useCallback, useMemo } from "react";
@@ -77,7 +77,7 @@ function DueBadge({ due, dateChipColors }) {
 }
 
 function SourceBadge({ sourceName }) {
-  if (!sourceName || sourceName === "Zen Tasks") return null;
+  if (!sourceName || sourceName === "User Tasks") return null;
   return (
     <span style={{
       fontSize: 11, fontFamily: FONT, flexShrink: 0,
@@ -167,7 +167,7 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping, dateChip
   );
 }
 
-export default function TaskList({ zenTasks, aiTasks, aiLoading, aiRefreshing, dismissedIds, onToggleZen, onToggleAI, onAddTask, onDeleteTask, onTaskClick, colorMapping, dateChipColors }) {
+export default function TaskList({ userTasks, aiTasks, aiLoading, aiRefreshing, dismissedIds, onToggleTask, onToggleAI, onAddTask, onDeleteTask, onTaskClick, colorMapping, dateChipColors }) {
   const [inputValue, setInputValue] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
   const inputRef = useRef(null);
@@ -183,8 +183,8 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, aiRefreshing, d
   }, [inputValue, onAddTask]);
 
   // Split tasks into active and completed, filtering out dismissed
-  const activeZen = zenTasks.filter((t) => !t.done);
-  const completedZen = zenTasks.filter((t) => t.done);
+  const activeUserTasks = userTasks.filter((t) => !t.done);
+  const completedUserTasks = userTasks.filter((t) => t.done);
   const _dismissed = dismissedIds || new Set();
   const activeAI = aiTasks.filter((t) => !t.done && !_dismissed.has(t.id));
 
@@ -201,7 +201,7 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, aiRefreshing, d
     return newIds;
   }, [activeAI]);
   const completedAI = aiTasks.filter((t) => t.done);
-  const allCompleted = [...completedZen, ...completedAI];
+  const allCompleted = [...completedUserTasks, ...completedAI];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
@@ -234,7 +234,7 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, aiRefreshing, d
       {/* Scrollable task list */}
       <div style={{ flex: 1, overflowY: "auto", padding: "4px 8px" }}>
         {/* My Tasks section */}
-        {activeZen.length > 0 && (
+        {activeUserTasks.length > 0 && (
           <div style={{ padding: "4px 0" }}>
             <div style={{
               padding: "6px 14px", fontSize: 10, fontFamily: FONT,
@@ -243,11 +243,11 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, aiRefreshing, d
             }}>
               My Tasks
             </div>
-            {activeZen.map((task) => (
+            {activeUserTasks.map((task) => (
               <TaskRow
                 key={task.id}
                 task={task}
-                onToggle={onToggleZen}
+                onToggle={onToggleTask}
                 onDelete={onDeleteTask}
                 onTaskClick={onTaskClick}
                 colorMapping={colorMapping}
@@ -319,7 +319,7 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, aiRefreshing, d
         )}
 
         {/* Empty state */}
-        {activeZen.length === 0 && activeAI.length === 0 && !aiLoading && (
+        {activeUserTasks.length === 0 && activeAI.length === 0 && !aiLoading && (
           <div style={{
             padding: "40px 20px", textAlign: "center",
             color: C.darkMuted, fontFamily: FONT, fontSize: 12,
@@ -357,7 +357,7 @@ export default function TaskList({ zenTasks, aiTasks, aiLoading, aiRefreshing, d
               <TaskRow
                 key={task.id}
                 task={task}
-                onToggle={task.source === "manual" ? onToggleZen : onToggleAI}
+                onToggle={task.source === "manual" ? onToggleTask : onToggleAI}
                 onDelete={task.source === "manual" ? onDeleteTask : () => {}}
                 onTaskClick={onTaskClick}
                 colorMapping={colorMapping}

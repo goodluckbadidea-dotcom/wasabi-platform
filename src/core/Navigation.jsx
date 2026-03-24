@@ -20,7 +20,7 @@ import ConfirmDialog from "./ConfirmDialog.jsx";
 import CreateMenu from "./CreateMenu.jsx";
 import ContextMenu from "./ContextMenu.jsx";
 import { getCreateMenuItems } from "./CreateMenu.jsx";
-import useInsight from "../zen/useInsight.js";
+import useInsight from "../features/useInsight.js";
 
 export default function Navigation({
   collapsed,
@@ -42,7 +42,7 @@ export default function Navigation({
   const { setTargetFolderPath } = useNavigation();
   const { isTouch } = useViewport();
 
-  const zenInsight = useInsight();
+  const insight = useInsight();
 
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
@@ -388,16 +388,16 @@ export default function Navigation({
             )}
           </div>
 
-          {/* Zen Insight + spacer */}
+          {/* Insight + spacer */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: collapsed ? 0 : "20px 16px", overflow: "hidden" }}>
-            {!collapsed && zenInsight && !searchQuery && (
+            {!collapsed && insight && !searchQuery && (
               <div style={{
                 fontSize: 13, lineHeight: 1.6, fontFamily: FONT,
                 color: navInactiveColor, fontStyle: "italic",
                 opacity: 0.85, transition: "opacity 0.4s ease",
                 textAlign: "center", padding: "0 2px",
               }}>
-                {zenInsight}
+                {insight}
               </div>
             )}
             {/* Search results (expanded, when query active) */}
@@ -478,7 +478,7 @@ export default function Navigation({
             )}
           </div>
 
-          {/* Zen nav items */}
+          {/* Feature nav items */}
           <div
             style={{
               flexShrink: 0,

@@ -7,7 +7,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { C, FONT, FONT_DISPLAY, RADIUS } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { useRecordDrawer } from "../zen/RecordDrawerContext.jsx";
+import { useRecordDrawer } from "../features/RecordDrawerContext.jsx";
 import * as api from "../lib/api.js";
 import { timeAgo } from "../utils/helpers.js";
 import {

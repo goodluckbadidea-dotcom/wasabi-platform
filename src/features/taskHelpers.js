@@ -1,5 +1,5 @@
-// ─── Zen Task Helpers ───
-// Shared utilities for the Zen To-Do engine: normalization, dates, caching.
+// ─── Task Helpers ───
+// Shared utilities for the To-Do engine: normalization, dates, caching.
 // Smart filtering: nearest-date scanning, activity-aware staleness, terminal status detection.
 
 // ── Smart To-Do Helpers ──
@@ -257,7 +257,7 @@ export function normalizeD1Task(row, columns) {
     assignee: findCell(["assignee", "assigned", "owner", "responsible"]) || "",
     status: statusVal,
     source: "manual",
-    sourceName: "Zen Tasks",
+    sourceName: "User Tasks",
     createdAt: row.created_at || null,
     lastEditedTime: row.updated_at || null,
     _ownerUserIds: ownerUserIds,

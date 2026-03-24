@@ -1,5 +1,5 @@
-// ─── useZenTasks Hook ───
-// Manages per-user "Zen Tasks" D1 table: auto-provisions on first use per user,
+// ─── useTasksTable Hook ───
+// Manages per-user "User Tasks" D1 table: auto-provisions on first use per user,
 // provides CRUD operations with optimistic updates.
 // Each user gets their own isolated task table, stored in user_state.
 
@@ -9,8 +9,8 @@ import { createTableConfig, savePageConfig } from "../config/pageConfig.js";
 import { listRows, createRows, updateRow, deleteRow, getUserState, putUserState } from "../lib/api.js";
 import { normalizeD1Task } from "./taskHelpers.js";
 
-// Column definitions for the Zen Tasks table
-const ZEN_COLUMNS = [
+// Column definitions for the User Tasks table
+const TASK_COLUMNS = [
   { name: "Task", type: "text", id: "task" },
   { name: "Done", type: "checkbox", id: "done" },
   { name: "Priority", type: "select", id: "priority", options: ["High", "Medium", "Low"] },
@@ -26,7 +26,7 @@ export default function useTasksTable() {
   const provisioningRef = useRef(false);
   const hasInitRef = useRef(false);
 
-  // ── Find or create per-user Zen Tasks table ──
+  // ── Find or create per-user tasks table ──
   useEffect(() => {
     let cancelled = false;
 
@@ -48,7 +48,7 @@ export default function useTasksTable() {
               return;
             }
             // Stale or mismatched table — clear it and provision a new one
-            console.warn("[useTasksTable] Stale zen_tasks_table_id detected, provisioning new table");
+            console.warn("[useTasksTable] Stale tasks table ID detected, provisioning new table");
             putUserState({ zen_tasks_table_id: null }).catch(() => {});
           }
         } catch (err) { console.warn("[useTasksTable] getUserState:", err.message || err); }
@@ -66,7 +66,7 @@ export default function useTasksTable() {
         }
 
         // Search existing pages for a system-internal page
-        const existing = pages.find((p) => p._systemInternal || (p.name && p.name.startsWith("Zen Tasks")));
+        const existing = pages.find((p) => p._systemInternal || (p.name && (p.name.startsWith("User Tasks") || p.name.startsWith("User Tasks"))));
         if (existing) {
           if (!cancelled) setTableId(existing.id);
           localStorage.setItem("wasabi_tasks_table_id", existing.id);
@@ -80,7 +80,7 @@ export default function useTasksTable() {
 
       try {
         const suffix = identity?.display_name ? ` (${identity.display_name})` : "";
-        const config = createTableConfig(`Zen Tasks${suffix}`, "check", ZEN_COLUMNS);
+        const config = createTableConfig(`User Tasks${suffix}`, "check", TASK_COLUMNS);
         config._systemInternal = true;
         const id = await savePageConfig(config);
         if (!cancelled) {
@@ -95,7 +95,7 @@ export default function useTasksTable() {
           }
         }
       } catch (err) {
-        console.error("[ZenTasks] Failed to create table:", err);
+        console.error("[UserTasks] Failed to create table:", err);
       } finally {
         provisioningRef.current = false;
       }
@@ -121,9 +121,9 @@ export default function useTasksTable() {
       setLoading(true);
       const result = await listRows(tableId);
       const rows = result.rows || [];
-      setTasks(rows.map((r) => normalizeD1Task(r, ZEN_COLUMNS)));
+      setTasks(rows.map((r) => normalizeD1Task(r, TASK_COLUMNS)));
     } catch (err) {
-      console.error("[ZenTasks] Failed to fetch:", err);
+      console.error("[UserTasks] Failed to fetch:", err);
     } finally {
       setLoading(false);
     }
@@ -146,7 +146,7 @@ export default function useTasksTable() {
       due: due || null,
       notes: "",
       source: "manual",
-      sourceName: "Zen Tasks",
+      sourceName: "User Tasks",
       createdAt: new Date().toISOString(),
       _raw: null,
     };
@@ -166,7 +166,7 @@ export default function useTasksTable() {
         prev.map((t) => (t.id === tempId ? { ...t, id: newId } : t))
       );
     } catch (err) {
-      console.error("[ZenTasks] Failed to add:", err);
+      console.error("[UserTasks] Failed to add:", err);
       // Remove optimistic entry on failure
       setTasks((prev) => prev.filter((t) => t.id !== tempId));
     }
@@ -187,7 +187,7 @@ export default function useTasksTable() {
       try {
         await deleteRow(tableId, taskId);
       } catch (err) {
-        console.error("[ZenTasks] Failed to complete/delete:", err);
+        console.error("[UserTasks] Failed to complete/delete:", err);
         setTasks((prev) => [...prev, task]); // Restore on failure
       }
     } else {
@@ -198,7 +198,7 @@ export default function useTasksTable() {
       try {
         await updateRow(tableId, taskId, { cells: { done: false } });
       } catch (err) {
-        console.error("[ZenTasks] Failed to uncheck:", err);
+        console.error("[UserTasks] Failed to uncheck:", err);
         setTasks((prev) =>
           prev.map((t) => (t.id === taskId ? { ...t, done: true } : t))
         );
@@ -218,7 +218,7 @@ export default function useTasksTable() {
     try {
       await deleteRow(tableId, taskId);
     } catch (err) {
-      console.error("[ZenTasks] Failed to delete:", err);
+      console.error("[UserTasks] Failed to delete:", err);
       // Restore on failure
       if (removed) setTasks((prev) => [...prev, removed]);
     }

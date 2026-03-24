@@ -1036,13 +1036,13 @@ export const SYSTEM_TOOLS = [
 // Editor: read + lightweight writes (query, update records, email, calendar)
 // Admin: editor tools (full agent access is via Agent tab)
 
-export const ZEN_TOOLS_VIEWER = [
+export const ASSISTANT_TOOLS_VIEWER = [
   QUERY_DATABASE,
   SEARCH_EMAILS,
   LIST_CALENDAR_EVENTS,
 ];
 
-export const ZEN_TOOLS_EDITOR = [
+export const ASSISTANT_TOOLS_EDITOR = [
   QUERY_DATABASE,
   UPDATE_PAGE,
   POST_NOTIFICATION,
@@ -1051,7 +1051,7 @@ export const ZEN_TOOLS_EDITOR = [
   CREATE_CALENDAR_EVENT,
 ];
 
-export const ZEN_TOOLS_ADMIN = [
+export const ASSISTANT_TOOLS_ADMIN = [
   QUERY_DATABASE,
   UPDATE_PAGE,
   POST_NOTIFICATION,
@@ -1061,4 +1061,4 @@ export const ZEN_TOOLS_ADMIN = [
 ];
 
 // Legacy export — defaults to admin tool set
-export const ZEN_TOOLS = ZEN_TOOLS_ADMIN;
+export const ASSISTANT_TOOLS = ASSISTANT_TOOLS_ADMIN;

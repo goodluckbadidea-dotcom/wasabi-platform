@@ -8,7 +8,7 @@ import React, { useState, useCallback, useEffect, useRef } from "react";
 import { PlatformProvider, usePlatform } from "./context/PlatformContext.jsx";
 import { LinksProvider } from "./context/LinksContext.jsx";
 import { NeuronsProvider } from "./neurons/NeuronsContext.jsx";
-import { RecordDrawerProvider } from "./zen/RecordDrawerContext.jsx";
+import { RecordDrawerProvider } from "./features/RecordDrawerContext.jsx";
 import { ColorMappingProvider } from "./context/ColorMappingContext.jsx";
 import { ThemeProvider, useTheme } from "./context/ThemeContext.jsx";
 import { UserSyncProvider, useUserSync } from "./context/UserSyncContext.jsx";
@@ -39,7 +39,7 @@ function lazyWithRetry(importFn) {
   );
 }
 
-const ChatPanel = lazyWithRetry(() => import("./zen/ChatPanel.jsx"));
+const ChatPanel = lazyWithRetry(() => import("./features/ChatPanel.jsx"));
 import Onboarding from "./core/Onboarding.jsx";
 import PageBuilder from "./core/PageBuilder.jsx";
 import PageShell from "./core/PageShell.jsx";
@@ -61,12 +61,12 @@ import NeuronLines from "./neurons/NeuronLines.jsx";
 import { useNeurons } from "./neurons/NeuronsContext.jsx";
 import { IconGear } from "./design/icons.jsx";
 
-const TasksView = lazyWithRetry(() => import("./zen/TasksView.jsx"));
-const NotesView = lazyWithRetry(() => import("./zen/NotesView.jsx"));
-const DashboardView = lazyWithRetry(() => import("./zen/DashboardView.jsx"));
-const GmailView = lazyWithRetry(() => import("./zen/GmailView.jsx"));
-const WorkspaceBrowser = lazyWithRetry(() => import("./zen/WorkspaceBrowser.jsx"));
-const KnowledgeHub = lazyWithRetry(() => import("./zen/KnowledgeHub.jsx"));
+const TasksView = lazyWithRetry(() => import("./features/TasksView.jsx"));
+const NotesView = lazyWithRetry(() => import("./features/NotesView.jsx"));
+const DashboardView = lazyWithRetry(() => import("./features/DashboardView.jsx"));
+const GmailView = lazyWithRetry(() => import("./features/GmailView.jsx"));
+const WorkspaceBrowser = lazyWithRetry(() => import("./features/WorkspaceBrowser.jsx"));
+const KnowledgeHub = lazyWithRetry(() => import("./features/KnowledgeHub.jsx"));
 
 // Inject CSS animations + global interaction styles on app load
 injectAnimations();

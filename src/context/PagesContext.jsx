@@ -97,7 +97,7 @@ export function PagesProvider({ children }) {
   const pageTree = useMemo(() => {
     const folderList = pages.filter((p) => p.type === "folder");
     const SYSTEM_PAGE_TYPES = new Set(["color-defaults", "color-view-config"]);
-    const isSystemPage = (p) => p._systemInternal || SYSTEM_PAGE_TYPES.has(p.page_type) || (p.name && p.name.startsWith("Zen Tasks"));
+    const isSystemPage = (p) => p._systemInternal || SYSTEM_PAGE_TYPES.has(p.page_type) || (p.name && (p.name.startsWith("User Tasks") || p.name.startsWith("Zen Tasks")));
     const pageList = pages.filter((p) => (p.type === "page" || !p.type) && !isSystemPage(p));
     const folderIdSet = new Set(folderList.map((f) => f.id));
 

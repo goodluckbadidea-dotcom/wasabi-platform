@@ -9,7 +9,7 @@ import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { C, FONT, RADIUS, SHADOW, VIEW_PALETTE, isLightColor } from "../design/tokens.js";
 import { IconClose, IconGear } from "../design/icons.jsx";
 import { ANIM } from "../design/animations.js";
-import { DATE_TIERS, DATE_TIER_DEFAULTS } from "../zen/TaskList.jsx";
+import { DATE_TIERS, DATE_TIER_DEFAULTS } from "../features/TaskList.jsx";
 import PagePermissionsPanel from "./PagePermissionsPanel.jsx";
 
 // ─── Section Header ───
