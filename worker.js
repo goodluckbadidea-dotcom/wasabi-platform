@@ -4858,7 +4858,7 @@ async function handleSaveNote(env, user, recordId, body) {
         for (const mentionName of mentions) {
           const mentionLower = mentionName.toLowerCase();
           const matched = userList.find((u) => u.display_name.toLowerCase() === mentionLower);
-          if (matched && matched.id !== authorId) {
+          if (matched) {
             // Dedup: skip if same mention notification exists within last 5 minutes (prevents duplicates from free-mode debounce auto-save)
             const existing = await env.DB.prepare(
               `SELECT id FROM notifications
@@ -5000,7 +5000,7 @@ async function handleCreateComment(env, user, recordId, body) {
         for (const mentionName of mentions) {
           const mentionLower = mentionName.toLowerCase();
           const matched = userList.find((u) => u.display_name.toLowerCase() === mentionLower);
-          if (matched && matched.id !== user_id) {
+          if (matched) {
             await createNotificationInternal(env, {
               message: `${commenterName} mentioned you on "${recordTitle || "a record"}": "${preview}"`,
               type: "mention",
