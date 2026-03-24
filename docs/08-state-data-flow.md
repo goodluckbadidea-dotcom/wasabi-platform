@@ -2,7 +2,7 @@
 
 ## Product Context
 
-Wasabi is an AI-native workspace built as a React 18 SPA. State management uses the React Context API exclusively — no Redux, Zustand, or other external state libraries. There are 11 context providers in `src/context/`, plus RecordDrawerContext in `src/zen/`.
+Wasabi is an AI-native workspace built as a React 18 SPA. State management uses the React Context API exclusively — no Redux, Zustand, or other external state libraries. There are 11 context providers in `src/context/`, plus RecordDrawerContext in `src/features/`.
 
 ---
 
@@ -224,11 +224,11 @@ Links are stored in the `cell_links` D1 table and cached locally.
 
 ---
 
-## RecordDrawerContext (src/zen/)
+## RecordDrawerContext (src/features/)
 
-**File:** `src/zen/RecordDrawerContext.jsx`
+**File:** `src/features/RecordDrawerContext.jsx`
 
-Not in `src/context/` — lives in `src/zen/` because it is tightly coupled to the RecordDrawer component.
+Not in `src/context/` — lives in `src/features/` because it is tightly coupled to the RecordDrawer component.
 
 **Key state:**
 - `recordId` — currently open record ID (null when closed)

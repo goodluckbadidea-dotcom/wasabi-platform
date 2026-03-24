@@ -48,7 +48,7 @@ Self-hosted on Cloudflare's edge infrastructure. Zero external runtime dependenc
 Browser (React 18 SPA)
   ├── src/core/           → Shell: TopHeader, Navigation, PageShell, SystemManager/
   ├── src/views/          → Data views: Table, Kanban, Gantt, Calendar, Form, Sheet, Document
-  ├── src/zen/            → Zen mode: TasksView, CalendarView, RecordDrawer, GmailView
+  ├── src/features/       → Features: TasksView, CalendarView, RecordDrawer, GmailView
   ├── src/agent/          → AI: runAgent, toolExecutor, queryClassifier, automations, flows
   ├── src/context/        → State: Auth, Pages, Theme, Navigation, Collaboration, Toast, Viewport
   ├── src/design/         → Tokens (C, Z, BP, RADIUS, SHADOW, FONT), animations, icons (65+)
@@ -89,19 +89,19 @@ Worker (Cloudflare Workers — single file: worker.js, ~8900 lines)
 
 ## Two Interface Modes
 
-### Zen Mode (`src/zen/`)
+### Features (`src/features/`)
 
 Personal productivity surface. User-scoped data.
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| TasksView | `src/zen/TasksView.jsx` | Personal task list + calendar integration |
-| CalendarView | `src/zen/CalendarView.jsx` | Day/week/month calendar with Google Calendar sync |
-| RecordDrawer | `src/zen/RecordDrawer.jsx` | Slide-out record editor (primary edit surface for all views) |
-| ChatPanel | `src/zen/ChatPanel.jsx` | AI chat with context from current page/data |
-| GmailView | `src/zen/GmailView.jsx` | Gmail inbox, read, compose, reply |
-| DashboardView | `src/zen/DashboardView.jsx` | Customizable widget dashboard |
-| WorkspaceBrowser | `src/zen/WorkspaceBrowser.jsx` | Folder-based page navigation |
+| TasksView | `src/features/TasksView.jsx` | Personal task list + calendar integration |
+| CalendarView | `src/features/CalendarView.jsx` | Day/week/month calendar with Google Calendar sync |
+| RecordDrawer | `src/features/RecordDrawer.jsx` | Slide-out record editor (primary edit surface for all views) |
+| ChatPanel | `src/features/ChatPanel.jsx` | AI chat with context from current page/data |
+| GmailView | `src/features/GmailView.jsx` | Gmail inbox, read, compose, reply |
+| DashboardView | `src/features/DashboardView.jsx` | Customizable widget dashboard |
+| WorkspaceBrowser | `src/features/WorkspaceBrowser.jsx` | Folder-based page navigation |
 
 ### Workspace Mode (`src/views/`, `src/core/`)
 
@@ -199,7 +199,7 @@ User message → queryClassifier (strategy/complexity/model)
 | Code sandbox | Timeout + blocklist | 5s deadline guard + infinite loop detection in toolExecutor |
 | Session management | Multi-device | active_sessions table, revocation, WebSocket broadcast |
 | Role enforcement | DB lookup per request | getFreshRole() queries users table, not stale JWT claim |
-| Per-user scoping | Ownership verification | Zen tasks, comments, notifications filtered by user ID |
+| Per-user scoping | Ownership verification | User tasks, comments, notifications filtered by user ID |
 | Input validation | Password policy | Min 8 chars, uppercase + lowercase + digit |
 | Invite codes | Expiration | 7-day TTL on invite codes |
 
@@ -226,7 +226,7 @@ User message → queryClassifier (strategy/complexity/model)
 
 - `src/core/` — App shell, navigation, settings. Loaded eagerly.
 - `src/views/` — Database view components. Lazy-loaded by PageShell.
-- `src/zen/` — Personal productivity components. Lazy-loaded.
+- `src/features/` — Personal productivity components. Lazy-loaded.
 - `src/components/` — Shared UI components used by multiple views.
 - `src/context/` — React context providers. Wrap the app in `App.jsx`.
 - `src/design/` — Design system: tokens, animations, icons, styles.

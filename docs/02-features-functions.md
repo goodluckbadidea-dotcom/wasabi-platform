@@ -12,12 +12,12 @@ Wasabi has two modes, toggled from the header. Persisted in `localStorage: wasab
 
 | Mode | Internal Key | Source | Purpose |
 |------|-------------|--------|---------|
-| **Zen** | `zen` | `src/zen/` (19 files) | Personal productivity: tasks, calendar, email, notes, dashboard |
+| **Features** | `features` | `src/features/` (19 files) | Personal productivity: tasks, calendar, email, notes, dashboard |
 | **Workspace** | `samurai` | `src/views/` (28 files) + `src/core/` (37 files) | Shared data views, page builder, automations, flows |
 
 ---
 
-## Zen Mode (`src/zen/`)
+## Features (`src/features/`)
 
 Personal productivity surface. User-scoped data. All components lazy-loaded.
 
@@ -25,17 +25,17 @@ Personal productivity surface. User-scoped data. All components lazy-loaded.
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| TasksView | `src/zen/TasksView.jsx` | Personal task list + calendar integration |
-| CalendarView | `src/zen/CalendarView.jsx` | Day/week/month calendar with Google Calendar sync |
-| RecordDrawer | `src/zen/RecordDrawer.jsx` | Slide-out record editor (primary edit surface for all views) |
-| ChatPanel | `src/zen/ChatPanel.jsx` | AI chat with context from current page/data |
-| GmailView | `src/zen/GmailView.jsx` | Gmail inbox, read, compose, reply |
-| DashboardView | `src/zen/DashboardView.jsx` | Customizable widget dashboard |
-| WorkspaceBrowser | `src/zen/WorkspaceBrowser.jsx` | Folder-based page navigation |
-| KnowledgeHub | `src/zen/KnowledgeHub.jsx` | Knowledge base browser |
-| NotesView | `src/zen/NotesView.jsx` | Markdown scratchpad with live preview |
-| ZenChatPanel | `src/zen/ZenChatPanel.jsx` | Extended AI chat for Zen mode |
-| EmailThreadDrawer | `src/zen/EmailThreadDrawer.jsx` | Slide-out email thread viewer |
+| TasksView | `src/features/TasksView.jsx` | Personal task list + calendar integration |
+| CalendarView | `src/features/CalendarView.jsx` | Day/week/month calendar with Google Calendar sync |
+| RecordDrawer | `src/features/RecordDrawer.jsx` | Slide-out record editor (primary edit surface for all views) |
+| ChatPanel | `src/features/ChatPanel.jsx` | AI chat with context from current page/data |
+| GmailView | `src/features/GmailView.jsx` | Gmail inbox, read, compose, reply |
+| DashboardView | `src/features/DashboardView.jsx` | Customizable widget dashboard |
+| WorkspaceBrowser | `src/features/WorkspaceBrowser.jsx` | Folder-based page navigation |
+| KnowledgeHub | `src/features/KnowledgeHub.jsx` | Knowledge base browser |
+| NotesView | `src/features/NotesView.jsx` | Markdown scratchpad with live preview |
+| ~~ZenChatPanel~~ | _(removed)_ | Was extended AI chat panel; removed |
+| EmailThreadDrawer | `src/features/EmailThreadDrawer.jsx` | Slide-out email thread viewer |
 
 ### Supporting Files
 
@@ -83,7 +83,7 @@ Shared database views. Workspace-scoped with per-page permissions.
 | ChatPanel | `ChatPanel.jsx` | Workspace-scoped AI chat |
 | RecordDetail | `RecordDetail.jsx` | Full-page record detail view |
 
-**Note:** `src/views/CalendarView.jsx` was deleted (dead code). The active calendar is `src/views/Calendar.jsx` for Workspace mode and `src/zen/CalendarView.jsx` for Zen mode.
+**Note:** `src/views/CalendarView.jsx` was deleted (dead code). The active calendar is `src/views/Calendar.jsx` for Workspace mode and `src/features/CalendarView.jsx` for the Calendar View.
 
 ### View Supporting Files
 

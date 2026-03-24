@@ -128,12 +128,12 @@ User clicks sidebar item
 All view components are loaded via `lazyWithRetry()`, a wrapper around `React.lazy()` that adds exponential backoff retry logic. This handles stale chunk errors that occur after deployments — when the browser has cached an old `index.html` that references chunk files that no longer exist on the server.
 
 ```javascript
-const ChatPanel = lazyWithRetry(() => import("./zen/ChatPanel.jsx"));
-const TasksView = lazyWithRetry(() => import("./zen/TasksView.jsx"));
-const DashboardView = lazyWithRetry(() => import("./zen/DashboardView.jsx"));
-const GmailView = lazyWithRetry(() => import("./zen/GmailView.jsx"));
-const WorkspaceBrowser = lazyWithRetry(() => import("./zen/WorkspaceBrowser.jsx"));
-const KnowledgeHub = lazyWithRetry(() => import("./zen/KnowledgeHub.jsx"));
+const ChatPanel = lazyWithRetry(() => import("./features/ChatPanel.jsx"));
+const TasksView = lazyWithRetry(() => import("./features/TasksView.jsx"));
+const DashboardView = lazyWithRetry(() => import("./features/DashboardView.jsx"));
+const GmailView = lazyWithRetry(() => import("./features/GmailView.jsx"));
+const WorkspaceBrowser = lazyWithRetry(() => import("./features/WorkspaceBrowser.jsx"));
+const KnowledgeHub = lazyWithRetry(() => import("./features/KnowledgeHub.jsx"));
 // ... etc.
 ```
 
@@ -194,7 +194,7 @@ The sidebar lists user pages, folders, and system navigation items (Tasks, Dashb
 
 ### WasabiPanel (Chat)
 
-**File:** `src/zen/ChatPanel.jsx` (lazy-loaded)
+**File:** `src/features/ChatPanel.jsx` (lazy-loaded)
 
 - Width: 320px
 - **Desktop (wide viewports):** renders inline to the left of the sidebar, pushing content right
@@ -247,7 +247,7 @@ Each view rendered by PageShell is wrapped in a `ViewErrorBoundary`, a per-view 
 
 ## RecordDrawerContext
 
-**File:** `src/zen/RecordDrawerContext.jsx`
+**File:** `src/features/RecordDrawerContext.jsx`
 
 RecordDrawerContext provides `notifySaved` and `notifyDeleted` callback refs that enable the RecordDrawer (the slide-out record editor) to notify the parent view when a record has been saved or deleted.
 
@@ -314,7 +314,7 @@ src/
 ├── main.jsx             → ReactDOM entry point
 ├── core/                → Shell: TopHeader, Navigation, PageShell, SystemManager/
 ├── views/               → Database view components (Table, Kanban, Gantt, etc.)
-├── zen/                 → Personal productivity (Tasks, Gmail, Dashboard, RecordDrawer)
+├── features/            → Personal productivity (Tasks, Gmail, Dashboard, RecordDrawer)
 ├── context/             → 11 React context providers
 ├── design/              → Design tokens (C, Z, FONT, RADIUS, SHADOW), animations, icons
 ├── agent/               → AI agent system (runAgent, toolExecutor, queryClassifier)
@@ -324,8 +324,8 @@ src/
 └── lib/                 → Utilities (api.js, iframeHelpers, tableSocket)
 ```
 
-### views/ vs zen/ Pattern
+### views/ vs features/ Pattern
 
 - **`src/views/`** — Database-bound view components. Each renders a specific view type for a database page. Loaded by PageShell/ViewRenderer based on the active viewConfig type. Views receive `data`, `schema`, `onUpdate`, `onRefresh` props from PageShell.
 
-- **`src/zen/`** — Standalone workspace panels and personal productivity views. These are top-level screens not tied to a specific database: TasksView, GmailView, NotesView, DashboardView, KnowledgeHub, WorkspaceBrowser, ChatPanel, and the RecordDrawer system. Zen views manage their own data fetching.
+- **`src/features/`** — Standalone workspace panels and personal productivity views. These are top-level screens not tied to a specific database: TasksView, GmailView, NotesView, DashboardView, KnowledgeHub, WorkspaceBrowser, ChatPanel, and the RecordDrawer system. Feature views manage their own data fetching.

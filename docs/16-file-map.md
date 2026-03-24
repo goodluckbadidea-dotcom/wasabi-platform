@@ -132,7 +132,7 @@ Note: `CalendarView.jsx` was deleted (dead code).
 
 ---
 
-## src/zen/ (21 files)
+## src/features/ (21 files)
 
 Personal productivity surface. User-scoped data. Lazy-loaded.
 
@@ -141,7 +141,7 @@ Personal productivity surface. User-scoped data. Lazy-loaded.
 | File | Purpose |
 |------|---------|
 | `CalendarView.jsx` | Day/week/month calendar with Google Calendar sync |
-| `ChatPanel.jsx` | Zen-mode AI chat panel |
+| `ChatPanel.jsx` | AI chat panel |
 | `DashboardView.jsx` | Customizable widget dashboard |
 | `EmailThreadDrawer.jsx` | Email thread slide-out viewer |
 | `GmailView.jsx` | Gmail inbox, read, compose, reply |
@@ -152,7 +152,7 @@ Personal productivity surface. User-scoped data. Lazy-loaded.
 | `TaskList.jsx` | Task list rendering component |
 | `TasksView.jsx` | Personal task list with calendar integration |
 | `WorkspaceBrowser.jsx` | Folder-based page navigation |
-| `ZenChatPanel.jsx` | Zen-specific chat panel variant |
+| ~~`ZenChatPanel.jsx`~~ | _(removed)_ |
 | `taskHelpers.js` | Task utility functions |
 
 ### Hook Files (5)

@@ -74,7 +74,7 @@ All Gmail operations are proxied through the worker. The frontend client functio
 
 ### Usage
 
-The AI agent can search emails, read message content, send replies, manage drafts, and modify labels. The Zen mode GmailView (`src/zen/GmailView.jsx`) provides the user-facing email interface with inbox, compose, and thread views.
+The AI agent can search emails, read message content, send replies, manage drafts, and modify labels. The Gmail View (`src/features/GmailView.jsx`) provides the user-facing email interface with inbox, compose, and thread views.
 
 ### Google Context Injection
 
@@ -108,9 +108,9 @@ ISO 8601 with timezone: `2026-03-20T14:30:00-07:00`
 
 ### Used By
 
-- `src/zen/CalendarView.jsx` — Zen mode calendar (day/week/month views)
+- `src/features/CalendarView.jsx` — Calendar View (day/week/month views)
 - `src/views/Calendar.jsx` — Workspace mode calendar view
-- `src/zen/RecordDrawer.jsx` — Event editing
+- `src/features/RecordDrawer.jsx` — Event editing
 - `src/core/Navigation.jsx` — Next event label in sidebar
 
 ---

@@ -213,7 +213,7 @@ Two chat surfaces use the same agent loop (`runAgent`):
 | Component | File | Context |
 |-----------|------|---------|
 | **WasabiPanel** | `src/core/WasabiPanel.jsx` | Desktop sidebar chat. Persistent across page navigation. Full workspace context. |
-| **ChatPanel** | `src/zen/ChatPanel.jsx` | Zen mode full-screen chat. Page-scoped context. Lazy-loaded. |
+| **ChatPanel** | `src/features/ChatPanel.jsx` | Full-screen chat. Page-scoped context. Lazy-loaded. |
 
 Both components render messages, display tool call feedback ("Querying database...", "Updating record..."), support streaming, and show the active model tier (Haiku/Sonnet).
 

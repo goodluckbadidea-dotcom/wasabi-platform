@@ -135,7 +135,7 @@ Cross-device synchronization for a single user. When something changes that affe
 | Server -> Client | `pong` | `{}` | Keepalive response |
 | Server -> Client | `dashboard_update` | `{...}` | Dashboard data changed |
 | Server -> Client | `nav_update` | `{...}` | Navigation/page list changed |
-| Server -> Client | `task_cache_invalidate` | `{...}` | Zen tasks cache should be cleared |
+| Server -> Client | `task_cache_invalidate` | `{...}` | User tasks cache should be cleared |
 | Server -> Client | `session_revoked` | `{sessionId}` | Admin revoked a session |
 
 ### HTTP Broadcast Endpoint

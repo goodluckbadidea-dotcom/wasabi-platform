@@ -22,7 +22,7 @@ The following security features are implemented and active in production.
 | Code sandbox | 5s timeout guard + infinite loop blocklist | `src/agent/toolExecutor.js` TIMEOUT_GUARD |
 | Session management | active_sessions table, revocation, WebSocket broadcast | `worker.js`, UserRoom Durable Object |
 | Role enforcement | getFreshRole() queries DB, not stale JWT claim | `worker.js` notification handlers |
-| Per-user data scoping | Ownership verification on zen tasks, server-side comment user_id | `src/zen/useTasksTable.js`, `worker.js` |
+| Per-user data scoping | Ownership verification on user tasks, server-side comment user_id | `src/features/useTasksTable.js`, `worker.js` |
 | Input validation | Password policy (8+ chars, upper+lower+digit), invite expiration | `worker.js` registration handler |
 | Plugin validation | Blocklist: eval, import, require, window, document, etc. | `worker.js` validatePluginCodeServer |
 | Z-index isolation | Centralized Z scale prevents layer conflicts | `src/design/tokens.js` Z object |
