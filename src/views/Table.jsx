@@ -1282,6 +1282,18 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     setRenamingSubCol(null);
   }, [canEditSchema, pageConfig?.id, onRefresh]);
 
+  // Delete sub-item column (D1 only)
+  const handleDeleteSubCol = useCallback(async (colName) => {
+    if (!canEditSchema || !pageConfig?.id) return;
+    try {
+      const schemaRes = await getTableSchema(pageConfig.id);
+      const subs = (schemaRes?.sub_columns || []).filter((c) => c.name !== colName);
+      await updateSubColumnSchema(pageConfig.id, subs);
+      if (onRefresh) onRefresh();
+    } catch (err) { console.error("Delete sub-column failed:", err); }
+    setSubColCtxMenu(null);
+  }, [canEditSchema, pageConfig?.id, onRefresh]);
+
   // Delete column (D1 + Notion)
   const handleDeleteCol = useCallback(async (col) => {
     if (!canEditSchema || !pageConfig?.id) return;
@@ -2757,8 +2769,39 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                 {/* Checkbox-aligned spacer */}
                                 <div style={{ padding: "0 8px", fontSize: 10, color: C.darkMuted }} />
                                 {subColsList.map((col) => (
-                                  <div key={col} style={{ padding: "0 8px", fontSize: 11, fontWeight: 700, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                                    {col}
+                                  <div
+                                    key={col}
+                                    style={{ padding: "0 8px", fontSize: 11, fontWeight: 700, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.06em", cursor: canEditSchema ? "pointer" : "default", userSelect: "none" }}
+                                    onDoubleClick={(e) => {
+                                      e.preventDefault(); e.stopPropagation();
+                                      if (canEditSchema) { setRenamingSubCol(col); setRenameSubValue(col); setSubColCtxMenu(null); }
+                                    }}
+                                    onContextMenu={(e) => {
+                                      if (!canEditSchema) return;
+                                      e.preventDefault(); e.stopPropagation();
+                                      setSubColCtxMenu({ col, x: e.clientX, y: e.clientY });
+                                    }}
+                                  >
+                                    {renamingSubCol === col ? (
+                                      <input
+                                        autoFocus
+                                        value={renameSubValue}
+                                        onChange={(e) => setRenameSubValue(e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") handleRenameSubCol(col, renameSubValue);
+                                          if (e.key === "Escape") setRenamingSubCol(null);
+                                          e.stopPropagation();
+                                        }}
+                                        onBlur={() => handleRenameSubCol(col, renameSubValue)}
+                                        onClick={(e) => e.stopPropagation()}
+                                        style={{
+                                          width: "100%", border: `1px solid ${C.accent}`, borderRadius: RADIUS.sm,
+                                          background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 11,
+                                          padding: "2px 6px", outline: "none", fontWeight: 600, textTransform: "uppercase",
+                                          letterSpacing: "0.06em",
+                                        }}
+                                      />
+                                    ) : col}
                                   </div>
                                 ))}
                                 <div />
@@ -3214,6 +3257,27 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                 <div style={{ ...ctxItem, color: C.warning }} onClick={() => { if (confirm(`Delete column "${colCtxMenu.col}"?`)) handleDeleteCol(colCtxMenu.col); }} {...hoverBg(C.warningDim)}>{"\uD83D\uDDD1"} Delete Column</div>
               </>
             )}
+          </div>
+        </>,
+        document.body
+      )}
+
+      {/* Sub-item column context menu */}
+      {subColCtxMenu && createPortal(
+        <>
+          <div style={{ position: "fixed", inset: 0, zIndex: 299 }} onClick={() => setSubColCtxMenu(null)} />
+          <div
+            style={{
+              position: "fixed", left: subColCtxMenu.x, top: subColCtxMenu.y, zIndex: 300,
+              background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
+              borderRadius: RADIUS.lg, padding: 4, minWidth: 160,
+              boxShadow: SHADOW.dropdown, fontFamily: FONT,
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div style={ctxItem} onClick={() => { setRenamingSubCol(subColCtxMenu.col); setRenameSubValue(subColCtxMenu.col); setSubColCtxMenu(null); }} {...hoverBg()}>✏️ Rename</div>
+            <div style={{ borderTop: `1px solid ${C.edgeLine}`, margin: "2px 0" }} />
+            <div style={{ ...ctxItem, color: C.warning }} onClick={() => { if (confirm(`Delete sub-item column "${subColCtxMenu.col}"?`)) handleDeleteSubCol(subColCtxMenu.col); }} {...hoverBg(C.warningDim)}>🗑 Delete Column</div>
           </div>
         </>,
         document.body
