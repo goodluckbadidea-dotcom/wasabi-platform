@@ -118,7 +118,7 @@ Database view components. Lazy-loaded by PageShell.
 | `NodeCanvas.jsx` | Canvas for node-based flow editor |
 | `NodeConfigPanel.jsx` | Configuration panel for flow nodes |
 | `NodeRenderer.jsx` | Individual node renderer for flow editor |
-| `NotificationFeed.jsx` | Notification inbox with filtering |
+| `NotificationFeed.jsx` | Notification inbox with filtering, sticky recently-read items in Unread tab |
 | `RecordDetail.jsx` | Record detail/expanded view |
 | `Sheet.jsx` | Spreadsheet-like sheet view |
 | `SummaryTiles.jsx` | Summary tiles/metrics view |
@@ -186,7 +186,7 @@ Shared UI components used across views.
 |------|---------|
 | `Breadcrumb.jsx` | Navigation breadcrumb with clickable ancestors |
 | `ColumnBuilder.jsx` | Column type picker and property config |
-| `ConflictToast.jsx` | Real-time sync conflict notification |
+| `ConflictToast.jsx` | Real-time sync conflict resolution UI (design tokens, ARIA, auto-dismiss with per-conflict timing) |
 | `EmptyState.jsx` | Empty state placeholder component (new) |
 | `FormulaBar.jsx` | Formula input bar for computed columns |
 | `InlineChart.jsx` | Inline sparkline/mini chart component |
@@ -194,7 +194,7 @@ Shared UI components used across views.
 | `MultiSelectPicker.jsx` | Multi-select tag picker |
 | `PagePermissionsPanel.jsx` | Page-level permission management |
 | `PinLockOverlay.jsx` | PIN lock overlay for secure pages |
-| `PresenceAvatars.jsx` | Active user avatar display |
+| `PresenceAvatars.jsx` | Active user avatar display (design tokens, title attributes for accessibility) |
 | `RecordComments.jsx` | Record-level comment thread |
 | `RecordDetailPortals.jsx` | Portal components for record detail overlays |
 | `RecordFiles.jsx` | File attachment management for records |
@@ -218,7 +218,7 @@ React context providers. Wrap the app in App.jsx.
 | File | Purpose |
 |------|---------|
 | `AuthContext.jsx` | Authentication state, login/logout, token management |
-| `CollaborationContext.jsx` | Real-time collaboration: presence, typing, conflict detection |
+| `CollaborationContext.jsx` | Real-time collaboration: reactive presence Map, typing with 8s TTL, conflict detection with timestamps, reconnect state restore |
 | `ColorMappingContext.jsx` | Deterministic color assignment for users/categories |
 | `LinksContext.jsx` | Link/relation management between records |
 | `NavigationContext.jsx` | Page navigation state and history |
@@ -226,7 +226,7 @@ React context providers. Wrap the app in App.jsx.
 | `PlatformContext.jsx` | Platform settings, worker URL, feature flags |
 | `ThemeContext.jsx` | Theme state (5 themes), design token switching |
 | `ToastContext.jsx` | Toast notification system (new) |
-| `UserSyncContext.jsx` | Cross-device sync via UserRoom WebSocket |
+| `UserSyncContext.jsx` | Cross-device sync via UserRoom WebSocket, tab deduplication (single active tab owns connection) |
 | `ViewportContext.jsx` | Responsive breakpoint detection (new) |
 
 ---
@@ -288,7 +288,7 @@ Utility functions, API client, WebSocket helpers.
 | `dataSource.js` | Data source abstraction layer (D1, Notion, Monday normalization) |
 | `iframeHelpers.js` | Iframe sandbox helpers, escapeHtml, auto-execute code |
 | `roles.js` | Role constants and permission utilities |
-| `tableSocket.js` | WebSocket client for table collaboration (TableRoom) |
+| `tableSocket.js` | WebSocket client for table collaboration (TableRoom), double-connect guard |
 | `userSocket.js` | WebSocket client for user sync (UserRoom) |
 
 ---

@@ -174,22 +174,25 @@ Manages current navigation state: which page is active, which folder is selected
 Manages real-time collaboration via WebSocket connection to a TableRoom Durable Object.
 
 **Key state:**
-- `activeUsers` — Map of users currently viewing the same table
-- `pendingConflicts` — array of field-level conflicts detected during save
+- `activeUsers` — reactive `Map` of users currently viewing the same table (converted from plain object for proper React re-renders)
+- `pendingConflicts` — array of field-level conflicts detected during save, each with a `detectedAt` timestamp for accurate auto-dismiss timing
+- `cellVersionsRef` — ref tracking per-field version numbers for conflict detection base versions
 
 **Key methods:**
 - `focusRecord(recordId)` — broadcast that user is viewing a record
 - `blurRecord()` — stop broadcasting focus
-- `startTyping(recordId, field)` / `stopTyping()` — typing indicators
+- `startTyping(recordId, field)` / `stopTyping()` — typing indicators with 8-second TTL auto-expiry
 - `saveRecord(recordId, cells, baseVersions)` — save with conflict detection
-- `onRecordUpdate(callback)` — subscribe to remote record changes
+- `onRecordUpdate(callback)` — subscribe to remote record changes (stable ref, no stale closures)
+- `dismissConflict(recordId, field)` — clear a resolved conflict (requires ConfirmDialog confirmation)
 
 **WebSocket messages handled:**
-- `record_updated` — another user saved a record; triggers data refresh
-- `save_result` — response to a save attempt (success or conflict)
-- `conflict` — field-level conflict detected during save
+- `record_updated` — another user saved a record; triggers data refresh (300ms debounce)
+- `save_result` — response to a save attempt (success or conflict); captures updated `cell_versions`
 - `presence` — active users list update
 - `user_joined` / `user_left` — presence changes
+
+**Reconnect behavior:** After WebSocket reconnect, CollaborationContext automatically re-sends `focus` and `typing` state so presence is restored without user action. TableSocket guards against double-connect (OPEN/CONNECTING check).
 
 Connection is per-table: `wss://{worker}/ws/table/{tableId}?token={jwt}`
 
@@ -213,6 +216,8 @@ Cross-device synchronization via WebSocket connection to a UserRoom Durable Obje
 **session_revoked handling:** When the UserRoom broadcasts a `session_revoked` message (triggered when an admin revokes a session or the user logs out on another device), the callback clears local identity and redirects to the login screen.
 
 **notification_new handling:** When the worker creates a targeted notification (comment, mention, etc.), it sends a POST to the target user's UserRoom DO, which broadcasts to all connected sockets. Navigation.jsx subscribes and immediately increments the unread badge count.
+
+**Tab deduplication:** Only the active browser tab maintains the UserRoom WebSocket connection. Tracked via `localStorage` key `wasabi_user_ws_active_tab` with a unique tab ID. On `visibilitychange`, the becoming-visible tab takes ownership and reconnects; hidden tabs disconnect. This prevents duplicate presence entries from multiple open tabs.
 
 Connection is per-user: `wss://{worker}/ws/user/{userId}?token={jwt}`
 

@@ -28,7 +28,9 @@ The following security features are implemented and active in production.
 | Input validation | Password policy (8+ chars, upper+lower+digit), invite expiration | `worker.js` registration handler |
 | Plugin validation | Blocklist: eval, import, require, window, document, etc. | `worker.js` validatePluginCodeServer |
 | Z-index isolation | Centralized Z scale prevents layer conflicts | `src/design/tokens.js` Z object |
-| ARIA accessibility | role="dialog", aria-modal, aria-labelledby on dialogs | ConfirmDialog, NewRecordModal, etc. |
+| ARIA accessibility | role="dialog", aria-modal, aria-labelledby on dialogs; role="alert", aria-live on toasts | ConfirmDialog, NewRecordModal, ConflictToast, etc. |
+| Tab deduplication | Only active browser tab maintains UserRoom WebSocket; prevents duplicate presence | `UserSyncContext.jsx` via localStorage active-tab tracking |
+| Typing TTL guard | Typing indicators auto-expire after 8s to prevent ghost state from crashed browsers | `CollaborationContext.jsx` |
 
 ---
 

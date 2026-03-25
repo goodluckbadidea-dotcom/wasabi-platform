@@ -75,7 +75,7 @@ Shared database views. Workspace-scoped with per-page permissions.
 | Document | `Document.jsx` | Document page container |
 | CustomView | `CustomView.jsx` | User-authored HTML/JS views |
 | NetworkGraph | `NetworkGraph.jsx` | Visual graph of record relationships |
-| NotificationFeed | `NotificationFeed.jsx` | Notification inbox with filtering, click-through to source record |
+| NotificationFeed | `NotificationFeed.jsx` | Notification inbox with filtering, click-through to source record, sticky recently-read items |
 | ActivityFeed | `ActivityFeed.jsx` | Record activity/change log |
 | CardGrid | `CardGrid.jsx` | Card grid layout with image/title/description |
 | Charts | `Charts.jsx` | Data visualization (bar, line, pie, etc.) |
@@ -350,6 +350,13 @@ When a user clicks "Go To Task" on a notification that has `record_id` and `page
 3. `PageShell` mounts, detects `pendingRecordId`, finds the matching row in data
 4. Opens `RecordDetail` drawer for that record automatically
 5. Clears `pendingRecordId`
+
+### Sticky Recently-Read Items (Unread Tab)
+
+When viewing the Unread tab, clicking a notification marks it as read but keeps it visible in the list (as a "sticky" item) so the user can expand, reply, or click through without the item vanishing mid-interaction. Sticky items show with dimmed/read styling. The sticky set is cleared when:
+- The user switches between Unread/All tabs
+- The user clicks Refresh
+- The user clicks "Mark all read"
 
 ### Instant Badge (WebSocket Push)
 

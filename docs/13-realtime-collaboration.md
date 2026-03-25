@@ -115,6 +115,11 @@ When the client receives a `save_result` with conflicts, `ConflictToast` display
 - The user's attempted value
 - The current server value
 - Resolution options: Keep Mine (re-save with incremented version), Accept Theirs (discard user's change)
+- Dismiss requires confirmation via ConfirmDialog to prevent accidentally discarding unresolved conflicts
+
+After conflict resolution via "Keep Mine", the response's updated `cell_versions` are captured and written back to `cellVersionsRef` to prevent stale versions on rapid sequential conflicts.
+
+**Design tokens:** ConflictToast uses design system tokens (`C`, `RADIUS`, `SHADOW`, `FONT`) for all styling. ARIA attributes (`role="alert"`, `aria-live="assertive"`) are present for accessibility. Z-index uses `Z.toast` (9000).
 
 ---
 
@@ -181,7 +186,13 @@ Located in `PageShell.jsx`. Listens for `record_updated` and `save_result` WebSo
 
 **File:** `src/components/PresenceAvatars.jsx`
 
-Renders colored avatar circles with initials for all active users in the table header.
+Renders colored avatar circles with initials for all active users in the table header. Uses design system tokens for all styling (no hardcoded colors or radii). Includes `title` attributes on each avatar for accessibility.
+
+### RecordDetail Collaboration Banner
+
+**File:** `src/views/RecordDetail.jsx`
+
+When other users are focused on the same record, RecordDetail shows a collaboration banner below the header. The banner displays which specific fields are being edited (e.g., "2 collaborators editing Status, Name") rather than just a generic "editing" message. Uses design system gradient styling with `C.accent`.
 
 ---
 
@@ -209,6 +220,13 @@ Both socket clients implement exponential backoff reconnection:
 
 On reconnect, the client re-sends a `join` message to restore presence state.
 
+### Reconnect Resilience (2026-03-24 fixes)
+
+- **TableSocket** guards against double-connect: if a connection is already `OPEN` or `CONNECTING`, `connect()` is a no-op.
+- **CollaborationContext** re-sends `focus` and `typing` state after reconnect so presence is restored without user action.
+- **Tab deduplication:** `UserSyncContext` tracks the active browser tab via `localStorage` key `wasabi_user_ws_active_tab`. Only the active tab maintains the UserRoom WebSocket connection. On `visibilitychange`, the becoming-visible tab takes ownership and reconnects; the hidden tab disconnects. This prevents duplicate presence from multiple tabs.
+- **Typing TTL:** Typing indicators auto-expire after 8 seconds of no `typing` message, preventing ghost indicators from crashed browsers.
+
 ---
 
 ## Known Limitations
@@ -217,5 +235,38 @@ On reconnect, the client re-sends a `join` message to restore presence state.
 2. **No three-way merge** -- Conflicts use simple version comparison, not intelligent merging of sub-fields.
 3. **No conflict persistence** -- Conflicts are cleared on page reload. No audit trail.
 4. **No rollback** -- No way to undo a conflicted save or revert to a previous cell version.
-5. **Typing indicator cleanup** -- If a browser crashes, the typing indicator persists until timeout rather than being cleaned up immediately.
+5. **Typing indicator cleanup** -- Typing indicators now auto-expire after 8 seconds (TTL guard). If a browser crashes, the indicator clears within 8s rather than persisting indefinitely.
 6. **Idle disconnect invisible** -- After 5 minutes idle, the connection closes silently. The next edit triggers reconnect.
+7. **Table inline editing** -- Table view cells are read-only; all editing happens through RecordDrawer/RecordDetail. Inline edit presence indicators are not wired up in Table view.
+
+---
+
+## Changelog (2026-03-24 Session)
+
+Comprehensive collaboration audit — 18 fixes across 4 phases:
+
+**Phase A — Critical bugs (6 fixes):**
+- TableSocket double-connect guard (OPEN/CONNECTING check)
+- CollaborationContext `activeUsers` converted from object to reactive Map for proper re-renders
+- Conflict detection `detectedAt` timestamp added for accurate auto-dismiss timing
+- ConflictToast auto-dismiss timer uses per-conflict `detectedAt` instead of mount time
+- `onRecordUpdate` callback ref made stable to prevent stale closure bugs
+- CollabSyncBridge debounce timer cleanup on unmount (memory leak fix)
+
+**Phase B — High severity (3 fixes):**
+- Presence state (focus/typing) re-sent after WebSocket reconnect
+- Typing indicator 8-second TTL guard against ghost indicators
+- UserSyncContext tab deduplication via localStorage active-tab tracking
+
+**Phase C — Design system (17 token fixes):**
+- ConflictToast: all hardcoded colors/radii replaced with `C`, `RADIUS`, `SHADOW`, `FONT` tokens
+- PresenceAvatars: hardcoded values replaced with design tokens
+- CollaborationContext: logging border color uses `C.accent`
+- ConflictToast: ARIA attributes added (`role="alert"`, `aria-live="assertive"`)
+- PresenceAvatars: `title` attributes added for accessibility
+- Both components: `animation` property uses `ANIM` tokens
+
+**Phase D — UX polish (3 fixes):**
+- Conflict "Keep Mine" resolution captures response `cell_versions` into `cellVersionsRef`
+- Conflict dismiss requires ConfirmDialog instead of silent discard
+- RecordDetail collaboration banner shows specific field names being edited
