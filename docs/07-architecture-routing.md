@@ -20,23 +20,26 @@ App.jsx is the root component. It wraps the entire application in a layered prov
 
 ```
 App
- └── ThemeProvider
-      └── ViewportProvider
-           └── PlatformProvider
-                │   (internally wraps: AuthProvider → PagesProvider → NavigationProvider)
-                └── ToastProvider
-                     └── AuthProvider (re-export gate)
-                          └── PagesProvider
-                               └── NavigationProvider
-                                    └── UserSyncProvider
-                                         └── CollaborationProvider
-                                              └── ColorMappingProvider
-                                                   └── LinksProvider
-                                                        └── NeuronsProvider
-                                                             └── RecordDrawerProvider
-                                                                  └── ErrorBoundary
-                                                                       └── AppContent
+ └── ViewportProvider
+      └── ThemeProvider
+           └── ToastProvider
+                └── PlatformProvider
+                │    └── AuthProvider
+                │         └── AuthGate  ← renders LoginScreen when NOT authenticated
+                │              └── PagesProvider      ← only mounts after auth
+                │                   └── NavigationProvider  ← only mounts after auth
+                │                        └── {children}
+                └── UserSyncProvider
+                     └── ColorMappingProvider
+                          └── LinksProvider
+                               └── NeuronsProvider
+                                    └── RecordDrawerProvider
+                                         └── ErrorBoundary
+                                              └── AppContent
 ```
+
+**Key architectural point:** The `AuthGate` component in PlatformContext ensures that `PagesProvider`, `NavigationProvider`, and all downstream providers (UserSyncProvider through AppContent) never mount until authentication is confirmed. This prevents pre-auth API calls and 401 storms.
+
 
 ### AppContent Renders
 
@@ -54,19 +57,23 @@ App
 
 Providers are nested in a specific order so that inner providers can consume outer ones. The actual wrapping order in App.jsx is:
 
-| Order | Provider | Purpose |
-|-------|----------|---------|
-| 1 | ThemeProvider | Design tokens (C, SHADOW), theme name, applyTheme() |
-| 2 | ViewportProvider | isNarrow, isTablet, isTouch, viewport width |
-| 3 | PlatformProvider | Composes Auth + Pages + Navigation; exposes workerConnection, pages CRUD, feature flags |
-| 4 | ToastProvider | showToast(msg, type), globalToast() for non-component code |
-| 5 | AuthProvider | identity, login/register/logout, bootstrap state machine |
-| 6 | PagesProvider | pages array, activePage, CRUD with toast feedback |
-| 7 | NavigationProvider | sidebar state, search, folder navigation |
+| Order | Provider | Purpose | Available before auth? |
+|-------|----------|---------|----------------------|
+| 1 | ViewportProvider | isNarrow, isTablet, isTouch, viewport width | Yes |
+| 2 | ThemeProvider | Design tokens (C, SHADOW), theme name, applyTheme() | Yes |
+| 3 | ToastProvider | showToast(msg, type), globalToast() for non-component code | Yes |
+| 4 | PlatformProvider | Composition layer containing AuthProvider → AuthGate → PagesProvider → NavigationProvider | Partially (AuthProvider yes, Pages/Nav no) |
+| 5 | UserSyncProvider | Cross-device sync via UserRoom WebSocket | No (guards on identity) |
+| 6 | ColorMappingProvider | Per-column color assignments for select/status fields | No (uses usePages) |
+| 7 | LinksProvider | Cross-page record/field references | No (guards on isAuthenticated) |
+| 8 | NeuronsProvider | Relationship clusters | No (guards on isAuthenticated) |
+| 9 | RecordDrawerProvider | Drawer open/close state | No (pure state, no API calls) |
 
-Additional providers nested after the core seven: UserSyncProvider, CollaborationProvider, ColorMappingProvider, LinksProvider, NeuronsProvider, RecordDrawerProvider.
+PlatformProvider is a composition layer that internally nests AuthProvider, **AuthGate**, PagesProvider, and NavigationProvider. The AuthGate component sits between AuthProvider and the data-fetching providers, ensuring nothing below mounts until authentication is confirmed.
 
-PlatformProvider is a composition layer that internally nests AuthProvider, PagesProvider, and NavigationProvider, then merges their outputs into a single `usePlatform()` hook for backward compatibility.
+`usePlatform()` merges all three sub-contexts (auth, pages, navigation) for backward compatibility. Components rendered by AuthGate (like LoginScreen) must use `useAuth()` directly — they cannot use `usePlatform()` because PagesProvider and NavigationProvider are not yet mounted.
+
+**LoginScreen uses `useAuth()` (not `usePlatform()`).** This is required because LoginScreen renders inside AuthGate, above PagesProvider and NavigationProvider.
 
 ---
 
@@ -257,13 +264,26 @@ This is consumed by PageShell, which registers callbacks so that when a user sav
 
 ## Auth Gates & Setup Flow
 
-AppContent checks authentication state before rendering the main layout:
+Authentication gating is handled by the `AuthGate` component inside PlatformContext (not in AppContent). AuthGate renders LoginScreen in three cases:
 
-1. **No worker connection** (`!isSetup`) → render `<SetupWizard />`
-2. **Multi-user enabled, no identity** → render `<LoginScreen />`
-3. **Authenticated** → render full app layout
+1. **No worker connection** (`!isSetup`) → render `<LoginScreen configError="..." />`
+2. **Boot in progress** (`identityLoading`) → render `<LoginScreen loading />`
+3. **Not authenticated** (`!isAuthenticated`) → render `<LoginScreen />` (shows login form)
+4. **Authenticated** → render `{children}` (PagesProvider, NavigationProvider, and everything downstream)
 
-The AuthContext bootstrap state machine follows: `idle → booting → ready`. During `booting`, it calls `initDatabase()` to create D1 tables (if needed) and detect multi-user mode, then validates any existing JWT via `authMe()`.
+AppContent only renders when the user is fully authenticated. It does not contain any auth gate logic — that responsibility was moved to PlatformContext.
+
+### Bootstrap State Machine
+
+The AuthContext bootstrap follows: `idle → booting → ready | error`.
+
+During `booting`:
+1. Calls `initDatabase()` — runs D1 schema creation/migration (10s timeout)
+2. Detects multi-user mode and first-boot invite codes
+3. If multi-user, calls `authMe()` — validates existing JWT (10s timeout)
+4. Sets `identityLoading = false` when complete
+
+The `/init` endpoint uses a **schema version fast path**: it checks a `schema_version` key in the `connections` table. If the version matches `CURRENT_SCHEMA_VERSION`, it skips all DDL and returns immediately (~2-3 queries). On first boot or after a version bump, it runs the full migration path with batched DDL statements (using `env.DB.batch()`) and writes the new version at the end.
 
 ---
 

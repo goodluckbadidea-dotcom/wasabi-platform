@@ -168,6 +168,26 @@ npx wrangler deploy --config wrangler-worker.toml
 npx wrangler deployments list --config wrangler-worker.toml
 ```
 
+### Schema Version and `/init` Fast Path
+
+The worker's `/init` endpoint uses a **schema version fast path** to avoid running ~92 DDL statements on every page load.
+
+**How it works:**
+1. On `/init`, the worker checks `connections.schema_version` against `CURRENT_SCHEMA_VERSION` (defined near the top of `handleInit()` in worker.js)
+2. If the version matches → skip all DDL, return immediately with just the multi-user status (~2-3 queries, <1s)
+3. If the version doesn't match (first boot, factory reset, or version bump) → run full migration path with batched DDL (`env.DB.batch()`), then write the new version
+
+**When deploying a worker with new schema changes:**
+1. Bump `CURRENT_SCHEMA_VERSION` in worker.js (e.g., "2" → "3")
+2. Add new DDL/migrations to the handleInit function
+3. Deploy: `npx wrangler deploy --config wrangler-worker.toml`
+4. The first `/init` call after deploy will detect the version mismatch, run the full migration, and update `schema_version`
+5. Subsequent loads will hit the fast path again
+
+**If something goes wrong with migrations:**
+- The `schema_version` row can be manually deleted from the `connections` table to force a full re-init on next load
+- Factory reset also clears this, triggering a full re-init
+
 ---
 
 ## Environment Variables & Secrets

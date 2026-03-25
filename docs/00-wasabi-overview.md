@@ -57,11 +57,12 @@ Browser (React 18 SPA)
   ├── src/hooks/          → Custom hooks: useViewPrefs, useKeyboardShortcuts
   └── src/lib/            → Utilities: api.js (fetch wrapper), iframeHelpers, tableSocket
 
-Worker (Cloudflare Workers — single file: worker.js, ~8900 lines)
+Worker (Cloudflare Workers — single file: worker.js, ~9500 lines)
   ├── D1 Database         → 15+ tables: pages, rows, users, notifications, active_sessions, etc.
   ├── R2 Storage          → File attachments (wasabi-docs bucket)
   ├── Durable Objects     → TableRoom (per-table WebSocket), UserRoom (per-user broadcast)
-  └── Cron Trigger        → Every 2 minutes: automation engine, sync, cleanup
+  ├── Cron Trigger        → Every 2 minutes: automation engine, sync, cleanup
+  └── Schema Versioning   → /init fast path: checks schema_version, skips DDL for returning users
 ```
 
 ### Infrastructure
@@ -82,6 +83,8 @@ Worker (Cloudflare Workers — single file: worker.js, ~8900 lines)
 - **Inline styles** with mutable design tokens — no CSS files, no CSS-in-JS library
 - **5 themes** (Shoji, Obsidian, Hinoki, Kori, Sumi) — all derived from the token system in `src/design/tokens.js`
 - **Single worker.js** handles all API routes, auth, WebSocket upgrade, cron, and OAuth
+- **Schema version fast path** on `/init`: returning users skip all DDL (~2-3 queries in <1s instead of ~92). First boot and version bumps use batched DDL via `env.DB.batch()`. Version tracked in `connections` table as `schema_version`.
+- **Auth gate in PlatformContext**: `AuthGate` component sits between AuthProvider and data-fetching providers (PagesProvider, NavigationProvider), ensuring nothing mounts pre-auth
 - **AI routing**: `queryClassifier.js` determines complexity → Haiku (fast/cheap) or Sonnet (complex reasoning) with 50+ tools available to the agent
 - **Real-time collaboration** via Durable Objects — field-level conflict detection with `cell_versions`
 
@@ -199,7 +202,8 @@ User message → queryClassifier (strategy/complexity/model)
 | Code sandbox | Timeout + blocklist | 5s deadline guard + infinite loop detection in toolExecutor |
 | Session management | Multi-device | active_sessions table, revocation, WebSocket broadcast |
 | Role enforcement | DB lookup per request | getFreshRole() queries users table, not stale JWT claim |
-| Per-user scoping | Ownership verification | User tasks, comments, notifications filtered by user ID |
+| Per-user scoping | Ownership verification | User tasks, comments, notifications filtered by target_user_id (no admin bypass) |
+| Instant notifications | WebSocket push via UserRoom DO | Badge updates instantly on @mention or comment, 60s polling fallback |
 | Input validation | Password policy | Min 8 chars, uppercase + lowercase + digit |
 | Invite codes | Expiration | 7-day TTL on invite codes |
 

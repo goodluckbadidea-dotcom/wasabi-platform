@@ -1,6 +1,6 @@
 # File Map
 
-**Last Updated:** 2026-03-21
+**Last Updated:** 2026-03-24
 
 Complete source file listing for the Wasabi platform. Excludes `node_modules/`, `dist/`, and `.git/`.
 
@@ -190,7 +190,7 @@ Shared UI components used across views.
 | `EmptyState.jsx` | Empty state placeholder component (new) |
 | `FormulaBar.jsx` | Formula input bar for computed columns |
 | `InlineChart.jsx` | Inline sparkline/mini chart component |
-| `MentionInput.jsx` | @-mention input with user autocomplete |
+| `MentionInput.jsx` | @-mention input with user autocomplete (used in RecordComments and RecordNotes) |
 | `MultiSelectPicker.jsx` | Multi-select tag picker |
 | `PagePermissionsPanel.jsx` | Page-level permission management |
 | `PinLockOverlay.jsx` | PIN lock overlay for secure pages |

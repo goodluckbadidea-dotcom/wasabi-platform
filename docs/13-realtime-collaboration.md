@@ -1,6 +1,6 @@
 # Real-Time Collaboration
 
-**Last Updated:** 2026-03-21
+**Last Updated:** 2026-03-24
 
 ## Product Context
 
@@ -136,13 +136,16 @@ Cross-device synchronization for a single user. When something changes that affe
 | Server -> Client | `dashboard_update` | `{...}` | Dashboard data changed |
 | Server -> Client | `nav_update` | `{...}` | Navigation/page list changed |
 | Server -> Client | `task_cache_invalidate` | `{...}` | User tasks cache should be cleared |
+| Server -> Client | `notification_new` | `{notificationId}` | New notification created for this user |
 | Server -> Client | `session_revoked` | `{sessionId}` | Admin revoked a session |
 
 ### HTTP Broadcast Endpoint
 
 UserRoom exposes an HTTP endpoint for server-initiated messages. When the worker needs to notify a user (e.g., session revocation by admin), it sends an HTTP request to the UserRoom DO, which then broadcasts to all of that user's WebSocket connections.
 
-This is used for session revocation: when an admin revokes a session via SystemManager, the worker calls UserRoom's HTTP endpoint, which broadcasts `session_revoked` to the target user's devices. The frontend `UserSyncContext` receives this and forces logout.
+This is used for:
+- **Session revocation:** When an admin revokes a session via SystemManager, the worker calls UserRoom's HTTP endpoint, which broadcasts `session_revoked` to the target user's devices. The frontend `UserSyncContext` receives this and forces logout.
+- **Instant notification push:** When `createNotificationInternal()` inserts a targeted notification (comment, @mention), it sends a `notification_new` message to the target user's UserRoom. Navigation.jsx subscribes via `UserSyncContext.onNotificationNew()` and immediately increments the sidebar badge count.
 
 ---
 
@@ -171,6 +174,8 @@ Subscribes to the UserRoom WebSocket via `UserSocket`. Handles cross-device sync
 ### CollabSyncBridge
 
 Located in `PageShell.jsx`. Listens for `record_updated` and `save_result` WebSocket events from the CollaborationContext and triggers data re-fetches with a 300ms debounce. This ensures the table view stays current when other users make changes.
+
+**Important:** Remote `record_updated` events are debounced at 300ms in CollaborationContext to prevent render thrashing when multiple users edit simultaneously. Without this debounce, rapid incoming updates can cause the view to "bounce" between states as each update triggers a re-render before the previous one settles.
 
 ### PresenceAvatars
 

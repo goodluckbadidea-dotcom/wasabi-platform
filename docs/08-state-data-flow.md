@@ -48,7 +48,14 @@ No localStorage usage. Values update reactively via matchMedia change listeners.
 
 **File:** `src/context/PlatformContext.jsx`
 
-Composition layer that wraps AuthProvider, PagesProvider, and NavigationProvider internally, then merges their exports into a single `usePlatform()` hook for backward compatibility.
+Composition layer that wraps AuthProvider → **AuthGate** → PagesProvider → NavigationProvider internally, then merges their exports into a single `usePlatform()` hook for backward compatibility.
+
+**Internal provider chain:**
+```
+AuthProvider → AuthGate → PagesProvider → NavigationProvider → {children}
+```
+
+The `AuthGate` component ensures PagesProvider and NavigationProvider never mount before authentication is confirmed. It renders LoginScreen for unauthenticated states and only passes through `{children}` when `isAuthenticated === true`.
 
 **Key state (merged from sub-providers):**
 - `workerConnection` — { workerUrl, secret } for the Cloudflare Worker
@@ -60,6 +67,8 @@ Composition layer that wraps AuthProvider, PagesProvider, and NavigationProvider
 - All CRUD operations from PagesProvider
 - All auth operations from AuthProvider
 - All navigation operations from NavigationProvider
+
+**Important:** `usePlatform()` can only be called from components that render BELOW AuthGate (i.e., after authentication). Components rendered BY AuthGate (like LoginScreen) must use `useAuth()` directly.
 
 ---
 
@@ -89,10 +98,17 @@ Handles authentication, worker connection, and multi-user identity.
 - `isAuthenticated` — boolean
 - `identityLoading` — boolean, true during bootstrap
 
-**Bootstrap state machine:** `idle → booting → ready`
+**Bootstrap state machine:** `idle → booting → ready | error`
 1. `idle` — initial state on mount
-2. `booting` — calls `initDatabase()` to create D1 tables, detect multi-user mode; validates existing JWT via `authMe()`
+2. `booting` — calls `initDatabase()` (10s timeout) to run D1 schema migrations and detect multi-user mode; if multi-user, validates existing JWT via `authMe()` (10s timeout)
 3. `ready` — bootstrap complete, auth state resolved
+4. `error` — boot failed (e.g., worker unreachable), `bootError` message set
+
+The `/init` endpoint uses a **schema version fast path** (see worker.js `CURRENT_SCHEMA_VERSION`). Returning users hit 2-3 queries instead of the full migration path. First boot or version bumps run batched DDL via `env.DB.batch()`.
+
+**Auth gate location:** The `AuthGate` component in `PlatformContext.jsx` (not AppContent) checks `isSetup`, `identityLoading`, `isAuthenticated`, and `bootError` to decide whether to render `LoginScreen` or `{children}`. PagesProvider and NavigationProvider only mount after AuthGate passes.
+
+**LoginScreen hook:** LoginScreen uses `useAuth()` directly (not `usePlatform()`), because it renders inside AuthGate above PagesProvider/NavigationProvider.
 
 **Key methods:**
 - `login(displayName, password)` — authenticates, receives JWT
@@ -137,10 +153,13 @@ Manages current navigation state: which page is active, which folder is selected
 - `sidebarCollapsed` — boolean
 - `searchQuery` — sidebar search text
 - `expandedNodes` — Set of expanded folder node IDs
+- `pendingRecordId` — record ID to auto-open after navigation (used by notification click-through; cleared after use by PageShell)
 
 **Key methods:**
 - `setActivePage(id)` — navigate to a page or system route
 - `setActiveFolder(id)` — select folder context
+- `setPendingRecordId(id)` — set a record to open after next page navigation (used by NotificationFeed)
+- `clearPendingRecordId()` — clear after PageShell consumes it
 - `toggleSidebar()` — collapse/expand sidebar
 - `toggleExpand(nodeId)` — expand/collapse a folder in the sidebar tree
 
@@ -183,11 +202,17 @@ Connection is per-table: `wss://{worker}/ws/table/{tableId}?token={jwt}`
 Cross-device synchronization via WebSocket connection to a UserRoom Durable Object.
 
 **Key state/methods:**
+- `sendDashboardUpdate(widgets)` — broadcast dashboard changes to other devices
 - `sendNavUpdate(pageId, folderId)` — broadcast navigation to other devices
+- `onDashboardUpdate(callback)` — listen for dashboard changes from other devices
 - `onNavUpdate(callback)` — listen for navigation changes from other devices
 - `onSessionRevoked(callback)` — listen for session revocation (logout from another device)
+- `onTaskCacheInvalidate(callback)` — listen for task cache invalidation
+- `onNotificationNew(callback)` — listen for new notification push (instant badge update)
 
 **session_revoked handling:** When the UserRoom broadcasts a `session_revoked` message (triggered when an admin revokes a session or the user logs out on another device), the callback clears local identity and redirects to the login screen.
+
+**notification_new handling:** When the worker creates a targeted notification (comment, mention, etc.), it sends a POST to the target user's UserRoom DO, which broadcasts to all connected sockets. Navigation.jsx subscribes and immediately increments the unread badge count.
 
 Connection is per-user: `wss://{worker}/ws/user/{userId}?token={jwt}`
 
@@ -294,11 +319,24 @@ Used for: real-time presence, typing indicators, field-level conflict detection,
 ```
 UserSyncContext connects to UserRoom DO
   → wss://{worker}/ws/user/{userId}?token={jwt}
-  → Sends: nav_update
-  → Receives: nav_update, session_revoked
+  → Sends: dashboard_update, nav_update, task_cache_invalidate
+  → Receives: devices, dashboard_update, nav_update, session_revoked, task_cache_invalidate, notification_new
 ```
 
-Used for: syncing navigation across devices, broadcasting session revocation.
+Used for: syncing navigation across devices, broadcasting session revocation, instant notification badge updates.
+
+### Instant Notification Push
+
+```
+User A @mentions User B in a comment or note
+  → Worker inserts notification into D1
+  → Worker sends POST to User B's UserRoom DO /broadcast endpoint
+  → UserRoom broadcasts { type: "notification_new" } to all of User B's WebSocket connections
+  → User B's Navigation.jsx receives event via UserSyncContext.onNotificationNew
+  → Sidebar badge increments immediately (no polling delay)
+```
+
+The notification badge in Navigation.jsx also polls `getUnreadNotificationCount()` every 60 seconds as a fallback.
 
 ---
 

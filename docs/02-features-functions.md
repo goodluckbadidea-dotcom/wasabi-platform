@@ -75,7 +75,7 @@ Shared database views. Workspace-scoped with per-page permissions.
 | Document | `Document.jsx` | Document page container |
 | CustomView | `CustomView.jsx` | User-authored HTML/JS views |
 | NetworkGraph | `NetworkGraph.jsx` | Visual graph of record relationships |
-| NotificationFeed | `NotificationFeed.jsx` | Notification inbox with filtering |
+| NotificationFeed | `NotificationFeed.jsx` | Notification inbox with filtering, click-through to source record |
 | ActivityFeed | `ActivityFeed.jsx` | Record activity/change log |
 | CardGrid | `CardGrid.jsx` | Card grid layout with image/title/description |
 | Charts | `Charts.jsx` | Data visualization (bar, line, pie, etc.) |
@@ -316,6 +316,58 @@ User-curated domain rules and business context. Each entry has:
 - `related_pages` — linked page IDs
 
 Knowledge base entries are injected into the AI system prompt on every agent interaction, giving the AI persistent domain awareness without requiring re-explanation.
+
+---
+
+## Notification System
+
+### Overview
+
+Notifications are **user-scoped** — every user (including admins) sees only notifications targeted at them. There is no admin bypass that shows all notifications.
+
+### Notification Sources
+
+| Source | Trigger | Target |
+|--------|---------|--------|
+| Comment on owned record | User A comments on a record owned by User B | Record owner(s) (excludes commenter) |
+| @mention in comment | User types `@Name` in a record comment | The mentioned user (including self-mentions) |
+| @mention in note | User types `@Name` in a record note | The mentioned user (including self-mentions) |
+| Automation/system | Automation rule or system event | Specified target or broadcast |
+
+### @Mention System
+
+- **Regex:** `/@[\w]+(?=\s|$|[.,!?;:])/g` — matches `@` followed by word characters, terminated by whitespace, end-of-string, or punctuation
+- **Resolution:** Extracted names are matched case-insensitively against `users.display_name`
+- **Self-mentions:** Allowed. A user can @mention themselves and will receive the notification.
+- **Dedup guard:** Duplicate mention notifications (same type, record, target, actor) within 5 minutes are skipped
+- **Available in:** Record comments (`RecordComments.jsx`) and record notes (`RecordNotes.jsx`) via `MentionInput` component
+
+### Notification Click-Through
+
+When a user clicks "Go To Task" on a notification that has `record_id` and `page_config_id`:
+1. `NavigationContext.pendingRecordId` is set to the target record ID
+2. `setActivePage(pageConfigId)` navigates to the database page
+3. `PageShell` mounts, detects `pendingRecordId`, finds the matching row in data
+4. Opens `RecordDetail` drawer for that record automatically
+5. Clears `pendingRecordId`
+
+### Instant Badge (WebSocket Push)
+
+The sidebar notification badge updates instantly via WebSocket, not just polling:
+1. Worker's `createNotificationInternal()` inserts notification into D1
+2. Worker sends `{ type: "notification_new" }` to target user's `UserRoom` Durable Object
+3. `UserSyncContext` receives the message and fires `onNotificationNew` handlers
+4. `Navigation.jsx` subscribes and increments `notifUnreadCount` immediately
+5. Polling at 60s serves as fallback only
+
+### Worker Functions
+
+| Function | Location | Purpose |
+|----------|----------|---------|
+| `createNotificationInternal()` | worker.js | Inserts notification + WebSocket push to target user |
+| `extractMentions()` | worker.js | Regex extraction of @mention names from text |
+| `handleCreateComment()` | worker.js | Comment creation + owner/mention notification triggers |
+| `handleSaveNote()` | worker.js | Note save + mention notification triggers |
 
 ---
 

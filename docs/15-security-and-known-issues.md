@@ -1,6 +1,6 @@
 # Security Posture & Known Issues
 
-**Last Updated:** 2026-03-21
+**Last Updated:** 2026-03-24
 
 ## Product Context
 
@@ -23,6 +23,8 @@ The following security features are implemented and active in production.
 | Session management | active_sessions table, revocation, WebSocket broadcast | `worker.js`, UserRoom Durable Object |
 | Role enforcement | getFreshRole() queries DB, not stale JWT claim | `worker.js` notification handlers |
 | Per-user data scoping | Ownership verification on user tasks, server-side comment user_id | `src/features/useTasksTable.js`, `worker.js` |
+| Notification scoping | All users (including admins) see only notifications targeted at them — no admin bypass | `worker.js` GET /notifications, `NotificationFeed.jsx` |
+| Mention dedup guard | Duplicate @mention notifications for same record/target/actor skipped within 5 minutes | `worker.js` handleCreateComment, handleSaveNote |
 | Input validation | Password policy (8+ chars, upper+lower+digit), invite expiration | `worker.js` registration handler |
 | Plugin validation | Blocklist: eval, import, require, window, document, etc. | `worker.js` validatePluginCodeServer |
 | Z-index isolation | Centralized Z scale prevents layer conflicts | `src/design/tokens.js` Z object |
@@ -90,7 +92,11 @@ Dialogs and modals have ARIA attributes (`role="dialog"`, `aria-modal="true"`, `
 
 ### Auth Bootstrap Race Condition
 
-The initial auth check on page load uses a `hasBootstrapped` ref to prevent duplicate refresh attempts. However, there is no `AbortController` to cancel in-flight requests if the component unmounts during the bootstrap sequence. In practice this is benign (the request completes or fails silently), but it is technically a race condition.
+The initial auth check on page load uses a boot state machine (`idle → booting → ready | error`) to prevent duplicate init attempts. However, there is no `AbortController` to cancel in-flight requests if the component unmounts during the bootstrap sequence. In practice this is benign (the request completes or fails silently), but it is technically a race condition.
+
+### Auth Gate Architecture
+
+The auth gate lives in `PlatformContext.jsx` as the `AuthGate` component, positioned between `AuthProvider` and `PagesProvider`/`NavigationProvider`. This ensures data-fetching providers never mount before authentication completes. Components rendered by AuthGate (currently only `LoginScreen`) must use `useAuth()` directly — they **cannot** use `usePlatform()`, `usePages()`, or `useNavigation()` because those providers are not mounted yet. If new pre-auth components are added in the future, they must follow this same constraint.
 
 ### Bare Catch Blocks
 
