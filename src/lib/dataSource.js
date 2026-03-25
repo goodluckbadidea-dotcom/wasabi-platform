@@ -213,10 +213,13 @@ export async function createRecord(pageConfig, properties, user, { pinToken, par
     const tableId = pageConfig.id;
     const schemaRes = await getTableSchema(tableId);
     const columns = schemaRes.columns || [];
+    const subColumns = schemaRes.sub_columns || [];
 
     // Convert Notion-style properties to D1 cells
+    // Check both parent columns and sub-item columns for matching field names
+    const allColumns = parentRowId ? [...columns, ...subColumns] : columns;
     const cells = {};
-    for (const col of columns) {
+    for (const col of allColumns) {
       if (properties[col.name] !== undefined) {
         cells[col.id] = extractRawValue(properties[col.name], col.type);
       }
