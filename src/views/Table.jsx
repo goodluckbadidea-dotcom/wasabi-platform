@@ -3192,6 +3192,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
             resolveLinksForView(pageConfig?.id, viewIdx).then(setResolvedLinks).catch(err => console.warn("[Table] resolveLinksForView:", err.message || err));
           }}
           onRefresh={onRefresh}
+          parentTitle={detailPage?._parentRowId ? getPageTitle(processedData.find(r => r.id === detailPage._parentRowId)) : undefined}
         />
       )}
 

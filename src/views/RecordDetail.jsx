@@ -418,7 +418,7 @@ const OwnerPickerDropdown = React.forwardRef(function OwnerPickerDropdown({ owne
 });
 
 // ── Main Component ──
-export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete, pageConfigId, resolvedLinks, onLinkField, onUnlinkField, onRefresh }) {
+export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete, pageConfigId, resolvedLinks, onLinkField, onUnlinkField, onRefresh, parentTitle }) {
   const { isTablet } = useViewport();
   const { identity } = usePlatform();
   const [editingField, setEditingField] = useState(null);
@@ -592,7 +592,7 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
         <div style={ds.tabBar}>
           {[
             { key: "properties", label: "Properties" },
-            ...(page?._source === "d1" ? [{ key: "subitems", label: "Sub-Items" }] : []),
+            ...(page?._source === "d1" && !page?._parentRowId ? [{ key: "subitems", label: "Sub-Items" }] : []),
             { key: "notes", label: "Notes" },
             { key: "comments", label: "Comments" },
             { key: "files", label: "Files" },
@@ -682,7 +682,7 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
                     <span style={ds.propType}>Relation</span>
                   </div>
                   <div style={{ ...ds.propValue, color: C.accent, fontSize: 13 }}>
-                    {page._parentRowId.slice(0, 8)}...
+                    {parentTitle || page._parentRowId.slice(0, 8) + "..."}
                     <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.7 }}>&#x2197;</span>
                   </div>
                 </div>
