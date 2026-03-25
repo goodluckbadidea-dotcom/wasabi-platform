@@ -218,10 +218,23 @@ export async function createRecord(pageConfig, properties, user, { pinToken, par
     // Convert Notion-style properties to D1 cells
     // Check both parent columns and sub-item columns for matching field names
     const allColumns = parentRowId ? [...columns, ...subColumns] : columns;
+    // Determine effective type for extraction — d1SchemaToClassified treats
+    // col.type === "title" OR first column (parent or sub) as title, so
+    // buildProp produces title-format props even when raw col.type is "text".
+    const subHasExplicitTitle = subColumns.some(c => c.type === "title");
     const cells = {};
     for (const col of allColumns) {
       if (properties[col.name] !== undefined) {
-        cells[col.id] = extractRawValue(properties[col.name], col.type);
+        // If this sub-column is classified as title (explicit or first), tell
+        // extractRawValue to read it as "title" regardless of raw col.type
+        let effectiveType = col.type;
+        if (parentRowId && subColumns.length > 0) {
+          const subIdx = subColumns.indexOf(col);
+          if (subIdx >= 0 && (col.type === "title" || (subIdx === 0 && !subHasExplicitTitle))) {
+            effectiveType = "title";
+          }
+        }
+        cells[col.id] = extractRawValue(properties[col.name], effectiveType);
       }
     }
 
