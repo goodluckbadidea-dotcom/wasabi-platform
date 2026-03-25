@@ -17,6 +17,7 @@ import {
 } from "../design/icons.jsx";
 import FilterChips, { applyChipFilters } from "./FilterChips.jsx";
 import RecordDetail from "./RecordDetail.jsx";
+import NewRecordModal from "./NewRecordModal.jsx";
 import { useLinks } from "../context/LinksContext.jsx";
 import LinkPicker from "../core/LinkPicker.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
@@ -1006,6 +1007,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
 
   // ── Record Detail Panel ──
   const [detailPage, setDetailPage] = useState(null);
+  const [showNewModal, setShowNewModal] = useState(false);
   const lastRowClickRef = useRef({ id: null, time: 0 });
 
   // Open record from notification click-through
@@ -1605,7 +1607,21 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     try {
       const schemaRes = await getTableSchema(pageConfig.id);
       const existingSub = schemaRes?.sub_columns || [];
-      const newSub = [...existingSub, { id: `subcol_${Date.now()}`, name: addSubColName.trim(), type: addSubColType }];
+      // Ensure a title column always exists: if no existing column has type "title",
+      // mark the first existing column as title (or if this is the very first column, mark it as title)
+      const hasTitleCol = existingSub.some(c => c.type === "title");
+      let updatedExisting = existingSub;
+      if (!hasTitleCol && existingSub.length > 0) {
+        // Retroactively mark the first existing column as title so it isn't displaced
+        updatedExisting = existingSub.map((c, i) => i === 0 ? { ...c, type: "title" } : c);
+      }
+      const isFirstCol = existingSub.length === 0;
+      const newCol = {
+        id: `subcol_${Date.now()}`,
+        name: addSubColName.trim(),
+        type: isFirstCol ? "title" : addSubColType,
+      };
+      const newSub = [...updatedExisting, newCol];
       await updateSubColumnSchema(pageConfig.id, newSub);
       setAddSubColOpen(false);
       setAddSubColName("");
@@ -2436,20 +2452,11 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           )}
         </div>
 
-        {/* Add Row — scrolls to ghost row */}
+        {/* Add Row — opens NewRecordModal */}
         {onCreate && targetDatabaseId && (
           <button
             style={styles.refreshBtn}
-            onClick={() => {
-              if (scrollAreaRef.current) {
-                scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
-              }
-              const titleField = schema?.title?.name;
-              if (titleField) {
-                const colIdx = columns.indexOf(titleField);
-                setFocusedCell({ row: displayList.length, col: colIdx >= 0 ? colIdx : 0 });
-              }
-            }}
+            onClick={() => setShowNewModal(true)}
             title="Add new row"
           >
             <IconPlus size={14} color={C.darkMuted} />
@@ -2636,169 +2643,35 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                   {/* Add column button */}
                   {canEditSchema && (
                     <div style={{ ...styles.gridHeaderCell, textAlign: "center", padding: "10px 8px", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
-                      {addColOpen ? (
-                        <div
-                          style={{
-                            position: "absolute", top: "100%", right: 0, zIndex: 100,
-                            background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
-                            borderRadius: RADIUS.lg, padding: 14, width: 240,
-                            boxShadow: SHADOW.dropdown, display: "flex", flexDirection: "column", gap: 10,
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          onMouseDown={(e) => e.stopPropagation()}
-                        >
-                          <div style={{ fontSize: 11, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                            New Column
-                          </div>
-                          <input
-                            autoFocus
-                            placeholder="Column name..."
-                            value={addColName}
-                            onChange={(e) => setAddColName(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Enter") handleAddCol(); if (e.key === "Escape") setAddColOpen(false); }}
-                            style={{
-                              border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
-                              background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 13,
-                              padding: "7px 10px", outline: "none", width: "100%", boxSizing: "border-box",
-                            }}
-                          />
-                          <div style={{ fontSize: 10, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                            Column Type
-                          </div>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
-                            {COLUMN_TYPES.map((t) => {
-                              const isSelected = addColType === t.value;
-                              return (
-                                <div
-                                  key={t.value}
-                                  style={{
-                                    display: "flex", alignItems: "center", gap: 6,
-                                    padding: "5px 8px", borderRadius: RADIUS.sm,
-                                    cursor: "pointer", fontSize: 12, fontFamily: FONT,
-                                    transition: "background 0.1s",
-                                    color: isSelected ? C.accent : C.darkText,
-                                    background: isSelected ? `${C.accent}15` : "transparent",
-                                    fontWeight: isSelected ? 600 : 400,
-                                  }}
-                                  onClick={() => setAddColType(t.value)}
-                                  onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = C.darkSurf2; }}
-                                  onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = isSelected ? `${C.accent}15` : "transparent"; }}
-                                >
-                                  <span style={{ width: 16, textAlign: "center", fontSize: 12, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                    {t.Icon ? <t.Icon size={13} color={isSelected ? C.accent : C.darkMuted} /> : <span style={{ fontWeight: 600, color: isSelected ? C.accent : C.darkMuted }}>{t.text}</span>}
-                                  </span>
-                                  <span>{t.label}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                          {addColType === "relation" && isNotionTable && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 2 }}>
-                              <div style={{ fontSize: 10, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                                Target Database
-                              </div>
-                              <input
-                                placeholder="Search databases..."
-                                value={dbSearchQuery}
-                                onChange={(e) => {
-                                  setDbSearchQuery(e.target.value);
-                                  searchRelationDbs(e.target.value);
-                                }}
-                                onFocus={() => { if (!dbSearchResults.length) searchRelationDbs(""); }}
-                                style={inputFieldStyle}
-                              />
-                              <div style={{ maxHeight: 120, overflowY: "auto" }}>
-                                {dbSearchResults.map((db) => (
-                                  <div
-                                    key={db.id}
-                                    onClick={() => setAddColRelationDb(db)}
-                                    style={{
-                                      padding: "5px 8px", fontSize: 12, cursor: "pointer",
-                                      borderRadius: RADIUS.sm, fontFamily: FONT,
-                                      color: addColRelationDb?.id === db.id ? C.accent : C.darkText,
-                                      background: addColRelationDb?.id === db.id ? `${C.accent}15` : "transparent",
-                                      transition: "background 0.1s",
-                                    }}
-                                    onMouseEnter={(e) => { if (addColRelationDb?.id !== db.id) e.currentTarget.style.background = C.darkSurf2; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.background = addColRelationDb?.id === db.id ? `${C.accent}15` : "transparent"; }}
-                                  >
-                                    {db.title}
-                                  </div>
-                                ))}
-                                {dbSearching && <div style={{ padding: 6, fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>Searching...</div>}
-                                {!dbSearching && dbSearchResults.length === 0 && dbSearchQuery && (
-                                  <div style={{ padding: 6, fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>No databases found</div>
-                                )}
-                              </div>
-                              {addColRelationDb && (
-                                <>
-                                  <div style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>
-                                    Selected: <span style={{ color: C.accent }}>{addColRelationDb.title}</span>
-                                  </div>
-                                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontFamily: FONT, color: C.darkText, cursor: "pointer" }}>
-                                    <input
-                                      type="checkbox"
-                                      checked={addColSynced}
-                                      onChange={(e) => setAddColSynced(e.target.checked)}
-                                      style={{ accentColor: C.accent }}
-                                    />
-                                    Two-way relation
-                                  </label>
-                                  {addColSynced && (
-                                    <input
-                                      placeholder="Backlink column name..."
-                                      value={addColSyncedName}
-                                      onChange={(e) => setAddColSyncedName(e.target.value)}
-                                      style={inputFieldStyle}
-                                    />
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          )}
-                          {(() => {
-                            const canAdd = addColName.trim() && !(addColType === "relation" && (!addColRelationDb || (addColSynced && !addColSyncedName.trim())));
-                            return (
-                              <button
-                                onClick={handleAddCol}
-                                disabled={!canAdd}
-                                style={{
-                                  background: C.accent, color: "#fff", border: "none", borderRadius: RADIUS.sm,
-                                  padding: "7px 14px", fontSize: 12, fontFamily: FONT, fontWeight: 600,
-                                  cursor: canAdd ? "pointer" : "default",
-                                  opacity: canAdd ? 1 : 0.4, transition: "opacity 0.15s", marginTop: 2,
-                                }}
-                              >Add Column</button>
-                            );
-                          })()}
-                        </div>
-                      ) : (
-                        <div
-                          style={{
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            width: 26, height: 26, borderRadius: RADIUS.pill,
-                            border: `1px dashed ${C.darkBorder}`,
-                            cursor: "pointer", transition: "all 0.15s",
-                            color: C.darkMuted, opacity: 0.65,
-                          }}
-                          onClick={(e) => { e.stopPropagation(); setAddColOpen(true); }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.opacity = "1";
-                            e.currentTarget.style.borderColor = C.accent;
-                            e.currentTarget.style.color = C.accent;
-                            e.currentTarget.style.background = `${C.accent}10`;
-                          }}
-                          onMouseLeave={(e) => {
+                      <div
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          width: 26, height: 26, borderRadius: RADIUS.pill,
+                          border: `1px dashed ${addColOpen ? C.accent : C.darkBorder}`,
+                          cursor: "pointer", transition: "all 0.15s",
+                          color: addColOpen ? C.accent : C.darkMuted,
+                          opacity: addColOpen ? 1 : 0.65,
+                          background: addColOpen ? `${C.accent}10` : "transparent",
+                        }}
+                        onClick={(e) => { e.stopPropagation(); setAddColOpen(!addColOpen); }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.opacity = "1";
+                          e.currentTarget.style.borderColor = C.accent;
+                          e.currentTarget.style.color = C.accent;
+                          e.currentTarget.style.background = `${C.accent}10`;
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!addColOpen) {
                             e.currentTarget.style.opacity = "0.65";
                             e.currentTarget.style.borderColor = C.darkBorder;
                             e.currentTarget.style.color = C.darkMuted;
                             e.currentTarget.style.background = "transparent";
-                          }}
-                          title="Add column"
-                        >
-                          <IconPlus size={13} />
-                        </div>
-                      )}
+                          }
+                        }}
+                        title="Add column"
+                      >
+                        <IconPlus size={13} />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -3389,6 +3262,161 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
         document.body
       )}
 
+      {/* ── Add Column Dialog (Portal) ── */}
+      {addColOpen && createPortal(
+        <>
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.3)", zIndex: 9998 }} onClick={() => { setAddColOpen(false); setAddColName(""); setAddColType("text"); }} />
+          <div style={{
+            position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+            background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
+            borderRadius: RADIUS.lg, boxShadow: SHADOW.dropdown,
+            padding: "24px", minWidth: 300, maxWidth: 380, zIndex: 9999, fontFamily: FONT,
+          }}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 15, fontWeight: 600, color: C.darkText, marginBottom: 16 }}>
+              New Column
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 4 }}>Column Name</label>
+              <input
+                autoFocus
+                placeholder="Column name..."
+                value={addColName}
+                onChange={(e) => setAddColName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleAddCol(); if (e.key === "Escape") { setAddColOpen(false); setAddColName(""); setAddColType("text"); } }}
+                style={{
+                  width: "100%", padding: "8px 10px", fontSize: 13,
+                  background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
+                  borderRadius: RADIUS.sm, color: C.darkText, outline: "none",
+                  fontFamily: FONT, boxSizing: "border-box",
+                }}
+              />
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 4 }}>Column Type</label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
+                {COLUMN_TYPES.map((t) => {
+                  const isSelected = addColType === t.value;
+                  return (
+                    <div
+                      key={t.value}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 6,
+                        padding: "5px 8px", borderRadius: RADIUS.sm,
+                        cursor: "pointer", fontSize: 12, fontFamily: FONT,
+                        transition: "background 0.1s",
+                        color: isSelected ? C.accent : C.darkText,
+                        background: isSelected ? `${C.accent}15` : "transparent",
+                        fontWeight: isSelected ? 600 : 400,
+                      }}
+                      onClick={() => setAddColType(t.value)}
+                      onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = C.darkSurf2; }}
+                      onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = isSelected ? `${C.accent}15` : "transparent"; }}
+                    >
+                      <span style={{ width: 16, textAlign: "center", fontSize: 12, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        {t.Icon ? <t.Icon size={13} color={isSelected ? C.accent : C.darkMuted} /> : <span style={{ fontWeight: 600, color: isSelected ? C.accent : C.darkMuted }}>{t.text}</span>}
+                      </span>
+                      <span>{t.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            {addColType === "relation" && isNotionTable && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  Target Database
+                </label>
+                <input
+                  placeholder="Search databases..."
+                  value={dbSearchQuery}
+                  onChange={(e) => {
+                    setDbSearchQuery(e.target.value);
+                    searchRelationDbs(e.target.value);
+                  }}
+                  onFocus={() => { if (!dbSearchResults.length) searchRelationDbs(""); }}
+                  style={inputFieldStyle}
+                />
+                <div style={{ maxHeight: 120, overflowY: "auto" }}>
+                  {dbSearchResults.map((db) => (
+                    <div
+                      key={db.id}
+                      onClick={() => setAddColRelationDb(db)}
+                      style={{
+                        padding: "5px 8px", fontSize: 12, cursor: "pointer",
+                        borderRadius: RADIUS.sm, fontFamily: FONT,
+                        color: addColRelationDb?.id === db.id ? C.accent : C.darkText,
+                        background: addColRelationDb?.id === db.id ? `${C.accent}15` : "transparent",
+                        transition: "background 0.1s",
+                      }}
+                      onMouseEnter={(e) => { if (addColRelationDb?.id !== db.id) e.currentTarget.style.background = C.darkSurf2; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = addColRelationDb?.id === db.id ? `${C.accent}15` : "transparent"; }}
+                    >
+                      {db.title}
+                    </div>
+                  ))}
+                  {dbSearching && <div style={{ padding: 6, fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>Searching...</div>}
+                  {!dbSearching && dbSearchResults.length === 0 && dbSearchQuery && (
+                    <div style={{ padding: 6, fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>No databases found</div>
+                  )}
+                </div>
+                {addColRelationDb && (
+                  <>
+                    <div style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>
+                      Selected: <span style={{ color: C.accent }}>{addColRelationDb.title}</span>
+                    </div>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontFamily: FONT, color: C.darkText, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={addColSynced}
+                        onChange={(e) => setAddColSynced(e.target.checked)}
+                        style={{ accentColor: C.accent }}
+                      />
+                      Two-way relation
+                    </label>
+                    {addColSynced && (
+                      <input
+                        placeholder="Backlink column name..."
+                        value={addColSyncedName}
+                        onChange={(e) => setAddColSyncedName(e.target.value)}
+                        style={inputFieldStyle}
+                      />
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => { setAddColOpen(false); setAddColName(""); setAddColType("text"); }}
+                style={{
+                  background: "transparent", border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
+                  padding: "8px 16px", fontSize: 12, fontFamily: FONT, color: C.darkMuted, cursor: "pointer",
+                }}
+              >Cancel</button>
+              {(() => {
+                const canAdd = addColName.trim() && !(addColType === "relation" && (!addColRelationDb || (addColSynced && !addColSyncedName.trim())));
+                return (
+                  <button
+                    onClick={handleAddCol}
+                    disabled={!canAdd}
+                    style={{
+                      background: canAdd ? C.accent : C.darkBorder, border: "none", borderRadius: RADIUS.sm,
+                      padding: "8px 16px", fontSize: 12, fontFamily: FONT, color: "#fff",
+                      cursor: canAdd ? "pointer" : "default",
+                      fontWeight: 600, opacity: canAdd ? 1 : 0.5,
+                    }}
+                  >Add Column</button>
+                );
+              })()}
+            </div>
+          </div>
+        </>,
+        document.body
+      )}
+
       {/* ── Add Sub-Item Column Dialog ── */}
       {addSubColOpen && createPortal(
         <>
@@ -3459,6 +3487,19 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           </div>
         </>,
         document.body
+      )}
+
+      {/* ── New Record Modal ── */}
+      {showNewModal && onCreate && (
+        <NewRecordModal
+          schema={schema}
+          onClose={() => setShowNewModal(false)}
+          onCreate={async (dbId, properties) => {
+            await onCreate(dbId, properties);
+            setShowNewModal(false);
+          }}
+          databaseId={targetDatabaseId}
+        />
       )}
     </div>
   );

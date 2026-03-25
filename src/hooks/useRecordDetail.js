@@ -1,7 +1,7 @@
 // ─── Shared Record Detail Hook ───
 // Manages record detail panel + new record modal state.
 // Used by Kanban, Calendar, CardGrid (views with modal-based record workflows).
-// Table.jsx is excluded — it uses ghost rows + inline side panel.
+// Table.jsx uses NewRecordModal directly (+ button) but manages its own detail panel for link features.
 
 import { useState, useCallback, useRef } from "react";
 
