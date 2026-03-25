@@ -386,18 +386,22 @@ function d1RowToPage(row, columns, subColumns = []) {
   });
 
   // Map sub-column cells so sub-item rows have their values in properties
-  subColumns.forEach((col) => {
+  // d1SchemaToClassified treats col.type === "title" OR idx === 0 as the title field,
+  // so we must use the same logic here to wrap the value in matching format.
+  let subHasTitle = false;
+  subColumns.forEach((col, idx) => {
     const value = row.cells[col.id];
-    if (value !== undefined && value !== null) {
-      if (col.type === "title") {
-        // Wrap as proper title format so cell renderer finds prop.title[0].plain_text
-        properties[col.name] = {
-          type: "title",
-          title: [{ type: "text", plain_text: String(value), text: { content: String(value) } }],
-        };
-      } else {
-        properties[col.name] = wrapAsNotionProp(value, col.type);
-      }
+    const isTitle = col.type === "title" || (idx === 0 && !subHasTitle);
+    if (isTitle) {
+      // Always wrap title (even if null) so cell renderer finds prop.title — matches parent col[0] behavior
+      const str = value != null ? String(value) : "";
+      properties[col.name] = {
+        type: "title",
+        title: [{ type: "text", plain_text: str, text: { content: str } }],
+      };
+      subHasTitle = true;
+    } else if (value !== undefined && value !== null) {
+      properties[col.name] = wrapAsNotionProp(value, col.type);
     }
   });
 
