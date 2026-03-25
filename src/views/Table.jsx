@@ -1930,7 +1930,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   // ── Sub-Item: Commit inline ghost row ──
   const handleSubItemGhostCommit = useCallback(async () => {
     if (!onCreate || !pageConfig?.id || !subItemGhostParent) return;
-    const titleField = schema?.title?.name;
+    // Use sub-item title field (not parent schema title) for validation
+    const titleField = subTitleField || schema?.title?.name;
     if (titleField && !subItemGhostValues[titleField]?.toString().trim()) {
       setSubItemGhostParent(null);
       setSubItemGhostValues({});
@@ -1945,10 +1946,12 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     }
     setSubItemGhostSaving(true);
     try {
+      // Use sub-item schema for type lookup, fall back to parent schema
+      const effectiveSchema = subSchema || schema;
       const properties = {};
       for (const [fieldName, val] of Object.entries(subItemGhostValues)) {
         if (val === "" || val === null || val === undefined) continue;
-        const type = getFieldType(schema, fieldName);
+        const type = getFieldType(effectiveSchema, fieldName);
         if (!type) continue;
         const prop = buildProp(type, val);
         if (prop !== undefined) properties[fieldName] = prop;
@@ -1962,7 +1965,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     } finally {
       setSubItemGhostSaving(false);
     }
-  }, [onCreate, pageConfig, subItemGhostParent, subItemGhostValues, schema]);
+  }, [onCreate, pageConfig, subItemGhostParent, subItemGhostValues, schema, subSchema, subTitleField]);
 
   // ── Sub-Item Ghost: dismiss on click-outside ──
   const subGhostRef = useRef(null);
