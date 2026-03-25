@@ -9471,6 +9471,7 @@ export class TableRoom {
       case "typing": {
         session.isTyping = true;
         session.typingField = msg.field;
+        session.typingAt = Date.now();
         session.activeRecordId = msg.recordId || session.activeRecordId;
         ws.serializeAttachment(session);
         this.broadcast({ type: "user_typing", userId: session.userId, recordId: session.activeRecordId, field: msg.field }, ws);
@@ -9594,22 +9595,39 @@ export class TableRoom {
 
   broadcastPresence() {
     const allWs = this.ctx.getWebSockets();
-    const users = [];
+    const userMap = new Map(); // userId → best session data (dedup multiple tabs)
     const joinedSockets = [];
 
     for (const ws of allWs) {
       const session = ws.deserializeAttachment();
       if (!session?.userId) continue;
       joinedSockets.push(ws);
-      users.push({
-        userId: session.userId,
-        userName: session.userName,
-        color: session.color,
-        activeRecordId: session.activeRecordId,
-        isTyping: session.isTyping,
-        typingField: session.typingField,
-      });
+
+      const existing = userMap.get(session.userId);
+      if (!existing) {
+        userMap.set(session.userId, { ...session });
+      } else {
+        // Merge: prefer typing > focused > idle
+        if (session.isTyping && !existing.isTyping) {
+          userMap.set(session.userId, { ...session });
+        } else if (session.activeRecordId && !existing.activeRecordId) {
+          userMap.set(session.userId, { ...session });
+        }
+      }
     }
+
+    const TYPING_TTL = 30000; // 30s — auto-expire stale typing indicators
+    const users = [...userMap.values()].map((s) => {
+      const typingExpired = s.isTyping && s.typingAt && (Date.now() - s.typingAt > TYPING_TTL);
+      return {
+        userId: s.userId,
+        userName: s.userName,
+        color: s.color,
+        activeRecordId: s.activeRecordId,
+        isTyping: s.isTyping && !typingExpired,
+        typingField: typingExpired ? null : s.typingField,
+      };
+    });
 
     const data = JSON.stringify({ type: "presence", users });
     for (const ws of joinedSockets) {

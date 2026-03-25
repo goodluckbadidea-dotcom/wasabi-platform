@@ -460,6 +460,11 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
     return () => collab.blurRecord();
   }, [page?.id, collab]);
 
+  // Clear typing indicator when user stops editing a field (clicks away, switches field)
+  useEffect(() => {
+    if (!editingField && collab) collab.stopTyping();
+  }, [editingField, collab]);
+
   // Get ordered property list from schema
   const properties = useMemo(() => {
     if (!page?.properties) return [];

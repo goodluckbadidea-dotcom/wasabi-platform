@@ -32,6 +32,8 @@ export default class TableSocket {
     this.idleTimer = null;
     this.idleDisconnected = false;
     this._onActivity = null;
+    this._lastFocusRecordId = null;
+    this._lastTypingField = null;
   }
 
   connect() {
@@ -73,6 +75,13 @@ export default class TableSocket {
         role: this.role,
         color: this.color,
       });
+      // Restore presence state after reconnect (e.g. idle disconnect → resume)
+      if (this._lastFocusRecordId) {
+        this.send("focus", { recordId: this._lastFocusRecordId });
+      }
+      if (this._lastTypingField && this._lastFocusRecordId) {
+        this.send("typing", { recordId: this._lastFocusRecordId, field: this._lastTypingField });
+      }
       // Start or reset idle tracking
       if (!this._onActivity) {
         this._startIdleTracking();
@@ -183,18 +192,23 @@ export default class TableSocket {
   // ── Presence shortcuts ──
 
   focusRecord(recordId) {
+    this._lastFocusRecordId = recordId;
     this.send("focus", { recordId });
   }
 
   blurRecord() {
+    this._lastFocusRecordId = null;
+    this._lastTypingField = null;
     this.send("blur", {});
   }
 
   startTyping(recordId, field) {
+    this._lastTypingField = field;
     this.send("typing", { recordId, field });
   }
 
   stopTyping() {
+    this._lastTypingField = null;
     this.send("stop_typing", {});
   }
 
