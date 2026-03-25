@@ -20,6 +20,7 @@ import { ANIM } from "../design/animations.js";
 import SyncPanel from "../components/SyncPanel.jsx";
 import ViewSettingsPanel from "../components/ViewSettingsPanel.jsx";
 import ConflictToast from "../components/ConflictToast.jsx";
+import ConfirmDialog from "./ConfirmDialog.jsx";
 import PinLockOverlay, { getPinToken } from "../components/PinLockOverlay.jsx";
 import { useColorMapping } from "../context/ColorMappingContext.jsx";
 import { CollaborationProvider, useCollaboration } from "../context/CollaborationContext.jsx";
@@ -73,6 +74,7 @@ export default function PageShell({
   const [showViewPicker, setShowViewPicker] = useState(false);
   const [showSync, setShowSync] = useState(false);
   const [showViewSettings, setShowViewSettings] = useState(false);
+  const [showDismissConfirm, setShowDismissConfirm] = useState(false);
 
   // Detect page types that don't need data fetching
   const sourceType = resolveSourceType(pageConfig);
@@ -526,16 +528,29 @@ export default function PageShell({
         {pendingConflicts.length > 0 && (
           <ConflictToast
             conflicts={pendingConflicts}
-            onResolve={(field, chosenValue) => {
+            onResolve={async (field, chosenValue) => {
               const conflict = pendingConflicts.find((c) => c.field === field);
               if (conflict) {
-                // Re-save with the chosen value (force write, no base_versions to skip conflict check)
-                updateRecord(pageConfig, conflict.recordId, field, chosenValue, user).catch(console.error);
+                try {
+                  const result = await updateRecord(pageConfig, conflict.recordId, field, chosenValue, user);
+                  if (result?.cell_versions) {
+                    cellVersionsRef.current[conflict.recordId] = result.cell_versions;
+                  }
+                } catch (err) { console.error("[PageShell] conflict resolve:", err); }
                 setPendingConflicts((prev) => prev.filter((c) => c.field !== field));
                 setTimeout(fetchData, 500);
               }
             }}
-            onDismiss={() => setPendingConflicts([])}
+            onDismiss={() => setShowDismissConfirm(true)}
+          />
+        )}
+        {showDismissConfirm && (
+          <ConfirmDialog
+            title="Dismiss conflicts?"
+            message={`${pendingConflicts.length} unresolved conflict${pendingConflicts.length !== 1 ? "s" : ""} will be discarded. The other user's values will remain.`}
+            confirmLabel="Dismiss"
+            onConfirm={() => { setPendingConflicts([]); setShowDismissConfirm(false); }}
+            onCancel={() => setShowDismissConfirm(false)}
           />
         )}
 

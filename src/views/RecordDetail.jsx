@@ -581,7 +581,8 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
             }}>
               <PresenceAvatars users={others} size={22} maxVisible={4} />
               <span>
-                {others.length} collaborator{others.length !== 1 ? "s" : ""} {anyTyping ? "editing" : "viewing"} — changes merge automatically
+                {others.length} collaborator{others.length !== 1 ? "s" : ""}{" "}
+                {anyTyping ? <>editing {others.filter(u => u.isTyping && u.typingField).map(u => u.typingField).filter((v, i, a) => a.indexOf(v) === i).join(", ")}</> : "viewing"} — changes merge automatically
               </span>
             </div>
           );
