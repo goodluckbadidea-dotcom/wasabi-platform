@@ -74,7 +74,7 @@ async function fetchD1Table(pageConfig) {
   if (subColumns.length > 0) {
     schema._subSchema = d1SchemaToClassified(tableId, pageConfig.title || pageConfig.name, subColumns);
   }
-  const data = rows.map((row) => d1RowToPage(row, columns));
+  const data = rows.map((row) => d1RowToPage(row, columns, subColumns));
 
   return { data, schema, schemas: { [tableId]: schema } };
 }
@@ -366,7 +366,7 @@ function d1SchemaToClassified(tableId, title, columns) {
 /**
  * Convert a D1 table row → Notion-compatible page object.
  */
-function d1RowToPage(row, columns) {
+function d1RowToPage(row, columns, subColumns = []) {
   const properties = {};
 
   columns.forEach((col, idx) => {
@@ -382,6 +382,14 @@ function d1RowToPage(row, columns) {
       };
     } else {
       properties[col.name] = wrapAsNotionProp(value, col.type);
+    }
+  });
+
+  // Map sub-column cells so sub-item rows have their values in properties
+  subColumns.forEach((col) => {
+    const value = row.cells[col.id];
+    if (value !== undefined && value !== null) {
+      properties[col.name] = wrapAsNotionProp(value, col.type === "title" ? "text" : col.type);
     }
   });
 
