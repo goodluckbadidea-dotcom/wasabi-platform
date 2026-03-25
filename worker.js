@@ -4924,6 +4924,18 @@ async function createNotificationInternal(env, {
       `INSERT INTO notifications (id, message, type, status, source, target_user_id, record_id, record_name, page_config_id, page_name, actor_name, created_at)
        VALUES (?, ?, ?, 'unread', ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
     ).bind(id, message, type, source, target_user_id, record_id, record_name, page_config_id, page_name, actor_name).run();
+
+    // Push instant notification via UserRoom WebSocket
+    if (target_user_id && target_user_id !== "all" && env.USER_ROOMS) {
+      try {
+        const roomId = env.USER_ROOMS.idFromName(`user:${target_user_id}`);
+        const room = env.USER_ROOMS.get(roomId);
+        await room.fetch(new Request("https://dummy/broadcast", {
+          method: "POST",
+          body: JSON.stringify({ type: "notification_new", notificationId: id }),
+        }));
+      } catch (_) {} // Don't fail notification creation if WS push fails
+    }
   } catch (_) {}
 }
 

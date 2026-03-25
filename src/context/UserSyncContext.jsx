@@ -18,6 +18,7 @@ export function UserSyncProvider({ children }) {
   const navHandlers = useRef(new Set());
   const sessionRevokedHandlers = useRef(new Set());
   const taskCacheHandlers = useRef(new Set());
+  const notificationHandlers = useRef(new Set());
 
   useEffect(() => {
     if (!identity?.id) return;
@@ -52,6 +53,12 @@ export function UserSyncProvider({ children }) {
         case "task_cache_invalidate":
           for (const handler of taskCacheHandlers.current) {
             handler(msg.tableId);
+          }
+          break;
+
+        case "notification_new":
+          for (const handler of notificationHandlers.current) {
+            handler(msg.notificationId);
           }
           break;
       }
@@ -101,6 +108,11 @@ export function UserSyncProvider({ children }) {
     return () => taskCacheHandlers.current.delete(handler);
   }, []);
 
+  const onNotificationNew = useCallback((handler) => {
+    notificationHandlers.current.add(handler);
+    return () => notificationHandlers.current.delete(handler);
+  }, []);
+
   const value = {
     isConnected,
     connectedDevices,
@@ -110,6 +122,7 @@ export function UserSyncProvider({ children }) {
     onNavUpdate,
     onSessionRevoked,
     onTaskCacheInvalidate,
+    onNotificationNew,
   };
 
   return (

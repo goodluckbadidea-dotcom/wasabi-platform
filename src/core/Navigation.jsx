@@ -15,6 +15,7 @@ import {
   IconMail, IconCalendar, IconGlobe,
 } from "../design/icons.jsx";
 import { getGoogleStatus, getGmailSummary, getCalendarSummary, getUnreadNotificationCount, listRows } from "../lib/api.js";
+import { useUserSync } from "../context/UserSyncContext.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
 import CreateMenu from "./CreateMenu.jsx";
@@ -41,6 +42,7 @@ export default function Navigation({
   } = usePlatform();
   const { setTargetFolderPath } = useNavigation();
   const { isTouch } = useViewport();
+  const userSync = useUserSync();
 
   const insight = useInsight();
 
@@ -70,9 +72,17 @@ export default function Navigation({
       } catch (err) { console.warn("[Navigation] getUnreadNotificationCount:", err.message || err); }
     }
     pollNotifCount();
-    notifPollRef.current = setInterval(pollNotifCount, 30_000);
+    notifPollRef.current = setInterval(pollNotifCount, 60_000); // Polling as fallback; instant via WebSocket
     return () => { cancelled = true; clearInterval(notifPollRef.current); };
   }, []);
+
+  // ── Instant notification badge via WebSocket ──
+  useEffect(() => {
+    if (!userSync?.onNotificationNew) return;
+    return userSync.onNotificationNew(() => {
+      setNotifUnreadCount((c) => c + 1);
+    });
+  }, [userSync]);
 
   useEffect(() => {
     let cancelled = false;
