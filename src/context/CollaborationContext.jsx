@@ -95,7 +95,7 @@ export function CollaborationProvider({ tableId, userId, userName, role, childre
         case "record_updated": {
           // Notify all registered handlers of live updates
           for (const handler of recordUpdateHandlers.current) {
-            handler(msg);
+            try { handler(msg); } catch (e) { console.warn("[Collab] handler error:", e); }
           }
           break;
         }
@@ -103,7 +103,7 @@ export function CollaborationProvider({ tableId, userId, userName, role, childre
         case "conflict": {
           setPendingConflicts((prev) => [
             ...prev.filter((c) => !(c.recordId === msg.recordId && c.field === msg.field)),
-            { recordId: msg.recordId, field: msg.field, yourValue: msg.yourValue, theirValue: msg.theirValue, detectedAt: Date.now() },
+            { recordId: msg.recordId, field: msg.field, yourValue: msg.yourValue, currentValue: msg.theirValue, detectedAt: Date.now() },
           ]);
           break;
         }
@@ -111,7 +111,7 @@ export function CollaborationProvider({ tableId, userId, userName, role, childre
         case "save_result": {
           // Notify handlers of save confirmation
           for (const handler of recordUpdateHandlers.current) {
-            handler(msg);
+            try { handler(msg); } catch (e) { console.warn("[Collab] handler error:", e); }
           }
           break;
         }

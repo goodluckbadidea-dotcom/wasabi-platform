@@ -14,6 +14,7 @@ export default class UserSocket {
     this.maxReconnectDelay = 30000;
     this.connected = false;
     this.intentionalClose = false;
+    this.statusHandlers = new Set();
     this.idleTimeout = 10 * 60 * 1000; // 10 minutes
     this.idleTimer = null;
     this.idleDisconnected = false;
@@ -44,6 +45,7 @@ export default class UserSocket {
     this.ws.onopen = () => {
       this.connected = true;
       this.reconnectDelay = 1000;
+      for (const h of this.statusHandlers) { try { h(true); } catch (_) {} }
       // Start or reset idle tracking
       if (!this._onActivity) {
         this._startIdleTracking();
@@ -64,6 +66,7 @@ export default class UserSocket {
     this.ws.onclose = (event) => {
       this.ws = null;
       this.connected = false;
+      for (const h of this.statusHandlers) { try { h(false); } catch (_) {} }
       // Don't reconnect if session was revoked
       if (event.code === 4001) {
         for (const handler of this.handlers) {
@@ -147,6 +150,11 @@ export default class UserSocket {
   onMessage(handler) {
     this.handlers.add(handler);
     return () => this.handlers.delete(handler);
+  }
+
+  onStatusChange(handler) {
+    this.statusHandlers.add(handler);
+    return () => this.statusHandlers.delete(handler);
   }
 
   // ── Sync shortcuts ──

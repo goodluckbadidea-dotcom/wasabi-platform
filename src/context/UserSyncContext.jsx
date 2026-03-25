@@ -34,41 +34,42 @@ export function UserSyncProvider({ children }) {
 
         case "dashboard_update":
           for (const handler of dashboardHandlers.current) {
-            handler(msg.widgets);
+            try { handler(msg.widgets); } catch (e) { console.warn("[UserSync] handler error:", e); }
           }
           break;
 
         case "nav_update":
           for (const handler of navHandlers.current) {
-            handler(msg.pageId, msg.folderId);
+            try { handler(msg.pageId, msg.folderId); } catch (e) { console.warn("[UserSync] handler error:", e); }
           }
           break;
 
         case "session_revoked":
           for (const handler of sessionRevokedHandlers.current) {
-            handler(msg.sessionIds);
+            try { handler(msg.sessionIds); } catch (e) { console.warn("[UserSync] handler error:", e); }
           }
           break;
 
         case "task_cache_invalidate":
           for (const handler of taskCacheHandlers.current) {
-            handler(msg.tableId);
+            try { handler(msg.tableId); } catch (e) { console.warn("[UserSync] handler error:", e); }
           }
           break;
 
         case "notification_new":
           for (const handler of notificationHandlers.current) {
-            handler(msg.notificationId);
+            try { handler(msg.notificationId); } catch (e) { console.warn("[UserSync] handler error:", e); }
           }
           break;
       }
     });
 
+    const unsubStatus = socket.onStatusChange((connected) => setIsConnected(connected));
     socket.connect();
-    setIsConnected(true);
 
     return () => {
       unsub();
+      unsubStatus();
       socket.disconnect();
       socketRef.current = null;
       setIsConnected(false);

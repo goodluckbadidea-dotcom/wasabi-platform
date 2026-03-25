@@ -35,7 +35,7 @@ export default function ConflictToast({ conflicts = [], onResolve, onDismiss }) 
 
     setCountdown(Math.ceil(remaining / 1000));
     return () => clearInterval(tick);
-  }, [conflicts.length]);
+  }, [conflicts]);
 
   if (!conflicts.length) return null;
 

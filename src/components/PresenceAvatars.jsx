@@ -22,9 +22,9 @@ function injectStyles() {
 
 function getInitials(name) {
   if (!name) return "?";
-  const parts = name.trim().split(/\s+/);
+  const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return name[0].toUpperCase();
+  return parts.length ? parts[0][0].toUpperCase() : "?";
 }
 
 export default function PresenceAvatars({ users = [], size = 28, maxVisible = 4 }) {
@@ -38,7 +38,7 @@ export default function PresenceAvatars({ users = [], size = 28, maxVisible = 4 
     <div style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
       {visible.map((user, i) => (
         <div
-          key={user.userId || i}
+          key={user.userId || `anon-${i}`}
           title={`${user.userName || "User"}${user.isTyping ? ` — typing ${user.typingField || ""}` : ""}`}
           style={{
             width: size,
