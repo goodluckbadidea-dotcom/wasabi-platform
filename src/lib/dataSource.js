@@ -389,7 +389,15 @@ function d1RowToPage(row, columns, subColumns = []) {
   subColumns.forEach((col) => {
     const value = row.cells[col.id];
     if (value !== undefined && value !== null) {
-      properties[col.name] = wrapAsNotionProp(value, col.type === "title" ? "text" : col.type);
+      if (col.type === "title") {
+        // Wrap as proper title format so cell renderer finds prop.title[0].plain_text
+        properties[col.name] = {
+          type: "title",
+          title: [{ type: "text", plain_text: String(value), text: { content: String(value) } }],
+        };
+      } else {
+        properties[col.name] = wrapAsNotionProp(value, col.type);
+      }
     }
   });
 
