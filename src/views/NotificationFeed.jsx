@@ -427,6 +427,7 @@ export default function NotificationFeed() {
   const [expandedId, setExpandedId] = useState(null);
   const [showPrefs, setShowPrefs] = useState(false);
   const [prefs, setPrefs] = useState({ muted_types: [] });
+  const [recentlyRead, setRecentlyRead] = useState(() => new Set());
 
   // Fetch notifications + preferences
   const fetchNotifications = useCallback(async () => {
@@ -460,12 +461,14 @@ export default function NotificationFeed() {
   useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
 
   const markAsRead = useCallback(async (notifId) => {
+    setRecentlyRead((prev) => { const next = new Set(prev); next.add(notifId); return next; });
     setNotifications((prev) => prev.map((n) => (n.id === notifId ? { ...n, status: "read" } : n)));
     try { await api.updateNotification(notifId, { status: "read" }); } catch (err) { console.warn("[NotificationFeed] markAsRead:", err.message || err); }
   }, []);
 
   const markAllRead = useCallback(async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, status: "read" })));
+    setRecentlyRead(new Set());
     try { await api.markAllNotificationsRead(); } catch (err) { console.warn("[NotificationFeed] markAllRead:", err.message || err); }
   }, []);
 
@@ -525,9 +528,9 @@ export default function NotificationFeed() {
     try { await api.putNotificationPreferences(newPrefs); } catch (err) { console.warn("[NotificationFeed] putNotificationPreferences:", err.message || err); }
   }, []);
 
-  // Filter by tab
+  // Filter by tab — keep recently-read items sticky so they don't vanish mid-interaction
   const filtered = activeTab === "Unread"
-    ? notifications.filter((n) => n.status === "unread")
+    ? notifications.filter((n) => n.status === "unread" || recentlyRead.has(n.id))
     : notifications;
   const unreadCount = notifications.filter((n) => n.status === "unread").length;
 
@@ -599,7 +602,7 @@ export default function NotificationFeed() {
               onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
             >Mark all read</button>
           )}
-          <button onClick={() => { setLoading(true); fetchNotifications(); }}
+          <button onClick={() => { setLoading(true); setRecentlyRead(new Set()); fetchNotifications(); }}
             style={{
               background: "transparent", border: `1px solid ${C.darkBorder}`,
               borderRadius: RADIUS.md, padding: "4px 10px", fontSize: 10,
@@ -615,7 +618,7 @@ export default function NotificationFeed() {
           background: C.darkSurf, borderRadius: RADIUS.pill, padding: 3, width: "fit-content",
         }}>
           {TABS.map((tab) => (
-            <button key={tab} onClick={() => setActiveTab(tab)}
+            <button key={tab} onClick={() => { setActiveTab(tab); setRecentlyRead(new Set()); }}
               style={{
                 padding: "6px 18px", borderRadius: RADIUS.pill, border: "none",
                 cursor: "pointer", fontSize: 12, fontWeight: activeTab === tab ? 600 : 400,
