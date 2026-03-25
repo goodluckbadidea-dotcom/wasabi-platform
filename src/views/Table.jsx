@@ -1035,6 +1035,11 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const [colCtxMenu, setColCtxMenu] = useState(null); // { col, x, y }
   const [renamingCol, setRenamingCol] = useState(null); // column name being renamed
   const [renameValue, setRenameValue] = useState("");
+  const colClickTimer = useRef(null); // single-click delay for double-click detection
+  // ── Sub-item Column Management ──
+  const [subColCtxMenu, setSubColCtxMenu] = useState(null); // { col, x, y }
+  const [renamingSubCol, setRenamingSubCol] = useState(null); // sub-column name being renamed
+  const [renameSubValue, setRenameSubValue] = useState("");
   const [addColOpen, setAddColOpen] = useState(false);
   const [addColName, setAddColName] = useState("");
   const [addColType, setAddColType] = useState("text");
@@ -1261,6 +1266,21 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     } catch (err) { console.error("Rename column failed:", err); }
     setRenamingCol(null);
   }, [canEditSchema, isNotionTable, notionDbId, workerUrl, notionKey, pageConfig?.id, onRefresh]);
+
+  // Rename sub-item column (D1 only — sub-items are D1-only)
+  const handleRenameSubCol = useCallback(async (oldName, newName) => {
+    if (!newName.trim() || newName === oldName) { setRenamingSubCol(null); return; }
+    if (!canEditSchema || !pageConfig?.id) { setRenamingSubCol(null); return; }
+    try {
+      const schemaRes = await getTableSchema(pageConfig.id);
+      const subs = (schemaRes?.sub_columns || []).map((c) =>
+        c.name === oldName ? { ...c, name: newName.trim() } : c
+      );
+      await updateSubColumnSchema(pageConfig.id, subs);
+      if (onRefresh) onRefresh();
+    } catch (err) { console.error("Rename sub-column failed:", err); }
+    setRenamingSubCol(null);
+  }, [canEditSchema, pageConfig?.id, onRefresh]);
 
   // Delete column (D1 + Notion)
   const handleDeleteCol = useCallback(async (col) => {
@@ -2579,10 +2599,16 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                         }}
                         onClick={(e) => {
                           e.preventDefault();
+                          if (colClickTimer.current) { clearTimeout(colClickTimer.current); colClickTimer.current = null; return; }
                           const rect = e.currentTarget.getBoundingClientRect();
                           const menuW = 180;
                           const x = Math.min(rect.left, window.innerWidth - menuW);
-                          setColCtxMenu({ col, x, y: rect.bottom + 2 });
+                          colClickTimer.current = setTimeout(() => { colClickTimer.current = null; setColCtxMenu({ col, x, y: rect.bottom + 2 }); }, 250);
+                        }}
+                        onDoubleClick={(e) => {
+                          e.preventDefault(); e.stopPropagation();
+                          if (colClickTimer.current) { clearTimeout(colClickTimer.current); colClickTimer.current = null; }
+                          if (canEditSchema) { setRenamingCol(col); setRenameValue(col); setColCtxMenu(null); }
                         }}
                         onContextMenu={(e) => handleColRightClick(col, e)}
                         onMouseDown={(e) => { if (e.button === 0 && !e.target.closest("[data-resize]")) handleColDragStart(col, e); }}
