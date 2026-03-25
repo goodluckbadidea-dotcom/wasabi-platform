@@ -10,6 +10,7 @@ const CollaborationContext = createContext(null);
 export function CollaborationProvider({ tableId, userId, userName, role, children }) {
   const [activeUsers, setActiveUsers] = useState(new Map());
   const [pendingConflicts, setPendingConflicts] = useState([]);
+  const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef(null);
   const recordUpdateHandlers = useRef(new Set());
 
@@ -119,14 +120,17 @@ export function CollaborationProvider({ tableId, userId, userName, role, childre
       } catch (err) { console.warn("[Collab] message handler error:", err); }
     });
 
+    const unsubStatus = socket.onStatusChange((connected) => setIsConnected(connected));
     socket.connect();
 
     return () => {
       unsub();
+      unsubStatus();
       socket.disconnect();
       socketRef.current = null;
       setActiveUsers(new Map());
       setPendingConflicts([]);
+      setIsConnected(false);
     };
   }, [tableId, userId, userName, role]);
 
@@ -149,7 +153,9 @@ export function CollaborationProvider({ tableId, userId, userName, role, childre
   }, []);
 
   const saveRecord = useCallback((recordId, cells, baseVersions) => {
-    socketRef.current?.saveRecord(recordId, cells, baseVersions);
+    const sent = socketRef.current?.saveRecord(recordId, cells, baseVersions);
+    if (sent === false) console.warn("[Collab] Save message dropped — socket not connected");
+    return sent;
   }, []);
 
   const resolveConflict = useCallback((recordId, field) => {
@@ -172,8 +178,6 @@ export function CollaborationProvider({ tableId, userId, userName, role, childre
     recordUpdateHandlers.current.add(handler);
     return () => recordUpdateHandlers.current.delete(handler);
   }, []);
-
-  const isConnected = socketRef.current?.connected || false;
 
   const value = useMemo(() => ({
     activeUsers,

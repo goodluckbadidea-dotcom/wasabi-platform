@@ -2,7 +2,7 @@
 // WebSocket client for real-time collaboration via TableRoom Durable Object.
 // One connection per table. Handles join, presence, typing, and saves.
 
-import { getWorkerUrl, getJwt } from "./api.js";
+import { getWorkerUrl, getJwt, isTokenExpiringSoon, refreshAccessToken } from "./api.js";
 
 const USER_COLORS = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7", "#DDA0DD", "#98D8C8", "#F7DC6F"];
 
@@ -27,6 +27,7 @@ export default class TableSocket {
     this.maxReconnectDelay = 30000;
     this.connected = false;
     this.intentionalClose = false;
+    this.statusHandlers = new Set();
     this.idleTimeout = 5 * 60 * 1000; // 5 minutes
     this.idleTimer = null;
     this.idleDisconnected = false;
@@ -34,15 +35,21 @@ export default class TableSocket {
   }
 
   connect() {
-    if (this.ws) return;
+    if (this.ws && this.ws.readyState <= WebSocket.OPEN) return;
     this.intentionalClose = false;
 
     const workerUrl = getWorkerUrl();
     if (!workerUrl) return;
 
+    // Refresh JWT if expired or expiring soon before connecting
+    const jwt = getJwt();
+    if (jwt && isTokenExpiringSoon(jwt)) {
+      refreshAccessToken().then(() => this.connect()).catch(() => {});
+      return;
+    }
+
     // Build WS URL — convert https:// to wss:// (or http to ws)
     const base = workerUrl.replace(/^http/, "ws");
-    const jwt = getJwt();
     const params = new URLSearchParams();
     if (jwt) params.set("token", jwt);
 
@@ -58,6 +65,7 @@ export default class TableSocket {
     this.ws.onopen = () => {
       this.connected = true;
       this.reconnectDelay = 1000;
+      for (const h of this.statusHandlers) { try { h(true); } catch (_) {} }
       // Send join message
       this.send("join", {
         userId: this.userId,
@@ -85,6 +93,7 @@ export default class TableSocket {
     this.ws.onclose = () => {
       this.ws = null;
       this.connected = false;
+      for (const h of this.statusHandlers) { try { h(false); } catch (_) {} }
       if (!this.intentionalClose) {
         this.scheduleReconnect();
       }
@@ -156,13 +165,19 @@ export default class TableSocket {
   }
 
   send(type, payload) {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
     this.ws.send(JSON.stringify({ type, ...payload }));
+    return true;
   }
 
   onMessage(handler) {
     this.handlers.add(handler);
     return () => this.handlers.delete(handler);
+  }
+
+  onStatusChange(handler) {
+    this.statusHandlers.add(handler);
+    return () => this.statusHandlers.delete(handler);
   }
 
   // ── Presence shortcuts ──
@@ -186,6 +201,6 @@ export default class TableSocket {
   // ── Save with conflict detection (routed through DO) ──
 
   saveRecord(recordId, cells, baseVersions) {
-    this.send("save", { recordId, cells, base_versions: baseVersions });
+    return this.send("save", { recordId, cells, base_versions: baseVersions });
   }
 }

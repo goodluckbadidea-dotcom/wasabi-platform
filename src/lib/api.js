@@ -71,7 +71,7 @@ function decodeJwtPayload(token) {
 }
 
 // Check if token expires within the next 2 minutes
-function isTokenExpiringSoon(token) {
+export function isTokenExpiringSoon(token) {
   const payload = decodeJwtPayload(token);
   if (!payload?.exp) return false;
   return payload.exp - Math.floor(Date.now() / 1000) < 120;
@@ -79,7 +79,7 @@ function isTokenExpiringSoon(token) {
 
 // Refresh the access token using the stored refresh token
 let _refreshPromise = null; // deduplicate concurrent refresh calls
-async function refreshAccessToken() {
+export async function refreshAccessToken() {
   if (_refreshPromise) return _refreshPromise;
   _refreshPromise = (async () => {
     try {

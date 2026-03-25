@@ -68,6 +68,7 @@ export default function PageShell({
   const [pendingConflicts, setPendingConflicts] = useState([]);
   const [pinRelockKey, setPinRelockKey] = useState(0);
   const refreshTimer = useRef(null);
+  const cellVersionsRef = useRef({}); // { recordId: { field: version, ... } } — tracks latest cell_versions across sequential saves
   const [showAddDb, setShowAddDb] = useState(false);
   const [showViewPicker, setShowViewPicker] = useState(false);
   const [showSync, setShowSync] = useState(false);
@@ -117,6 +118,7 @@ export default function PageShell({
       setSchema(result.schema);
       setSchemas(result.schemas);
       setError(null);
+      cellVersionsRef.current = {}; // Clear ref — fresh data has current cell_versions
     } catch (err) {
       console.error("Failed to fetch page data:", err);
       setError(err.message);
@@ -172,8 +174,9 @@ export default function PageShell({
       try {
         if (propPayload) {
           // Find current record to get cell_versions for conflict detection
+          // Use ref first (updated synchronously on save) to handle sequential batch saves
           const record = data.find((r) => r.id === pageId);
-          const cellVersions = record?.cell_versions || null;
+          const cellVersions = cellVersionsRef.current[pageId] || record?.cell_versions || null;
           const pinToken = getPinToken(pageConfig?.id);
 
           const result = await updateRecord(pageConfig, pageId, propertyName, propPayload, user, cellVersions, { pinToken });
@@ -188,18 +191,19 @@ export default function PageShell({
               currentVersion: info.currentVersion,
               detectedAt: Date.now(),
             }));
-            // Auto-resolve non-overlapping: if conflict is on a field the user didn't edit, silently accept theirs
+            // Only show conflicts for fields the user actually edited (overlapping).
+            // Non-overlapping conflicts (fields the user didn't touch) are informational —
+            // the server already has the correct values, no re-save needed.
             const overlapping = conflictList.filter((c) => c.field === propertyName);
-            const nonOverlapping = conflictList.filter((c) => c.field !== propertyName);
-            if (nonOverlapping.length > 0) {
-              for (const c of nonOverlapping) {
-                updateRecord(pageConfig, c.recordId, c.field, c.currentValue, user).catch(err => console.warn("[PageShell] updateRecord:", err.message || err));
-              }
-            }
             if (overlapping.length > 0) {
               console.warn("[Collab] Conflict detected:", overlapping);
               setPendingConflicts((prev) => [...prev, ...overlapping]);
             }
+          }
+
+          // Update cell_versions ref synchronously (for sequential batch saves)
+          if (result?.cell_versions) {
+            cellVersionsRef.current[pageId] = result.cell_versions;
           }
 
           // Update local state with new cell_versions from response
