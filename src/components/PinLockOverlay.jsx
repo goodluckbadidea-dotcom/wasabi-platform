@@ -103,7 +103,7 @@ export default function PinLockOverlay({ pageConfigId, userRole, children }) {
         alignItems: "center",
         justifyContent: "center",
         zIndex: Z.lock,
-        background: "rgba(0,0,0,0.3)",
+        background: C.overlayBg,
       }}>
         <div style={{
           background: C.darkSurf,

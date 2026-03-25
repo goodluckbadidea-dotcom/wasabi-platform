@@ -72,7 +72,7 @@ export default function PresenceAvatars({ users = [], size = 28, maxVisible = 4 
               width: 8,
               height: 8,
               borderRadius: "50%",
-              background: "#4ade80",
+              background: C.success,
               border: `1.5px solid ${C.dark}`,
             }} />
           )}

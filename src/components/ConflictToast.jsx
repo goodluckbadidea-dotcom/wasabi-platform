@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Z } from "../design/tokens.js";
+import { C, Z, SHADOW, RADIUS } from "../design/tokens.js";
+import { ANIM } from "../design/animations.js";
 
 /**
  * ConflictToast — shows when two users edit the same field simultaneously.
@@ -48,7 +49,7 @@ export default function ConflictToast({ conflicts = [], onResolve, onDismiss }) 
   };
 
   return (
-    <div style={styles.overlay}>
+    <div style={styles.overlay} role="alertdialog" aria-modal="true" aria-label="Edit conflict resolution">
       <div style={styles.container}>
         <div style={styles.header}>
           <span style={styles.icon}>&#x26A0;&#xFE0F;</span>
@@ -56,9 +57,9 @@ export default function ConflictToast({ conflicts = [], onResolve, onDismiss }) 
             Edit Conflict{conflicts.length > 1 ? ` (${conflicts.length})` : ""}
           </span>
           {countdown !== null && countdown > 0 && (
-            <span style={styles.countdown}>Auto-accepting in {countdown}s</span>
+            <span style={styles.countdown} aria-live="polite">Auto-accepting in {countdown}s</span>
           )}
-          <button onClick={onDismiss} style={styles.close}>&#x2715;</button>
+          <button onClick={onDismiss} style={styles.close} aria-label="Dismiss conflicts">&#x2715;</button>
         </div>
         <p style={styles.description}>
           Another user changed {conflicts.length === 1 ? "this field" : "these fields"} while you were editing.
@@ -86,7 +87,7 @@ export default function ConflictToast({ conflicts = [], onResolve, onDismiss }) 
               >
                 <span style={styles.optionLabel}>Keep mine</span>
                 <span style={styles.optionValue}>
-                  <DiffValue value={c.yourValue} other={c.currentValue} color="#6ea8fe" />
+                  <DiffValue value={c.yourValue} other={c.currentValue} mine />
                 </span>
               </button>
               <button
@@ -95,7 +96,7 @@ export default function ConflictToast({ conflicts = [], onResolve, onDismiss }) 
               >
                 <span style={styles.optionLabel}>Accept theirs</span>
                 <span style={styles.optionValue}>
-                  <DiffValue value={c.currentValue} other={c.yourValue} color="#c9822a" />
+                  <DiffValue value={c.currentValue} other={c.yourValue} />
                 </span>
               </button>
             </div>
@@ -107,7 +108,8 @@ export default function ConflictToast({ conflicts = [], onResolve, onDismiss }) 
 }
 
 /** Highlights the changed portion of a value compared to the other value */
-function DiffValue({ value, other, color }) {
+function DiffValue({ value, other, mine }) {
+  const color = mine ? C.accent : C.orange;
   const a = formatValue(value);
   const b = formatValue(other);
   if (a === b) return <span>{a}</span>;
@@ -149,14 +151,14 @@ const styles = {
     right: 24,
     zIndex: Z.toast,
     maxWidth: 480,
-    animation: "slideUp 0.2s ease-out",
+    animation: ANIM.slideUp(),
   },
   container: {
-    background: "#1a1a1e",
-    border: "1px solid #c9822a",
-    borderRadius: 12,
+    get background() { return C.darkSurf; },
+    get border() { return `1px solid ${C.orange}`; },
+    borderRadius: RADIUS.lg,
     padding: "16px 20px",
-    boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+    get boxShadow() { return SHADOW.dropdown; },
   },
   header: {
     display: "flex",
@@ -166,13 +168,13 @@ const styles = {
   },
   icon: { fontSize: 18 },
   title: {
-    color: "#c9822a",
+    get color() { return C.orange; },
     fontWeight: 600,
     fontSize: 14,
     flex: 1,
   },
   countdown: {
-    color: "#8e8e98",
+    get color() { return C.darkMuted; },
     fontSize: 10,
     fontWeight: 500,
     flexShrink: 0,
@@ -180,13 +182,13 @@ const styles = {
   close: {
     background: "none",
     border: "none",
-    color: "#6e6e78",
+    get color() { return C.darkMuted; },
     cursor: "pointer",
     fontSize: 14,
     padding: "2px 6px",
   },
   description: {
-    color: "#8e8e98",
+    get color() { return C.darkMuted; },
     fontSize: 12,
     margin: "0 0 12px",
   },
@@ -197,26 +199,26 @@ const styles = {
   },
   batchBtn: {
     flex: 1,
-    background: "#242428",
-    border: "1px solid #444",
-    borderRadius: 6,
+    get background() { return C.darkSurf2; },
+    get border() { return `1px solid ${C.darkBorder}`; },
+    borderRadius: RADIUS.sm + 2,
     padding: "6px 10px",
     cursor: "pointer",
-    color: "#d0d0d8",
+    get color() { return C.darkText; },
     fontSize: 11,
     fontWeight: 600,
     textAlign: "center",
     transition: "border-color 0.15s",
   },
   batchBtnTheirs: {
-    borderColor: "#c9822a44",
-    color: "#c9822a",
+    get borderColor() { return C.orange + "44"; },
+    get color() { return C.orange; },
   },
   conflictRow: {
     marginBottom: 12,
   },
   fieldName: {
-    color: "#d0d0d8",
+    get color() { return C.darkText; },
     fontSize: 12,
     fontWeight: 600,
     marginBottom: 6,
@@ -229,26 +231,26 @@ const styles = {
   },
   optionBtn: {
     flex: 1,
-    background: "#242428",
-    border: "1px solid #333",
-    borderRadius: 8,
+    get background() { return C.darkSurf2; },
+    get border() { return `1px solid ${C.darkBorder}`; },
+    borderRadius: RADIUS.md - 2,
     padding: "8px 12px",
     cursor: "pointer",
     textAlign: "left",
     transition: "border-color 0.15s",
   },
   optionBtnTheirs: {
-    borderColor: "#444",
+    get borderColor() { return C.darkBorder; },
   },
   optionLabel: {
     display: "block",
-    color: "#8e8e98",
+    get color() { return C.darkMuted; },
     fontSize: 10,
     marginBottom: 2,
   },
   optionValue: {
     display: "block",
-    color: "#e0e0e8",
+    get color() { return C.darkText; },
     fontSize: 13,
     fontWeight: 500,
     overflow: "hidden",
