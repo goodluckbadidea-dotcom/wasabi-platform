@@ -8,29 +8,28 @@ import { S } from "../design/styles.js";
 import { ANIM, injectAnimations } from "../design/animations.js";
 import { hoverBg } from "../design/interactions.js";
 import { getPageTitle } from "../notion/properties.js";
-import { debounce } from "../utils/helpers.js";
+// debounce now imported by table/hooks/useTableData.js
 import {
-  IconTrash, IconExport, IconEyeOff, IconExpand, IconPlus, IconConnect,
+  IconTrash, IconExpand, IconPlus, IconConnect,
   IconCalendar, IconCheck, IconCheckSquare, IconLink, IconMail, IconPhone,
-  IconStatusDot, IconArrowDown, IconChevronDown, IconUser,
+  IconStatusDot, IconArrowDown, IconUser,
 } from "../design/icons.jsx";
-import FilterChips, { applyChipFilters } from "./FilterChips.jsx";
+import FilterChips from "./FilterChips.jsx";
 import RecordDetail from "./RecordDetail.jsx";
 import NewRecordModal from "./NewRecordModal.jsx";
 import { useLinks } from "../context/LinksContext.jsx";
 import LinkPicker from "../core/LinkPicker.jsx";
-import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
-import NeuronBadge from "../neurons/NeuronBadge.jsx";
+// isNeuronsMode, dispatchNeuronSelect, NeuronBadge now imported by table/TableRow.jsx
 import { listUserDirectory, updateRowOwner, notionProxy, getRecordBadgeCounts, deleteRow } from "../lib/api.js";
 import { useTreeData } from "../lib/useTreeData.js";
 import { getPinToken } from "../components/PinLockOverlay.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
 // updateDatabase, searchDatabases now imported by table/hooks/useColumnManagement.js
 // SelectPicker and MultiSelectPicker now imported by table/CellEditor.jsx
-import SavedViewsDropdown from "../components/SavedViewsDropdown.jsx";
+// SavedViewsDropdown now imported by table/TableToolbar.jsx
 import { useCollaboration } from "../context/CollaborationContext.jsx";
-import PresenceAvatars from "../components/PresenceAvatars.jsx";
-import { getFieldType, getFieldOptions, getOptionNames, readField, displayValue, searchableText } from "./_viewHelpers.js";
+// PresenceAvatars now imported by table/TableToolbar.jsx
+import { getFieldType, getFieldOptions, getOptionNames, readField, displayValue } from "./_viewHelpers.js";
 import {
   OWNER_COL_NAME, OWNER_COL_WIDTH, D1_TO_NOTION_TYPE, COLUMN_TYPES, TYPE_ICON_MAP,
   mapD1TypeForUI, getTypeIcon, ROW_HEIGHT, VIRT_BUFFER, EDITABLE_TYPES, TEXT_SEARCH_TYPES,
@@ -38,17 +37,23 @@ import {
 } from "./table/tableHelpers.js";
 
 import { styles, ghostInputStyle } from "./table/tableStyles.js";
-import { OwnerCellDisplay, OwnerPicker } from "./table/OwnerCell.jsx";
+import { OwnerPicker } from "./table/OwnerCell.jsx";
+// OwnerCellDisplay now imported by table/TableRow.jsx
 import { GhostCell } from "./table/GhostRow.jsx";
 import CellEditor from "./table/CellEditor.jsx";
 import CellDisplay, { CELL_RENDERERS } from "./table/CellDisplay.jsx";
 import { ParentColumnContextMenu, SubColumnContextMenu } from "./table/ColumnContextMenu.jsx";
 import { AddColumnDialog, AddSubColumnDialog } from "./table/AddColumnDialog.jsx";
 import CascadeDeleteDialog from "./table/CascadeDeleteDialog.jsx";
+import TableToolbar from "./table/TableToolbar.jsx";
+import TableHeader from "./table/TableHeader.jsx";
+import TableRow from "./table/TableRow.jsx";
+import TableFooter from "./table/TableFooter.jsx";
 import useGhostRow from "./table/hooks/useGhostRow.js";
 import useSubItemGhost from "./table/hooks/useSubItemGhost.js";
 import useTableCellEdit from "./table/hooks/useTableCellEdit.js";
 import useColumnManagement from "./table/hooks/useColumnManagement.js";
+import useTableData from "./table/hooks/useTableData.js";
 
 
 
@@ -320,23 +325,10 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     colDrag, handleColDragStart, handleResizeStart, colClickTimer,
   } = colMgmt;
 
-  // Identify filterable fields (select / status)
-  const filterableFields = useMemo(() => {
-    if (!schema) return [];
-    return [...schema.statuses, ...schema.selects].filter(
-      (f) => columns.includes(f.name) && f.options?.length > 0
-    );
-  }, [schema, columns]);
-
-  // Debounced search
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const debouncedSetSearch = useMemo(
-    () => debounce((val) => setDebouncedSearch(val), 200),
-    []
-  );
-  useEffect(() => {
-    debouncedSetSearch(search);
-  }, [search, debouncedSetSearch]);
+  // ── Data Pipeline Hook ──
+  const { filterableFields, processedData, treeSortFn } = useTableData({
+    data, schema, columns, chipFilters, filters, search, sortField, sortDir,
+  });
 
   // Chip filter change handler (persists via onViewConfigChange)
   const handleChipFilterChange = useCallback((newFilters) => {
@@ -346,95 +338,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     if (onViewConfigChange) onViewConfigChange({ activeFilters: newFilters, activeSavedViewId: null });
   }, [onSaveFilters, onViewConfigChange]);
 
-  // Filter + search + sort pipeline
-  const processedData = useMemo(() => {
-    let rows = [...data];
-
-    // Apply chip filters (multi-select OR within field, AND across fields)
-    rows = applyChipFilters(rows, chipFilters, schema);
-
-    // Apply dropdown filters (legacy, still used for column-header selects)
-    for (const [field, filterVal] of Object.entries(filters)) {
-      if (!filterVal) continue;
-      rows = rows.filter((page) => {
-        const val = readField(page, field);
-        if (val === null) return false;
-        return String(val) === filterVal;
-      });
-    }
-
-    // Apply search
-    if (debouncedSearch) {
-      const q = debouncedSearch.toLowerCase();
-      rows = rows.filter((page) => {
-        for (const col of columns) {
-          const val = readField(page, col);
-          const text = searchableText(val, getFieldType(schema, col));
-          if (text.toLowerCase().includes(q)) return true;
-        }
-        return false;
-      });
-    }
-
-    // Apply sort
-    if (sortField && sortDir) {
-      const type = getFieldType(schema, sortField);
-      rows.sort((a, b) => {
-        let va = readField(a, sortField);
-        let vb = readField(b, sortField);
-
-        // Normalize for comparison
-        if (type === "date") {
-          va = typeof va === "object" ? va?.start : va;
-          vb = typeof vb === "object" ? vb?.start : vb;
-        }
-
-        // Nulls last
-        if (va === null && vb === null) return 0;
-        if (va === null) return 1;
-        if (vb === null) return -1;
-
-        // Number compare
-        if (type === "number") {
-          return sortDir === "asc" ? va - vb : vb - va;
-        }
-
-        // String compare
-        const sa = String(va).toLowerCase();
-        const sb = String(vb).toLowerCase();
-        if (sa < sb) return sortDir === "asc" ? -1 : 1;
-        if (sa > sb) return sortDir === "asc" ? 1 : -1;
-        return 0;
-      });
-    }
-
-    return rows;
-  }, [data, filters, chipFilters, debouncedSearch, sortField, sortDir, columns, schema]);
-
   // ── Sub-Items Tree ──
   const subItemsEnabled = isD1Table;
-
-  const treeSortFn = useMemo(() => {
-    if (!sortField || !sortDir) return null;
-    const type = getFieldType(schema, sortField);
-    return (a, b) => {
-      let va = readField(a, sortField);
-      let vb = readField(b, sortField);
-      if (type === "date") {
-        va = typeof va === "object" ? va?.start : va;
-        vb = typeof vb === "object" ? vb?.start : vb;
-      }
-      if (va === null && vb === null) return 0;
-      if (va === null) return 1;
-      if (vb === null) return -1;
-      if (type === "number") return sortDir === "asc" ? va - vb : vb - va;
-      const sa = String(va).toLowerCase();
-      const sb = String(vb).toLowerCase();
-      if (sa < sb) return sortDir === "asc" ? -1 : 1;
-      if (sa > sb) return sortDir === "asc" ? 1 : -1;
-      return 0;
-    };
-  }, [sortField, sortDir, schema]);
 
   const {
     displayList, toggleExpand, expandAll, collapseAll,
@@ -942,192 +847,40 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
       )}
 
       {/* Toolbar: views, search, filters, refresh, count */}
-      <div style={styles.toolbar}>
-        <SavedViewsDropdown
-          savedViews={config.savedViews || []}
-          activeSavedViewId={activeSavedViewId}
-          onSelectView={handleSelectSavedView}
-          onSaveView={handleSaveNewView}
-          onUpdateView={handleUpdateView}
-          onRenameView={handleRenameView}
-          onDeleteView={handleDeleteView}
-        />
-        <div
-          style={{
-            ...styles.searchWrap,
-            ...(searchFocused ? { borderColor: C.accent, boxShadow: `0 0 0 2px ${C.accent}33` } : {}),
-          }}
-        >
-          <span style={styles.searchIcon}>&#x1f50d;</span>
-          <input
-            type="text"
-            placeholder="Search..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setSearchFocused(false)}
-            style={styles.searchInput}
-          />
-          {search && (
-            <span
-              style={{ fontSize: 14, color: C.darkMuted, cursor: "pointer", padding: "0 2px" }}
-              onClick={() => setSearch("")}
-            >
-              &#x2715;
-            </span>
-          )}
-        </div>
-
-        {subItemsEnabled && Object.keys(childMap).length > 0 && (
-          <div style={{ display: "flex", gap: 2 }}>
-            <button
-              onClick={expandAll}
-              title="Expand all"
-              style={styles.refreshBtn}
-            >
-              <IconChevronDown size={10} color={C.darkMuted} style={{ transform: "rotate(-90deg)" }} />
-              <span style={{ fontSize: 11, color: C.darkMuted, marginLeft: 2 }}>All</span>
-            </button>
-            <button
-              onClick={collapseAll}
-              title="Collapse all"
-              style={styles.refreshBtn}
-            >
-              <IconChevronDown size={10} color={C.darkMuted} />
-              <span style={{ fontSize: 11, color: C.darkMuted, marginLeft: 2 }}>All</span>
-            </button>
-          </div>
-        )}
-
-        {filterableFields.map((field) => (
-          <select
-            key={field.name}
-            style={styles.filterSelect}
-            value={filters[field.name] || ""}
-            onChange={(e) => handleFilterChange(field.name, e.target.value)}
-          >
-            <option value="">{field.name}: All</option>
-            {field.options.map((opt) => (
-              <option key={opt.name} value={opt.name}>{opt.name}</option>
-            ))}
-          </select>
-        ))}
-
-        {/* Column visibility toggle */}
-        <div ref={colMenuRef} style={{ position: "relative" }}>
-          <button
-            style={{
-              ...styles.refreshBtn,
-              ...(hiddenColumns.size > 0 ? { borderColor: C.accent, color: C.accent } : {}),
-            }}
-            onClick={() => setColMenuOpen((o) => !o)}
-            title="Toggle columns"
-          >
-            <IconEyeOff size={14} color={hiddenColumns.size > 0 ? C.accent : C.darkMuted} />
-          </button>
-          {colMenuOpen && (
-            <div
-              style={{
-                position: "absolute",
-                top: "100%",
-                right: 0,
-                marginTop: 4,
-                background: C.darkSurf,
-                border: `1px solid ${C.darkBorder}`,
-                borderRadius: RADIUS.lg,
-                boxShadow: SHADOW.dropdown,
-                padding: "6px 0",
-                zIndex: 20,
-                minWidth: 180,
-                maxHeight: 280,
-                overflowY: "auto",
-              }}
-            >
-              {allColumns.map((col) => {
-                const visible = !hiddenColumns.has(col);
-                return (
-                  <div
-                    key={col}
-                    onClick={() => toggleColumn(col)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "6px 12px",
-                      cursor: "pointer",
-                      fontSize: 12,
-                      fontFamily: FONT,
-                      color: visible ? C.darkText : C.darkMuted,
-                      transition: "background 0.12s",
-                    }}
-                    {...hoverBg()}
-                  >
-                    <span style={{
-                      width: 14,
-                      height: 14,
-                      borderRadius: RADIUS.sm,
-                      border: `2px solid ${visible ? C.accent : C.darkBorder}`,
-                      background: visible ? C.accent : "transparent",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 9,
-                      color: "#fff",
-                      fontWeight: 700,
-                      flexShrink: 0,
-                    }}>
-                      {visible ? "\u2713" : ""}
-                    </span>
-                    {col}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Add Row — opens NewRecordModal */}
-        {onCreate && targetDatabaseId && (
-          <button
-            style={styles.refreshBtn}
-            onClick={() => setShowNewModal(true)}
-            title="Add new row"
-          >
-            <IconPlus size={14} color={C.darkMuted} />
-          </button>
-        )}
-
-        {/* CSV Export */}
-        <button
-          style={styles.refreshBtn}
-          onClick={handleExport}
-          title="Export CSV"
-        >
-          <IconExport size={14} color={C.darkMuted} />
-        </button>
-
-        {onRefresh && (
-          <button
-            style={styles.refreshBtn}
-            onClick={onRefresh}
-            title="Refresh data"
-            onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; e.currentTarget.style.color = C.darkText; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = C.darkSurf2; e.currentTarget.style.color = C.darkMuted; }}
-          >
-            &#x21bb;
-          </button>
-        )}
-
-        <div style={{ flex: 1 }} />
-        {collab?.activeUsers?.size > 0 && (
-          <PresenceAvatars users={[...collab.activeUsers.values()]} size={24} />
-        )}
-        <span style={styles.countLabel}>
-          {processedData.length === data.length
-            ? `${data.length} record${data.length !== 1 ? "s" : ""}`
-            : `${processedData.length} of ${data.length}`}
-        </span>
-      </div>
+      <TableToolbar
+        search={search}
+        setSearch={setSearch}
+        searchFocused={searchFocused}
+        setSearchFocused={setSearchFocused}
+        filterableFields={filterableFields}
+        filters={filters}
+        onFilterChange={handleFilterChange}
+        allColumns={allColumns}
+        hiddenColumns={hiddenColumns}
+        toggleColumn={toggleColumn}
+        colMenuOpen={colMenuOpen}
+        setColMenuOpen={setColMenuOpen}
+        colMenuRef={colMenuRef}
+        subItemsEnabled={subItemsEnabled}
+        childMap={childMap}
+        expandAll={expandAll}
+        collapseAll={collapseAll}
+        savedViews={config.savedViews || []}
+        activeSavedViewId={activeSavedViewId}
+        onSelectView={handleSelectSavedView}
+        onSaveView={handleSaveNewView}
+        onUpdateView={handleUpdateView}
+        onRenameView={handleRenameView}
+        onDeleteView={handleDeleteView}
+        onCreate={onCreate}
+        targetDatabaseId={targetDatabaseId}
+        onSetShowNewModal={setShowNewModal}
+        onExport={handleExport}
+        onRefresh={onRefresh}
+        processedDataLength={processedData.length}
+        dataLength={data.length}
+        collab={collab}
+      />
 
       {/* Table area */}
       <div
@@ -1174,147 +927,31 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
             return (
               <div style={{ minWidth: totalTableWidth }}>
                 {/* ── Sticky Header ── */}
-                <div style={{ ...styles.gridHeader, gridTemplateColumns: gtc }}>
-                  {/* Select-all checkbox */}
-                  <div
-                    style={{ ...styles.gridHeaderCell, padding: "10px 8px", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" }}
-                    onClick={toggleAllRows}
-                  >
-                    <span style={styles.toggle(selectedRows.size === displayList.length && displayList.length > 0)}>
-                      {selectedRows.size === displayList.length && displayList.length > 0 ? "\u2713" : ""}
-                    </span>
-                  </div>
-                  {columns.map((col) => {
-                    if (col === OWNER_COL_NAME && showOwnerColumn) {
-                      return (
-                        <div key={col} style={{ ...styles.gridHeaderCell, position: "relative" }}>
-                          <svg width="11" height="11" viewBox="0 0 16 16" fill="none" style={{ marginRight: 5, opacity: 0.55, verticalAlign: "middle" }}>
-                            <circle cx="8" cy="5" r="3.5" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-                            <path d="M2 14.5c0-3 2.7-5 6-5s6 2 6 5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-                          </svg>
-                          Owner
-                        </div>
-                      );
-                    }
-                    const isActive = sortField === col;
-                    const isDragOver = colDrag?.overCol === col;
-                    return (
-                      <div
-                        key={col}
-                        data-col-header={col}
-                        style={{
-                          ...styles.gridHeaderCell,
-                          ...(isActive ? styles.gridHeaderCellActive : {}),
-                          ...(isDragOver ? { borderLeft: `2px solid ${C.accent}` } : {}),
-                          cursor: colDrag ? "grabbing" : "pointer",
-                        }}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          if (colClickTimer.current) { clearTimeout(colClickTimer.current); colClickTimer.current = null; return; }
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          const menuW = 180;
-                          const x = Math.min(rect.left, window.innerWidth - menuW);
-                          colClickTimer.current = setTimeout(() => { colClickTimer.current = null; setColCtxMenu({ col, x, y: rect.bottom + 2 }); }, 250);
-                        }}
-                        onDoubleClick={(e) => {
-                          e.preventDefault(); e.stopPropagation();
-                          if (colClickTimer.current) { clearTimeout(colClickTimer.current); colClickTimer.current = null; }
-                          if (canEditSchema) { setRenamingCol(col); setRenameValue(col); setColCtxMenu(null); }
-                        }}
-                        onContextMenu={(e) => handleColRightClick(col, e)}
-                        onMouseDown={(e) => { if (e.button === 0 && !e.target.closest("[data-resize]")) handleColDragStart(col, e); }}
-                      >
-                        {renamingCol === col ? (
-                          <input
-                            autoFocus
-                            value={renameValue}
-                            onChange={(e) => setRenameValue(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") handleRenameCol(col, renameValue);
-                              if (e.key === "Escape") setRenamingCol(null);
-                              e.stopPropagation();
-                            }}
-                            onBlur={() => handleRenameCol(col, renameValue)}
-                            onClick={(e) => e.stopPropagation()}
-                            style={{
-                              width: "100%", border: `1px solid ${C.accent}`, borderRadius: RADIUS.sm,
-                              background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 11,
-                              padding: "2px 6px", outline: "none", fontWeight: 600, textTransform: "uppercase",
-                              letterSpacing: "0.06em",
-                            }}
-                          />
-                        ) : (
-                          <>
-                            {(() => {
-                              const ti = getTypeIcon(schema, col);
-                              if (!ti) return null;
-                              return ti.Icon ? (
-                                <span style={{ marginRight: 5, opacity: 0.55, verticalAlign: "middle", display: "inline-flex" }} title={getFieldType(schema, col)}><ti.Icon size={11} color="currentColor" /></span>
-                              ) : ti.text ? (
-                                <span style={{ marginRight: 5, fontSize: 10, opacity: 0.55, verticalAlign: "middle", fontWeight: 600 }} title={getFieldType(schema, col)}>{ti.text}</span>
-                              ) : null;
-                            })()}
-                            {col}
-                            {isActive && sortDir && (
-                              <span style={styles.sortArrow}>
-                                {sortDir === "asc" ? "\u25B2" : "\u25BC"}
-                              </span>
-                            )}
-                          </>
-                        )}
-                        {/* Resize handle */}
-                        <span
-                          data-resize="true"
-                          style={{
-                            position: "absolute", right: 0, top: 0, bottom: 0, width: 5,
-                            cursor: "col-resize", background: "transparent", zIndex: 3,
-                          }}
-                          onMouseDown={(e) => handleResizeStart(col, e)}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = C.accent + "44"; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                        />
-                      </div>
-                    );
-                  })}
-                  {/* Badge column header */}
-                  <div style={{ ...styles.gridHeaderCell, padding: "10px 2px" }} />
-                  {/* Neuron column header */}
-                  <div style={{ ...styles.gridHeaderCell, padding: "10px 4px" }} />
-                  {/* Add column button */}
-                  {canEditSchema && (
-                    <div style={{ ...styles.gridHeaderCell, textAlign: "center", padding: "10px 8px", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
-                      <div
-                        style={{
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          width: 26, height: 26, borderRadius: RADIUS.pill,
-                          border: `1px dashed ${addColOpen ? C.accent : C.darkBorder}`,
-                          cursor: "pointer", transition: "all 0.15s",
-                          color: addColOpen ? C.accent : C.darkMuted,
-                          opacity: addColOpen ? 1 : 0.65,
-                          background: addColOpen ? `${C.accent}10` : "transparent",
-                        }}
-                        onClick={(e) => { e.stopPropagation(); setAddColOpen(!addColOpen); }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.opacity = "1";
-                          e.currentTarget.style.borderColor = C.accent;
-                          e.currentTarget.style.color = C.accent;
-                          e.currentTarget.style.background = `${C.accent}10`;
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!addColOpen) {
-                            e.currentTarget.style.opacity = "0.65";
-                            e.currentTarget.style.borderColor = C.darkBorder;
-                            e.currentTarget.style.color = C.darkMuted;
-                            e.currentTarget.style.background = "transparent";
-                          }
-                        }}
-                        title="Add column"
-                      >
-                        <IconPlus size={13} />
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <TableHeader
+                  gtc={gtc}
+                  columns={columns}
+                  schema={schema}
+                  showOwnerColumn={showOwnerColumn}
+                  sortField={sortField}
+                  sortDir={sortDir}
+                  selectedRows={selectedRows}
+                  displayListLength={displayList.length}
+                  toggleAllRows={toggleAllRows}
+                  colDrag={colDrag}
+                  colClickTimer={colClickTimer}
+                  setColCtxMenu={setColCtxMenu}
+                  renamingCol={renamingCol}
+                  setRenamingCol={setRenamingCol}
+                  renameValue={renameValue}
+                  setRenameValue={setRenameValue}
+                  handleRenameCol={handleRenameCol}
+                  handleColRightClick={handleColRightClick}
+                  handleColDragStart={handleColDragStart}
+                  handleResizeStart={handleResizeStart}
+                  canEditSchema={canEditSchema}
+                  addColOpen={addColOpen}
+                  setAddColOpen={setAddColOpen}
+                />
 
                 {/* ── Virtualized Card Rows ── */}
                 <div style={{ padding: "4px 8px" }}>
@@ -1330,343 +967,55 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                         {/* Top spacer */}
                         <div style={{ height: visibleStart * cardHeight }} />
                         {visibleEntries.map((entry, localIdx) => {
-                          const page = entry.row;
-                          const { depth: rowDepth, hasChildren, isExpanded } = entry;
-                          const pageId = page.id;
-                          const isHovered = hoveredRow === pageId;
-                          const isSelected = selectedRows.has(pageId);
-                          const isSubItem = rowDepth > 0;
-                          const prevEntry = localIdx > 0 ? visibleEntries[localIdx - 1] : (visibleStart > 0 ? displayList[visibleStart + localIdx - 1] : null);
-                          const isFirstChild = isSubItem && (!prevEntry || prevEntry.depth === 0);
-                          const activeGtc = isSubItem ? subGtc : gtc;
-                          const activeCols = isSubItem ? subColsList : columns;
-                          const activeSchema = isSubItem && subSchema ? subSchema : schema;
-
-                          const childBgTint = rowDepth > 0 ? "rgba(255,255,255,0.015)" : "transparent";
-                          const cardBg = isSelected ? C.accent + "10" : isHovered ? C.darkSurf2 : childBgTint;
-                          const othersOnRow = collab?.getUsersOnRecord?.(pageId) || [];
-                          const presenceColor = othersOnRow.length > 0 ? othersOnRow[0].color : null;
-                          const presenceBorder = othersOnRow.length > 1
-                            ? { borderLeft: "3px solid", borderImage: `linear-gradient(to bottom, ${othersOnRow.map((u) => u.color).join(", ")}) 1` }
-                            : presenceColor ? { borderLeft: `3px solid ${presenceColor}` } : {};
-
+                          const prev = localIdx > 0 ? visibleEntries[localIdx - 1] : (visibleStart > 0 ? displayList[visibleStart + localIdx - 1] : null);
                           return (
-                            <React.Fragment key={pageId}>
-                            {/* Sub-item mini-header (before first child row) */}
-                            {isFirstChild && subItemsEnabled && (
-                              <div
-                                style={{
-                                  display: "grid",
-                                  gridTemplateColumns: subGtc,
-                                  height: 28,
-                                  alignItems: "center",
-                                  marginBottom: 2,
-                                  marginLeft: 24,
-                                  borderBottom: `1px solid ${C.darkBorder}33`,
-                                }}
-                              >
-                                {/* Checkbox-aligned spacer */}
-                                <div style={{ padding: "0 8px", fontSize: 10, color: C.darkMuted }} />
-                                {subColsList.map((col) => (
-                                  <div
-                                    key={col}
-                                    style={{ padding: "0 8px", fontSize: 11, fontWeight: 700, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.06em", cursor: canEditSchema ? "pointer" : "default", userSelect: "none" }}
-                                    onDoubleClick={(e) => {
-                                      e.preventDefault(); e.stopPropagation();
-                                      if (canEditSchema) { setRenamingSubCol(col); setRenameSubValue(col); setSubColCtxMenu(null); }
-                                    }}
-                                    onContextMenu={(e) => {
-                                      if (!canEditSchema) return;
-                                      e.preventDefault(); e.stopPropagation();
-                                      setSubColCtxMenu({ col, x: e.clientX, y: e.clientY });
-                                    }}
-                                  >
-                                    {renamingSubCol === col ? (
-                                      <input
-                                        autoFocus
-                                        value={renameSubValue}
-                                        onChange={(e) => setRenameSubValue(e.target.value)}
-                                        onKeyDown={(e) => {
-                                          if (e.key === "Enter") handleRenameSubCol(col, renameSubValue);
-                                          if (e.key === "Escape") setRenamingSubCol(null);
-                                          e.stopPropagation();
-                                        }}
-                                        onBlur={() => handleRenameSubCol(col, renameSubValue)}
-                                        onClick={(e) => e.stopPropagation()}
-                                        style={{
-                                          width: "100%", border: `1px solid ${C.accent}`, borderRadius: RADIUS.sm,
-                                          background: C.darkSurf2, color: C.darkText, fontFamily: FONT, fontSize: 11,
-                                          padding: "2px 6px", outline: "none", fontWeight: 600, textTransform: "uppercase",
-                                          letterSpacing: "0.06em",
-                                        }}
-                                      />
-                                    ) : col}
-                                  </div>
-                                ))}
-                                <div />
-                                <div />
-                                {canEditSchema && (
-                                  <div
-                                    style={{
-                                      display: "flex", alignItems: "center", justifyContent: "center",
-                                      cursor: "pointer", fontSize: 11, color: C.darkMuted,
-                                      gap: 4, padding: "0 4px",
-                                    }}
-                                    onClick={(e) => { e.stopPropagation(); setAddSubColOpen(true); }}
-                                    title="Add sub-item column"
-                                    onMouseEnter={(e) => { e.currentTarget.style.color = C.accent; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.color = C.darkMuted; }}
-                                  >
-                                    <IconPlus size={13} />
-                                    {subColumns.length === 0 && (
-                                      <span style={{ fontSize: 11, whiteSpace: "nowrap" }}>Add column</span>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                            <div
-                              data-neuron-node={`row:${pageId}`}
-                              style={{
-                                ...styles.gridRow,
-                                gridTemplateColumns: activeGtc,
-                                height: ROW_HEIGHT,
-                                background: cardBg,
-                                ...(isSubItem ? {
-                                  borderLeft: `2px solid ${C.accent}22`,
-                                  marginLeft: 22,
-                                  borderRadius: `0 ${RADIUS.lg} ${RADIUS.lg} 0`,
-                                } : {}),
-                                ...(isHovered ? { boxShadow: `0 1px 4px rgba(0,0,0,0.08)` } : {}),
-                                ...presenceBorder,
-                                animation: ANIM.scrollReveal(localIdx),
-                              }}
-                              onMouseEnter={() => setHoveredRow(pageId)}
-                              onMouseLeave={() => setHoveredRow(null)}
-                              onClick={(e) => {
-                                if ((e.metaKey || e.ctrlKey) && isNeuronsMode()) {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  dispatchNeuronSelect({ node_type: "row", node_id: pageId, node_label: getPageTitle(page) || "Untitled" });
-                                  return;
-                                }
-                                setDetailPage(page);
-                              }}
-                            >
-                              {/* Checkbox + branch icon cell */}
-                              <div style={{ ...styles.gridCell, justifyContent: "center", padding: 0, gap: 2 }}>
-                                <span
-                                  style={styles.toggle(isSelected)}
-                                  onClick={(e) => { e.stopPropagation(); toggleRow(pageId); }}
-                                >
-                                  {isSelected ? "\u2713" : ""}
-                                </span>
-                                {/* Branch icon: always visible on parent rows (not hover-only) for iPad support */}
-                                {subItemsEnabled && !isSubItem && rowDepth < 5 && onCreate && (
-                                  <button
-                                    data-sub-item-trigger
-                                    title="Add sub-item"
-                                    onClick={(e) => { e.stopPropagation(); handleCreateSubItem(pageId); }}
-                                    style={{
-                                      background: "none", border: "none", cursor: "pointer",
-                                      padding: 6, display: "flex", alignItems: "center",
-                                      opacity: isHovered ? 0.8 : 0.3, transition: "opacity 0.15s",
-                                      minWidth: 28, minHeight: 28, justifyContent: "center",
-                                    }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.opacity = isHovered ? "0.8" : "0.3"; }}
-                                  >
-                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke={C.darkMuted} strokeWidth="1.5" strokeLinecap="round">
-                                      <path d="M4 4v8M4 8h4c2 0 3 0 3-2V4" />
-                                      <path d="M4 12h4c2 0 3 0 3-2V8" />
-                                    </svg>
-                                  </button>
-                                )}
-                              </div>
-                              {/* Data cells */}
-                              {activeCols.map((col, colIdx) => {
-                                if (col === OWNER_COL_NAME && showOwnerColumn) {
-                                  const ownerIds = page._ownerUserIds || [];
-                                  return (
-                                    <div
-                                      key={col}
-                                      style={{ ...styles.gridCell, padding: "4px 8px" }}
-                                    >
-                                      <OwnerCellDisplay
-                                        ownerIds={ownerIds}
-                                        users={teamUsers}
-                                      />
-                                    </div>
-                                  );
-                                }
-                                const type = getFieldType(activeSchema, col);
-                                const value = readField(page, col);
-                                const cellKey = `${pageId}:${col}`;
-                                const linkData = resolvedLinks.get(cellKey);
-
-                                const cellTyping = othersOnRow.find((u) => u.isTyping && u.typingField === col);
-                                const isFirstCol = colIdx === 0;
-                                return (
-                                  <div key={col} style={{
-                                    ...styles.gridCell, padding: "4px 8px",
-                                    ...(cellTyping ? { boxShadow: `inset 0 -2px 0 ${cellTyping.color}` } : {}),
-                                  }}>
-                                    {isFirstCol && subItemsEnabled ? (
-                                      <div style={{ display: "flex", alignItems: "center", minWidth: 0, width: "100%" }}>
-                                        {rowDepth > 0 && <div style={{ width: rowDepth * 24, flexShrink: 0 }} />}
-                                        {hasChildren ? (
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); toggleExpand(pageId); }}
-                                            aria-expanded={isExpanded}
-                                            style={{
-                                              background: "none", border: "none", cursor: "pointer",
-                                              outline: "none", padding: "0 4px", display: "flex",
-                                              alignItems: "center", flexShrink: 0,
-                                            }}
-                                          >
-                                            <IconChevronDown
-                                              size={10}
-                                              color={C.darkMuted}
-                                              style={{
-                                                transition: "transform 0.15s",
-                                                transform: isExpanded ? "rotate(0deg)" : "rotate(-90deg)",
-                                              }}
-                                            />
-                                          </button>
-                                        ) : rowDepth > 0 ? (
-                                          <div style={{ width: 16, flexShrink: 0 }} />
-                                        ) : null}
-                                        <div style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
-                                          <CellDisplay
-                                            value={value}
-                                            type={type}
-                                            fieldName={col}
-                                            schema={activeSchema}
-                                            colorMapping={config.colorMapping}
-                                            relationTitles={relationTitles}
-                                            linkInfo={linkData ? { sourceName: linkData.link?.name, stale: linkData.stale } : undefined}
-                                            linkedValue={linkData?.value}
-                                            onLinkClick={linkData ? () => removeLink(linkData.link.id) : undefined}
-                                          />
-                                        </div>
-                                        {hasChildren && !isExpanded && (
-                                          <span style={{
-                                            fontSize: 10, color: C.darkMuted, marginLeft: 4,
-                                            background: C.darkSurf2, borderRadius: 8, padding: "1px 5px",
-                                            flexShrink: 0,
-                                          }}>
-                                            {getChildren(pageId).length}
-                                          </span>
-                                        )}
-                                      </div>
-                                    ) : (
-                                      <CellDisplay
-                                        value={value}
-                                        type={type}
-                                        fieldName={col}
-                                        schema={activeSchema}
-                                        colorMapping={config.colorMapping}
-                                        relationTitles={relationTitles}
-                                        linkInfo={linkData ? { sourceName: linkData.link?.name, stale: linkData.stale } : undefined}
-                                        linkedValue={linkData?.value}
-                                        onLinkClick={linkData ? () => removeLink(linkData.link.id) : undefined}
-                                      />
-                                    )}
-                                  </div>
-                                );
-                              })}
-                              {/* Record badge cell (comments, files, notes) */}
-                              <div style={{ ...styles.gridCell, justifyContent: "center", padding: "4px 2px", gap: 3, display: "flex", alignItems: "center" }}>
-                                {badgeCounts[pageId]?.comments > 0 && (
-                                  <span title={`${badgeCounts[pageId].comments} comment${badgeCounts[pageId].comments !== 1 ? "s" : ""}`} style={{ fontSize: 10, color: C.darkMuted, display: "flex", alignItems: "center", gap: 2 }}>
-                                    <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M2 3h12v8H5l-3 3V3z" stroke="currentColor" strokeWidth="1.3" fill="none"/></svg>
-                                    {badgeCounts[pageId].comments}
-                                  </span>
-                                )}
-                                {badgeCounts[pageId]?.files > 0 && (
-                                  <span title={`${badgeCounts[pageId].files} file${badgeCounts[pageId].files !== 1 ? "s" : ""}`} style={{ fontSize: 10, color: C.darkMuted, display: "flex", alignItems: "center", gap: 2 }}>
-                                    <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M8.5 1.5l4 4v8a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1h4z" stroke="currentColor" strokeWidth="1.3" fill="none"/></svg>
-                                    {badgeCounts[pageId].files}
-                                  </span>
-                                )}
-                                {badgeCounts[pageId]?.notes && (
-                                  <span title="Has notes" style={{ width: 5, height: 5, borderRadius: "50%", background: C.accent, flexShrink: 0 }} />
-                                )}
-                              </div>
-                              {/* Neuron badge cell — inline */}
-                              <div style={{ ...styles.gridCell, justifyContent: "center", padding: "4px 2px" }}>
-                                <NeuronBadge nodeId={pageId} />
-                              </div>
-                            </div>
-                            {/* Inline sub-item ghost row */}
-                            {subItemGhostParent === pageId && onCreate && (
-                              <div
-                                ref={subGhostRef}
-                                key={`ghost-sub-${pageId}`}
-                                style={{
-                                  ...styles.gridRow,
-                                  gridTemplateColumns: subGtc,
-                                  height: ROW_HEIGHT,
-                                  opacity: subItemGhostSaving ? 0.5 : 0.9,
-                                  transition: "opacity 0.15s",
-                                  cursor: "default",
-                                  background: C.accent + "08",
-                                  borderLeft: `2px solid ${C.accent}44`,
-                                  marginLeft: 22,
-                                  borderRadius: `0 ${RADIUS.lg} ${RADIUS.lg} 0`,
-                                }}
-                              >
-                                {/* Checkbox spacer + dismiss button */}
-                                <div style={{ ...styles.gridCell, justifyContent: "center", padding: 0, gap: 2 }}>
-                                  <IconPlus size={12} color={C.accent} style={{ opacity: 0.5 }} />
-                                  <button
-                                    title="Cancel"
-                                    onClick={(e) => { e.stopPropagation(); setSubItemGhostParent(null); setSubItemGhostValues({}); subItemGhostActive.current = false; }}
-                                    style={{
-                                      background: "none", border: "none", cursor: "pointer",
-                                      padding: 4, display: "flex", alignItems: "center",
-                                      opacity: 0.4, transition: "opacity 0.15s",
-                                      fontSize: 11, color: C.darkMuted, lineHeight: 1,
-                                    }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.8"; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.4"; }}
-                                  >
-                                    ✕
-                                  </button>
-                                </div>
-                                {/* Editable cells — uses sub-item columns */}
-                                {subColsList.map((col, ci) => {
-                                  const ghostSchema = subSchema || schema;
-                                  const type = getFieldType(ghostSchema, col);
-                                  const isEditable = EDITABLE_TYPES.has(type) || type === "title" || ci === 0;
-                                  const isTitle = ci === 0;
-                                  return (
-                                    <div key={col} style={{ ...styles.gridCell, padding: "2px 6px" }}>
-                                      {!isEditable ? (
-                                        <span style={{ color: C.darkMuted, fontSize: 11, fontStyle: "italic" }}>--</span>
-                                      ) : (
-                                        <GhostCell
-                                          col={col}
-                                          type={type}
-                                          value={subItemGhostValues[col]}
-                                          schema={ghostSchema}
-                                          onSetValue={(c, v) => { subItemGhostActive.current = true; setSubItemGhostValues((p) => ({ ...p, [c]: v })); }}
-                                          onKeyDown={(e) => {
-                                            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubItemGhostCommit(); }
-                                            if (e.key === "Escape") { setSubItemGhostParent(null); setSubItemGhostValues({}); subItemGhostActive.current = false; }
-                                          }}
-                                          placeholder={isTitle ? "New sub-item..." : ""}
-                                          autoFocus={isTitle}
-                                        />
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                                <div style={{ ...styles.gridCell, padding: "4px 2px" }} />
-                                <div style={{ ...styles.gridCell, padding: "4px 2px" }} />
-                              </div>
-                            )}
-                          </React.Fragment>
+                            <TableRow
+                              key={entry.row.id}
+                              entry={entry}
+                              localIdx={localIdx}
+                              prevEntry={prev}
+                              gtc={gtc}
+                              subGtc={subGtc}
+                              columns={columns}
+                              subColsList={subColsList}
+                              subColumns={subColumns}
+                              schema={schema}
+                              subSchema={subSchema}
+                              subItemsEnabled={subItemsEnabled}
+                              isHovered={hoveredRow === entry.row.id}
+                              isSelected={selectedRows.has(entry.row.id)}
+                              showOwnerColumn={showOwnerColumn}
+                              canEditSchema={canEditSchema}
+                              setHoveredRow={setHoveredRow}
+                              setDetailPage={setDetailPage}
+                              toggleRow={toggleRow}
+                              toggleExpand={toggleExpand}
+                              handleCreateSubItem={handleCreateSubItem}
+                              onCreate={onCreate}
+                              teamUsers={teamUsers}
+                              resolvedLinks={resolvedLinks}
+                              config={config}
+                              relationTitles={relationTitles}
+                              badgeCounts={badgeCounts}
+                              removeLink={removeLink}
+                              collab={collab}
+                              renamingSubCol={renamingSubCol}
+                              setRenamingSubCol={setRenamingSubCol}
+                              renameSubValue={renameSubValue}
+                              setRenameSubValue={setRenameSubValue}
+                              handleRenameSubCol={handleRenameSubCol}
+                              setSubColCtxMenu={setSubColCtxMenu}
+                              setAddSubColOpen={setAddSubColOpen}
+                              subItemGhostParent={subItemGhostParent}
+                              setSubItemGhostParent={setSubItemGhostParent}
+                              subItemGhostValues={subItemGhostValues}
+                              setSubItemGhostValues={setSubItemGhostValues}
+                              subItemGhostSaving={subItemGhostSaving}
+                              subItemGhostActive={subItemGhostActive}
+                              subGhostRef={subGhostRef}
+                              handleSubItemGhostCommit={handleSubItemGhostCommit}
+                              getChildren={getChildren}
+                            />
                           );
                         })}
                         {/* Bottom spacer */}
@@ -1715,35 +1064,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                 </div>
 
                 {/* ── Sticky Footer (Totals) ── */}
-                <div style={{ ...styles.gridFooter, gridTemplateColumns: gtc }}>
-                  <div style={{ padding: "4px 8px" }} />
-                  {columns.map((col) => {
-                    const type = getFieldType(schema, col);
-                    let total = null;
-                    if (type === "number") {
-                      total = 0;
-                      for (const page of processedData) {
-                        const v = readField(page, col);
-                        if (typeof v === "number") total += v;
-                      }
-                    }
-                    return (
-                      <div
-                        key={col}
-                        style={{
-                          padding: "4px 12px",
-                          fontWeight: 600,
-                          fontSize: 12,
-                          fontVariantNumeric: "tabular-nums",
-                          color: total !== null ? C.darkText : "transparent",
-                        }}
-                      >
-                        {total !== null ? total.toLocaleString() : ""}
-                      </div>
-                    );
-                  })}
-                  <div style={{ padding: "4px 2px" }} />
-                </div>
+                <TableFooter gtc={gtc} columns={columns} schema={schema} processedData={processedData} />
               </div>
             );
           })()
