@@ -7,13 +7,13 @@ import { usePlatform } from "../context/PlatformContext.jsx";
 import { useUserSync } from "../context/UserSyncContext.jsx";
 import {
   listRows, claudeProxy, getTableSchema, listTaskActivity, upsertTaskActivity,
-  getRecordViews, listRecordComments, listTaskInteractions,
+  getRecordViews, listRecordComments, listTaskInteractions, logTaskInteraction,
 } from "../lib/api.js";
 import { loadCachedNeuronGraph } from "../neurons/neuronStorage.js";
 import {
   normalizeD1Task, getCached, setCache, getStaleCache, parseDate,
   shouldIncludeTask, isSmartOverdue,
-  persistInteraction, mergeInteractionAdjustments,
+  persistInteraction, mergeInteractionAdjustments, loadInteractionLedger,
 } from "./taskHelpers.js";
 
 const CACHE_KEY_PREFIX = "wasabi_ai_tasks_v10"; // v10: D1-only scan, no Notion API dependency
@@ -277,11 +277,19 @@ function compressTask(task) {
   // Neuron sibling signals
   if (task._neuronNames?.length) obj.neuronClusters = task._neuronNames;
   if (task._neuronSiblingUrgent) obj.neuronSiblingUrgent = true;
-  // Interaction history signals
+  // Interaction history signals (from D1 task_interactions table)
   if (task._lastInteractionType) obj.lastInteraction = task._lastInteractionType;
   if (task._lastInteractionAgo) obj.lastInteractionAgo = task._lastInteractionAgo;
   if (task._interactionGap) obj.interactionGap = task._interactionGap;
   if (task._otherUserActions?.length) obj.otherUserActions = task._otherUserActions;
+  // Formula-based deprioritization suggestion (from localStorage interaction ledger)
+  if (task._interactionCount > 0 && task._interactionAdjustment) {
+    const baseScore = task._aiBaseScore || task._aiScore || 3;
+    const pct = Math.min(95, Math.round(Math.abs(task._interactionAdjustment) / Math.max(baseScore, 1) * 100));
+    if (task._interactionAdjustment < -3) obj.formulaSuggestion = `deprioritize ${pct}%`;
+    else if (task._interactionAdjustment > 3) obj.formulaSuggestion = `boost ${pct}%`;
+  }
+  if (task._interactionBreakdown) obj.interactionBreakdown = task._interactionBreakdown;
   return obj;
 }
 
@@ -302,10 +310,14 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
   const debounceTimerRef = useRef(null);
   const dismissedIdsRef = useRef(dismissedIds || new Set());
   const completedCountRef = useRef(completedCount || 0);
+  const identityRef = useRef(identity);
+  const aiTasksRef = useRef(aiTasks);
 
   // Keep refs in sync with latest values
   dismissedIdsRef.current = dismissedIds || new Set();
   completedCountRef.current = completedCount || 0;
+  identityRef.current = identity;
+  aiTasksRef.current = aiTasks;
 
   // Clean up old cache keys + load cached results
   // Re-runs when identity changes so role filter is always applied correctly
@@ -812,6 +824,34 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
         console.warn("[AICurated] Interaction enrichment failed:", err.message);
       }
 
+      // Step 2.96: Enrich with interaction breakdown from localStorage ledger
+      // This adds _interactionBreakdown (e.g., "3 views, 2 edits today") to each task
+      // so compressTask() can include it and the formula suggestion in the Claude prompt.
+      try {
+        const ledger = loadInteractionLedger();
+        const now = Date.now();
+        for (const task of filteredTasks) {
+          const entry = ledger[task.id];
+          if (!entry?.interactions?.length) continue;
+          const todayInteractions = entry.interactions.filter(i => (now - i.ts) < 86400000);
+          if (todayInteractions.length > 0) {
+            const counts = {};
+            for (const i of todayInteractions) counts[i.type] = (counts[i.type] || 0) + 1;
+            task._interactionBreakdown = Object.entries(counts)
+              .map(([type, count]) => `${count} ${type}${count > 1 ? "s" : ""}`)
+              .join(", ") + " today";
+          }
+          // Carry over interaction adjustment data from mergeInteractionAdjustments
+          // (which may not have run yet on filteredTasks — it runs on results after Claude)
+          if (entry.totalAdjustment !== undefined) {
+            task._interactionAdjustment = entry.totalAdjustment;
+            task._interactionCount = entry.interactions.length;
+          }
+        }
+      } catch (err) {
+        console.warn("[AICurated] Interaction breakdown enrichment failed:", err.message);
+      }
+
       // Step 3: Call Haiku for prioritization (on filtered tasks)
       if (user.claudeKey && filteredTasks.length > 0) {
         try {
@@ -845,6 +885,9 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
 - lastInteractionAgo: human-readable time since last interaction (e.g., "2h ago")
 - interactionGap: describes incomplete workflows (e.g., "commented but status unchanged" — user acknowledged but didn't progress)
 - otherUserActions: recent interactions by other team members (shared signals)
+- interactionCount: total accumulated interactions by this user on this task
+- interactionBreakdown: today's interaction summary (e.g., "3 views, 2 field_edits today")
+- formulaSuggestion: formula-based recommendation (e.g., "deprioritize 60%") based on accumulated user interactions with time decay. FOLLOW this unless the task has NEW urgency since the interactions (new unread comments, deadline within 24h, blocking count increased)
 ${ownershipGuidance}`
             : "";
 
@@ -877,6 +920,8 @@ Priority rules:
 - lastInteraction="status_change" — user progressed this, lower priority
 - otherUserActions present — mention team activity in the reason (e.g., "Graham commented 2h ago")
 - When writing reasons, mention the neuron cluster name if present (e.g., "Part of the Q3 Launch campaign, which has 2 overdue items")
+- formulaSuggestion present with "deprioritize" — user has heavily interacted with this task. Follow the suggestion unless there's new external urgency (new unread comments from others, deadline within 24h, blocking count increased). The user has seen and worked on this; fresher tasks should surface.
+- formulaSuggestion present with "boost" — user has been commenting/discussing. This needs follow-through, keep it visible.
 Exclude any items that are NOT actionable tasks (contacts, records, inventory, labels).
 
 For each task, write a "reason" — a concise 1-2 sentence attention summary written for the user. It should feel like a helpful assistant briefing them. Be specific: reference actual dates, how many days overdue, the database name, blocking relationships, and why it matters NOW. Don't list tags — write natural language.
@@ -1084,7 +1129,14 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
     // 1. Persist to localStorage interaction ledger (accumulates with time decay)
     const entry = persistInteraction(taskId, type, detail);
 
-    // 2. Update React state with ledger's calculated adjustment
+    // 2. Fire-and-forget: persist to D1 so Claude sees interaction history on next scan
+    const id = identityRef.current;
+    const task = aiTasksRef.current?.find(t => t.id === taskId);
+    if (id?.id && task?.source) {
+      logTaskInteraction(taskId, task.source, id.id, type, detail).catch(() => {});
+    }
+
+    // 3. Update React state with ledger's calculated adjustment
     setAiTasks((prev) => {
       let tasks = prev.map((t) => {
         if (t.id !== taskId) return t;
@@ -1106,7 +1158,7 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
       return tasks;
     });
 
-    // 3. Update localStorage task cache so reloads see adjustments
+    // 4. Update localStorage task cache so reloads see adjustments
     try {
       const raw = localStorage.getItem(CACHE_KEY);
       if (raw) {
