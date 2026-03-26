@@ -7,7 +7,7 @@ import { C, FONT, RADIUS, SHADOW, getStatusColor } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { ANIM, injectAnimations } from "../design/animations.js";
 import { hoverBg } from "../design/interactions.js";
-import { buildProp, extractProperties, getPageTitle } from "../notion/properties.js";
+import { getPageTitle } from "../notion/properties.js";
 import { debounce } from "../utils/helpers.js";
 import {
   IconTrash, IconExport, IconEyeOff, IconExpand, IconPlus, IconConnect,
@@ -21,11 +21,11 @@ import { useLinks } from "../context/LinksContext.jsx";
 import LinkPicker from "../core/LinkPicker.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
-import { updateTableSchema, updateSubColumnSchema, getTableSchema, listUserDirectory, updateRowOwner, notionProxy, getRecordBadgeCounts, deleteRow } from "../lib/api.js";
+import { listUserDirectory, updateRowOwner, notionProxy, getRecordBadgeCounts, deleteRow } from "../lib/api.js";
 import { useTreeData } from "../lib/useTreeData.js";
 import { getPinToken } from "../components/PinLockOverlay.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { updateDatabase, searchDatabases } from "../notion/client.js";
+// updateDatabase, searchDatabases now imported by table/hooks/useColumnManagement.js
 // SelectPicker and MultiSelectPicker now imported by table/CellEditor.jsx
 import SavedViewsDropdown from "../components/SavedViewsDropdown.jsx";
 import { useCollaboration } from "../context/CollaborationContext.jsx";
@@ -45,6 +45,10 @@ import CellDisplay, { CELL_RENDERERS } from "./table/CellDisplay.jsx";
 import { ParentColumnContextMenu, SubColumnContextMenu } from "./table/ColumnContextMenu.jsx";
 import { AddColumnDialog, AddSubColumnDialog } from "./table/AddColumnDialog.jsx";
 import CascadeDeleteDialog from "./table/CascadeDeleteDialog.jsx";
+import useGhostRow from "./table/hooks/useGhostRow.js";
+import useSubItemGhost from "./table/hooks/useSubItemGhost.js";
+import useTableCellEdit from "./table/hooks/useTableCellEdit.js";
+import useColumnManagement from "./table/hooks/useColumnManagement.js";
 
 
 
@@ -81,9 +85,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const [chipFilters, setChipFilters] = useState(
     () => config.activeFilters || pageConfig?.activeFilters || {}
   ); // { fieldName: ["val1", "val2"] }
-  const [editCell, setEditCell] = useState(null); // { pageId, field }
-  const [savingCells, setSavingCells] = useState({}); // { "pageId:field": true }
-  const [failedCells, setFailedCells] = useState({}); // { "pageId:field": "error message" }
+  // editCell, savingCells, failedCells, initialChar — from useTableCellEdit hook (called below)
   const [hoveredRow, setHoveredRow] = useState(null);
   const [searchFocused, setSearchFocused] = useState(false);
 
@@ -113,37 +115,10 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     }
   }, [initialDetailRecordId, data]);
 
-  // ── Sub-Items: Inline Ghost Row & Cascade Dialog ──
-  const [subItemGhostParent, setSubItemGhostParent] = useState(null); // parent row ID
-  const [subItemGhostValues, setSubItemGhostValues] = useState({});
-  const [subItemGhostSaving, setSubItemGhostSaving] = useState(false);
-  const subItemGhostActive = useRef(false);
+  // Sub-item ghost state — from useSubItemGhost hook (called below)
   const [cascadeDialog, setCascadeDialog] = useState(null); // { rowIds, childCount }
 
-  // ── Column Resize (persisted) ──
-  const [colWidths, setColWidths] = useState(() => config.colWidths || {}); // { fieldName: px }
-  const resizeDrag = useRef(null); // { col, startX, startW }
-
-  // ── Column Management ──
-  const [colCtxMenu, setColCtxMenu] = useState(null); // { col, x, y }
-  const [renamingCol, setRenamingCol] = useState(null); // column name being renamed
-  const [renameValue, setRenameValue] = useState("");
-  const colClickTimer = useRef(null); // single-click delay for double-click detection
-  // ── Sub-item Column Management ──
-  const [subColCtxMenu, setSubColCtxMenu] = useState(null); // { col, x, y }
-  const [renamingSubCol, setRenamingSubCol] = useState(null); // sub-column name being renamed
-  const [renameSubValue, setRenameSubValue] = useState("");
-  const [addColOpen, setAddColOpen] = useState(false);
-  const [addColName, setAddColName] = useState("");
-  const [addColType, setAddColType] = useState("text");
-  // Relation column state
-  const [addColRelationDb, setAddColRelationDb] = useState(null);
-  const [addColSynced, setAddColSynced] = useState(true);
-  const [addColSyncedName, setAddColSyncedName] = useState("");
-  const [dbSearchResults, setDbSearchResults] = useState([]);
-  const [dbSearchQuery, setDbSearchQuery] = useState("");
-  const [dbSearching, setDbSearching] = useState(false);
-  const [colDrag, setColDrag] = useState(null); // { col, startX, overCol }
+  // Column management state — from useColumnManagement hook (called below)
   // ── Source type detection (D1 / Notion / external) ──
   const sourceType = useMemo(() => {
     const pt = pageConfig?.page_type || pageConfig?.pageType;
@@ -169,17 +144,12 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     }).catch(err => console.warn("[Table] listUserDirectory:", err.message || err));
   }, [showOwnerColumn]);
 
-  // ── Ghost Row (inline new record creation) ──
-  const [ghostValues, setGhostValues] = useState({});
-  const [ghostSaving, setGhostSaving] = useState(false);
-  const [ghostError, setGhostError] = useState(null);
-  const ghostActive = useRef(false); // true when user has started typing in ghost row
-
-  // ghostInputStyle imported from table/tableStyles.js
+  // ── Ghost Row (via useGhostRow hook) ──
+  // Hook is called after targetDatabaseId is defined (below)
 
   // ── Keyboard Navigation ──
   const [focusedCell, setFocusedCell] = useState(null); // { row: number, col: number } | null
-  const [initialChar, setInitialChar] = useState(""); // printable char that triggered cell edit
+  // initialChar is in useTableCellEdit hook
   const scrollAreaRef = useRef(null);
 
   // ── Virtualization ──
@@ -276,267 +246,10 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     return () => document.removeEventListener("mousedown", handler);
   }, [colMenuOpen]);
 
-  // ── Column resize drag handlers ──
-  const colWidthsRef = useRef(colWidths);
-  colWidthsRef.current = colWidths;
-
-  const handleResizeStart = useCallback((col, e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const startX = e.clientX;
-    const startW = colWidthsRef.current[col] || 150;
-    resizeDrag.current = { col, startX, startW };
-
-    const onMove = (me) => {
-      if (!resizeDrag.current) return;
-      const dx = me.clientX - resizeDrag.current.startX;
-      const newW = Math.max(60, resizeDrag.current.startW + dx);
-      setColWidths((prev) => ({ ...prev, [resizeDrag.current.col]: newW }));
-    };
-    const onUp = () => {
-      // Persist column widths
-      if (resizeDrag.current && onViewConfigChange) {
-        const finalWidths = { ...colWidthsRef.current };
-        onViewConfigChange({ colWidths: finalWidths });
-      }
-      resizeDrag.current = null;
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, []);
-
-  // ── Column context menu handlers ──
-  const handleColRightClick = useCallback((col, e) => {
-    e.preventDefault();
-    setColCtxMenu({ col, x: e.clientX, y: e.clientY });
-  }, []);
-
-  // Close context menu on outside click
-  useEffect(() => {
-    if (!colCtxMenu) return;
-    const handler = () => setColCtxMenu(null);
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [colCtxMenu]);
-
-  // Hide column from context menu
-  const handleHideCol = useCallback((col) => {
-    setHiddenColumns((prev) => new Set([...prev, col]));
-    setColCtxMenu(null);
-    if (onViewConfigChange) {
-      const visibleFields = allColumnsRef.current.filter((c) => c !== col && !hiddenColumns.has(c));
-      onViewConfigChange({ visibleFields });
-    }
-  }, [hiddenColumns, onViewConfigChange]);
-
   // ── Notion DB helper ──
   const notionDbId = isNotionTable ? (pageConfig?.databaseIds?.[0] || null) : null;
   const workerUrl = user?.workerUrl;
   const notionKey = user?.notionKey;
-
-  // Rename column (D1 + Notion)
-  const handleRenameCol = useCallback(async (oldName, newName) => {
-    if (!newName.trim() || newName === oldName) { setRenamingCol(null); return; }
-    if (!canEditSchema || !pageConfig?.id) { setRenamingCol(null); return; }
-    try {
-      if (isNotionTable && notionDbId && workerUrl && notionKey) {
-        await updateDatabase(workerUrl, notionKey, notionDbId, { properties: { [oldName]: { name: newName.trim() } } });
-      } else {
-        const schemaRes = await getTableSchema(pageConfig.id);
-        const cols = (schemaRes?.columns || []).map((c) =>
-          c.name === oldName ? { ...c, name: newName.trim() } : c
-        );
-        await updateTableSchema(pageConfig.id, cols);
-      }
-      if (onRefresh) onRefresh();
-    } catch (err) { console.error("Rename column failed:", err); }
-    setRenamingCol(null);
-  }, [canEditSchema, isNotionTable, notionDbId, workerUrl, notionKey, pageConfig?.id, onRefresh]);
-
-  // Rename sub-item column (D1 only — sub-items are D1-only)
-  const handleRenameSubCol = useCallback(async (oldName, newName) => {
-    if (!newName.trim() || newName === oldName) { setRenamingSubCol(null); return; }
-    if (!canEditSchema || !pageConfig?.id) { setRenamingSubCol(null); return; }
-    try {
-      const schemaRes = await getTableSchema(pageConfig.id);
-      const subs = (schemaRes?.sub_columns || []).map((c) =>
-        c.name === oldName ? { ...c, name: newName.trim() } : c
-      );
-      await updateSubColumnSchema(pageConfig.id, subs);
-      if (onRefresh) onRefresh();
-    } catch (err) { console.error("Rename sub-column failed:", err); }
-    setRenamingSubCol(null);
-  }, [canEditSchema, pageConfig?.id, onRefresh]);
-
-  // Delete sub-item column (D1 only)
-  const handleDeleteSubCol = useCallback(async (colName) => {
-    if (!canEditSchema || !pageConfig?.id) return;
-    try {
-      const schemaRes = await getTableSchema(pageConfig.id);
-      const subs = (schemaRes?.sub_columns || []).filter((c) => c.name !== colName);
-      await updateSubColumnSchema(pageConfig.id, subs);
-      if (onRefresh) onRefresh();
-    } catch (err) { console.error("Delete sub-column failed:", err); }
-    setSubColCtxMenu(null);
-  }, [canEditSchema, pageConfig?.id, onRefresh]);
-
-  // Delete column (D1 + Notion)
-  const handleDeleteCol = useCallback(async (col) => {
-    if (!canEditSchema || !pageConfig?.id) return;
-    try {
-      if (isNotionTable && notionDbId && workerUrl && notionKey) {
-        await updateDatabase(workerUrl, notionKey, notionDbId, { properties: { [col]: null } });
-      } else {
-        const schemaRes = await getTableSchema(pageConfig.id);
-        const cols = (schemaRes?.columns || []).filter((c) => c.name !== col);
-        await updateTableSchema(pageConfig.id, cols);
-      }
-      if (onRefresh) onRefresh();
-    } catch (err) { console.error("Delete column failed:", err); }
-    setColCtxMenu(null);
-  }, [canEditSchema, isNotionTable, notionDbId, workerUrl, notionKey, pageConfig?.id, onRefresh]);
-
-  // Change column type (D1 tables only — Notion has restrictions)
-  const handleChangeColType = useCallback(async (col, newType) => {
-    if (!isD1Table || !pageConfig?.id) return;
-    try {
-      const schemaRes = await getTableSchema(pageConfig.id);
-      const cols = (schemaRes?.columns || []).map((c) =>
-        c.name === col ? { ...c, type: newType } : c
-      );
-      await updateTableSchema(pageConfig.id, cols);
-      if (onRefresh) onRefresh();
-    } catch (err) { console.error("Change type failed:", err); }
-    setColCtxMenu(null);
-  }, [isD1Table, pageConfig?.id, onRefresh]);
-
-  // Search Notion databases for relation column picker
-  const searchRelationDbs = useCallback(async (q) => {
-    if (!workerUrl || !notionKey) return;
-    setDbSearching(true);
-    try {
-      const results = await searchDatabases(workerUrl, notionKey, q || "");
-      setDbSearchResults(
-        results
-          .filter((r) => r.id !== notionDbId) // exclude self
-          .slice(0, 15)
-          .map((r) => ({
-            id: r.id,
-            title: r.title?.map((t) => t.plain_text).join("") || "Untitled",
-          }))
-      );
-    } catch (err) {
-      console.error("DB search failed:", err);
-    } finally {
-      setDbSearching(false);
-    }
-  }, [workerUrl, notionKey, notionDbId]);
-
-  // Add new column (D1 + Notion)
-  const handleAddCol = useCallback(async () => {
-    if (!addColName.trim() || !canEditSchema || !pageConfig?.id) return;
-    // Guard: relation needs a target database selected
-    if (addColType === "relation" && !addColRelationDb) return;
-    if (addColType === "relation" && addColSynced && !addColSyncedName.trim()) return;
-    try {
-      if (isNotionTable && notionDbId && workerUrl && notionKey) {
-        if (addColType === "relation" && addColRelationDb) {
-          // Build relation payload directly
-          const relPayload = {};
-          if (addColSynced && addColSyncedName.trim()) {
-            relPayload.relation = {
-              database_id: addColRelationDb.id,
-              type: "dual_property",
-              dual_property: { synced_property_name: addColSyncedName.trim() },
-            };
-          } else {
-            relPayload.relation = {
-              database_id: addColRelationDb.id,
-              type: "single_property",
-              single_property: {},
-            };
-          }
-          await updateDatabase(workerUrl, notionKey, notionDbId, {
-            properties: { [addColName.trim()]: relPayload },
-          });
-        } else {
-          const notionType = D1_TO_NOTION_TYPE[addColType] || "rich_text";
-          const propDef = { [notionType]: {} };
-          // Add default options for select/multi_select/status
-          if (["select", "multi_select"].includes(addColType)) {
-            propDef[notionType] = { options: [] };
-          }
-          await updateDatabase(workerUrl, notionKey, notionDbId, { properties: { [addColName.trim()]: propDef } });
-        }
-      } else {
-        const schemaRes = await getTableSchema(pageConfig.id);
-        const cols = [...(schemaRes?.columns || []), { id: `col_${Date.now()}`, name: addColName.trim(), type: addColType }];
-        await updateTableSchema(pageConfig.id, cols);
-      }
-      setAddColOpen(false);
-      setAddColName("");
-      setAddColType("text");
-      setAddColRelationDb(null);
-      setAddColSynced(true);
-      setAddColSyncedName("");
-      setDbSearchResults([]);
-      setDbSearchQuery("");
-      if (onRefresh) onRefresh();
-    } catch (err) { console.error("Add column failed:", err); }
-  }, [addColName, addColType, addColRelationDb, addColSynced, addColSyncedName, canEditSchema, isNotionTable, isD1Table, notionDbId, workerUrl, notionKey, pageConfig?.id, onRefresh]);
-
-  // Column reorder via drag
-  const handleColDragStart = useCallback((col, e) => {
-    setColDrag({ col, startX: e.clientX, overCol: null });
-  }, []);
-
-  useEffect(() => {
-    if (!colDrag) return;
-    // Prevent text selection during drag
-    document.body.style.userSelect = "none";
-    document.body.style.webkitUserSelect = "none";
-
-    const onMove = (e) => {
-      const els = document.querySelectorAll("[data-col-header]");
-      let over = null;
-      for (const el of els) {
-        const rect = el.getBoundingClientRect();
-        if (e.clientX >= rect.left && e.clientX <= rect.right) {
-          over = el.dataset.colHeader;
-          break;
-        }
-      }
-      if (over && over !== colDrag.col) {
-        setColDrag((prev) => prev ? { ...prev, overCol: over } : null);
-      }
-    };
-    const onUp = () => {
-      if (colDrag.overCol && colDrag.overCol !== colDrag.col && onViewConfigChange) {
-        const currentOrder = columns || allColumnsRef.current;
-        const fromIdx = currentOrder.indexOf(colDrag.col);
-        const toIdx = currentOrder.indexOf(colDrag.overCol);
-        if (fromIdx >= 0 && toIdx >= 0) {
-          const reordered = [...currentOrder];
-          reordered.splice(fromIdx, 1);
-          reordered.splice(toIdx, 0, colDrag.col);
-          onViewConfigChange({ columns: reordered });
-        }
-      }
-      document.body.style.userSelect = "";
-      document.body.style.webkitUserSelect = "";
-      setColDrag(null);
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-    return () => {
-      document.body.style.userSelect = "";
-      document.body.style.webkitUserSelect = "";
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
-  }, [colDrag, onViewConfigChange]);
 
   // Ref for allColumns (needed by handlers that can't close over latest allColumns)
   const allColumnsRef = useRef([]);
@@ -582,6 +295,32 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     }
     return visible;
   }, [allColumns, hiddenColumns, showOwnerColumn]);
+
+  // ── Column Management Hook ──
+  const colMgmt = useColumnManagement({
+    schema, columns, allColumnsRef, hiddenColumns, setHiddenColumns,
+    canEditSchema, isD1Table, isNotionTable, notionDbId, workerUrl, notionKey,
+    pageConfig, onRefresh, onViewConfigChange,
+  });
+  // Initialize column widths from config on first render
+  const { colWidths, initColWidths } = colMgmt;
+  useEffect(() => { initColWidths(config.colWidths); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Destructure commonly used values
+  const {
+    colCtxMenu, setColCtxMenu, handleColRightClick, handleHideCol,
+    renamingCol, setRenamingCol, renameValue, setRenameValue, handleRenameCol,
+    subColCtxMenu, setSubColCtxMenu,
+    renamingSubCol, setRenamingSubCol, renameSubValue, setRenameSubValue,
+    handleRenameSubCol, handleDeleteSubCol, handleDeleteCol, handleChangeColType,
+    addColOpen, setAddColOpen, addColName, setAddColName, addColType, setAddColType,
+    addColRelationDb, setAddColRelationDb, addColSynced, setAddColSynced,
+    addColSyncedName, setAddColSyncedName,
+    dbSearchResults, dbSearchQuery, setDbSearchQuery, dbSearching,
+    searchRelationDbs, handleAddCol,
+    addSubColOpen, setAddSubColOpen, addSubColName, setAddSubColName,
+    addSubColType, setAddSubColType, handleAddSubCol,
+    colDrag, handleColDragStart, handleResizeStart, colClickTimer,
+  } = colMgmt;
 
   // Identify filterable fields (select / status)
   const filterableFields = useMemo(() => {
@@ -717,40 +456,20 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     return subColumns.map(c => c.name);
   }, [subColumns]);
 
-  // ── Add sub-column state ──
-  const [addSubColOpen, setAddSubColOpen] = useState(false);
-  const [addSubColName, setAddSubColName] = useState("");
-  const [addSubColType, setAddSubColType] = useState("text");
+  // ── Cell Edit Hook ──
+  const cellEdit = useTableCellEdit({
+    schema, onUpdate, focusedCell, setFocusedCell, displayListLength: displayList.length,
+    canEditSchema, isNotionTable, notionDbId, workerUrl, notionKey, pageConfig, onRefresh,
+  });
+  const { editCell, setEditCell, savingCells, failedCells, initialChar, setInitialChar, handleEditCommit, handleCreateOption, handleCheckboxToggle } = cellEdit;
 
-  const handleAddSubCol = useCallback(async () => {
-    if (!addSubColName.trim() || !pageConfig?.id) return;
-    try {
-      const schemaRes = await getTableSchema(pageConfig.id);
-      const existingSub = schemaRes?.sub_columns || [];
-      // Ensure a title column always exists: if no existing column has type "title",
-      // mark the first existing column as title (or if this is the very first column, mark it as title)
-      const hasTitleCol = existingSub.some(c => c.type === "title");
-      let updatedExisting = existingSub;
-      if (!hasTitleCol && existingSub.length > 0) {
-        // Retroactively mark the first existing column as title so it isn't displaced
-        updatedExisting = existingSub.map((c, i) => i === 0 ? { ...c, type: "title" } : c);
-      }
-      const isFirstCol = existingSub.length === 0;
-      const newCol = {
-        id: `subcol_${Date.now()}`,
-        name: addSubColName.trim(),
-        type: isFirstCol ? "title" : addSubColType,
-      };
-      const newSub = [...updatedExisting, newCol];
-      await updateSubColumnSchema(pageConfig.id, newSub);
-      setAddSubColOpen(false);
-      setAddSubColName("");
-      setAddSubColType("text");
-      if (onRefresh) onRefresh();
-    } catch (err) {
-      console.error("Add sub-column failed:", err);
-    }
-  }, [addSubColName, addSubColType, pageConfig, onRefresh]);
+  // ── Sub-Item Ghost Hook ──
+  const subGhost = useSubItemGhost({ onCreate, pageConfig, schema, subSchema, subTitleField, expandedRows, toggleExpand });
+  const {
+    subItemGhostParent, setSubItemGhostParent, subItemGhostValues, setSubItemGhostValues,
+    subItemGhostSaving, subItemGhostActive, subGhostRef,
+    handleCreateSubItem, handleSubItemGhostCommit,
+  } = subGhost;
 
   // ── Record badge counts (comments, notes, files) ──
   const [badgeCounts, setBadgeCounts] = useState({});
@@ -794,103 +513,19 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     if (onViewConfigChange) onViewConfigChange({ sort: { field: newField, direction: newDir }, activeSavedViewId: null });
   }, [sortField, sortDir, onViewConfigChange]);
 
-  // Inline edit commit — with saving indicator + error handling
-  const handleEditCommit = useCallback(async (pageId, field, value) => {
-    const type = getFieldType(schema, field);
-    if (!type || !onUpdate) return;
-
-    // Validate before committing
-    if (type === "email" && value) {
-      const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailPattern.test(value)) {
-        setFailedCells((prev) => ({ ...prev, [`${pageId}:${field}`]: "Invalid email" }));
-        setEditCell(null);
-        setTimeout(() => setFailedCells((prev) => { const n = { ...prev }; delete n[`${pageId}:${field}`]; return n; }), 3000);
-        return;
-      }
-    }
-    if (type === "url" && value) {
-      try { new URL(value.startsWith("http") ? value : `https://${value}`); } catch {
-        setFailedCells((prev) => ({ ...prev, [`${pageId}:${field}`]: "Invalid URL" }));
-        setEditCell(null);
-        setTimeout(() => setFailedCells((prev) => { const n = { ...prev }; delete n[`${pageId}:${field}`]; return n; }), 3000);
-        return;
-      }
-    }
-
-    const propPayload = buildProp(type, value);
-    if (propPayload !== undefined) {
-      const cellKey = `${pageId}:${field}`;
-      setSavingCells((prev) => ({ ...prev, [cellKey]: true }));
-      setFailedCells((prev) => { const n = { ...prev }; delete n[cellKey]; return n; });
-      try {
-        await onUpdate(pageId, field, propPayload);
-      } catch (err) {
-        console.error("Inline edit failed:", err);
-        setFailedCells((prev) => ({ ...prev, [cellKey]: err.message || "Save failed" }));
-        setTimeout(() => setFailedCells((prev) => { const n = { ...prev }; delete n[cellKey]; return n; }), 4000);
-      } finally {
-        setSavingCells((prev) => { const n = { ...prev }; delete n[cellKey]; return n; });
-      }
-    }
-    setEditCell(null);
-    setInitialChar("");
-    // Advance focus down after commit (Notion behavior)
-    if (focusedCell) {
-      setFocusedCell((prev) =>
-        prev && prev.row < displayList.length - 1
-          ? { row: prev.row + 1, col: prev.col }
-          : prev
-      );
-    }
-  }, [schema, onUpdate, focusedCell, displayList.length]);
-
-  // Owner column update handler
+  // handleEditCommit, handleCreateOption, handleCheckboxToggle — from useTableCellEdit hook
+  // handleOwnerCommit stays in orchestrator (small, uses setOwnerPickerRow)
   const handleOwnerCommit = useCallback(async (pageId, ownerIds) => {
     const tableId = pageConfig?.id;
     if (!tableId) return;
     try {
       await updateRowOwner(tableId, pageId, ownerIds);
-      // Optimistically update local data
       if (onRefresh) setTimeout(onRefresh, 300);
     } catch (err) {
       console.error("Owner update failed:", err);
     }
     setOwnerPickerRow(null);
   }, [pageConfig?.id, onRefresh]);
-
-  // Create option handler for SelectPicker/MultiSelectPicker (adds to D1 schema)
-  const handleCreateOption = useCallback(async (fieldName, newOptionName) => {
-    if (!canEditSchema || !pageConfig?.id) return;
-    try {
-      if (isNotionTable && notionDbId && workerUrl && notionKey) {
-        // For Notion: we can't easily add a single option without knowing the existing ones,
-        // but the Notion API supports adding options through the update endpoint
-        // The simplest approach: let Notion handle it via page update (option auto-created)
-      } else {
-        const schemaRes = await getTableSchema(pageConfig.id);
-        const cols = (schemaRes?.columns || []).map((c) => {
-          if (c.name === fieldName) {
-            const existing = c.options || [];
-            if (!existing.some((o) => (typeof o === "string" ? o : o.name) === newOptionName)) {
-              return { ...c, options: [...existing, { name: newOptionName }] };
-            }
-          }
-          return c;
-        });
-        await updateTableSchema(pageConfig.id, cols);
-      }
-    } catch (err) { console.error("Create option failed:", err); }
-  }, [canEditSchema, isNotionTable, notionDbId, workerUrl, notionKey, pageConfig?.id]);
-
-  // Checkbox direct toggle
-  const handleCheckboxToggle = useCallback((pageId, field, currentValue) => {
-    const newVal = !currentValue;
-    const propPayload = buildProp("checkbox", newVal);
-    if (propPayload !== undefined && onUpdate) {
-      onUpdate(pageId, field, propPayload);
-    }
-  }, [onUpdate]);
 
   // ── Keyboard Navigation Handler ──
   useEffect(() => {
@@ -1038,71 +673,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     }
   }, [cascadeDialog, pageConfig, onRefresh]);
 
-  // ── Sub-Item: Open inline ghost row ──
-  const handleCreateSubItem = useCallback((parentId) => {
-    if (!onCreate || !pageConfig?.id) return;
-    setSubItemGhostParent(parentId);
-    setSubItemGhostValues({});
-    subItemGhostActive.current = false;
-    if (!expandedRows.has(parentId)) toggleExpand(parentId);
-  }, [onCreate, pageConfig, expandedRows, toggleExpand]);
-
-  // ── Sub-Item: Commit inline ghost row ──
-  const handleSubItemGhostCommit = useCallback(async () => {
-    if (!onCreate || !pageConfig?.id || !subItemGhostParent) return;
-    // Use sub-item title field (not parent schema title) for validation
-    const titleField = subTitleField || schema?.title?.name;
-    if (titleField && !subItemGhostValues[titleField]?.toString().trim()) {
-      setSubItemGhostParent(null);
-      setSubItemGhostValues({});
-      subItemGhostActive.current = false;
-      return;
-    }
-    const hasAnyValue = Object.values(subItemGhostValues).some((v) => v !== "" && v !== null && v !== undefined);
-    if (!hasAnyValue) {
-      setSubItemGhostParent(null);
-      subItemGhostActive.current = false;
-      return;
-    }
-    setSubItemGhostSaving(true);
-    try {
-      // Use sub-item schema for type lookup, fall back to parent schema
-      const effectiveSchema = subSchema || schema;
-      const properties = {};
-      for (const [fieldName, val] of Object.entries(subItemGhostValues)) {
-        if (val === "" || val === null || val === undefined) continue;
-        const type = getFieldType(effectiveSchema, fieldName);
-        if (!type) continue;
-        const prop = buildProp(type, val);
-        if (prop !== undefined) properties[fieldName] = prop;
-      }
-      await onCreate(pageConfig.id, properties, { parentRowId: subItemGhostParent });
-      setSubItemGhostValues({});
-      subItemGhostActive.current = false;
-      // Keep ghost parent open for rapid entry — user can press Escape to close
-    } catch (err) {
-      console.error("Create sub-item failed:", err);
-    } finally {
-      setSubItemGhostSaving(false);
-    }
-  }, [onCreate, pageConfig, subItemGhostParent, subItemGhostValues, schema, subSchema, subTitleField]);
-
-  // ── Sub-Item Ghost: dismiss on click-outside ──
-  const subGhostRef = useRef(null);
-  useEffect(() => {
-    if (!subItemGhostParent) return;
-    const handleClickOutside = (e) => {
-      if (subGhostRef.current && !subGhostRef.current.contains(e.target)) {
-        // Don't dismiss if clicking the branch icon (which would re-open it)
-        if (e.target.closest('[data-sub-item-trigger]')) return;
-        setSubItemGhostParent(null);
-        setSubItemGhostValues({});
-        subItemGhostActive.current = false;
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [subItemGhostParent]);
+  // handleCreateSubItem, handleSubItemGhostCommit, subGhostRef — from useSubItemGhost hook
 
   // ── CSV Export ──
   const handleExport = useCallback(() => {
@@ -1227,53 +798,11 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     if (onViewConfigChange) onViewConfigChange({ savedViews: updated, activeSavedViewId: newActiveId });
   }, [config.savedViews, activeSavedViewId, onViewConfigChange]);
 
-  // ── Ghost Row Handler (create record from inline ghost row) ──
-  const handleGhostCommit = useCallback(async () => {
-    if (!onCreate || !targetDatabaseId) return;
-    const titleField = schema?.title?.name;
-    // Only create if there's a title value
-    if (titleField && !ghostValues[titleField]?.toString().trim()) {
-      setGhostValues({});
-      ghostActive.current = false;
-      return;
-    }
-    // Don't create if no values at all
-    const hasAnyValue = Object.values(ghostValues).some((v) => v !== "" && v !== null && v !== undefined);
-    if (!hasAnyValue) {
-      ghostActive.current = false;
-      return;
-    }
-    setGhostSaving(true);
-    setGhostError(null);
-    try {
-      const properties = {};
-      for (const [fieldName, val] of Object.entries(ghostValues)) {
-        if (val === "" || val === null || val === undefined) continue;
-        const type = getFieldType(schema, fieldName);
-        if (!type) continue;
-        const prop = buildProp(type, val);
-        if (prop !== undefined) {
-          properties[fieldName] = prop;
-        }
-      }
-      await onCreate(targetDatabaseId, properties);
-      setGhostValues({});
-      setGhostError(null);
-      ghostActive.current = false;
-    } catch (err) {
-      setGhostError(err.message || "Failed to create record");
-    } finally {
-      setGhostSaving(false);
-    }
-  }, [onCreate, targetDatabaseId, ghostValues, schema]);
+  // Ghost row state + handlers from useGhostRow hook
+  const ghost = useGhostRow({ onCreate, targetDatabaseId, schema, columns });
+  const { ghostValues, ghostSaving, ghostError, ghostActive, ghostSetVal, ghostKeyDown, handleGhostCommit } = ghost;
 
-  // Shared ghost row cell renderer (used by both empty state and normal ghost row)
-  const ghostKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleGhostCommit(); }
-    if (e.key === "Escape") { setGhostValues({}); ghostActive.current = false; e.target.blur(); }
-  };
-  const ghostSetVal = (col, val) => { ghostActive.current = true; setGhostValues((p) => ({ ...p, [col]: val })); };
-
+  // renderGhostCell helper (uses hook values)
   function renderGhostCell(col, type, opts = {}) {
     const titleField = schema?.title?.name;
     return (
