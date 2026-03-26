@@ -112,7 +112,7 @@ Shared database views. Workspace-scoped with per-page permissions.
 
 | View | File | Purpose |
 |------|------|---------|
-| Table | `src/views/Table.jsx` | Spreadsheet-like grid with columns, filters, sorting |
+| Table | `src/views/Table.jsx` + `src/views/table/` (16 files) | Spreadsheet-like grid with columns, filters, sorting. Orchestrator in Table.jsx (~1,205 lines), sub-modules in table/ folder. |
 | Kanban | `src/views/Kanban.jsx` | Card-based board grouped by status/select columns |
 | Gantt | `src/views/Gantt.jsx` | Timeline bar chart for date-range records |
 | Calendar | `src/views/Calendar.jsx` | Calendar view of date-based records |

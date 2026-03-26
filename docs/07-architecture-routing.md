@@ -334,6 +334,7 @@ src/
 ├── main.jsx             → ReactDOM entry point
 ├── core/                → Shell: TopHeader, Navigation, PageShell, SystemManager/
 ├── views/               → Database view components (Table, Kanban, Gantt, etc.)
+│   └── table/           → Table sub-modules: 16 files (styles, helpers, components, hooks)
 ├── features/            → Personal productivity (Tasks, Gmail, Dashboard, RecordDrawer)
 ├── context/             → 11 React context providers
 ├── design/              → Design tokens (C, Z, FONT, RADIUS, SHADOW), animations, icons
@@ -346,6 +347,6 @@ src/
 
 ### views/ vs features/ Pattern
 
-- **`src/views/`** — Database-bound view components. Each renders a specific view type for a database page. Loaded by PageShell/ViewRenderer based on the active viewConfig type. Views receive `data`, `schema`, `onUpdate`, `onRefresh` props from PageShell.
+- **`src/views/`** — Database-bound view components. Each renders a specific view type for a database page. Loaded by PageShell/ViewRenderer based on the active viewConfig type. Views receive `data`, `schema`, `onUpdate`, `onRefresh` props from PageShell. The Table view has been decomposed into `src/views/table/` (16 sub-module files) with `Table.jsx` serving as the orchestrator (~1,205 lines).
 
 - **`src/features/`** — Standalone workspace panels and personal productivity views. These are top-level screens not tied to a specific database: TasksView, GmailView, NotesView, DashboardView, KnowledgeHub, WorkspaceBrowser, ChatPanel, and the RecordDrawer system. Feature views manage their own data fetching.

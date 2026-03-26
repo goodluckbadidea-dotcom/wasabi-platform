@@ -72,13 +72,17 @@ Sub-items are hierarchical child records within a D1 table. They share the same 
 2. **Read path:** `d1RowToPage()` iterates both parent columns and `subColumns`. Sub-column title values are wrapped in Notion-compatible `{type: "title", title: [...]}` format (not `rich_text`) so the cell renderer displays them correctly.
 3. **Schema classification:** `d1SchemaToClassified()` is called separately for sub-columns to produce `schema._subSchema`. The table view uses `subSchema` for sub-item rows and parent `schema` for regular rows.
 
-### Table View Integration (Table.jsx)
+### Table View Integration (Table.jsx + src/views/table/)
 
-- **Ghost row:** When user clicks the branch icon on a parent row, `subItemGhostParent` is set and a ghost row appears for quick sub-item creation. State: `subItemGhostParent`, `subItemGhostValues`, `subItemGhostSaving`.
-- **Mini-header:** Sub-item column headers render above the first child row (visible only when children exist). Headers are uppercase, 11px.
-- **Editable headers:** Double-click a sub-item header to rename inline. Right-click opens a context menu with Rename and Delete options.
-- **Column management:** `handleAddSubCol` creates new sub-columns via `updateSubColumnSchema`. `handleRenameSubCol` and `handleDeleteSubCol` modify existing sub-columns.
-- **Display columns:** `subColsList` = visible sub-columns, or falls back to `[subTitleField]` if no sub-columns exist.
+The table view's sub-item logic is spread across the orchestrator and extracted sub-modules:
+
+- **Ghost row:** `useSubItemGhost` hook (`table/hooks/useSubItemGhost.js`) manages sub-item ghost row state (`subItemGhostParent`, `subItemGhostValues`, `subItemGhostSaving`). Ghost cell rendering in `GhostRow.jsx`.
+- **Row rendering:** `TableRow.jsx` renders both parent and sub-item rows, including expand/collapse toggle, sub-item mini-headers (uppercase, 11px), and the branch icon for creating sub-items.
+- **Editable headers:** Double-click a sub-item header to rename inline. Right-click opens `SubColumnContextMenu` (`ColumnContextMenu.jsx`) with Rename and Delete options.
+- **Column management:** `useColumnManagement` hook (`table/hooks/useColumnManagement.js`) handles `handleAddSubCol`, `handleRenameSubCol`, `handleDeleteSubCol` via `updateSubColumnSchema`.
+- **Add column dialog:** `AddSubColumnDialog` (`AddColumnDialog.jsx`) for creating new sub-columns.
+- **Display columns:** `subColsList` = visible sub-columns, or falls back to `[subTitleField]` if no sub-columns exist. Computed in the Table.jsx orchestrator.
+- **Tree data:** `useTreeData` hook (`src/lib/useTreeData.js`) handles expand/collapse state, `displayList` flattening, and parent-child relationships.
 
 ### RecordDetail Integration (RecordDetail.jsx)
 
@@ -95,7 +99,7 @@ Shared database views. Workspace-scoped with per-page permissions.
 
 | View | File | Purpose |
 |------|------|---------|
-| Table | `Table.jsx` | Spreadsheet-like grid with columns, filters, sorting, inline cell editing, sub-items, and editable column headers (~3,500 lines). |
+| Table | `Table.jsx` + `table/` (16 files) | Spreadsheet-like grid with columns, filters, sorting, inline cell editing, sub-items, and editable column headers. Orchestrator (~1,205 lines) + extracted sub-modules in `src/views/table/`. |
 | Kanban | `Kanban.jsx` | Card-based board grouped by status/select columns |
 | Gantt | `Gantt.jsx` | Timeline bar chart for date-range records |
 | Calendar | `Calendar.jsx` | Calendar view of date-based records |

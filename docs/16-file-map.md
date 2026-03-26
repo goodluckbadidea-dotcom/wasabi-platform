@@ -93,7 +93,7 @@ Settings panel with tabbed interface.
 
 ---
 
-## src/views/ (28 files)
+## src/views/ (28 files + table/ subdirectory)
 
 Database view components. Lazy-loaded by PageShell.
 
@@ -122,13 +122,44 @@ Database view components. Lazy-loaded by PageShell.
 | `RecordDetail.jsx` | Record detail drawer: Properties, Sub-Items (parent records only), Notes, Comments, Files tabs. Accepts `parentTitle` prop for sub-items. |
 | `Sheet.jsx` | Spreadsheet-like sheet view |
 | `SummaryTiles.jsx` | Summary tiles/metrics view |
-| `Table.jsx` | Primary table/grid view (~3,500 lines). Includes sub-items, editable column headers (double-click rename, right-click context menu), column picker modal, ghost row creation, inline cell editing. Planned for refactor into `src/views/table/` folder. |
+| `Table.jsx` | Primary table/grid view — **orchestrator** (~1,205 lines). Wires hooks from `table/hooks/`, composes components from `table/`, manages virtual scrolling, keyboard navigation, and saved views. See `src/views/table/` below for extracted sub-modules. |
 | `ViewRenderer.jsx` | View type router/dispatcher |
 | `WorkspaceSettings.jsx` | Workspace settings view |
 | `_CellComponents.jsx` | Shared cell renderer components |
 | `_viewHelpers.js` | Shared view utility functions |
 
 Note: `CalendarView.jsx` was deleted (dead code).
+
+### src/views/table/ (16 files)
+
+Extracted sub-modules for the Table view. Refactored from a 3,600-line monolith (2026-03-25).
+
+| File | Purpose |
+|------|---------|
+| `index.js` | Barrel export — re-exports Table from `../Table.jsx` |
+| `tableStyles.js` | All table style objects (299 lines) |
+| `tableHelpers.js` | Constants (`ROW_HEIGHT`, `VIRT_BUFFER`, `COLUMN_TYPES`), `resolveColumns()`, type maps (133 lines) |
+| `OwnerCell.jsx` | `OwnerCellDisplay` + `OwnerPicker` for the owner column (192 lines) |
+| `GhostRow.jsx` | `GhostCell` component for new row creation ghost input (68 lines) |
+| `CellEditor.jsx` | Inline cell editor with type-specific inputs (text, number, date, select, multi-select, checkbox, URL, email, phone) (215 lines) |
+| `CellDisplay.jsx` | Cell renderer with `CELL_RENDERERS` registry for read-only display (63 lines) |
+| `ColumnContextMenu.jsx` | Right-click context menus: `ParentColumnContextMenu` + `SubColumnContextMenu` (111 lines) |
+| `AddColumnDialog.jsx` | Add column dialogs: `AddColumnDialog` + `AddSubColumnDialog` with type picker, name input, options (250 lines) |
+| `CascadeDeleteDialog.jsx` | Confirmation dialog for deleting parent rows with sub-items (52 lines) |
+| `TableToolbar.jsx` | Toolbar: search, new record, export, saved views dropdown, bulk actions, presence avatars (221 lines) |
+| `TableHeader.jsx` | Column headers with sort indicators, drag-to-resize, double-click rename, column visibility toggle (168 lines) |
+| `TableRow.jsx` | Row rendering: parent rows, sub-item rows, expand/collapse, sub-item mini-headers, neuron badges (381 lines) |
+| `TableFooter.jsx` | Row count display footer (41 lines) |
+
+#### src/views/table/hooks/ (5 files)
+
+| File | Purpose |
+|------|---------|
+| `useColumnManagement.js` | Column CRUD, reorder, resize, rename, add/delete/rename sub-columns, schema persistence (361 lines) |
+| `useTableData.js` | Data pipeline: text search, field filters, chip filters, sorting, debounced search (119 lines) |
+| `useTableCellEdit.js` | Inline cell edit state: active cell tracking, value commit to API, blur handling (107 lines) |
+| `useGhostRow.js` | Parent ghost row state: cell values, saving flag, commit-and-create logic (74 lines) |
+| `useSubItemGhost.js` | Sub-item ghost row state: parent tracking, cell values, commit-and-create logic (81 lines) |
 
 ---
 
