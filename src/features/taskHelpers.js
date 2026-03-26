@@ -588,3 +588,15 @@ export function setCache(key, data) {
     localStorage.setItem(key, JSON.stringify({ data, ts: Date.now() }));
   } catch {}
 }
+
+/** Return cached data regardless of age, plus metadata. */
+export function getStaleCache(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw);
+    return { data, ts, age: Date.now() - ts };
+  } catch {
+    return null;
+  }
+}

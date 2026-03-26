@@ -11,13 +11,13 @@ import {
 } from "../lib/api.js";
 import { loadCachedNeuronGraph } from "../neurons/neuronStorage.js";
 import {
-  normalizeD1Task, getCached, setCache, parseDate,
+  normalizeD1Task, getCached, setCache, getStaleCache, parseDate,
   shouldIncludeTask, isSmartOverdue,
 } from "./taskHelpers.js";
 
 const CACHE_KEY_PREFIX = "wasabi_ai_tasks_v10"; // v10: D1-only scan, no Notion API dependency
 const INSIGHT_CACHE_KEY = "wasabi_insight";
-const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+const CACHE_TTL = 2 * 60 * 60 * 1000; // 2 hours — stale-while-revalidate shows cached data instantly
 const MAX_DATABASES = 5;
 const MAX_ITEMS_PER_DB = 30;
 
@@ -323,18 +323,20 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
     } catch {}
 
     // Load cached results with proper role filtering — skip if identity not yet loaded
+    // Stale-while-revalidate: always show cached data immediately, even if stale.
+    // Background rescan is triggered by the auto-scan effect if cache exceeds CACHE_TTL.
     if (!identity?.id) return;
-    const cached = getCached(CACHE_KEY, CACHE_TTL);
-    if (cached) {
+    const cached = getStaleCache(CACHE_KEY);
+    if (cached?.data) {
       let filtered = userTasksTableId
-        ? cached.filter((t) => t.source !== `d1:${userTasksTableId}` && t.source !== "manual")
-        : cached.filter((t) => t.source !== "manual");
+        ? cached.data.filter((t) => t.source !== `d1:${userTasksTableId}` && t.source !== "manual")
+        : cached.data.filter((t) => t.source !== "manual");
       filtered = applyRoleFilter(filtered, identity);
       setAiTasks(filtered);
-      setLastUpdated(new Date(JSON.parse(localStorage.getItem(CACHE_KEY))?.ts));
+      setLastUpdated(new Date(cached.ts));
       setLoading(false);
     }
-    const cachedInsight = getCached(INSIGHT_CACHE_KEY, CACHE_TTL);
+    const cachedInsight = getCached(INSIGHT_CACHE_KEY, 24 * 60 * 60 * 1000);
     if (cachedInsight) setInsight(cachedInsight);
   }, [CACHE_KEY, identity?.id, identity?.role]);
 
@@ -1010,13 +1012,14 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
     }
   }, [user, pages, identity]);
 
-  // Auto-scan on mount (after brief delay for cached results to render)
-  // Waits for identity to be available — all per-user scoped UI must wait for identity
+  // Auto-scan on mount: skip if cache is fresh, otherwise background rescan.
+  // Stale cache data is already showing from the mount effect (stale-while-revalidate),
+  // so this scan runs in background mode (refreshing indicator, not loading spinner).
   useEffect(() => {
     if (!identity?.id) return; // Don't scan until we know who the user is
     const cached = getCached(CACHE_KEY, CACHE_TTL);
     if (cached && cached.length > 0) {
-      // Cache is fresh and has results — don't re-scan
+      // Cache is fresh (within CACHE_TTL) — no rescan needed
       return;
     }
     // Delay scan slightly so cached local tasks render first
