@@ -1,0 +1,299 @@
+// ─── Table View Styles ───
+// All style objects for the Table view, extracted from Table.jsx.
+// Uses design tokens exclusively — no hardcoded colors.
+
+import { C, FONT, RADIUS, SHADOW } from "../../design/tokens.js";
+
+export const styles = {
+  wrapper: {
+    display: "flex",
+    flexDirection: "column",
+    height: "100%",
+    overflow: "hidden",
+    fontFamily: FONT,
+  },
+
+  toolbar: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "12px 16px",
+    borderBottom: `1px solid ${C.edgeLine}`,
+    background: C.darkSurf,
+    flexShrink: 0,
+    flexWrap: "wrap",
+  },
+
+  searchWrap: {
+    display: "flex",
+    alignItems: "center",
+    background: C.darkSurf2,
+    border: `1px solid ${C.darkBorder}`,
+    borderRadius: RADIUS.pill,
+    padding: "0 10px",
+    flex: "1 1 200px",
+    maxWidth: 320,
+    minWidth: 140,
+    height: 34,
+    transition: "border-color 0.15s, box-shadow 0.15s",
+  },
+
+  searchInput: {
+    flex: 1,
+    border: "none",
+    outline: "none",
+    background: "transparent",
+    fontFamily: FONT,
+    fontSize: 13,
+    color: C.darkText,
+    padding: "0 6px",
+    height: "100%",
+  },
+
+  searchIcon: {
+    fontSize: 13,
+    color: C.darkMuted,
+    flexShrink: 0,
+  },
+
+  filterSelect: {
+    background: C.darkSurf2,
+    border: `1px solid ${C.darkBorder}`,
+    borderRadius: RADIUS.pill,
+    padding: "6px 10px",
+    fontSize: 12,
+    fontFamily: FONT,
+    color: C.darkMuted,
+    cursor: "pointer",
+    appearance: "none",
+    outline: "none",
+    minWidth: 110,
+    height: 34,
+    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888888'/%3E%3C/svg%3E")`,
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "right 10px center",
+    paddingRight: 28,
+  },
+
+  refreshBtn: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 34,
+    height: 34,
+    borderRadius: RADIUS.pill,
+    border: `1px solid ${C.darkBorder}`,
+    background: C.darkSurf2,
+    cursor: "pointer",
+    color: C.darkMuted,
+    fontSize: 14,
+    transition: "background 0.15s, color 0.15s",
+    flexShrink: 0,
+    fontFamily: FONT,
+  },
+
+  countLabel: {
+    fontSize: 12,
+    color: C.darkMuted,
+    marginLeft: "auto",
+    whiteSpace: "nowrap",
+    flexShrink: 0,
+  },
+
+  scrollArea: {
+    flex: 1,
+    overflowY: "auto",
+    overflowX: "auto",
+    background: C.dark,
+    WebkitOverflowScrolling: "touch",
+  },
+
+  gridHeader: {
+    display: "grid",
+    position: "sticky",
+    top: 0,
+    zIndex: 10,
+    background: C.dark,
+    borderBottom: `2px solid ${C.accent}33`,
+    boxShadow: `0 2px 8px rgba(0,0,0,0.08)`,
+  },
+
+  gridHeaderCell: {
+    textAlign: "left",
+    padding: "10px 12px",
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+    color: C.darkMuted,
+    whiteSpace: "nowrap",
+    cursor: "pointer",
+    userSelect: "none",
+    transition: "color 0.15s",
+    position: "relative",
+    overflow: "hidden",
+  },
+
+  gridHeaderCellActive: {
+    color: C.darkText,
+  },
+
+  gridRow: {
+    display: "grid",
+    borderRadius: RADIUS.lg,
+    cursor: "pointer",
+    transition: "background 0.15s ease, box-shadow 0.15s ease",
+    background: C.darkSurf,
+    marginBottom: 4,
+    position: "relative",
+    overflow: "hidden",
+  },
+
+  gridCell: {
+    padding: "8px 12px",
+    color: C.darkText,
+    fontSize: 13,
+    lineHeight: 1.45,
+    boxSizing: "border-box",
+    overflow: "hidden",
+    display: "flex",
+    alignItems: "center",
+    minWidth: 0,
+  },
+
+  gridFooter: {
+    display: "grid",
+    position: "sticky",
+    bottom: 0,
+    zIndex: 5,
+    background: C.dark,
+    borderTop: `2px solid ${C.darkBorder}`,
+  },
+
+  // Legacy styles used by CellEditor (in RecordDetail drawer) and CSV import modal
+  table: { borderCollapse: "separate", borderSpacing: "0 4px", fontSize: 13, tableLayout: "fixed" },
+  th: { textAlign: "left", padding: "10px 12px", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: C.darkMuted, borderBottom: `1px solid ${C.darkBorder}`, whiteSpace: "nowrap", background: C.darkSurf },
+  td: { padding: "8px 12px", border: "none", color: C.darkText, fontSize: 13, lineHeight: 1.45, boxSizing: "border-box", overflow: "hidden", background: C.darkSurf },
+  cellInput: { width: "100%", border: `1px solid ${C.accent}`, borderRadius: RADIUS.sm, padding: "4px 8px", fontSize: 13, fontFamily: FONT, color: C.darkText, background: C.darkSurf, outline: "none", boxShadow: `0 0 0 2px ${C.accent}33`, boxSizing: "border-box" },
+  cellSelect: { width: "100%", border: `1px solid ${C.accent}`, borderRadius: RADIUS.sm, padding: "4px 8px", fontSize: 13, fontFamily: FONT, color: C.darkText, background: C.darkSurf, outline: "none", cursor: "pointer", appearance: "none", boxShadow: `0 0 0 2px ${C.accent}33`, boxSizing: "border-box" },
+
+  // Checkbox toggle
+  toggle: (checked) => ({
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 18,
+    height: 18,
+    borderRadius: RADIUS.sm,
+    border: `2px solid ${checked ? C.accent : C.darkBorder}`,
+    background: checked ? C.accent : "transparent",
+    cursor: "pointer",
+    transition: "all 0.15s",
+    flexShrink: 0,
+    fontSize: 11,
+    color: "#fff",
+    fontWeight: 700,
+  }),
+
+  // Pills
+  pill: (fillColor, textColor = "#fff") => ({
+    display: "inline-block",
+    color: textColor,
+    background: fillColor,
+    border: "none",
+    borderRadius: RADIUS.pill,
+    padding: "3px 10px",
+    fontSize: 10,
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    lineHeight: 1.6,
+    whiteSpace: "nowrap",
+  }),
+
+  multiPillWrap: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 4,
+  },
+
+  // Empty state
+  empty: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 64,
+    gap: 12,
+    color: C.darkMuted,
+    fontSize: 14,
+    textAlign: "center",
+    fontFamily: FONT,
+  },
+
+  emptyIcon: {
+    fontSize: 32,
+    opacity: 0.4,
+    marginBottom: 4,
+  },
+
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: 600,
+    color: C.darkMuted,
+  },
+
+  emptySub: {
+    fontSize: 13,
+    color: C.darkMuted,
+    maxWidth: 300,
+    lineHeight: 1.5,
+  },
+
+  // Sort arrow
+  sortArrow: {
+    display: "inline-block",
+    marginLeft: 4,
+    fontSize: 10,
+    opacity: 0.7,
+  },
+};
+
+// Context menu item style
+export const ctxItem = {
+  padding: "6px 10px",
+  fontSize: 12,
+  color: C.darkText,
+  cursor: "pointer",
+  borderRadius: RADIUS.sm,
+  transition: "background 0.1s",
+  fontFamily: FONT,
+};
+
+// Shared input field style (used in add-column dialogs, rename inputs)
+export const inputFieldStyle = {
+  border: `1px solid ${C.darkBorder}`,
+  borderRadius: RADIUS.sm,
+  background: C.darkSurf2,
+  color: C.darkText,
+  fontFamily: FONT,
+  fontSize: 12,
+  padding: "6px 10px",
+  outline: "none",
+  width: "100%",
+  boxSizing: "border-box",
+};
+
+// Ghost row input style (transparent, minimal)
+export const ghostInputStyle = {
+  width: "100%",
+  border: "none",
+  borderRadius: RADIUS.sm,
+  background: "transparent",
+  color: C.darkText,
+  fontFamily: FONT,
+  fontSize: 13,
+  padding: "4px 6px",
+  outline: "none",
+  boxSizing: "border-box",
+};

@@ -3,13 +3,12 @@
 // The primary view for any Notion database.
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { createPortal } from "react-dom";
-import { C, FONT, RADIUS, SHADOW, getStatusColor, getSolidPillColor } from "../design/tokens.js";
+import { C, FONT, RADIUS, SHADOW, getStatusColor } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { ANIM, injectAnimations } from "../design/animations.js";
 import { hoverBg } from "../design/interactions.js";
-import { readProp, buildProp, extractProperties, getPageTitle } from "../notion/properties.js";
-import { debounce, formatDate, truncate } from "../utils/helpers.js";
+import { buildProp, extractProperties, getPageTitle } from "../notion/properties.js";
+import { debounce } from "../utils/helpers.js";
 import {
   IconTrash, IconExport, IconEyeOff, IconExpand, IconPlus, IconConnect,
   IconCalendar, IconCheck, IconCheckSquare, IconLink, IconMail, IconPhone,
@@ -27,941 +26,35 @@ import { useTreeData } from "../lib/useTreeData.js";
 import { getPinToken } from "../components/PinLockOverlay.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { updateDatabase, searchDatabases } from "../notion/client.js";
-import SelectPicker from "../components/SelectPicker.jsx";
-import MultiSelectPicker from "../components/MultiSelectPicker.jsx";
+// SelectPicker and MultiSelectPicker now imported by table/CellEditor.jsx
 import SavedViewsDropdown from "../components/SavedViewsDropdown.jsx";
 import { useCollaboration } from "../context/CollaborationContext.jsx";
 import PresenceAvatars from "../components/PresenceAvatars.jsx";
-
-// ─── Owner Column Constants ───
-const OWNER_COL_NAME = "Owner";
-const OWNER_COL_WIDTH = 180;
-
-// D1 type → Notion property type mapping
-const D1_TO_NOTION_TYPE = {
-  text: "rich_text", number: "number", select: "select",
-  multi_select: "multi_select", date: "date", checkbox: "checkbox",
-  url: "url", email: "email", phone: "phone_number", status: "status",
-  people: "people", relation: "relation",
-};
-
-// ─── Column Types ───
-// text/label: short text label for inline display, Icon: SVG component (optional)
-const COLUMN_TYPES = [
-  { value: "text", label: "Text", text: "AA", Icon: null },
-  { value: "number", label: "Number", text: "#", Icon: null },
-  { value: "select", label: "Select", text: null, Icon: IconChevronDown },
-  { value: "multi_select", label: "Multi Select", text: null, Icon: IconArrowDown },
-  { value: "date", label: "Date", text: null, Icon: IconCalendar },
-  { value: "checkbox", label: "Checkbox", text: null, Icon: IconCheckSquare },
-  { value: "url", label: "URL", text: null, Icon: IconLink },
-  { value: "email", label: "Email", text: null, Icon: IconMail },
-  { value: "phone", label: "Phone", text: null, Icon: IconPhone },
-  { value: "status", label: "Status", text: null, Icon: IconStatusDot },
-  { value: "people", label: "Person", text: null, Icon: IconUser },
-  { value: "relation", label: "Relation", text: null, Icon: IconLink },
-];
-
-// ─── Type Icon Lookup (returns { text, Icon } or null) ───
-const TYPE_ICON_MAP = {};
-COLUMN_TYPES.forEach((t) => { TYPE_ICON_MAP[t.value] = { text: t.text, Icon: t.Icon }; });
-TYPE_ICON_MAP["rich_text"] = { text: "AA", Icon: null };
-TYPE_ICON_MAP["title"] = { text: "AA", Icon: null };
-TYPE_ICON_MAP["phone_number"] = { text: null, Icon: IconPhone };
-TYPE_ICON_MAP["last_edited_time"] = { text: null, Icon: IconCalendar };
-TYPE_ICON_MAP["created_time"] = { text: null, Icon: IconCalendar };
-
-function mapD1TypeForUI(d1Type) { return D1_TO_NOTION_TYPE[d1Type] || d1Type; }
-function getTypeIcon(schema, fieldName) { return TYPE_ICON_MAP[getFieldType(schema, fieldName)] || null; }
-
-// ─── Constants ───
-
-const ROW_HEIGHT = 36;
-const VIRT_BUFFER = 20;
-
-const EDITABLE_TYPES = new Set([
-  "title", "rich_text", "number", "select", "status",
-  "date", "checkbox", "url", "email", "phone_number",
-  "multi_select",
-]);
-
-const TEXT_SEARCH_TYPES = new Set([
-  "title", "rich_text", "select", "status", "url", "email",
-  "phone_number", "unique_id",
-]);
-
-// ─── Styles ───
-
-const styles = {
-  wrapper: {
-    display: "flex",
-    flexDirection: "column",
-    height: "100%",
-    overflow: "hidden",
-    fontFamily: FONT,
-  },
-
-  toolbar: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: "12px 16px",
-    borderBottom: `1px solid ${C.edgeLine}`,
-    background: C.darkSurf,
-    flexShrink: 0,
-    flexWrap: "wrap",
-  },
-
-  searchWrap: {
-    display: "flex",
-    alignItems: "center",
-    background: C.darkSurf2,
-    border: `1px solid ${C.darkBorder}`,
-    borderRadius: RADIUS.pill,
-    padding: "0 10px",
-    flex: "1 1 200px",
-    maxWidth: 320,
-    minWidth: 140,
-    height: 34,
-    transition: "border-color 0.15s, box-shadow 0.15s",
-  },
-
-  searchInput: {
-    flex: 1,
-    border: "none",
-    outline: "none",
-    background: "transparent",
-    fontFamily: FONT,
-    fontSize: 13,
-    color: C.darkText,
-    padding: "0 6px",
-    height: "100%",
-  },
-
-  searchIcon: {
-    fontSize: 13,
-    color: C.darkMuted,
-    flexShrink: 0,
-  },
-
-  filterSelect: {
-    background: C.darkSurf2,
-    border: `1px solid ${C.darkBorder}`,
-    borderRadius: RADIUS.pill,
-    padding: "6px 10px",
-    fontSize: 12,
-    fontFamily: FONT,
-    color: C.darkMuted,
-    cursor: "pointer",
-    appearance: "none",
-    outline: "none",
-    minWidth: 110,
-    height: 34,
-    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888888'/%3E%3C/svg%3E")`,
-    backgroundRepeat: "no-repeat",
-    backgroundPosition: "right 10px center",
-    paddingRight: 28,
-  },
-
-  refreshBtn: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 34,
-    height: 34,
-    borderRadius: RADIUS.pill,
-    border: `1px solid ${C.darkBorder}`,
-    background: C.darkSurf2,
-    cursor: "pointer",
-    color: C.darkMuted,
-    fontSize: 14,
-    transition: "background 0.15s, color 0.15s",
-    flexShrink: 0,
-    fontFamily: FONT,
-  },
-
-  countLabel: {
-    fontSize: 12,
-    color: C.darkMuted,
-    marginLeft: "auto",
-    whiteSpace: "nowrap",
-    flexShrink: 0,
-  },
-
-  scrollArea: {
-    flex: 1,
-    overflowY: "auto",
-    overflowX: "auto",
-    background: C.dark,
-    WebkitOverflowScrolling: "touch",
-  },
-
-  gridHeader: {
-    display: "grid",
-    position: "sticky",
-    top: 0,
-    zIndex: 10,
-    background: C.dark,
-    borderBottom: `2px solid ${C.accent}33`,
-    boxShadow: `0 2px 8px rgba(0,0,0,0.08)`,
-  },
-
-  gridHeaderCell: {
-    textAlign: "left",
-    padding: "10px 12px",
-    fontSize: 11,
-    fontWeight: 700,
-    textTransform: "uppercase",
-    letterSpacing: "0.06em",
-    color: C.darkMuted,
-    whiteSpace: "nowrap",
-    cursor: "pointer",
-    userSelect: "none",
-    transition: "color 0.15s",
-    position: "relative",
-    overflow: "hidden",
-  },
-
-  gridHeaderCellActive: {
-    color: C.darkText,
-  },
-
-  gridRow: {
-    display: "grid",
-    borderRadius: RADIUS.lg,
-    cursor: "pointer",
-    transition: "background 0.15s ease, box-shadow 0.15s ease",
-    background: C.darkSurf,
-    marginBottom: 4,
-    position: "relative",
-    overflow: "hidden",
-  },
-
-  gridCell: {
-    padding: "8px 12px",
-    color: C.darkText,
-    fontSize: 13,
-    lineHeight: 1.45,
-    boxSizing: "border-box",
-    overflow: "hidden",
-    display: "flex",
-    alignItems: "center",
-    minWidth: 0,
-  },
-
-  gridFooter: {
-    display: "grid",
-    position: "sticky",
-    bottom: 0,
-    zIndex: 5,
-    background: C.dark,
-    borderTop: `2px solid ${C.darkBorder}`,
-  },
-
-  // Legacy styles used by CellEditor (in RecordDetail drawer) and CSV import modal
-  table: { borderCollapse: "separate", borderSpacing: "0 4px", fontSize: 13, tableLayout: "fixed" },
-  th: { textAlign: "left", padding: "10px 12px", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: C.darkMuted, borderBottom: `1px solid ${C.darkBorder}`, whiteSpace: "nowrap", background: C.darkSurf },
-  td: { padding: "8px 12px", border: "none", color: C.darkText, fontSize: 13, lineHeight: 1.45, boxSizing: "border-box", overflow: "hidden", background: C.darkSurf },
-  cellInput: { width: "100%", border: `1px solid ${C.accent}`, borderRadius: RADIUS.sm, padding: "4px 8px", fontSize: 13, fontFamily: FONT, color: C.darkText, background: C.darkSurf, outline: "none", boxShadow: `0 0 0 2px ${C.accent}33`, boxSizing: "border-box" },
-  cellSelect: { width: "100%", border: `1px solid ${C.accent}`, borderRadius: RADIUS.sm, padding: "4px 8px", fontSize: 13, fontFamily: FONT, color: C.darkText, background: C.darkSurf, outline: "none", cursor: "pointer", appearance: "none", boxShadow: `0 0 0 2px ${C.accent}33`, boxSizing: "border-box" },
-
-  // Checkbox toggle
-  toggle: (checked) => ({
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 18,
-    height: 18,
-    borderRadius: RADIUS.sm,
-    border: `2px solid ${checked ? C.accent : C.darkBorder}`,
-    background: checked ? C.accent : "transparent",
-    cursor: "pointer",
-    transition: "all 0.15s",
-    flexShrink: 0,
-    fontSize: 11,
-    color: "#fff",
-    fontWeight: 700,
-  }),
-
-  // Pills
-  pill: (fillColor, textColor = "#fff") => ({
-    display: "inline-block",
-    color: textColor,
-    background: fillColor,
-    border: "none",
-    borderRadius: RADIUS.pill,
-    padding: "3px 10px",
-    fontSize: 10,
-    fontWeight: 600,
-    textTransform: "uppercase",
-    letterSpacing: "0.08em",
-    lineHeight: 1.6,
-    whiteSpace: "nowrap",
-  }),
-
-  multiPillWrap: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 4,
-  },
-
-  // Empty state
-  empty: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 64,
-    gap: 12,
-    color: C.darkMuted,
-    fontSize: 14,
-    textAlign: "center",
-    fontFamily: FONT,
-  },
-
-  emptyIcon: {
-    fontSize: 32,
-    opacity: 0.4,
-    marginBottom: 4,
-  },
-
-  emptyTitle: {
-    fontSize: 15,
-    fontWeight: 600,
-    color: C.darkMuted,
-  },
-
-  emptySub: {
-    fontSize: 13,
-    color: C.darkMuted,
-    maxWidth: 300,
-    lineHeight: 1.5,
-  },
-
-  // Sort arrow
-  sortArrow: {
-    display: "inline-block",
-    marginLeft: 4,
-    fontSize: 10,
-    opacity: 0.7,
-  },
-};
-
-// Context menu item style
-const ctxItem = {
-  padding: "6px 10px",
-  fontSize: 12,
-  color: C.darkText,
-  cursor: "pointer",
-  borderRadius: RADIUS.sm,
-  transition: "background 0.1s",
-  fontFamily: FONT,
-};
-
-// ── Shared input field style ──
-const inputFieldStyle = {
-  border: `1px solid ${C.darkBorder}`,
-  borderRadius: RADIUS.sm,
-  background: C.darkSurf2,
-  color: C.darkText,
-  fontFamily: FONT,
-  fontSize: 12,
-  padding: "6px 10px",
-  outline: "none",
-  width: "100%",
-  boxSizing: "border-box",
-};
-
-// ─── Helpers ───
-
-/** Resolve column list from schema when not provided in config.
- *  When config.columns exists, still appends any NEW schema fields
- *  so that columns added in Notion are discovered automatically. */
-function resolveColumns(schema, configColumns, fieldMappings) {
-  let cols;
-
-  // Build the full schema-derived list (used as source of truth)
-  const schemaColumns = [];
-  if (schema) {
-    if (schema.title) schemaColumns.push(schema.title.name);
-    if (schema.uniqueId && !schemaColumns.includes(schema.uniqueId.name)) {
-      schemaColumns.unshift(schema.uniqueId.name);
-    }
-
-    const orderedFields = [
-      ...schema.statuses,
-      ...schema.selects,
-      ...schema.numbers,
-      ...schema.dates,
-      ...schema.richTexts,
-      ...schema.checkboxes,
-      ...schema.urls,
-      ...schema.emails,
-      ...schema.phones,
-      ...schema.multiSelects,
-      ...schema.people,
-      ...schema.relations,
-      ...schema.files,
-      ...schema.formulas,
-      ...schema.rollups,
-    ];
-    for (const f of orderedFields) {
-      if (!schemaColumns.includes(f.name)) schemaColumns.push(f.name);
-    }
-    if (schema.createdTime && !schemaColumns.includes(schema.createdTime.name)) {
-      schemaColumns.push(schema.createdTime.name);
-    }
-    if (schema.lastEditedTime && !schemaColumns.includes(schema.lastEditedTime.name)) {
-      schemaColumns.push(schema.lastEditedTime.name);
-    }
-  }
-
-  if (configColumns && configColumns.length > 0 && schemaColumns.length > 0) {
-    // Reconcile saved columns against live schema:
-    // 1. Keep saved columns that still exist in schema (preserves user ordering)
-    // 2. Drop stale columns that no longer exist in schema (renamed/deleted in Notion)
-    // 3. Append new schema columns not in the saved list
-    const schemaSet = new Set(schemaColumns);
-    cols = configColumns.filter((c) => schemaSet.has(c));
-    const colSet = new Set(cols);
-    for (const sc of schemaColumns) {
-      if (!colSet.has(sc)) cols.push(sc);
-    }
-  } else if (configColumns && configColumns.length > 0) {
-    // No schema yet — use config as-is
-    cols = [...configColumns];
-  } else if (!schema) {
-    return [];
-  } else {
-    cols = schemaColumns;
-  }
-
-  return cols;
-}
-
-/** Get the property type for a field name from schema */
-function getFieldType(schema, fieldName) {
-  if (!schema) return null;
-  const field = schema.allFields.find((f) => f.name === fieldName);
-  return field?.type || null;
-}
-
-/** Get select/status options for a field */
-function getFieldOptions(schema, fieldName) {
-  if (!schema) return [];
-  const field = schema.allFields.find((f) => f.name === fieldName);
-  return field?.options || [];
-}
-
-/** Get option names for select/status fields */
-function getOptionNames(schema, fieldName) {
-  return getFieldOptions(schema, fieldName).map((o) => o.name);
-}
-
-/** Read a property value from a page by field name */
-function readField(page, fieldName) {
-  if (!page?.properties?.[fieldName]) return null;
-  return readProp(page.properties[fieldName]);
-}
-
-/** Get a displayable string from a field value */
-function displayValue(value, type) {
-  if (value === null || value === undefined) return "";
-  if (type === "date") {
-    if (typeof value === "object" && value.start) {
-      return formatDate(value.start, { short: true });
-    }
-    return formatDate(String(value), { short: true });
-  }
-  if (type === "last_edited_time" || type === "created_time") {
-    return formatDate(String(value), { short: true });
-  }
-  if (type === "checkbox") return value ? "Yes" : "No";
-  if (type === "people") {
-    if (Array.isArray(value)) return value.map((p) => p.name || p.email || p.id).join(", ");
-    return "";
-  }
-  if (type === "files") {
-    if (Array.isArray(value)) return value.map((f) => f.name).join(", ");
-    return "";
-  }
-  if (type === "multi_select") {
-    if (Array.isArray(value)) return value.join(", ");
-    return "";
-  }
-  if (type === "relation") {
-    if (Array.isArray(value)) return `${value.length} linked`;
-    return "";
-  }
-  if (Array.isArray(value)) return value.join(", ");
-  return truncate(String(value), 120);
-}
-
-/** Convert a raw value into a string for search matching */
-function searchableText(value, type) {
-  if (value === null || value === undefined) return "";
-  if (Array.isArray(value)) return value.map((v) => (typeof v === "object" ? v.name || "" : String(v))).join(" ");
-  if (typeof value === "object") {
-    if (value.start) return value.start;
-    return JSON.stringify(value);
-  }
-  return String(value).toLowerCase();
-}
-
-
-// ─── Cell Editor Component ───
-
-function CellEditor({ value, type, options, schemaOptions, onCommit, onCancel, initialChar, isD1Table, onCreateOption, cellRef, canEditSchema }) {
-  const inputRef = useRef(null);
-  const [draft, setDraft] = useState(() => {
-    if (initialChar && (type === "title" || type === "rich_text" || type === "url" || type === "email" || type === "phone_number")) {
-      return initialChar;
-    }
-    if (type === "date" && value && typeof value === "object") return value.start || "";
-    if (type === "date" && typeof value === "string") return value;
-    if (type === "checkbox") return !!value;
-    if (value === null || value === undefined) return "";
-    return String(value);
-  });
-
-  // Date range state
-  const [dateEnd, setDateEnd] = useState(() => {
-    if (type === "date" && value && typeof value === "object") return value.end || "";
-    return "";
-  });
-  const [includeTime, setIncludeTime] = useState(() => {
-    if (type === "date" && typeof draft === "string" && draft.includes("T")) return true;
-    return false;
-  });
-
-  useEffect(() => {
-    if (inputRef.current) {
-      inputRef.current.focus();
-      if (inputRef.current.select && !initialChar) inputRef.current.select();
-      // Move cursor to end if initialChar was set
-      if (initialChar && inputRef.current.setSelectionRange) {
-        const len = inputRef.current.value.length;
-        inputRef.current.setSelectionRange(len, len);
-      }
-    }
-  }, [initialChar]);
-
-  const commit = useCallback((val) => {
-    let out = val;
-    if (type === "number") {
-      out = val === "" ? null : parseFloat(val);
-      if (out !== null && isNaN(out)) out = null;
-    }
-    if (type === "date") {
-      out = val || null;
-    }
-    onCommit(out);
-  }, [type, onCommit]);
-
-  const handleKeyDown = useCallback((e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      commit(draft);
-    }
-    if (e.key === "Escape") {
-      e.preventDefault();
-      onCancel();
-    }
-    if (e.key === "Tab") {
-      e.preventDefault();
-      commit(draft);
-    }
-  }, [draft, commit, onCancel]);
-
-  // Checkbox is always a direct toggle, no editor needed (handled in-cell)
-  if (type === "checkbox") return null;
-
-  // Select / Status — custom SelectPicker
-  if (type === "select" || type === "status") {
-    const anchor = cellRef?.current?.getBoundingClientRect?.();
-    return (
-      <SelectPicker
-        value={value}
-        options={schemaOptions || options.map((o) => ({ name: o }))}
-        onSelect={(selected) => onCommit(selected)}
-        onClose={onCancel}
-        allowCreate={!!canEditSchema}
-        onCreateOption={onCreateOption}
-        anchor={anchor ? { top: anchor.bottom, left: anchor.left, width: anchor.width } : undefined}
-        initialChar={initialChar}
-      />
-    );
-  }
-
-  // Multi-select — custom MultiSelectPicker
-  if (type === "multi_select") {
-    const currentValues = Array.isArray(value) ? value : (value ? String(value).split(",").map((s) => s.trim()).filter(Boolean) : []);
-    const anchor = cellRef?.current?.getBoundingClientRect?.();
-    return (
-      <MultiSelectPicker
-        value={currentValues}
-        options={schemaOptions || options.map((o) => ({ name: o }))}
-        onChange={(newVals) => onCommit(newVals)}
-        onClose={onCancel}
-        allowCreate={!!canEditSchema}
-        onCreateOption={onCreateOption}
-        anchor={anchor ? { top: anchor.bottom, left: anchor.left, width: anchor.width } : undefined}
-        initialChar={initialChar}
-      />
-    );
-  }
-
-  // Date — enhanced with end date, time toggle, quick buttons
-  if (type === "date") {
-    return (
-      <div
-        style={{
-          background: C.darkSurf,
-          border: `1px solid ${C.accent}`,
-          borderRadius: RADIUS.pill,
-          padding: 8,
-          boxShadow: `0 0 0 2px ${C.accent}33`,
-          display: "flex",
-          flexDirection: "column",
-          gap: 6,
-          minWidth: 200,
-        }}
-      >
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <input
-            ref={inputRef}
-            type={includeTime ? "datetime-local" : "date"}
-            style={{ ...styles.cellInput, flex: 1, boxShadow: "none" }}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={handleKeyDown}
-          />
-          <button
-            onClick={() => { commit(null); }}
-            style={{ ...S.btnGhost, fontSize: 10, padding: "2px 6px", color: C.darkMuted }}
-            title="Clear"
-          >{"\u2715"}</button>
-        </div>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <input
-            type={includeTime ? "datetime-local" : "date"}
-            style={{ ...styles.cellInput, flex: 1, boxShadow: "none", opacity: dateEnd ? 1 : 0.5 }}
-            value={dateEnd}
-            onChange={(e) => setDateEnd(e.target.value)}
-            placeholder="End date"
-            onKeyDown={handleKeyDown}
-          />
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 11, color: C.darkMuted }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
-            <input type="checkbox" checked={includeTime} onChange={(e) => setIncludeTime(e.target.checked)} />
-            Time
-          </label>
-          <span style={{ flex: 1 }} />
-          {/* Quick buttons */}
-          <button
-            onClick={() => { setDraft(new Date().toISOString().slice(0, 10)); }}
-            style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 10, fontFamily: FONT, padding: 0 }}
-          >Today</button>
-          <button
-            onClick={() => {
-              const d = new Date(); d.setDate(d.getDate() + 1);
-              setDraft(d.toISOString().slice(0, 10));
-            }}
-            style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 10, fontFamily: FONT, padding: 0 }}
-          >Tomorrow</button>
-          <button
-            onClick={() => {
-              const d = new Date(); d.setDate(d.getDate() + 7);
-              setDraft(d.toISOString().slice(0, 10));
-            }}
-            style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 10, fontFamily: FONT, padding: 0 }}
-          >+1w</button>
-        </div>
-        <button
-          onClick={() => commit(draft)}
-          style={{ ...S.btnPrimary, fontSize: 11, padding: "4px 10px", alignSelf: "flex-end" }}
-        >Done</button>
-      </div>
-    );
-  }
-
-  if (type === "number") {
-    return (
-      <input
-        ref={inputRef}
-        type="number"
-        style={styles.cellInput}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => commit(draft)}
-        onKeyDown={handleKeyDown}
-        step="any"
-      />
-    );
-  }
-
-  // title, rich_text, url, email, phone_number
-  return (
-    <input
-      ref={inputRef}
-      type="text"
-      style={styles.cellInput}
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => commit(draft)}
-      onKeyDown={handleKeyDown}
-    />
-  );
-}
-
-
-// ─── Cell Display Component ───
-
-// Cell type renderers — keyed by Notion property type.
-// Each receives { value, fieldName, schema, onClick, colorMapping, relationTitles }.
-// Extracted as a lookup so sub-item views can reuse individual renderers.
-const CELL_RENDERERS = {
-  select: ({ value, fieldName, schema, onClick, colorMapping }) => {
-    const { fill, text } = getSolidPillColor(value, getOptionNames(schema, fieldName), getFieldOptions(schema, fieldName), colorMapping);
-    return <span style={styles.pill(fill, text)} onClick={onClick}>{value}</span>;
-  },
-  status: (...args) => CELL_RENDERERS.select(...args),
-  multi_select: ({ value, fieldName, schema, colorMapping }) => {
-    if (!Array.isArray(value)) return null;
-    const optNames = getOptionNames(schema, fieldName);
-    const schemaOpts = getFieldOptions(schema, fieldName);
-    return (
-      <span style={styles.multiPillWrap}>
-        {value.map((v, i) => { const { fill, text } = getSolidPillColor(v, optNames, schemaOpts, colorMapping); return <span key={i} style={styles.pill(fill, text)}>{v}</span>; })}
-      </span>
-    );
-  },
-  checkbox: ({ value, onClick }) => <span style={styles.toggle(!!value)} onClick={onClick}>{value ? "\u2713" : ""}</span>,
-  date: ({ value, onClick }) => {
-    const dateStr = typeof value === "object" ? value.start : value;
-    return <span style={{ cursor: onClick ? "pointer" : "default" }} onClick={onClick}>{formatDate(dateStr, { short: true })}</span>;
-  },
-  url: ({ value }) => (
-    <a href={value} target="_blank" rel="noopener noreferrer" style={{ color: C.accent, textDecoration: "none", fontSize: 13 }} onClick={(e) => e.stopPropagation()}>
-      {truncate(String(value), 40)}
-    </a>
-  ),
-  people: ({ value }) => Array.isArray(value) ? <span style={{ fontSize: 13 }}>{value.map((p) => p.name || p.email || "?").join(", ")}</span> : null,
-  files: ({ value }) => Array.isArray(value) ? <span style={{ fontSize: 13, color: C.darkMuted }}>{value.map((f) => f.name).join(", ") || "--"}</span> : null,
-  relation: ({ value, relationTitles }) => {
-    if (!Array.isArray(value) || value.length === 0) return <span style={{ fontSize: 12, color: C.darkMuted }}>--</span>;
-    const resolved = value.map(id => (relationTitles || {})[id] || null).filter(Boolean);
-    if (resolved.length === 0) return <span style={{ fontSize: 12, color: C.darkMuted }}>{value.length} linked</span>;
-    return (
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-        {resolved.map((name, i) => <span key={i} style={{ display: "inline-block", padding: "2px 8px", borderRadius: RADIUS.pill, background: C.accent + "15", color: C.accent, fontSize: 11, fontWeight: 500, whiteSpace: "nowrap", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis" }}>{name}</span>)}
-      </div>
-    );
-  },
-  number: ({ value, onClick }) => <span style={{ cursor: onClick ? "pointer" : "default", fontVariantNumeric: "tabular-nums" }} onClick={onClick}>{value}</span>,
-  last_edited_time: ({ value }) => <span style={{ fontSize: 12, color: C.darkMuted, fontVariantNumeric: "tabular-nums" }}>{formatDate(String(value), { short: true })}</span>,
-  created_time: ({ value }) => <span style={{ fontSize: 12, color: C.darkMuted, fontVariantNumeric: "tabular-nums" }}>{formatDate(String(value), { short: true })}</span>,
-};
-
-function CellDisplay({ value, type, fieldName, schema, onClick, colorMapping, relationTitles }) {
-  if (value === null || value === undefined || value === "") {
-    return <span style={{ color: C.darkMuted, fontSize: 12, fontStyle: "italic", cursor: onClick ? "pointer" : "default" }} onClick={onClick}>--</span>;
-  }
-  const renderer = CELL_RENDERERS[type];
-  if (renderer) return renderer({ value, fieldName, schema, onClick, colorMapping, relationTitles });
-  return <span style={{ cursor: onClick ? "pointer" : "default" }} onClick={onClick}>{truncate(String(value), 120)}</span>;
-}
+import { getFieldType, getFieldOptions, getOptionNames, readField, displayValue, searchableText } from "./_viewHelpers.js";
+import {
+  OWNER_COL_NAME, OWNER_COL_WIDTH, D1_TO_NOTION_TYPE, COLUMN_TYPES, TYPE_ICON_MAP,
+  mapD1TypeForUI, getTypeIcon, ROW_HEIGHT, VIRT_BUFFER, EDITABLE_TYPES, TEXT_SEARCH_TYPES,
+  resolveColumns,
+} from "./table/tableHelpers.js";
+
+import { styles, ghostInputStyle } from "./table/tableStyles.js";
+import { OwnerCellDisplay, OwnerPicker } from "./table/OwnerCell.jsx";
+import { GhostCell } from "./table/GhostRow.jsx";
+import CellEditor from "./table/CellEditor.jsx";
+import CellDisplay, { CELL_RENDERERS } from "./table/CellDisplay.jsx";
+import { ParentColumnContextMenu, SubColumnContextMenu } from "./table/ColumnContextMenu.jsx";
+import { AddColumnDialog, AddSubColumnDialog } from "./table/AddColumnDialog.jsx";
+import CascadeDeleteDialog from "./table/CascadeDeleteDialog.jsx";
+
+
+
+// CellEditor imported from ./table/CellEditor.jsx
+// CellDisplay and CELL_RENDERERS imported from ./table/CellDisplay.jsx
 
 
 // ─── Owner Column Components ───
 
-/** Display owner user pills for a row */
-function OwnerCellDisplay({ ownerIds, users, onClick }) {
-  if (!ownerIds || ownerIds.length === 0) {
-    return (
-      <span
-        onClick={onClick}
-        style={{ color: C.darkMuted, fontSize: 12, cursor: onClick ? "pointer" : "default", opacity: 0.6 }}
-      >
-        Unassigned
-      </span>
-    );
-  }
-
-  const userMap = {};
-  (users || []).forEach((u) => { userMap[u.id] = u; });
-
-  return (
-    <div onClick={onClick} style={{ display: "flex", gap: 4, flexWrap: "wrap", cursor: onClick ? "pointer" : "default", alignItems: "center" }}>
-      {ownerIds.map((uid) => {
-        const u = userMap[uid];
-        const name = u?.display_name || uid.slice(0, 8);
-        const initial = name.charAt(0).toUpperCase();
-        return (
-          <span
-            key={uid}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              background: C.accent + "18",
-              border: `1px solid ${C.accent}33`,
-              borderRadius: RADIUS.pill,
-              padding: "1px 8px 1px 3px",
-              fontSize: 11,
-              fontWeight: 500,
-              color: C.darkText,
-              lineHeight: "20px",
-              whiteSpace: "nowrap",
-            }}
-          >
-            <span style={{
-              width: 16, height: 16, borderRadius: "50%",
-              background: `linear-gradient(135deg, ${C.accent}, ${C.accent}88)`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 9, fontWeight: 700, color: "#fff", flexShrink: 0,
-            }}>
-              {initial}
-            </span>
-            {name}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
-/** Multi-select dropdown to pick owners */
-function OwnerPicker({ ownerIds, users, onCommit, onClose }) {
-  const [selected, setSelected] = useState(new Set(ownerIds || []));
-  const [filter, setFilter] = useState("");
-  const ref = useRef(null);
-
-  useEffect(() => {
-    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, [onClose]);
-
-  const filtered = (users || []).filter((u) =>
-    u.display_name?.toLowerCase().includes(filter.toLowerCase())
-  );
-
-  const toggle = (uid) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(uid)) next.delete(uid); else next.add(uid);
-      return next;
-    });
-  };
-
-  const handleDone = () => {
-    onCommit(Array.from(selected));
-    onClose();
-  };
-
-  return (
-    <div
-      ref={ref}
-      style={{
-        position: "absolute",
-        top: "100%",
-        left: 0,
-        zIndex: 200,
-        background: C.darkSurf,
-        border: `1px solid ${C.darkBorder}`,
-        borderRadius: RADIUS.lg,
-        boxShadow: SHADOW.dropdown,
-        width: 220,
-        maxHeight: 280,
-        display: "flex",
-        flexDirection: "column",
-        fontFamily: FONT,
-      }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <input
-        autoFocus
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        placeholder="Filter users..."
-        style={{
-          border: "none",
-          borderBottom: `1px solid ${C.darkBorder}`,
-          background: "transparent",
-          color: C.darkText,
-          padding: "8px 10px",
-          fontSize: 12,
-          outline: "none",
-          fontFamily: FONT,
-        }}
-      />
-      <div style={{ overflowY: "auto", flex: 1, padding: "4px 0" }}>
-        {filtered.length === 0 && (
-          <div style={{ padding: "8px 10px", fontSize: 11, color: C.darkMuted }}>No users found</div>
-        )}
-        {filtered.map((u) => {
-          const isActive = selected.has(u.id);
-          const initial = (u.display_name || "?").charAt(0).toUpperCase();
-          return (
-            <div
-              key={u.id}
-              onClick={() => toggle(u.id)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "6px 10px",
-                cursor: "pointer",
-                fontSize: 12,
-                color: C.darkText,
-                background: isActive ? C.accent + "14" : "transparent",
-                transition: "background 0.1s",
-              }}
-              onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
-            >
-              <span style={{
-                width: 20, height: 20, borderRadius: "50%",
-                background: `linear-gradient(135deg, ${C.accent}, ${C.accent}88)`,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 10, fontWeight: 700, color: "#fff", flexShrink: 0,
-              }}>
-                {initial}
-              </span>
-              <span style={{ flex: 1 }}>{u.display_name}</span>
-              {isActive && <span style={{ color: C.accent, fontSize: 14, fontWeight: 700 }}>✓</span>}
-            </div>
-          );
-        })}
-      </div>
-      <div style={{
-        borderTop: `1px solid ${C.darkBorder}`,
-        padding: "6px 10px",
-        display: "flex",
-        justifyContent: "flex-end",
-      }}>
-        <button
-          onClick={handleDone}
-          style={{
-            background: C.accent,
-            color: "#fff",
-            border: "none",
-            borderRadius: RADIUS.sm,
-            padding: "4px 12px",
-            fontSize: 11,
-            fontWeight: 600,
-            cursor: "pointer",
-            fontFamily: FONT,
-          }}
-        >
-          Done
-        </button>
-      </div>
-    </div>
-  );
-}
+// OwnerCellDisplay and OwnerPicker imported from ./table/OwnerCell.jsx
 
 
 // ─── Saved Views Dropdown ───
@@ -1082,12 +175,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const [ghostError, setGhostError] = useState(null);
   const ghostActive = useRef(false); // true when user has started typing in ghost row
 
-  // Shared ghost row input style
-  const ghostInputStyle = {
-    width: "100%", border: "none", borderRadius: RADIUS.sm,
-    background: "transparent", color: C.darkText, fontFamily: FONT,
-    fontSize: 13, padding: "4px 6px", outline: "none", boxSizing: "border-box",
-  };
+  // ghostInputStyle imported from table/tableStyles.js
 
   // ── Keyboard Navigation ──
   const [focusedCell, setFocusedCell] = useState(null); // { row: number, col: number } | null
@@ -2188,32 +1276,16 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
 
   function renderGhostCell(col, type, opts = {}) {
     const titleField = schema?.title?.name;
-    if (type === "checkbox") {
-      return (
-        <label style={{ display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", height: "100%" }}>
-          <input type="checkbox" checked={!!ghostValues[col]} onChange={(e) => ghostSetVal(col, e.target.checked)} style={{ width: 14, height: 14, accentColor: C.accent, cursor: "pointer" }} />
-        </label>
-      );
-    }
-    if (type === "select" || type === "status") {
-      return (
-        <select value={ghostValues[col] || ""} onChange={(e) => ghostSetVal(col, e.target.value || null)} onKeyDown={ghostKeyDown} style={{ ...ghostInputStyle, cursor: "pointer", appearance: "none" }}>
-          <option value="">--</option>
-          {getFieldOptions(schema, col).map((opt) => <option key={opt.name} value={opt.name}>{opt.name}</option>)}
-        </select>
-      );
-    }
     return (
-      <input
-        type={type === "number" ? "number" : type === "date" ? "date" : "text"}
-        style={ghostInputStyle}
-        value={ghostValues[col] ?? ""}
+      <GhostCell
+        col={col}
+        type={type}
+        value={ghostValues[col]}
+        schema={schema}
+        onSetValue={ghostSetVal}
+        onKeyDown={ghostKeyDown}
         placeholder={col === titleField ? "New row..." : (opts.placeholder || "")}
         autoFocus={opts.autoFocus}
-        onChange={(e) => { ghostSetVal(col, type === "number" ? (e.target.value ? Number(e.target.value) : "") : e.target.value); }}
-        onKeyDown={ghostKeyDown}
-        onFocus={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-        onBlur={(e) => { e.currentTarget.style.background = "transparent"; }}
       />
     );
   }
@@ -3045,41 +2117,21 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                                     <div key={col} style={{ ...styles.gridCell, padding: "2px 6px" }}>
                                       {!isEditable ? (
                                         <span style={{ color: C.darkMuted, fontSize: 11, fontStyle: "italic" }}>--</span>
-                                      ) : (() => {
-                                        const subGhostKeyDown = (e) => {
-                                          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubItemGhostCommit(); }
-                                          if (e.key === "Escape") { setSubItemGhostParent(null); setSubItemGhostValues({}); subItemGhostActive.current = false; }
-                                        };
-                                        const subGhostSetVal = (c, v) => { subItemGhostActive.current = true; setSubItemGhostValues((p) => ({ ...p, [c]: v })); };
-                                        if (type === "checkbox") {
-                                          return (
-                                            <label style={{ display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", height: "100%" }}>
-                                              <input type="checkbox" checked={!!subItemGhostValues[col]} onChange={(e) => subGhostSetVal(col, e.target.checked)} style={{ width: 14, height: 14, accentColor: C.accent, cursor: "pointer" }} />
-                                            </label>
-                                          );
-                                        }
-                                        if (type === "select" || type === "status") {
-                                          return (
-                                            <select value={subItemGhostValues[col] || ""} onChange={(e) => subGhostSetVal(col, e.target.value || null)} onKeyDown={subGhostKeyDown} style={{ ...ghostInputStyle, cursor: "pointer", appearance: "none" }}>
-                                              <option value="">--</option>
-                                              {getFieldOptions(ghostSchema, col).map((opt) => <option key={opt.name} value={opt.name}>{opt.name}</option>)}
-                                            </select>
-                                          );
-                                        }
-                                        return (
-                                          <input
-                                            type={type === "number" ? "number" : type === "date" ? "date" : "text"}
-                                            style={ghostInputStyle}
-                                            value={subItemGhostValues[col] ?? ""}
-                                            placeholder={isTitle ? "New sub-item..." : ""}
-                                            autoFocus={isTitle}
-                                            onChange={(e) => { subGhostSetVal(col, type === "number" ? (e.target.value ? Number(e.target.value) : "") : e.target.value); }}
-                                            onKeyDown={subGhostKeyDown}
-                                            onFocus={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-                                            onBlur={(e) => { e.currentTarget.style.background = "transparent"; }}
-                                          />
-                                        );
-                                      })()}
+                                      ) : (
+                                        <GhostCell
+                                          col={col}
+                                          type={type}
+                                          value={subItemGhostValues[col]}
+                                          schema={ghostSchema}
+                                          onSetValue={(c, v) => { subItemGhostActive.current = true; setSubItemGhostValues((p) => ({ ...p, [c]: v })); }}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubItemGhostCommit(); }
+                                            if (e.key === "Escape") { setSubItemGhostParent(null); setSubItemGhostValues({}); subItemGhostActive.current = false; }
+                                          }}
+                                          placeholder={isTitle ? "New sub-item..." : ""}
+                                          autoFocus={isTitle}
+                                        />
+                                      )}
                                     </div>
                                   );
                                 })}
@@ -3197,92 +2249,27 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
       )}
 
       {/* Cell Link Picker */}
-      {/* Column Context Menu (portal to escape overflow:hidden + transform ancestors) */}
-      {colCtxMenu && createPortal(
-        <>
-          <div style={{ position: "fixed", inset: 0, zIndex: 299 }} onMouseDown={() => setColCtxMenu(null)} />
-          <div
-            style={{
-              position: "fixed", left: colCtxMenu.x, top: colCtxMenu.y, zIndex: 300,
-              background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
-              borderRadius: RADIUS.lg, padding: 4, minWidth: 160,
-              boxShadow: SHADOW.dropdown, fontFamily: FONT,
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div style={ctxItem} onClick={() => { setSortField(colCtxMenu.col); setSortDir("asc"); setColCtxMenu(null); }} {...hoverBg()}>{"\u25B2"} Sort Ascending</div>
-            <div style={ctxItem} onClick={() => { setSortField(colCtxMenu.col); setSortDir("desc"); setColCtxMenu(null); }} {...hoverBg()}>{"\u25BC"} Sort Descending</div>
-            <div style={{ borderTop: `1px solid ${C.edgeLine}`, margin: "2px 0" }} />
-            <div style={ctxItem} onClick={() => handleHideCol(colCtxMenu.col)} {...hoverBg()}>{"\uD83D\uDC41\uFE0F"} Hide Column</div>
-            {canEditSchema && (
-              <div style={ctxItem} onClick={() => { setRenamingCol(colCtxMenu.col); setRenameValue(colCtxMenu.col); setColCtxMenu(null); }} {...hoverBg()}>{"\u270F\uFE0F"} Rename</div>
-            )}
-            {/* Type Change (D1 only — Notion type changes are restricted) */}
-            {isD1Table && (
-              <>
-                <div style={{ borderTop: `1px solid ${C.edgeLine}`, margin: "2px 0" }} />
-                <div style={{ padding: "4px 10px", fontSize: 10, color: C.darkMuted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                  Change Type
-                </div>
-                {COLUMN_TYPES.map((t) => {
-                  const currentType = getFieldType(schema, colCtxMenu.col);
-                  const isCurrentType = currentType === t.value || currentType === mapD1TypeForUI(t.value);
-                  return (
-                    <div
-                      key={t.value}
-                      style={{
-                        ...ctxItem,
-                        display: "flex", alignItems: "center", gap: 8,
-                        color: isCurrentType ? C.accent : C.darkText,
-                        background: isCurrentType ? `${C.accent}10` : "transparent",
-                        fontWeight: isCurrentType ? 600 : 400,
-                      }}
-                      onClick={() => handleChangeColType(colCtxMenu.col, t.value)}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = isCurrentType ? `${C.accent}18` : C.darkSurf2; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = isCurrentType ? `${C.accent}10` : "transparent"; }}
-                    >
-                      <span style={{ width: 20, textAlign: "center", fontSize: 13, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        {t.Icon ? <t.Icon size={14} color={isCurrentType ? C.accent : C.darkMuted} /> : <span style={{ fontWeight: 600, color: isCurrentType ? C.accent : C.darkMuted }}>{t.text}</span>}
-                      </span>
-                      <span style={{ flex: 1 }}>{t.label}</span>
-                      {isCurrentType && <span style={{ fontSize: 11, opacity: 0.7 }}>{"\u2713"}</span>}
-                    </div>
-                  );
-                })}
-              </>
-            )}
-            {/* Delete (D1 + Notion) */}
-            {canEditSchema && (
-              <>
-                <div style={{ borderTop: `1px solid ${C.edgeLine}`, margin: "2px 0" }} />
-                <div style={{ ...ctxItem, color: C.warning }} onClick={() => { if (confirm(`Delete column "${colCtxMenu.col}"?`)) handleDeleteCol(colCtxMenu.col); }} {...hoverBg(C.warningDim)}>{"\uD83D\uDDD1"} Delete Column</div>
-              </>
-            )}
-          </div>
-        </>,
-        document.body
-      )}
+      {/* Column Context Menu */}
+      <ParentColumnContextMenu
+        menu={colCtxMenu}
+        schema={schema}
+        isD1Table={isD1Table}
+        canEditSchema={canEditSchema}
+        onSort={(col, dir) => { setSortField(col); setSortDir(dir); }}
+        onHide={handleHideCol}
+        onRename={(col) => { setRenamingCol(col); setRenameValue(col); }}
+        onChangeType={handleChangeColType}
+        onDelete={handleDeleteCol}
+        onClose={() => setColCtxMenu(null)}
+      />
 
       {/* Sub-item column context menu */}
-      {subColCtxMenu && createPortal(
-        <>
-          <div style={{ position: "fixed", inset: 0, zIndex: 299 }} onClick={() => setSubColCtxMenu(null)} />
-          <div
-            style={{
-              position: "fixed", left: subColCtxMenu.x, top: subColCtxMenu.y, zIndex: 300,
-              background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
-              borderRadius: RADIUS.lg, padding: 4, minWidth: 160,
-              boxShadow: SHADOW.dropdown, fontFamily: FONT,
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div style={ctxItem} onClick={() => { setRenamingSubCol(subColCtxMenu.col); setRenameSubValue(subColCtxMenu.col); setSubColCtxMenu(null); }} {...hoverBg()}>✏️ Rename</div>
-            <div style={{ borderTop: `1px solid ${C.edgeLine}`, margin: "2px 0" }} />
-            <div style={{ ...ctxItem, color: C.warning }} onClick={() => { if (confirm(`Delete sub-item column "${subColCtxMenu.col}"?`)) handleDeleteSubCol(subColCtxMenu.col); }} {...hoverBg(C.warningDim)}>🗑 Delete Column</div>
-          </div>
-        </>,
-        document.body
-      )}
+      <SubColumnContextMenu
+        menu={subColCtxMenu}
+        onRename={(col) => { setRenamingSubCol(col); setRenameSubValue(col); }}
+        onDelete={handleDeleteSubCol}
+        onClose={() => setSubColCtxMenu(null)}
+      />
 
       {linkPickerCell && (
         <LinkPicker
@@ -3313,275 +2300,45 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
       )}
 
       {/* ── Sub-Items: Cascade Delete Dialog ── */}
-      {cascadeDialog && createPortal(
-        <>
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9998 }} onClick={() => setCascadeDialog(null)} />
-          <div style={{
-            position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-            background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
-            borderRadius: RADIUS.lg, boxShadow: SHADOW.dropdown,
-            padding: "24px", minWidth: 340, maxWidth: 420, zIndex: 9999,
-          }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: C.darkText, marginBottom: 8, fontFamily: FONT }}>
-              This record has sub-items
-            </div>
-            <div style={{ fontSize: 13, color: C.darkMuted, marginBottom: 20, fontFamily: FONT, lineHeight: 1.5 }}>
-              This record has {cascadeDialog.childCount} sub-item{cascadeDialog.childCount !== 1 ? "s" : ""}. What would you like to do?
-            </div>
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
-              <button
-                onClick={() => setCascadeDialog(null)}
-                style={{
-                  background: "transparent", border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
-                  padding: "8px 16px", fontSize: 12, fontFamily: FONT, color: C.darkText, cursor: "pointer",
-                }}
-              >Cancel</button>
-              <button
-                onClick={() => handleCascadeDelete("orphan")}
-                style={{
-                  background: "transparent", border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
-                  padding: "8px 16px", fontSize: 12, fontFamily: FONT, color: C.darkText, cursor: "pointer",
-                }}
-              >Keep sub-items</button>
-              <button
-                onClick={() => handleCascadeDelete("delete")}
-                style={{
-                  background: C.error, border: "none", borderRadius: RADIUS.sm,
-                  padding: "8px 16px", fontSize: 12, fontFamily: FONT, color: "#fff", cursor: "pointer", fontWeight: 600,
-                }}
-              >Delete all</button>
-            </div>
-          </div>
-        </>,
-        document.body
-      )}
+      <CascadeDeleteDialog
+        dialog={cascadeDialog}
+        onCancel={() => setCascadeDialog(null)}
+        onCascade={handleCascadeDelete}
+      />
 
-      {/* ── Add Column Dialog (Portal) ── */}
-      {addColOpen && createPortal(
-        <>
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.3)", zIndex: 9998 }} onClick={() => { setAddColOpen(false); setAddColName(""); setAddColType("text"); }} />
-          <div style={{
-            position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-            background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
-            borderRadius: RADIUS.lg, boxShadow: SHADOW.dropdown,
-            padding: "24px", minWidth: 300, maxWidth: 380, zIndex: 9999, fontFamily: FONT,
-          }}
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div style={{ fontSize: 15, fontWeight: 600, color: C.darkText, marginBottom: 16 }}>
-              New Column
-            </div>
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 4 }}>Column Name</label>
-              <input
-                autoFocus
-                placeholder="Column name..."
-                value={addColName}
-                onChange={(e) => setAddColName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") handleAddCol(); if (e.key === "Escape") { setAddColOpen(false); setAddColName(""); setAddColType("text"); } }}
-                style={{
-                  width: "100%", padding: "8px 10px", fontSize: 13,
-                  background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-                  borderRadius: RADIUS.sm, color: C.darkText, outline: "none",
-                  fontFamily: FONT, boxSizing: "border-box",
-                }}
-              />
-            </div>
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 4 }}>Column Type</label>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
-                {COLUMN_TYPES.map((t) => {
-                  const isSelected = addColType === t.value;
-                  return (
-                    <div
-                      key={t.value}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 6,
-                        padding: "5px 8px", borderRadius: RADIUS.sm,
-                        cursor: "pointer", fontSize: 12, fontFamily: FONT,
-                        transition: "background 0.1s",
-                        color: isSelected ? C.accent : C.darkText,
-                        background: isSelected ? `${C.accent}15` : "transparent",
-                        fontWeight: isSelected ? 600 : 400,
-                      }}
-                      onClick={() => setAddColType(t.value)}
-                      onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = C.darkSurf2; }}
-                      onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = isSelected ? `${C.accent}15` : "transparent"; }}
-                    >
-                      <span style={{ width: 16, textAlign: "center", fontSize: 12, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        {t.Icon ? <t.Icon size={13} color={isSelected ? C.accent : C.darkMuted} /> : <span style={{ fontWeight: 600, color: isSelected ? C.accent : C.darkMuted }}>{t.text}</span>}
-                      </span>
-                      <span>{t.label}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            {addColType === "relation" && isNotionTable && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                  Target Database
-                </label>
-                <input
-                  placeholder="Search databases..."
-                  value={dbSearchQuery}
-                  onChange={(e) => {
-                    setDbSearchQuery(e.target.value);
-                    searchRelationDbs(e.target.value);
-                  }}
-                  onFocus={() => { if (!dbSearchResults.length) searchRelationDbs(""); }}
-                  style={inputFieldStyle}
-                />
-                <div style={{ maxHeight: 120, overflowY: "auto" }}>
-                  {dbSearchResults.map((db) => (
-                    <div
-                      key={db.id}
-                      onClick={() => setAddColRelationDb(db)}
-                      style={{
-                        padding: "5px 8px", fontSize: 12, cursor: "pointer",
-                        borderRadius: RADIUS.sm, fontFamily: FONT,
-                        color: addColRelationDb?.id === db.id ? C.accent : C.darkText,
-                        background: addColRelationDb?.id === db.id ? `${C.accent}15` : "transparent",
-                        transition: "background 0.1s",
-                      }}
-                      onMouseEnter={(e) => { if (addColRelationDb?.id !== db.id) e.currentTarget.style.background = C.darkSurf2; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = addColRelationDb?.id === db.id ? `${C.accent}15` : "transparent"; }}
-                    >
-                      {db.title}
-                    </div>
-                  ))}
-                  {dbSearching && <div style={{ padding: 6, fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>Searching...</div>}
-                  {!dbSearching && dbSearchResults.length === 0 && dbSearchQuery && (
-                    <div style={{ padding: 6, fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>No databases found</div>
-                  )}
-                </div>
-                {addColRelationDb && (
-                  <>
-                    <div style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>
-                      Selected: <span style={{ color: C.accent }}>{addColRelationDb.title}</span>
-                    </div>
-                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontFamily: FONT, color: C.darkText, cursor: "pointer" }}>
-                      <input
-                        type="checkbox"
-                        checked={addColSynced}
-                        onChange={(e) => setAddColSynced(e.target.checked)}
-                        style={{ accentColor: C.accent }}
-                      />
-                      Two-way relation
-                    </label>
-                    {addColSynced && (
-                      <input
-                        placeholder="Backlink column name..."
-                        value={addColSyncedName}
-                        onChange={(e) => setAddColSyncedName(e.target.value)}
-                        style={inputFieldStyle}
-                      />
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button
-                onClick={() => { setAddColOpen(false); setAddColName(""); setAddColType("text"); }}
-                style={{
-                  background: "transparent", border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
-                  padding: "8px 16px", fontSize: 12, fontFamily: FONT, color: C.darkMuted, cursor: "pointer",
-                }}
-              >Cancel</button>
-              {(() => {
-                const canAdd = addColName.trim() && !(addColType === "relation" && (!addColRelationDb || (addColSynced && !addColSyncedName.trim())));
-                return (
-                  <button
-                    onClick={handleAddCol}
-                    disabled={!canAdd}
-                    style={{
-                      background: canAdd ? C.accent : C.darkBorder, border: "none", borderRadius: RADIUS.sm,
-                      padding: "8px 16px", fontSize: 12, fontFamily: FONT, color: "#fff",
-                      cursor: canAdd ? "pointer" : "default",
-                      fontWeight: 600, opacity: canAdd ? 1 : 0.5,
-                    }}
-                  >Add Column</button>
-                );
-              })()}
-            </div>
-          </div>
-        </>,
-        document.body
-      )}
+      {/* ── Add Column Dialog ── */}
+      <AddColumnDialog
+        open={addColOpen}
+        name={addColName}
+        type={addColType}
+        onNameChange={setAddColName}
+        onTypeChange={setAddColType}
+        onSubmit={handleAddCol}
+        onClose={() => { setAddColOpen(false); setAddColName(""); setAddColType("text"); }}
+        isNotionTable={isNotionTable}
+        relationDb={addColRelationDb}
+        synced={addColSynced}
+        syncedName={addColSyncedName}
+        dbSearchQuery={dbSearchQuery}
+        dbSearchResults={dbSearchResults}
+        dbSearching={dbSearching}
+        onRelationDbSelect={setAddColRelationDb}
+        onSyncedChange={setAddColSynced}
+        onSyncedNameChange={setAddColSyncedName}
+        onDbSearchQueryChange={setDbSearchQuery}
+        onSearchDbs={searchRelationDbs}
+      />
 
       {/* ── Add Sub-Item Column Dialog ── */}
-      {addSubColOpen && createPortal(
-        <>
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.3)", zIndex: 9998 }} onClick={() => { setAddSubColOpen(false); setAddSubColName(""); setAddSubColType("text"); }} />
-          <div style={{
-            position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-            background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
-            borderRadius: RADIUS.lg, boxShadow: SHADOW.dropdown,
-            padding: "24px", minWidth: 300, maxWidth: 380, zIndex: 9999, fontFamily: FONT,
-          }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: C.darkText, marginBottom: 16 }}>
-              Add Sub-Item Column
-            </div>
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 4 }}>Column Name</label>
-              <input
-                autoFocus
-                value={addSubColName}
-                onChange={(e) => setAddSubColName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") handleAddSubCol(); if (e.key === "Escape") { setAddSubColOpen(false); setAddSubColName(""); setAddSubColType("text"); } }}
-                placeholder="e.g. Status, Due Date..."
-                style={{
-                  width: "100%", padding: "8px 10px", fontSize: 13,
-                  background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-                  borderRadius: RADIUS.sm, color: C.darkText, outline: "none",
-                  fontFamily: FONT, boxSizing: "border-box",
-                }}
-              />
-            </div>
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 4 }}>Type</label>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                {COLUMN_TYPES.filter(t => t.value !== "relation").map((t) => (
-                  <button
-                    key={t.value}
-                    onClick={() => setAddSubColType(t.value)}
-                    style={{
-                      padding: "4px 10px", fontSize: 11, border: `1px solid ${addSubColType === t.value ? C.accent : C.darkBorder}`,
-                      borderRadius: RADIUS.pill, cursor: "pointer", fontFamily: FONT,
-                      background: addSubColType === t.value ? C.accent + "18" : "transparent",
-                      color: addSubColType === t.value ? C.accent : C.darkMuted,
-                      fontWeight: addSubColType === t.value ? 600 : 400,
-                    }}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button
-                onClick={() => { setAddSubColOpen(false); setAddSubColName(""); setAddSubColType("text"); }}
-                style={{
-                  background: "transparent", border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
-                  padding: "8px 16px", fontSize: 12, fontFamily: FONT, color: C.darkMuted, cursor: "pointer",
-                }}
-              >Cancel</button>
-              <button
-                onClick={handleAddSubCol}
-                disabled={!addSubColName.trim()}
-                style={{
-                  background: addSubColName.trim() ? C.accent : C.darkBorder, border: "none", borderRadius: RADIUS.sm,
-                  padding: "8px 16px", fontSize: 12, fontFamily: FONT, color: "#fff", cursor: addSubColName.trim() ? "pointer" : "default",
-                  fontWeight: 600, opacity: addSubColName.trim() ? 1 : 0.5,
-                }}
-              >Add Column</button>
-            </div>
-          </div>
-        </>,
-        document.body
-      )}
+      <AddSubColumnDialog
+        open={addSubColOpen}
+        name={addSubColName}
+        type={addSubColType}
+        onNameChange={setAddSubColName}
+        onTypeChange={setAddSubColType}
+        onSubmit={handleAddSubCol}
+        onClose={() => { setAddSubColOpen(false); setAddSubColName(""); setAddSubColType("text"); }}
+      />
 
       {/* ── New Record Modal ── */}
       {showNewModal && onCreate && (
