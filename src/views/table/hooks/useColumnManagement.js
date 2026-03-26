@@ -10,10 +10,10 @@ import { D1_TO_NOTION_TYPE } from "../tableHelpers.js";
 export default function useColumnManagement({
   schema, columns, allColumnsRef, hiddenColumns, setHiddenColumns,
   canEditSchema, isD1Table, isNotionTable, notionDbId, workerUrl, notionKey,
-  pageConfig, onRefresh, onViewConfigChange,
+  pageConfig, onRefresh, onViewConfigChange, initialColWidths,
 }) {
   // ── Column Resize ──
-  const [colWidths, setColWidths] = useState(() => {});
+  const [colWidths, setColWidths] = useState(() => initialColWidths || {});
   const resizeDrag = useRef(null);
   const colWidthsRef = useRef(colWidths);
   colWidthsRef.current = colWidths;

@@ -300,11 +300,9 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const colMgmt = useColumnManagement({
     schema, columns, allColumnsRef, hiddenColumns, setHiddenColumns,
     canEditSchema, isD1Table, isNotionTable, notionDbId, workerUrl, notionKey,
-    pageConfig, onRefresh, onViewConfigChange,
+    pageConfig, onRefresh, onViewConfigChange, initialColWidths: config.colWidths,
   });
-  // Initialize column widths from config on first render
-  const { colWidths, initColWidths } = colMgmt;
-  useEffect(() => { initColWidths(config.colWidths); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const { colWidths } = colMgmt;
   // Destructure commonly used values
   const {
     colCtxMenu, setColCtxMenu, handleColRightClick, handleHideCol,
