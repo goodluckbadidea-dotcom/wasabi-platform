@@ -21,6 +21,7 @@ interface PageConfig {
   _systemInternal: boolean;        // If true, page is system-managed (not user-deletable)
 
   columns: ColumnDefinition[];     // Table schema (for database-type pages)
+  sub_columns: ColumnDefinition[]; // Sub-item column schema (separate from parent columns, IDs prefixed subcol_*)
   viewConfigs: ViewConfig[];       // Array of view configurations
 
   pin_protected: boolean;          // Whether page requires PIN to access
@@ -153,8 +154,9 @@ A data row in a D1 table. Stored in the `table_rows` table.
 interface TableRow {
   id: string;                      // UUID primary key
   table_id: string;                // Foreign key to page_configs.id
-  cells: Record<string, any>;      // JSON: column name → cell value
+  cells: Record<string, any>;      // JSON: column ID → cell value (includes both parent col IDs and subcol_* IDs)
   sort_order: number;              // Display order within the table
+  parent_row_id: string | null;    // If set, this row is a sub-item of the referenced parent row
   created_at: string;              // ISO 8601
   updated_at: string;              // ISO 8601
   updated_by: string | null;       // User ID of last editor

@@ -56,6 +56,37 @@ Personal productivity surface. User-scoped data. All components lazy-loaded.
 
 ---
 
+## Sub-Items (Table View)
+
+Sub-items are hierarchical child records within a D1 table. They share the same `table_rows` D1 table as parent records, distinguished by `parent_row_id`.
+
+### Architecture
+
+- **Storage:** Same `table_rows` table. Sub-item rows have `parent_row_id` set to the parent record's ID.
+- **Schema:** Sub-item columns are stored separately in the page config as `sub_columns` (not in the parent `columns` array). Each sub-column has a `subcol_*` prefixed ID.
+- **Title column:** The first sub-column always gets `type: "title"`. If a sub-column was created before this rule existed, `d1SchemaToClassified` and `d1RowToPage` both treat `idx === 0` as title regardless of stored type.
+
+### Data Flow
+
+1. **Write path:** `createRecord()` in `dataSource.js` merges `sub_columns` into the column lookup when `parentRowId` is present, so sub-column cell values are correctly mapped by `subcol_*` IDs.
+2. **Read path:** `d1RowToPage()` iterates both parent columns and `subColumns`. Sub-column title values are wrapped in Notion-compatible `{type: "title", title: [...]}` format (not `rich_text`) so the cell renderer displays them correctly.
+3. **Schema classification:** `d1SchemaToClassified()` is called separately for sub-columns to produce `schema._subSchema`. The table view uses `subSchema` for sub-item rows and parent `schema` for regular rows.
+
+### Table View Integration (Table.jsx)
+
+- **Ghost row:** When user clicks the branch icon on a parent row, `subItemGhostParent` is set and a ghost row appears for quick sub-item creation. State: `subItemGhostParent`, `subItemGhostValues`, `subItemGhostSaving`.
+- **Mini-header:** Sub-item column headers render above the first child row (visible only when children exist). Headers are uppercase, 11px.
+- **Editable headers:** Double-click a sub-item header to rename inline. Right-click opens a context menu with Rename and Delete options.
+- **Column management:** `handleAddSubCol` creates new sub-columns via `updateSubColumnSchema`. `handleRenameSubCol` and `handleDeleteSubCol` modify existing sub-columns.
+- **Display columns:** `subColsList` = visible sub-columns, or falls back to `[subTitleField]` if no sub-columns exist.
+
+### RecordDetail Integration (RecordDetail.jsx)
+
+- Sub-item records do NOT show the "Sub-Items" tab (sub-items cannot have sub-items).
+- Sub-item records show a "Parent" field linking to the parent record. The parent record's title is displayed (passed as `parentTitle` prop from Table.jsx), not the raw row ID.
+
+---
+
 ## Workspace Mode (`src/views/` + `src/core/`)
 
 Shared database views. Workspace-scoped with per-page permissions.
@@ -64,7 +95,7 @@ Shared database views. Workspace-scoped with per-page permissions.
 
 | View | File | Purpose |
 |------|------|---------|
-| Table | `Table.jsx` | Spreadsheet-like grid with columns, filters, sorting. Cells are read-only; click opens RecordDrawer. |
+| Table | `Table.jsx` | Spreadsheet-like grid with columns, filters, sorting, inline cell editing, sub-items, and editable column headers (~3,500 lines). |
 | Kanban | `Kanban.jsx` | Card-based board grouped by status/select columns |
 | Gantt | `Gantt.jsx` | Timeline bar chart for date-range records |
 | Calendar | `Calendar.jsx` | Calendar view of date-based records |
@@ -81,7 +112,7 @@ Shared database views. Workspace-scoped with per-page permissions.
 | Charts | `Charts.jsx` | Data visualization (bar, line, pie, etc.) |
 | SummaryTiles | `SummaryTiles.jsx` | Metric summary cards |
 | ChatPanel | `ChatPanel.jsx` | Workspace-scoped AI chat |
-| RecordDetail | `RecordDetail.jsx` | Full-page record detail view |
+| RecordDetail | `RecordDetail.jsx` | Record detail drawer with tabs: Properties, Sub-Items (D1 parent records only), Notes, Comments, Files. Receives `parentTitle` prop for sub-item records. |
 
 **Note:** `src/views/CalendarView.jsx` was deleted (dead code). The active calendar is `src/views/Calendar.jsx` for Workspace mode and `src/features/CalendarView.jsx` for the Calendar View.
 

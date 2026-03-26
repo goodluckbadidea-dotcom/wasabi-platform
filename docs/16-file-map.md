@@ -1,6 +1,6 @@
 # File Map
 
-**Last Updated:** 2026-03-24
+**Last Updated:** 2026-03-25
 
 Complete source file listing for the Wasabi platform. Excludes `node_modules/`, `dist/`, and `.git/`.
 
@@ -119,10 +119,10 @@ Database view components. Lazy-loaded by PageShell.
 | `NodeConfigPanel.jsx` | Configuration panel for flow nodes |
 | `NodeRenderer.jsx` | Individual node renderer for flow editor |
 | `NotificationFeed.jsx` | Notification inbox with filtering, sticky recently-read items in Unread tab |
-| `RecordDetail.jsx` | Record detail/expanded view |
+| `RecordDetail.jsx` | Record detail drawer: Properties, Sub-Items (parent records only), Notes, Comments, Files tabs. Accepts `parentTitle` prop for sub-items. |
 | `Sheet.jsx` | Spreadsheet-like sheet view |
 | `SummaryTiles.jsx` | Summary tiles/metrics view |
-| `Table.jsx` | Primary table/grid view |
+| `Table.jsx` | Primary table/grid view (~3,500 lines). Includes sub-items, editable column headers (double-click rename, right-click context menu), column picker modal, ghost row creation, inline cell editing. Planned for refactor into `src/views/table/` folder. |
 | `ViewRenderer.jsx` | View type router/dispatcher |
 | `WorkspaceSettings.jsx` | Workspace settings view |
 | `_CellComponents.jsx` | Shared cell renderer components |
@@ -285,7 +285,7 @@ Utility functions, API client, WebSocket helpers.
 | File | Purpose |
 |------|---------|
 | `api.js` | Fetch wrapper: auth headers, auto-refresh, error handling |
-| `dataSource.js` | Data source abstraction layer (D1, Notion, Monday normalization) |
+| `dataSource.js` | Data source abstraction layer (D1, Notion, Monday normalization). Key functions: `createRecord()` (single write path for all records including sub-items), `d1RowToPage()` (converts D1 rows to Notion-compatible page objects, handles sub-column title wrapping), `d1SchemaToClassified()` (converts D1 column arrays to classified schema). |
 | `iframeHelpers.js` | Iframe sandbox helpers, escapeHtml, auto-execute code |
 | `roles.js` | Role constants and permission utilities |
 | `tableSocket.js` | WebSocket client for table collaboration (TableRoom), double-connect guard |

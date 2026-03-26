@@ -1,6 +1,6 @@
 # Security Posture & Known Issues
 
-**Last Updated:** 2026-03-24
+**Last Updated:** 2026-03-25
 
 ## Product Context
 
@@ -103,6 +103,14 @@ The auth gate lives in `PlatformContext.jsx` as the `AuthGate` component, positi
 ### Bare Catch Blocks
 
 Approximately 134 bare `catch` blocks remain in the codebase. The majority are intentional -- guarding `localStorage` access, `JSON.parse` calls, and optional feature detection where the failure mode is "do nothing." Roughly 10 API-level catch blocks that previously swallowed errors have been fixed to surface error state to the user.
+
+### Sub-Item Title Type Mismatch (Resolved 2026-03-25)
+
+Sub-columns created before the `type: "title"` enforcement fix stored the first column with `type: "text"` instead of `type: "title"`. `d1SchemaToClassified` treated `idx === 0` as title regardless of stored type, but `d1RowToPage` originally used the raw column type to wrap values. This caused a format mismatch (schema said "title", property said "rich_text") and sub-item titles displayed as "--". Fixed by making `d1RowToPage` mirror the same title detection logic as `d1SchemaToClassified`.
+
+### Editable Column Headers — Double-Click Delay
+
+Parent column headers use a 250ms `setTimeout` to disambiguate single-click (context menu) from double-click (inline rename). This introduces a perceptible delay on single-click. Sub-item headers use only double-click and right-click (no single-click context menu delay).
 
 ### Conflict Detection Scope
 
