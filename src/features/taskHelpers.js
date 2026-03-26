@@ -600,3 +600,76 @@ export function getStaleCache(key) {
     return null;
   }
 }
+
+// ── Interaction tracking ──
+// Persists user interactions per-task in localStorage. Score adjustments
+// accumulate and decay over time (today=full, yesterday=50%, 2d+=25%).
+
+const INTERACTION_CACHE_KEY = "wasabi_task_interactions";
+
+const INTERACTION_WEIGHTS = {
+  view: -2,
+  field_edit: -5,
+  status_change: -8,
+  comment: +2,       // bumps UP — needs follow-through
+  dismiss: -15,
+};
+
+/** Persist interaction to localStorage ledger. Accumulates per-task. */
+export function persistInteraction(taskId, type, detail) {
+  try {
+    const raw = localStorage.getItem(INTERACTION_CACHE_KEY);
+    const ledger = raw ? JSON.parse(raw) : {};
+    if (!ledger[taskId]) ledger[taskId] = { interactions: [] };
+    const entry = ledger[taskId];
+    entry.interactions.push({ type, ts: Date.now(), detail: detail || null });
+    // Cap interaction history at 20 per task to bound localStorage size
+    if (entry.interactions.length > 20) entry.interactions = entry.interactions.slice(-20);
+    entry.totalAdjustment = calculateDecayedAdjustment(entry.interactions);
+    localStorage.setItem(INTERACTION_CACHE_KEY, JSON.stringify(ledger));
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+/** Score adjustment with time decay. Today=full, yesterday=50%, 2d+=25%. */
+export function calculateDecayedAdjustment(interactions) {
+  const now = Date.now();
+  let total = 0;
+  for (const i of interactions) {
+    const ageHours = (now - i.ts) / 3600000;
+    const weight = INTERACTION_WEIGHTS[i.type] || 0;
+    const decay = ageHours > 48 ? 0.25 : ageHours > 24 ? 0.5 : 1;
+    total += weight * decay;
+  }
+  return total;
+}
+
+/** Load interaction ledger from localStorage. */
+export function loadInteractionLedger() {
+  try {
+    const raw = localStorage.getItem(INTERACTION_CACHE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Merge persisted interaction adjustments into tasks from a fresh scan. */
+export function mergeInteractionAdjustments(tasks) {
+  const ledger = loadInteractionLedger();
+  if (!Object.keys(ledger).length) return tasks;
+  return tasks.map(task => {
+    const entry = ledger[task.id];
+    if (!entry) return task;
+    const adjustment = calculateDecayedAdjustment(entry.interactions);
+    return {
+      ...task,
+      _aiBaseScore: task._aiBaseScore ?? task._aiScore ?? 3,
+      _aiScore: (task._aiScore || 3) + adjustment,
+      _interactionCount: entry.interactions.length,
+      _interactionAdjustment: adjustment,
+    };
+  });
+}

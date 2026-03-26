@@ -13,6 +13,7 @@ import { loadCachedNeuronGraph } from "../neurons/neuronStorage.js";
 import {
   normalizeD1Task, getCached, setCache, getStaleCache, parseDate,
   shouldIncludeTask, isSmartOverdue,
+  persistInteraction, mergeInteractionAdjustments,
 } from "./taskHelpers.js";
 
 const CACHE_KEY_PREFIX = "wasabi_ai_tasks_v10"; // v10: D1-only scan, no Notion API dependency
@@ -947,17 +948,23 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
                 });
               }
             }
+            // Merge persisted interaction adjustments so user interactions survive rescans
+            const merged = mergeInteractionAdjustments(result);
             // Sort by AI priority score (highest first)
-            result.sort((a, b) => (b._aiScore || 0) - (a._aiScore || 0));
+            merged.sort((a, b) => (b._aiScore || 0) - (a._aiScore || 0));
             // Dynamic fill: show more tasks as user completes/dismisses items
             const targetCount = Math.min(TARGET_MAX, BASE_TARGET + completedCountRef.current);
             // Filter out dismissed tasks, then slice to target
-            const visible = result.filter((t) => !dismissedIdsRef.current.has(t.id));
+            const visible = merged.filter((t) => !dismissedIdsRef.current.has(t.id));
             setAiTasks(visible.slice(0, targetCount));
-            setCache(CACHE_KEY, result); // cache full ranked list (unfiltered)
+            setCache(CACHE_KEY, merged); // cache includes interaction adjustments
           } else {
             // Fallback: show filtered tasks sorted by nearest date
-            filteredTasks.sort((a, b) => {
+            const merged = mergeInteractionAdjustments(filteredTasks);
+            merged.sort((a, b) => {
+              // Primary: interaction-adjusted score (if any), secondary: date
+              const scoreDiff = (b._aiScore || 0) - (a._aiScore || 0);
+              if (Math.abs(scoreDiff) > 1) return scoreDiff;
               const aDate = a.nearestDate || a.due;
               const bDate = b.nearestDate || b.due;
               if (aDate && !bDate) return -1;
@@ -966,13 +973,16 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
               return 0;
             });
             const targetCount = Math.min(TARGET_MAX, BASE_TARGET + completedCountRef.current);
-            const visible = filteredTasks.filter((t) => !dismissedIdsRef.current.has(t.id));
+            const visible = merged.filter((t) => !dismissedIdsRef.current.has(t.id));
             setAiTasks(visible.slice(0, targetCount));
-            setCache(CACHE_KEY, filteredTasks); // cache full list
+            setCache(CACHE_KEY, merged); // cache includes interaction adjustments
           }
         } catch (err) {
           console.warn("[AICurated] AI call failed, using fallback:", err.message);
-          filteredTasks.sort((a, b) => {
+          const merged = mergeInteractionAdjustments(filteredTasks);
+          merged.sort((a, b) => {
+            const scoreDiff = (b._aiScore || 0) - (a._aiScore || 0);
+            if (Math.abs(scoreDiff) > 1) return scoreDiff;
             const aDate = a.nearestDate || a.due;
             const bDate = b.nearestDate || b.due;
             if (aDate && !bDate) return -1;
@@ -981,13 +991,16 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
             return 0;
           });
           const targetCount = Math.min(TARGET_MAX, BASE_TARGET + completedCountRef.current);
-          const visible = filteredTasks.filter((t) => !dismissedIdsRef.current.has(t.id));
+          const visible = merged.filter((t) => !dismissedIdsRef.current.has(t.id));
           setAiTasks(visible.slice(0, targetCount));
-          setCache(CACHE_KEY, filteredTasks); // cache full list
+          setCache(CACHE_KEY, merged); // cache includes interaction adjustments
         }
       } else {
         // No Claude key or no filtered tasks — sort by nearest date
-        filteredTasks.sort((a, b) => {
+        const merged = mergeInteractionAdjustments(filteredTasks);
+        merged.sort((a, b) => {
+          const scoreDiff = (b._aiScore || 0) - (a._aiScore || 0);
+          if (Math.abs(scoreDiff) > 1) return scoreDiff;
           const aDate = a.nearestDate || a.due;
           const bDate = b.nearestDate || b.due;
           if (aDate && !bDate) return -1;
@@ -996,9 +1009,9 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
           return 0;
         });
         const targetCount = Math.min(TARGET_MAX, BASE_TARGET + completedCountRef.current);
-        const visible = filteredTasks.filter((t) => !dismissedIdsRef.current.has(t.id));
+        const visible = merged.filter((t) => !dismissedIdsRef.current.has(t.id));
         setAiTasks(visible.slice(0, targetCount));
-        setCache(CACHE_KEY, filteredTasks); // cache full list
+        setCache(CACHE_KEY, merged); // cache includes interaction adjustments
       }
 
       setLastUpdated(new Date());
@@ -1062,31 +1075,29 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
     return () => clearInterval(interval);
   }, [scan]);
 
-  // ── Local score adjustments on interaction (instant, zero tokens) ──
+  // ── Interaction-based deprioritization (instant + persisted) ──
+  // Interactions are accumulated in a localStorage ledger with time decay.
+  // Score adjustments persist across remounts and survive rescans via mergeInteractionAdjustments.
   const TERMINAL_STATUSES = new Set(["done", "complete", "completed", "cancelled", "canceled", "archived", "delivered", "closed"]);
 
   const recordInteraction = useCallback((taskId, type, detail) => {
+    // 1. Persist to localStorage interaction ledger (accumulates with time decay)
+    const entry = persistInteraction(taskId, type, detail);
+
+    // 2. Update React state with ledger's calculated adjustment
     setAiTasks((prev) => {
       let tasks = prev.map((t) => {
         if (t.id !== taskId) return t;
-        const currentScore = t._aiScore || 3;
-        let adjustment = 0;
+        const baseScore = t._aiBaseScore ?? t._aiScore ?? 3;
+        const adjustment = entry?.totalAdjustment ?? 0;
+        // Terminal status → remove from list
         if (type === "status_change") {
-          // Check if the new status is terminal
           const newStatus = (detail || "").split("→").pop()?.trim().toLowerCase() || "";
           if (TERMINAL_STATUSES.has(newStatus) || detail === "completed") {
-            adjustment = -10; // Remove from list
-          } else {
-            adjustment = -2; // Deprioritize but keep
+            return { ...t, _aiScore: -99 };
           }
-        } else if (type === "field_edit") {
-          adjustment = -1;
-        } else if (type === "comment") {
-          adjustment = +1; // Bump UP — needs more work
-        } else if (type === "view") {
-          adjustment = -0.5;
         }
-        return { ...t, _aiScore: currentScore + adjustment };
+        return { ...t, _aiBaseScore: baseScore, _aiScore: baseScore + adjustment };
       });
       // Filter out tasks with very low scores (terminal status changes)
       tasks = tasks.filter((t) => (t._aiScore || 0) > -5);
@@ -1094,7 +1105,19 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
       tasks.sort((a, b) => (b._aiScore || 0) - (a._aiScore || 0));
       return tasks;
     });
-  }, []);
+
+    // 3. Update localStorage task cache so reloads see adjustments
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.data)) {
+          const updated = mergeInteractionAdjustments(parsed.data);
+          localStorage.setItem(CACHE_KEY, JSON.stringify({ data: updated, ts: parsed.ts }));
+        }
+      }
+    } catch {}
+  }, [CACHE_KEY]);
 
   return {
     aiTasks,
