@@ -250,7 +250,6 @@ export default function TasksView() {
             colorMapping={taskColorMapping}
             dateChipColors={dateChipColors}
             snoozedTasks={snoozedTasks}
-            onSnooze={snooze}
             onUnsnooze={unsnooze}
           />
         </ErrorBoundary>
@@ -307,6 +306,7 @@ export default function TasksView() {
         onEventUpdated={handleEventUpdated}
         onEventDeleted={handleEventDeleted}
         onRecordInteraction={recordInteraction}
+        onSnooze={snooze}
       />
 
       {/* View settings panel */}

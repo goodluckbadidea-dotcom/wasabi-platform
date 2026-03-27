@@ -101,7 +101,7 @@ function toDateInput(isoStr) {
 // ════════════════════════════════════════════
 // TaskEditor
 // ════════════════════════════════════════════
-function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) {
+function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction, onSnooze }) {
   const { user, pages, setActivePage, identity } = usePlatform();
   const { notifySaved, notifyDeleted } = useRecordDrawer();
   const isNotion = task.source && task.source.startsWith("notion:");
@@ -663,6 +663,43 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction }) 
               </button>
             )}
           </div>
+          {/* ── Snooze actions ── */}
+          {task.source !== "manual" && onSnooze && (
+            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+              {[
+                { label: "2 hours", hours: 2 },
+                { label: "Tomorrow", hours: null, tomorrow: true },
+                { label: "Next week", hours: null, nextWeek: true },
+              ].map((preset) => {
+                let until;
+                if (preset.hours) {
+                  until = new Date(Date.now() + preset.hours * 3600000).toISOString();
+                } else if (preset.tomorrow) {
+                  const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0);
+                  until = d.toISOString();
+                } else {
+                  const d = new Date(); d.setDate(d.getDate() + ((1 + 7 - d.getDay()) % 7 || 7)); d.setHours(9, 0, 0, 0);
+                  until = d.toISOString();
+                }
+                return (
+                  <button
+                    key={preset.label}
+                    onClick={() => { onSnooze(task.id, until, preset.label); onClose(); }}
+                    style={{
+                      flex: 1, padding: "7px 8px", borderRadius: RADIUS.md,
+                      background: "transparent",
+                      color: C.darkMuted, border: `1px solid ${C.darkBorder}`,
+                      fontSize: 10, fontWeight: 500, fontFamily: FONT,
+                      cursor: "pointer", outline: "none",
+                      transition: "all 0.15s", textAlign: "center",
+                    }}
+                  >
+                    Snooze {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
 
@@ -1082,7 +1119,7 @@ function WorkspaceSettingsEditor({ workspace, onClose }) {
 // ════════════════════════════════════════════
 // RecordDrawer (main export)
 // ════════════════════════════════════════════
-export default function RecordDrawer({ onTaskUpdated, onTaskDeleted, onEventUpdated, onEventDeleted, onRecordInteraction }) {
+export default function RecordDrawer({ onTaskUpdated, onTaskDeleted, onEventUpdated, onEventDeleted, onRecordInteraction, onSnooze }) {
   const { drawerItem, closeDrawer } = useRecordDrawer();
   const { identity } = usePlatform();
   const { isTablet } = useViewport();
@@ -1123,6 +1160,7 @@ export default function RecordDrawer({ onTaskUpdated, onTaskDeleted, onEventUpda
           onDeleted={onTaskDeleted}
           onClose={closeDrawer}
           onRecordInteraction={onRecordInteraction}
+          onSnooze={onSnooze}
         />
       ) : drawerItem.type === "email" ? (
         <EmailThreadDrawer

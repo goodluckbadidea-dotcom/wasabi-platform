@@ -196,11 +196,10 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping, dateChip
   );
 }
 
-export default function TaskList({ userTasks, aiTasks, aiLoading, aiRefreshing, dismissedIds, onToggleTask, onToggleAI, onAddTask, onDeleteTask, onTaskClick, colorMapping, dateChipColors, snoozedTasks = [], onSnooze, onUnsnooze }) {
+export default function TaskList({ userTasks, aiTasks, aiLoading, aiRefreshing, dismissedIds, onToggleTask, onToggleAI, onAddTask, onDeleteTask, onTaskClick, colorMapping, dateChipColors, snoozedTasks = [], onUnsnooze }) {
   const [inputValue, setInputValue] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
   const [showSnoozed, setShowSnoozed] = useState(false);
-  const [snoozeMenuId, setSnoozeMenuId] = useState(null);
   const inputRef = useRef(null);
   const prevAIIdsRef = useRef(new Set());
 
@@ -331,10 +330,9 @@ export default function TaskList({ userTasks, aiTasks, aiLoading, aiRefreshing, 
               activeAI.map((task) => (
                 <div
                   key={task.id}
-                  style={{
-                    position: "relative",
-                    ...(newAIIds.has(task.id) ? { animation: "fadeSlideIn 0.3s ease both" } : {}),
-                  }}
+                  style={newAIIds.has(task.id) ? {
+                    animation: "fadeSlideIn 0.3s ease both",
+                  } : undefined}
                 >
                   <TaskRow
                     task={task}
@@ -344,53 +342,6 @@ export default function TaskList({ userTasks, aiTasks, aiLoading, aiRefreshing, 
                     colorMapping={colorMapping}
                     dateChipColors={dateChipColors}
                   />
-                  {/* Snooze trigger */}
-                  {onSnooze && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setSnoozeMenuId(snoozeMenuId === task.id ? null : task.id); }}
-                      title="Snooze task"
-                      style={{
-                        position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
-                        background: "none", border: "none", cursor: "pointer",
-                        color: C.darkMuted, fontSize: 14, padding: "2px 4px",
-                        opacity: 0.5, transition: "opacity 0.15s",
-                      }}
-                      onMouseEnter={(e) => { e.target.style.opacity = 1; }}
-                      onMouseLeave={(e) => { if (snoozeMenuId !== task.id) e.target.style.opacity = 0.5; }}
-                    >
-                      💤
-                    </button>
-                  )}
-                  {/* Snooze preset menu */}
-                  {snoozeMenuId === task.id && onSnooze && (
-                    <div style={{
-                      position: "absolute", right: 8, top: "100%", zIndex: 20,
-                      background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
-                      borderRadius: RADIUS.md, padding: "4px 0",
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.2)", minWidth: 140,
-                    }}>
-                      {getSnoozePresets().map((preset) => (
-                        <button
-                          key={preset.label}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onSnooze(task.id, preset.until, preset.label);
-                            setSnoozeMenuId(null);
-                          }}
-                          style={{
-                            display: "block", width: "100%", textAlign: "left",
-                            padding: "6px 12px", background: "none", border: "none",
-                            color: C.darkText, fontSize: 12, fontFamily: FONT,
-                            cursor: "pointer",
-                          }}
-                          onMouseEnter={(e) => { e.target.style.background = C.darkSurf3 || C.darkBorder; }}
-                          onMouseLeave={(e) => { e.target.style.background = "none"; }}
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </div>
               ))
             )}
