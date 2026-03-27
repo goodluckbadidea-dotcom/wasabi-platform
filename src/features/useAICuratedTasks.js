@@ -349,7 +349,7 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
       setLastUpdated(new Date(cached.ts));
       setLoading(false);
     }
-    const cachedInsight = getCached(INSIGHT_CACHE_KEY, 24 * 60 * 60 * 1000);
+    const cachedInsight = getCached(INSIGHT_CACHE_KEY, 7 * 24 * 60 * 60 * 1000);
     if (cachedInsight) setInsight(cachedInsight);
   }, [CACHE_KEY, identity?.id, identity?.role]);
 
