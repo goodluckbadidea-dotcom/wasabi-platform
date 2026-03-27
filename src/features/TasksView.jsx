@@ -43,6 +43,9 @@ export default function TasksView() {
     markDirty,
     error: aiError,
     recordInteraction,
+    snoozedTasks,
+    snooze,
+    unsnooze,
   } = useAICuratedTasks({ dismissedIds, completedCount, userTasksTableId: tableId });
 
   const { openDrawer, onSaved, onDeleted } = useRecordDrawer();
@@ -246,6 +249,9 @@ export default function TasksView() {
             onTaskClick={handleTaskClick}
             colorMapping={taskColorMapping}
             dateChipColors={dateChipColors}
+            snoozedTasks={snoozedTasks}
+            onSnooze={snooze}
+            onUnsnooze={unsnooze}
           />
         </ErrorBoundary>
 

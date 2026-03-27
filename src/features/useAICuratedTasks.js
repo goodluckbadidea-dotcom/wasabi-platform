@@ -8,6 +8,7 @@ import { useUserSync } from "../context/UserSyncContext.jsx";
 import {
   listRows, claudeProxy, getTableSchema, listTaskActivity, upsertTaskActivity,
   getRecordViews, listRecordComments, listTaskInteractions, logTaskInteraction,
+  getActiveSnoozes, snoozeTask as snoozeTaskApi, unsnoozeTask as unsnoozeTaskApi,
 } from "../lib/api.js";
 import { loadCachedNeuronGraph } from "../neurons/neuronStorage.js";
 import {
@@ -306,6 +307,7 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
   const [lastUpdated, setLastUpdated] = useState(null);
   const [error, setError] = useState(null);
   const [insight, setInsight] = useState(null);
+  const [snoozedTasks, setSnoozedTasks] = useState([]);
   const [cacheDirty, setCacheDirty] = useState(false); // event-driven invalidation flag
   const scanningRef = useRef(false);
   const debounceTimerRef = useRef(null);
@@ -645,7 +647,27 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
       // Non-admins: ONLY see tasks they own or are mentioned in
       // Admins: see all tasks (ownership influences AI scoring weight)
       const isAdmin = !identity || identity.role === "admin";
-      const filteredTasks = applyRoleFilter(allTasks, identity);
+      let filteredTasks = applyRoleFilter(allTasks, identity);
+
+      // Step 2.76: Snooze filtering — remove snoozed tasks from active list
+      try {
+        if (identity?.id) {
+          const snoozeResult = await getActiveSnoozes(identity.id);
+          const snoozes = snoozeResult?.snoozes || [];
+          if (snoozes.length > 0) {
+            const snoozeMap = new Map(snoozes.map(s => [s.task_id, s]));
+            const snoozed = filteredTasks
+              .filter(t => snoozeMap.has(t.id))
+              .map(t => ({ ...t, _snoozeUntil: snoozeMap.get(t.id).snooze_until, _snoozeId: snoozeMap.get(t.id).id }));
+            setSnoozedTasks(snoozed);
+            filteredTasks = filteredTasks.filter(t => !snoozeMap.has(t.id));
+          } else {
+            setSnoozedTasks([]);
+          }
+        }
+      } catch (err) {
+        console.warn("[AICurated] Snooze fetch failed:", err.message);
+      }
 
       // Step 2.8: Dependency awareness (Phase 1 — implicit keyword scanning)
       try {
@@ -1130,6 +1152,22 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
     return () => clearInterval(interval);
   }, [scan]);
 
+  // ── Snooze callbacks ──
+  const snooze = useCallback(async (taskId, until, reason) => {
+    const task = aiTasksRef.current?.find(t => t.id === taskId);
+    if (!task?.source || !identityRef.current?.id) return;
+    await snoozeTaskApi(taskId, task.source, identityRef.current.id, until, reason);
+    // Move from active to snoozed locally (instant UI update)
+    setAiTasks(prev => prev.filter(t => t.id !== taskId));
+    setSnoozedTasks(prev => [...prev, { ...task, _snoozeUntil: until, _snoozeId: `${taskId}:${identityRef.current.id}` }]);
+  }, []);
+
+  const unsnooze = useCallback(async (snoozeId, taskId) => {
+    await unsnoozeTaskApi(snoozeId);
+    setSnoozedTasks(prev => prev.filter(t => t._snoozeId !== snoozeId));
+    markDirty(); // trigger rescan to re-rank the un-snoozed task
+  }, [markDirty]);
+
   // ── Interaction-based deprioritization (instant + persisted) ──
   // Interactions are accumulated in a localStorage ledger with time decay.
   // Score adjustments persist across remounts and survive rescans via mergeInteractionAdjustments.
@@ -1192,5 +1230,8 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
     error,
     insight,
     recordInteraction,
+    snoozedTasks,
+    snooze,
+    unsnooze,
   };
 }

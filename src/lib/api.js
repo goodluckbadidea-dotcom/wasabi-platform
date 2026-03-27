@@ -954,6 +954,23 @@ export async function getInteractionSummary(taskId) {
   return apiFetch(`/task-interactions/${taskId}/summary`, { method: "GET" });
 }
 
+// ── Task Snooze API ──
+
+export async function snoozeTask(taskId, source, userId, snoozeUntil, reason) {
+  return apiFetch("/task-snoozes", {
+    method: "POST",
+    body: { task_id: taskId, source, user_id: userId, snooze_until: snoozeUntil, reason: reason || null },
+  });
+}
+
+export async function getActiveSnoozes(userId) {
+  return apiFetch(`/task-snoozes?user_id=${userId}`);
+}
+
+export async function unsnoozeTask(id) {
+  return apiFetch(`/task-snoozes/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 // ─── Google Calendar ───
 
 export async function listCalendars() {

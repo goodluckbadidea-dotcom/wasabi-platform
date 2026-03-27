@@ -9,6 +9,35 @@ import { formatDueDate, isOverdue, isToday, parseDate } from "./taskHelpers.js";
 // ── Priority → palette index mapping ──
 const PRIORITY_IDX = { High: 9, Medium: 3, Normal: 4, Low: 6 };
 
+// ── Snooze presets ──
+function getSnoozePresets() {
+  const now = new Date();
+  const twoHours = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString();
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(9, 0, 0, 0);
+  const nextMonday = new Date(now);
+  nextMonday.setDate(nextMonday.getDate() + ((1 + 7 - nextMonday.getDay()) % 7 || 7));
+  nextMonday.setHours(9, 0, 0, 0);
+  return [
+    { label: "2 hours", until: twoHours },
+    { label: "Tomorrow morning", until: tomorrow.toISOString() },
+    { label: "Next week", until: nextMonday.toISOString() },
+  ];
+}
+
+function formatSnoozeTime(isoStr) {
+  try {
+    const d = new Date(isoStr);
+    const now = new Date();
+    const diffH = Math.round((d - now) / 3600000);
+    if (diffH < 1) return "soon";
+    if (diffH < 24) return `in ${diffH}h`;
+    const diffD = Math.round(diffH / 24);
+    return `in ${diffD}d`;
+  } catch { return ""; }
+}
+
 // ── Date tier classification ──
 export const DATE_TIERS = ["Overdue", "Due Today", "Due This Week", "Due Later", "No Date"];
 export const DATE_TIER_DEFAULTS = { Overdue: 9, "Due Today": 3, "Due This Week": 7, "Due Later": 0, "No Date": 0 };
@@ -167,9 +196,11 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping, dateChip
   );
 }
 
-export default function TaskList({ userTasks, aiTasks, aiLoading, aiRefreshing, dismissedIds, onToggleTask, onToggleAI, onAddTask, onDeleteTask, onTaskClick, colorMapping, dateChipColors }) {
+export default function TaskList({ userTasks, aiTasks, aiLoading, aiRefreshing, dismissedIds, onToggleTask, onToggleAI, onAddTask, onDeleteTask, onTaskClick, colorMapping, dateChipColors, snoozedTasks = [], onSnooze, onUnsnooze }) {
   const [inputValue, setInputValue] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
+  const [showSnoozed, setShowSnoozed] = useState(false);
+  const [snoozeMenuId, setSnoozeMenuId] = useState(null);
   const inputRef = useRef(null);
   const prevAIIdsRef = useRef(new Set());
 
@@ -300,9 +331,10 @@ export default function TaskList({ userTasks, aiTasks, aiLoading, aiRefreshing, 
               activeAI.map((task) => (
                 <div
                   key={task.id}
-                  style={newAIIds.has(task.id) ? {
-                    animation: "fadeSlideIn 0.3s ease both",
-                  } : undefined}
+                  style={{
+                    position: "relative",
+                    ...(newAIIds.has(task.id) ? { animation: "fadeSlideIn 0.3s ease both" } : {}),
+                  }}
                 >
                   <TaskRow
                     task={task}
@@ -312,6 +344,53 @@ export default function TaskList({ userTasks, aiTasks, aiLoading, aiRefreshing, 
                     colorMapping={colorMapping}
                     dateChipColors={dateChipColors}
                   />
+                  {/* Snooze trigger */}
+                  {onSnooze && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setSnoozeMenuId(snoozeMenuId === task.id ? null : task.id); }}
+                      title="Snooze task"
+                      style={{
+                        position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
+                        background: "none", border: "none", cursor: "pointer",
+                        color: C.darkMuted, fontSize: 14, padding: "2px 4px",
+                        opacity: 0.5, transition: "opacity 0.15s",
+                      }}
+                      onMouseEnter={(e) => { e.target.style.opacity = 1; }}
+                      onMouseLeave={(e) => { if (snoozeMenuId !== task.id) e.target.style.opacity = 0.5; }}
+                    >
+                      💤
+                    </button>
+                  )}
+                  {/* Snooze preset menu */}
+                  {snoozeMenuId === task.id && onSnooze && (
+                    <div style={{
+                      position: "absolute", right: 8, top: "100%", zIndex: 20,
+                      background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
+                      borderRadius: RADIUS.md, padding: "4px 0",
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.2)", minWidth: 140,
+                    }}>
+                      {getSnoozePresets().map((preset) => (
+                        <button
+                          key={preset.label}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSnooze(task.id, preset.until, preset.label);
+                            setSnoozeMenuId(null);
+                          }}
+                          style={{
+                            display: "block", width: "100%", textAlign: "left",
+                            padding: "6px 12px", background: "none", border: "none",
+                            color: C.darkText, fontSize: 12, fontFamily: FONT,
+                            cursor: "pointer",
+                          }}
+                          onMouseEnter={(e) => { e.target.style.background = C.darkSurf3 || C.darkBorder; }}
+                          onMouseLeave={(e) => { e.target.style.background = "none"; }}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))
             )}
@@ -329,6 +408,55 @@ export default function TaskList({ userTasks, aiTasks, aiLoading, aiRefreshing, 
               <path d="M5 8L7 10L11 6" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" />
             </svg>
             <div>All clear! Add a task above.</div>
+          </div>
+        )}
+
+        {/* Snoozed section */}
+        {snoozedTasks.length > 0 && (
+          <div style={{ padding: "4px 0" }}>
+            <div style={{ margin: "4px 14px 0", borderTop: `1px solid ${C.darkBorder}` }} />
+            <button
+              onClick={() => setShowSnoozed(!showSnoozed)}
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                padding: "8px 14px 4px", fontSize: 10, fontFamily: FONT,
+                fontWeight: 600, color: C.darkMuted, letterSpacing: "0.06em",
+                textTransform: "uppercase", outline: "none",
+                display: "flex", alignItems: "center", gap: 4,
+                width: "100%",
+              }}
+            >
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="none"
+                style={{ transform: showSnoozed ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>
+                <path d="M2 1L6 4L2 7" stroke={C.darkMuted} strokeWidth="1.2" />
+              </svg>
+              Snoozed ({snoozedTasks.length})
+            </button>
+            {showSnoozed && snoozedTasks.map((task) => (
+              <div key={task.id} style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "6px 14px", opacity: 0.55,
+              }}>
+                <div style={{ flex: 1, fontSize: 13, fontFamily: FONT, color: C.darkText, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {task.title}
+                </div>
+                <span style={{ fontSize: 10, fontFamily: FONT, color: C.darkMuted, flexShrink: 0 }}>
+                  {formatSnoozeTime(task._snoozeUntil)}
+                </span>
+                {onUnsnooze && (
+                  <button
+                    onClick={() => onUnsnooze(task._snoozeId, task.id)}
+                    style={{
+                      background: "none", border: "none", cursor: "pointer",
+                      fontSize: 10, fontFamily: FONT, color: C.accent,
+                      padding: "2px 6px", flexShrink: 0,
+                    }}
+                  >
+                    Wake
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
         )}
 

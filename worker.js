@@ -365,6 +365,17 @@ CREATE INDEX IF NOT EXISTS idx_sync_dirty ON table_rows(sync_dirty) WHERE sync_d
 CREATE INDEX IF NOT EXISTS idx_users_invite ON users(invite_code);
 CREATE INDEX IF NOT EXISTS idx_user_conn ON user_connections(user_id);
 CREATE INDEX IF NOT EXISTS idx_record_views_user ON record_views(user_id);
+
+CREATE TABLE IF NOT EXISTS task_snoozes (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL,
+  source TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  snooze_until TEXT NOT NULL,
+  reason TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_task_snoozes_user ON task_snoozes(user_id);
 `;
 
 // ─── JWT Utilities (HS256 via Web Crypto) ───
@@ -636,6 +647,9 @@ const ROUTE_PERMISSIONS = [
   // Task activity/interactions — editor for mutations
   { pattern: /^\/task-activity/, method: "PUT", minRole: "editor" },
   { pattern: /^\/task-interactions$/, method: "POST", minRole: "editor" },
+  // Task snoozes — editor for mutations
+  { pattern: /^\/task-snoozes/, method: "POST", minRole: "editor" },
+  { pattern: /^\/task-snoozes\//, method: "DELETE", minRole: "editor" },
   // Sheets — editor for mutations
   { pattern: /^\/sheets\/fetch$/, method: "POST", minRole: "editor" },
   { pattern: /^\/sheets\//, method: "POST", minRole: "editor" },
@@ -1399,6 +1413,34 @@ export default {
       }
       if (path === "/task-interactions" && request.method === "GET") {
         return await handleListInteractions(env, url);
+      }
+
+      // ─── Task Snooze Routes ───
+      const snoozeDeleteMatch = path.match(/^\/task-snoozes\/(.+)$/);
+      if (snoozeDeleteMatch && request.method === "DELETE") {
+        const id = decodeURIComponent(snoozeDeleteMatch[1]);
+        await env.DB.prepare("DELETE FROM task_snoozes WHERE id = ?").bind(id).run();
+        return jsonResponse({ ok: true });
+      }
+      if (path === "/task-snoozes" && request.method === "POST") {
+        const body = await request.json();
+        const { task_id, source, user_id, snooze_until, reason } = body;
+        if (!task_id || !user_id || !snooze_until) {
+          return jsonResponse({ error: "task_id, user_id, and snooze_until are required" }, 400);
+        }
+        const id = `${task_id}:${user_id}`;
+        await env.DB.prepare(
+          "INSERT INTO task_snoozes (id, task_id, source, user_id, snooze_until, reason) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET snooze_until = excluded.snooze_until, reason = excluded.reason"
+        ).bind(id, task_id, source || "", user_id, snooze_until, reason || null).run();
+        return jsonResponse({ ok: true, id });
+      }
+      if (path === "/task-snoozes" && request.method === "GET") {
+        const userId = url.searchParams.get("user_id");
+        if (!userId) return jsonResponse({ error: "user_id required" }, 400);
+        const result = await env.DB.prepare(
+          "SELECT * FROM task_snoozes WHERE user_id = ? AND snooze_until > datetime('now') ORDER BY snooze_until ASC"
+        ).bind(userId).all();
+        return jsonResponse({ snoozes: result.results || [] });
       }
 
       // ─── Sheet Routes ───
@@ -2302,7 +2344,7 @@ async function handleInit(env) {
   // ── Schema version fast path ──
   // Skip all DDL if the schema is already at the current version.
   // Reduces ~92 sequential D1 queries to 3 on returning page loads.
-  const CURRENT_SCHEMA_VERSION = "2";
+  const CURRENT_SCHEMA_VERSION = "3";
   try {
     const row = await env.DB.prepare(
       "SELECT value FROM connections WHERE key = 'schema_version'"
