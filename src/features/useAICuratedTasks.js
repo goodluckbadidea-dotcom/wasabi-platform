@@ -306,6 +306,7 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
   const [lastUpdated, setLastUpdated] = useState(null);
   const [error, setError] = useState(null);
   const [insight, setInsight] = useState(null);
+  const [cacheDirty, setCacheDirty] = useState(false); // event-driven invalidation flag
   const scanningRef = useRef(false);
   const debounceTimerRef = useRef(null);
   const dismissedIdsRef = useRef(dismissedIds || new Set());
@@ -1070,22 +1071,25 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
     }
   }, [user, pages, identity]);
 
-  // Auto-scan on mount: skip if cache is fresh, otherwise background rescan.
+  // Auto-scan on mount or when cache is dirty (event-driven invalidation).
   // Stale cache data is already showing from the mount effect (stale-while-revalidate),
   // so this scan runs in background mode (refreshing indicator, not loading spinner).
   useEffect(() => {
     if (!identity?.id) return; // Don't scan until we know who the user is
     const cached = getCached(CACHE_KEY, CACHE_TTL);
-    if (cached && cached.length > 0) {
-      // Cache is fresh (within CACHE_TTL) — no rescan needed
+    if (cached && cached.length > 0 && !cacheDirty) {
+      // Cache is fresh (within CACHE_TTL) and not invalidated — no rescan needed
       return;
     }
     // Delay scan slightly so cached local tasks render first
     // Use longer delay if pages haven't loaded yet to avoid scanning empty page list
     const delay = pages.length === 0 ? 1500 : 500;
-    const timer = setTimeout(() => scan(), delay);
+    const timer = setTimeout(() => {
+      scan();
+      setCacheDirty(false);
+    }, delay);
     return () => clearTimeout(timer);
-  }, [scan, pages.length, identity?.id]);
+  }, [scan, pages.length, identity?.id, cacheDirty]);
 
   // Force refresh clears cache and rescans
   const forceRefresh = useCallback(() => scan(true), [scan]);
@@ -1098,14 +1102,20 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
     debounceTimerRef.current = setTimeout(() => scan(true), 2500);
   }, [scan]);
 
+  // Mark cache dirty — triggers background rescan via auto-scan effect.
+  // Lighter than debouncedRefresh: doesn't clear cache, just sets the dirty flag.
+  const markDirty = useCallback(() => {
+    setCacheDirty(true);
+  }, []);
+
   // Cleanup debounce timer on unmount
   useEffect(() => () => clearTimeout(debounceTimerRef.current), []);
 
   // Cross-user cache invalidation via UserSocket
   useEffect(() => {
     if (!userSync?.onTaskCacheInvalidate) return;
-    return userSync.onTaskCacheInvalidate(() => debouncedRefresh());
-  }, [userSync, debouncedRefresh]);
+    return userSync.onTaskCacheInvalidate(() => markDirty());
+  }, [userSync, markDirty]);
 
   // Visibility-aware lazy polling: every 10 min, scan if visible + cache expired
   useEffect(() => {
@@ -1178,6 +1188,7 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
     lastUpdated,
     refresh: forceRefresh,
     debouncedRefresh,
+    markDirty,
     error,
     insight,
     recordInteraction,

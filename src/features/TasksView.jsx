@@ -40,6 +40,7 @@ export default function TasksView() {
     lastUpdated,
     refresh: refreshAI,
     debouncedRefresh,
+    markDirty,
     error: aiError,
     recordInteraction,
   } = useAICuratedTasks({ dismissedIds, completedCount, userTasksTableId: tableId });
@@ -58,17 +59,17 @@ export default function TasksView() {
           dismiss(data.id);
           debouncedRefresh();
         } else {
-          refreshAI();
+          markDirty(); // background rescan via dirty flag (not immediate full refresh)
         }
       }
       if (type === "event") calendarRefreshRef.current?.();
     });
     const unsubDelete = onDeleted((type) => {
-      if (type === "task") { refreshTasks(); refreshAI(); }
+      if (type === "task") { refreshTasks(); markDirty(); }
       if (type === "event") calendarRefreshRef.current?.();
     });
     return () => { unsubSave(); unsubDelete(); };
-  }, [onSaved, onDeleted, refreshTasks, refreshAI, debouncedRefresh, dismiss]);
+  }, [onSaved, onDeleted, refreshTasks, markDirty, debouncedRefresh, dismiss]);
   const { globalColorMapping, globalColorField, getViewColorConfig, updateViewColorConfig, resetViewColorConfig } = useColorMapping();
 
   // Build colorMapping object for TaskRow color resolution
@@ -111,8 +112,8 @@ export default function TasksView() {
   // ── Drawer callbacks ──
   const handleTaskUpdated = useCallback(() => {
     refreshTasks();
-    refreshAI();
-  }, [refreshTasks, refreshAI]);
+    markDirty(); // background rescan via dirty flag
+  }, [refreshTasks, markDirty]);
 
   const handleTaskDeleted = useCallback(() => {
     refreshTasks();
