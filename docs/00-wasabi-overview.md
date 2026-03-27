@@ -58,7 +58,7 @@ Browser (React 18 SPA)
   └── src/lib/            → Utilities: api.js (fetch wrapper), iframeHelpers, tableSocket
 
 Worker (Cloudflare Workers — single file: worker.js, ~9500 lines)
-  ├── D1 Database         → 15+ tables: pages, rows, users, notifications, active_sessions, etc.
+  ├── D1 Database         → 18+ tables: pages, rows, users, notifications, active_sessions, task_snoozes, etc.
   ├── R2 Storage          → File attachments (wasabi-docs bucket)
   ├── Durable Objects     → TableRoom (per-table WebSocket), UserRoom (per-user broadcast)
   ├── Cron Trigger        → Every 2 minutes: automation engine, sync, cleanup

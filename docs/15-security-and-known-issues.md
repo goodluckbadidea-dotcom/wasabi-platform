@@ -1,6 +1,6 @@
 # Security Posture & Known Issues
 
-**Last Updated:** 2026-03-25
+**Last Updated:** 2026-03-27
 
 ## Product Context
 

@@ -1,6 +1,6 @@
 # File Map
 
-**Last Updated:** 2026-03-25
+**Last Updated:** 2026-03-27
 
 Complete source file listing for the Wasabi platform. Excludes `node_modules/`, `dist/`, and `.git/`.
 
@@ -184,13 +184,13 @@ Personal productivity surface. User-scoped data. Lazy-loaded.
 | `TasksView.jsx` | Personal task list with calendar integration |
 | `WorkspaceBrowser.jsx` | Folder-based page navigation |
 | ~~`ZenChatPanel.jsx`~~ | _(removed)_ |
-| `taskHelpers.js` | Task utility functions |
+| `taskHelpers.js` | Task utility functions, cache helpers (`getCached`, `setCache`, `getStaleCache`), interaction tracking with time decay (`persistInteraction`, `calculateDecayedAdjustment`, `loadInteractionLedger`, `mergeInteractionAdjustments`) |
 
 ### Hook Files (5)
 
 | File | Purpose |
 |------|---------|
-| `useAICuratedTasks.js` | AI-powered task curation/prioritization hook |
+| `useAICuratedTasks.js` | AI-powered task curation/prioritization hook. Scans D1 databases, enriches with per-user signals, calls Claude Haiku. Features: stale-while-revalidate (2hr TTL), event-driven invalidation, interaction deprioritization with time decay, D1-backed snooze, interaction-aware Claude prompt with formula suggestions |
 | `useDismissedTasks.js` | Dismissed task state management hook |
 | `useInsight.js` | AI insight generation hook |
 | `useTasksTable.js` | Task table data fetching/management hook |

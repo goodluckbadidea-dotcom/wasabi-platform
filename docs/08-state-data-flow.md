@@ -398,3 +398,44 @@ Device A: user navigates to page
   → onNavUpdate callback fires
   → NavigationContext.setActivePage(pageId)
 ```
+
+### AI Task Curation (Stale-While-Revalidate)
+
+```
+TasksView mounts
+  → useAICuratedTasks hook initializes
+  → Mount effect: getStaleCache() → show data instantly (any age)
+  → Auto-scan effect: getCached(key, 2hr TTL) OR cacheDirty flag
+    → If fresh + not dirty: skip scan
+    → If stale or dirty: background scan (refreshing indicator, not spinner)
+      → Scan: find DBs → fetch rows → enrich signals → fetch snoozes
+      → Filter snoozed tasks → merge interaction adjustments
+      → Claude Haiku ranks with interaction-aware prompt
+      → mergeInteractionAdjustments post-Claude → cache → display
+```
+
+### AI Task Interaction Flow
+
+```
+User interacts with task (view, edit, comment, status change)
+  → recordInteraction(taskId, type, detail)
+    → 1. persistInteraction() → localStorage ledger (with time decay)
+    → 2. logTaskInteraction() → D1 fire-and-forget (for Claude's next scan)
+    → 3. setAiTasks() → immediate local re-sort with accumulated adjustment
+    → 4. Update localStorage cache → reloads see adjustments
+  → On next scan: mergeInteractionAdjustments() applies ledger to fresh results
+  → Claude sees: formulaSuggestion ("deprioritize 60%"), interactionBreakdown ("3 views today")
+```
+
+### AI Task Snooze Flow
+
+```
+User clicks Snooze button in RecordDrawer
+  → snooze(taskId, until, reason)
+    → POST /task-snoozes → D1 upsert (cross-device)
+    → setAiTasks: remove from active list
+    → setSnoozedTasks: add with snooze metadata
+  → Snoozed section in TaskList shows collapsed list
+  → Un-snooze: DELETE /task-snoozes/:id → markDirty() → rescan
+  → Expired snoozes: automatically excluded on next scan (WHERE snooze_until > now)
+```

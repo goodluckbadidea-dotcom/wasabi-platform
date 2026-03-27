@@ -481,6 +481,24 @@ interface SyncConfig {
 }
 ```
 
+### TaskSnooze
+
+Per-user task snooze state for the AI-curated task list. Stored in the `task_snoozes` D1 table. Cross-device — snoozed on one device, hidden on all.
+
+```typescript
+interface TaskSnooze {
+  id: string;                      // Composite key: "{task_id}:{user_id}"
+  task_id: string;                 // Task record ID
+  source: string;                  // Task source (e.g., "d1:{tableId}")
+  user_id: string;                 // User who snoozed
+  snooze_until: string;            // ISO 8601 — task hidden until this time
+  reason: string | null;           // Snooze preset label (e.g., "2 hours", "Tomorrow")
+  created_at: string;              // ISO 8601
+}
+```
+
+Active snoozes are filtered by `snooze_until > datetime('now')` — expired snoozes are automatically ignored.
+
 ---
 
 ## D1 Table Summary
@@ -505,3 +523,4 @@ interface SyncConfig {
 | `rate_limits` | key | Auth rate limiting state |
 | `sync_configs` | id (UUID) | Notion sync configuration |
 | `custom_functions` | id (UUID) | User-defined functions and plugins |
+| `task_snoozes` | id (task_id:user_id) | Per-user task snooze state (cross-device) |

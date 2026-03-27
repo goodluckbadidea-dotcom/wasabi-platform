@@ -178,7 +178,7 @@ The worker's `/init` endpoint uses a **schema version fast path** to avoid runni
 3. If the version doesn't match (first boot, factory reset, or version bump) → run full migration path with batched DDL (`env.DB.batch()`), then write the new version
 
 **When deploying a worker with new schema changes:**
-1. Bump `CURRENT_SCHEMA_VERSION` in worker.js (e.g., "2" → "3")
+1. Bump `CURRENT_SCHEMA_VERSION` in worker.js (currently "3", bump to "4" for next change)
 2. Add new DDL/migrations to the handleInit function
 3. Deploy: `npx wrangler deploy --config wrangler-worker.toml`
 4. The first `/init` call after deploy will detect the version mismatch, run the full migration, and update `schema_version`

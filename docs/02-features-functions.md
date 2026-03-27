@@ -43,16 +43,82 @@ Personal productivity surface. User-scoped data. All components lazy-loaded.
 |------|---------|
 | `RecordDrawerContext.jsx` | Context provider for drawer open/close state |
 | `TaskList.jsx` | Task rows, quick-add input, section grouping |
-| `taskHelpers.js` | Task utility functions |
+| `taskHelpers.js` | Task utility functions, cache helpers (`getCached`, `setCache`, `getStaleCache`), interaction tracking (`persistInteraction`, `mergeInteractionAdjustments`, `loadInteractionLedger`) |
 | `useTasksTable.js` | Hook for D1 task CRUD |
-| `useAICuratedTasks.js` | Hook for AI-curated tasks from linked databases |
-| `useDismissedTasks.js` | Hook for dismissed task tracking |
-| `useInsight.js` | Hook for AI-generated insights |
+| `useAICuratedTasks.js` | Hook for AI-curated tasks: scans D1 databases, enriches with signals, calls Claude Haiku for prioritization. Features: stale-while-revalidate caching (2hr TTL), event-driven invalidation via dirty flags, interaction-based deprioritization with time decay, D1-backed snooze, interaction-aware Claude prompt with formula suggestions |
+| `useDismissedTasks.js` | Hook for dismissed task tracking (session-scoped, sessionStorage) |
+| `useInsight.js` | Hook for AI-generated insights (sidebar insight, 24hr cache) |
 | `calendar/` | Calendar sub-components (DayColumn, WeekListView, MonthGrid) |
 
 ### Record Editing
 
 **All record editing happens through RecordDrawer.** Inline table editing is disabled. Clicking a row, card, event, or task opens the RecordDrawer slide-out panel for editing. This is the single edit surface for the entire application.
+
+---
+
+## AI-Curated Task System
+
+**Source:** `src/features/useAICuratedTasks.js` (~1,200 lines), `src/features/taskHelpers.js`
+
+The AI task curation system scans all D1 databases for task-like records, enriches them with per-user signals, calls Claude Haiku for intelligent prioritization, and presents a ranked task list in TasksView.
+
+### Architecture
+
+```
+Mount → Show cached data instantly (stale-while-revalidate)
+  → If cache stale (>2hrs) or dirty flag set → background rescan:
+    1. Scan page configs for task-like databases (scoring heuristic)
+    2. Fetch rows from each (max 5 DBs, 30 items each)
+    3. Fetch activity data, interaction history, record views, comments
+    4. Enrich: ownership, @mentions, staleness, dependencies, neurons
+    5. Fetch active snoozes from D1 → filter snoozed tasks out
+    6. Merge interaction adjustments from localStorage ledger
+    7. Build interaction breakdown for Claude prompt
+    8. Call Claude Haiku with enriched data + formula suggestions
+    9. Merge interaction adjustments into results → cache → display
+```
+
+### Caching Strategy (Stale-While-Revalidate)
+
+- **Cache key:** `wasabi_ai_tasks_v10_{userId}` in localStorage
+- **Cache TTL:** 2 hours (background rescan trigger, not hard expiry)
+- **On mount:** `getStaleCache()` returns data regardless of age → instant display
+- **Background refresh:** `refreshing` state shows subtle indicator, not loading spinner
+- **Event-driven invalidation:** `cacheDirty` flag triggers rescan on next effect cycle
+- **Dirty triggers:** RecordDrawer save/delete, WebSocket `task_cache_invalidate`, `markDirty()` callback
+
+### Interaction-Based Deprioritization
+
+When users interact with tasks, scores adjust immediately and persist across remounts and rescans:
+
+| Interaction | Score Weight | Persisted |
+|------------|-------------|-----------|
+| `view` | -2 | localStorage + D1 |
+| `field_edit` | -5 | localStorage + D1 |
+| `status_change` | -8 | localStorage + D1 |
+| `comment` | +2 (needs follow-through) | localStorage + D1 |
+| `dismiss` | -15 | localStorage + D1 |
+
+**Time decay:** Today = full weight, yesterday = 50%, 2+ days = 25%.
+
+**Persistence layers:**
+1. **localStorage interaction ledger** (`wasabi_task_interactions`): accumulates per-task interactions with timestamps. `persistInteraction()` writes, `mergeInteractionAdjustments()` applies to task lists.
+2. **D1 `task_interactions` table**: fire-and-forget write via `logTaskInteraction()` so Claude sees history on next scan.
+3. **Claude prompt**: includes `formulaSuggestion` (e.g., "deprioritize 60%") and `interactionBreakdown` (e.g., "3 views, 2 field_edits today"). Claude follows the suggestion unless new external urgency exists.
+
+### Snooze Feature (D1-backed)
+
+Users can snooze tasks from the RecordDrawer (3 preset buttons: 2 hours, Tomorrow, Next week). Snoozed tasks are hidden from the active list and appear in a collapsed "Snoozed" section in TaskList.
+
+- **Storage:** D1 `task_snoozes` table (cross-device)
+- **Endpoints:** `POST /task-snoozes` (upsert), `GET /task-snoozes?user_id=X` (active), `DELETE /task-snoozes/:id` (un-snooze)
+- **API:** `snoozeTask()`, `getActiveSnoozes()`, `unsnoozeTask()` in `src/lib/api.js`
+- **Expiry:** Snoozed tasks with `snooze_until < now` are automatically excluded from the snooze filter on next scan
+- **UI:** RecordDrawer shows snooze buttons for non-manual (AI-curated) tasks. TaskList shows collapsed "Snoozed (N)" section with "Wake" buttons.
+
+### Workspace Insight
+
+Claude generates a one-line insight (max 120 chars) alongside the task ranking. Cached separately (`wasabi_insight`, 24hr TTL). Displayed in the navigation sidebar.
 
 ---
 
