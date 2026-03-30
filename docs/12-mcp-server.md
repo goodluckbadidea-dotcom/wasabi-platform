@@ -74,7 +74,7 @@ Check worker status or list saved external connections (Notion key, Claude key, 
 
 ### 2. wasabi_pages
 
-CRUD for pages (databases, documents, sheets, dashboards).
+CRUD for pages (databases, documents, dashboards).
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -82,7 +82,7 @@ CRUD for pages (databases, documents, sheets, dashboards).
 | id | string | Page ID (for get/get_schema/update/delete) |
 | data | object | Page config (title, page_type, columns, views) |
 
-Page types: `database`, `document`, `sheet`, `page`, `dashboard`. View types: `table`, `kanban`, `gantt`, `calendar`, `cardGrid`, `charts`, `form`, `summaryTiles`, `activityFeed`, `customView`.
+Page types: `database`, `document`, `page`, `dashboard`. View types: `table`, `kanban`, `gantt`, `calendar`, `cardGrid`, `charts`, `form`, `summaryTiles`, `activityFeed`, `customView`.
 
 ### 3. wasabi_data
 

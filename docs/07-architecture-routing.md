@@ -237,7 +237,6 @@ PageShell (or its internal ViewRenderer) selects a view component based on the a
 | `gantt` | Gantt | Timeline bar chart |
 | `calendar` | Calendar | Date-based calendar |
 | `form` | Form | Data collection form |
-| `sheet` | Sheet | Linked Google Sheets viewer |
 | `document` | DocumentEditor | Rich text block editor |
 | `custom` | CustomView | User-authored HTML/JS |
 | `network` | NetworkGraph | Visual relationship graph |

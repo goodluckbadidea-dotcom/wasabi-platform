@@ -170,8 +170,7 @@ Shared database views. Workspace-scoped with per-page permissions.
 | Gantt | `Gantt.jsx` | Timeline bar chart for date-range records |
 | Calendar | `Calendar.jsx` | Calendar view of date-based records |
 | Form | `Form.jsx` | Public/private form for data collection |
-| Sheet | `Sheet.jsx` | Linked Google Sheets viewer |
-| LinkedSheet | `LinkedSheet.jsx` | Sheet with live Google Sheets connection |
+| LinkedSheet | `LinkedSheet.jsx` | Read-only Google Sheets/CSV viewer |
 | DocumentEditor | `DocumentEditor.jsx` | Rich text document with blocks |
 | Document | `Document.jsx` | Document page container |
 | CustomView | `CustomView.jsx` | User-authored HTML/JS views |

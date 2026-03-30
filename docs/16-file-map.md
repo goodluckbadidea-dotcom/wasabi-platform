@@ -120,7 +120,6 @@ Database view components. Lazy-loaded by PageShell.
 | `NodeRenderer.jsx` | Individual node renderer for flow editor |
 | `NotificationFeed.jsx` | Notification inbox with filtering, sticky recently-read items in Unread tab |
 | `RecordDetail.jsx` | Record detail drawer: Properties, Sub-Items (parent records only), Notes, Comments, Files tabs. Accepts `parentTitle` prop for sub-items. |
-| `Sheet.jsx` | Spreadsheet-like sheet view |
 | `SummaryTiles.jsx` | Summary tiles/metrics view |
 | `Table.jsx` | Primary table/grid view — **orchestrator** (~1,205 lines). Wires hooks from `table/hooks/`, composes components from `table/`, manages virtual scrolling, keyboard navigation, and saved views. See `src/views/table/` below for extracted sub-modules. |
 | `ViewRenderer.jsx` | View type router/dispatcher |
@@ -219,7 +218,6 @@ Shared UI components used across views.
 | `ColumnBuilder.jsx` | Column type picker and property config |
 | `ConflictToast.jsx` | Real-time sync conflict resolution UI (design tokens, ARIA, auto-dismiss with per-conflict timing) |
 | `EmptyState.jsx` | Empty state placeholder component (new) |
-| `FormulaBar.jsx` | Formula input bar for computed columns |
 | `InlineChart.jsx` | Inline sparkline/mini chart component |
 | `MentionInput.jsx` | @-mention input with user autocomplete (used in RecordComments and RecordNotes) |
 | `MultiSelectPicker.jsx` | Multi-select tag picker |
@@ -232,7 +230,6 @@ Shared UI components used across views.
 | `RecordNotes.jsx` | Record-level notes editor |
 | `SavedViewsDropdown.jsx` | Saved views selector dropdown |
 | `SelectPicker.jsx` | Single-select picker |
-| `SheetToolbar.jsx` | Sheet view toolbar |
 | `Spinner.jsx` | Loading spinner component |
 | `StateIndicators.jsx` | Loading/error/empty state indicators (new) |
 | `SyncPanel.jsx` | Notion sync status and controls panel |

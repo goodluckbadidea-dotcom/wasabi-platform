@@ -80,7 +80,6 @@ type ViewType =
   | "gantt"
   | "calendar"
   | "form"
-  | "sheet"
   | "document"
   | "custom"
   | "network"

@@ -47,7 +47,7 @@ Self-hosted on Cloudflare's edge infrastructure. Zero external runtime dependenc
 ```
 Browser (React 18 SPA)
   ├── src/core/           → Shell: TopHeader, Navigation, PageShell, SystemManager/
-  ├── src/views/          → Data views: Table, Kanban, Gantt, Calendar, Form, Sheet, Document
+  ├── src/views/          → Data views: Table, Kanban, Gantt, Calendar, Form, Document
   ├── src/features/       → Features: TasksView, CalendarView, RecordDrawer, GmailView
   ├── src/agent/          → AI: runAgent, toolExecutor, queryClassifier, automations, flows
   ├── src/context/        → State: Auth, Pages, Theme, Navigation, Collaboration, Toast, Viewport
@@ -117,7 +117,6 @@ Shared database views. Workspace-scoped with per-page permissions.
 | Gantt | `src/views/Gantt.jsx` | Timeline bar chart for date-range records |
 | Calendar | `src/views/Calendar.jsx` | Calendar view of date-based records |
 | Form | `src/views/Form.jsx` | Public/private form for data collection |
-| Sheet | `src/views/Sheet.jsx` | Linked Google Sheets viewer |
 | DocumentEditor | `src/views/DocumentEditor.jsx` | Rich text document with blocks |
 | CustomView | `src/views/CustomView.jsx` | User-authored HTML/JS views |
 | NetworkGraph | `src/views/NetworkGraph.jsx` | Visual graph of record relationships |
