@@ -72,12 +72,6 @@ async function executeChatTool(name, input) {
           pageType = cfg?.page_type || null;
         } catch {}
         const limit = 200;
-        if (pageType === "sheet") {
-          const sheet = await api.getSheet(dbId);
-          // Return raw cells for sheets (limited)
-          const cells = sheet.cells || [];
-          return JSON.stringify({ count: cells.length, results: cells.slice(0, limit), storage: "sheet" });
-        }
         // D1 table (default path)
         const queryBody = {};
         if (input.filter) queryBody.filters = input.filter;

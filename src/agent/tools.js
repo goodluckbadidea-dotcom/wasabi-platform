@@ -5,7 +5,7 @@
 
 const QUERY_DATABASE = {
   name: "query_database",
-  description: "Query any data source by its page ID. Supports D1 tables, D1 sheets, linked Google Sheets (read-only), linked Monday.com boards, and linked Notion databases. Returns matching records with all properties. NOTE: Results are capped at 200 rows (50 for direct Notion). If `truncated: true` in the response, not all data was returned — tell the user how many records you received vs. the total count. ONLY use the EXACT values returned — NEVER estimate, round, or fabricate missing data.",
+  description: "Query any data source by its page ID. Supports D1 tables, linked Google Sheets (read-only), linked Monday.com boards, and linked Notion databases. Returns matching records with all properties. NOTE: Results are capped at 200 rows (50 for direct Notion). If `truncated: true` in the response, not all data was returned — tell the user how many records you received vs. the total count. ONLY use the EXACT values returned — NEVER estimate, round, or fabricate missing data.",
   input_schema: {
     type: "object",
     properties: {
@@ -209,8 +209,8 @@ const CREATE_PAGE_CONFIG = {
       icon: { type: "string", description: "Page icon emoji." },
       page_type: {
         type: "string",
-        enum: ["database", "document", "sheet"],
-        description: "Page type. 'database' = standalone table (default), 'document' = rich text doc, 'sheet' = spreadsheet grid.",
+        enum: ["database", "document"],
+        description: "Page type. 'database' = standalone table (default), 'document' = rich text doc.",
       },
       columns: {
         type: "array",
@@ -233,7 +233,7 @@ const CREATE_PAGE_CONFIG = {
       },
       views: {
         type: "array",
-        description: "Views to display. Each has: type (table|gantt|cardGrid|kanban|charts|form|summaryTiles|activityFeed|document|notificationFeed|calendar|sheet), position (main|sidebar|bottom), label (display name), and config (view-specific settings like { editable: true }).",
+        description: "Views to display. Each has: type (table|gantt|cardGrid|kanban|charts|form|summaryTiles|activityFeed|document|notificationFeed|calendar), position (main|sidebar|bottom), label (display name), and config (view-specific settings like { editable: true }).",
         items: {
           type: "object",
           properties: {
@@ -502,8 +502,6 @@ const SAVE_CUSTOM_FUNCTION = {
 4. Presents results for user approval before finalizing
 
 The code must define a function called 'execute' that receives a single object parameter with named datasets (matching input keys) and returns a result matching the declared output schema. Available sandbox helpers: sum, avg, min, max, groupBy, sortBy, unique, round, dateAdd, dateDiff, weeksBetween, normalize, similarity, fuzzyMatch, bestMatch, matchRows. IMPORTANT: When joining data from different databases, ALWAYS use matchRows(sourceRows, targetRows, sourceKey, targetKey) instead of exact key lookups — records across databases often have slightly different names.
-
-Sheet data: When a dataset comes from a sheet, each row has column-letter keys (A, B, C...) or header names. For aggregating all values on a sheet, use datasets.mySheet._allCellValues which is a flat array of every numeric value in the sheet. Example: sum(datasets.mySheet._allCellValues).
 
 Example: function execute({ sales, inventory }) { return Object.keys(groupBy(sales, "SKU")).map(sku => ({ sku, total: sum(sales.filter(r => r.SKU === sku).map(r => r.Units)) })); }`,
   input_schema: {

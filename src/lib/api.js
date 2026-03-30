@@ -332,37 +332,6 @@ export async function queryTable(tableId, { filters, sorts, limit, offset } = {}
   });
 }
 
-// ─── Sheets ───
-
-export async function getSheet(id) {
-  return apiFetch(`/sheets/${id}`, { method: "GET" });
-}
-
-export async function updateSheet(id, updates) {
-  return apiFetch(`/sheets/${id}`, { method: "PATCH", body: updates });
-}
-
-export async function sheetFormula(id, fn, args, target) {
-  return apiFetch(`/sheets/${id}/formula`, {
-    method: "POST",
-    body: { fn, args, target },
-  });
-}
-
-export async function sheetStructure(id, action, index) {
-  return apiFetch(`/sheets/${id}/structure`, {
-    method: "POST",
-    body: { action, index },
-  });
-}
-
-export async function resizeSheet(id, dimensions) {
-  return apiFetch(`/sheets/${id}/resize`, {
-    method: "POST",
-    body: dimensions,
-  });
-}
-
 // ─── Documents (R2) ───
 
 export async function getDocument(id) {

@@ -7,7 +7,7 @@ import { ANIM } from "../design/animations.js";
 import {
   IconSearch, IconGear, IconBolt, IconPlus, IconPage,
   IconTable, IconKanban, IconChart, IconForm, IconCalendar,
-  IconFolder, IconStar, IconUsers, IconInbox, IconBell, IconSheet,
+  IconFolder, IconStar, IconUsers, IconInbox, IconBell,
 } from "../design/icons.jsx";
 import { SHORTCUT_MAP, formatShortcut } from "../utils/useKeyboardShortcuts.js";
 
@@ -27,7 +27,6 @@ const PAGE_ICON_MAP = {
   inbox: IconInbox,
   bell: IconBell,
   gear: IconGear,
-  sheet: IconSheet,
 };
 
 // Static system entries

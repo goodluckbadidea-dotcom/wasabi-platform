@@ -283,30 +283,6 @@ export function createDashboardConfig(name, isGlobal = false) {
 }
 
 /**
- * Create a sheet (spreadsheet grid) page config.
- */
-export function createSheetConfig(name, icon, colCount = 26, rowCount = 100) {
-  return {
-    name,
-    icon: icon || "table",
-    type: "page",
-    page_type: "sheet",
-    pageType: "sheet",
-    databaseIds: [],
-    views: [
-      {
-        type: "sheet",
-        label: "Sheet",
-        position: "main",
-      },
-    ],
-    col_count: colCount,
-    row_count: rowCount,
-    refreshInterval: 0,
-  };
-}
-
-/**
  * Check if a config represents a document page.
  */
 export function isDocumentPage(pageConfig) {
@@ -332,7 +308,7 @@ function d1ToFrontend(d1Page) {
     parentId: d1Page.parent_id || null,
     type,
     page_type: pt,
-    pageType: ["document", "linked_sheet", "database", "linked_notion", "sheet", "dashboard"].includes(pt) ? pt : undefined,
+    pageType: ["document", "linked_sheet", "database", "linked_notion", "dashboard"].includes(pt) ? pt : undefined,
     sort_order: d1Page.sort_order || 0,
     ...config,
   };
@@ -344,7 +320,7 @@ function d1ToFrontend(d1Page) {
 function frontendToD1(config) {
   const {
     id, name, icon, parentId, type, page_type, pageType,
-    sort_order, columns, col_count, row_count, ...rest
+    sort_order, columns, ...rest
   } = config;
 
   // Determine D1 page_type from available fields
@@ -367,10 +343,6 @@ function frontendToD1(config) {
 
   // Include columns for new database table creation
   if (columns) d1.columns = columns;
-
-  // Include dimensions for sheet creation
-  if (col_count) d1.col_count = col_count;
-  if (row_count) d1.row_count = row_count;
 
   return d1;
 }

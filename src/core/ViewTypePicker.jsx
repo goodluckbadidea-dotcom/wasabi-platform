@@ -7,7 +7,7 @@ import React, { useRef, useEffect, useState } from "react";
 import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
 import {
   IconTable, IconKanban, IconCalendar, IconTimeline,
-  IconCards, IconChart, IconForm, IconSheet,
+  IconCards, IconChart, IconForm,
   IconDiamond, IconChat, IconBell, IconStar,
 } from "../design/icons.jsx";
 
@@ -20,7 +20,6 @@ const VIEW_TYPES = [
   { type: "charts", label: "Charts", icon: IconChart, description: "Data visualizations" },
   { type: "form", label: "Form", icon: IconForm, description: "Input form view" },
   { type: "document", label: "Document", icon: IconDiamond, description: "Rich text editor" },
-  { type: "sheet", label: "Sheet", icon: IconSheet, description: "Spreadsheet grid" },
   { type: "summaryTiles", label: "Summary", icon: IconStar, description: "KPI tiles" },
   { type: "activityFeed", label: "Activity", icon: IconBell, description: "Activity log" },
   { type: "chat", label: "Chat", icon: IconChat, description: "AI chat view" },

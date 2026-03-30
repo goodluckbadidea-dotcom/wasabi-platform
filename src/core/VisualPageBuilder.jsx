@@ -7,7 +7,7 @@ import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { savePageConfig, createDocumentPageConfig, createFolderConfig, createWorkspaceConfig, createTableConfig, createLinkedNotionConfig, createStandaloneDocConfig, createSheetConfig, createLinkedMondayConfig } from "../config/pageConfig.js";
+import { savePageConfig, createDocumentPageConfig, createFolderConfig, createWorkspaceConfig, createTableConfig, createLinkedNotionConfig, createStandaloneDocConfig, createLinkedMondayConfig } from "../config/pageConfig.js";
 import { autoDetectViews } from "../notion/schema.js";
 import { createSubpage, ensurePageActive } from "../notion/client.js";
 import DatabaseBrowser from "./DatabaseBrowser.jsx";
@@ -511,30 +511,6 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
     ? "New Page"
     : "+ Create New";
 
-  // ── Save Sheet ──
-  const handleSaveSheet = useCallback(async () => {
-    setError(null);
-    if (!pageName.trim()) {
-      setError("Sheet name is required");
-      return;
-    }
-    setSaving(true);
-    try {
-      const config = {
-        ...createSheetConfig(pageName.trim(), pageIcon),
-        type: subPageParent ? "sub_page" : "page",
-        parentId: subPageParent || folderId || null,
-      };
-      const pageId = await savePageConfig(config);
-      addPage({ ...config, id: pageId });
-      setSuccess(true);
-    } catch (err) {
-      setError(err.message || "Failed to create sheet");
-    } finally {
-      setSaving(false);
-    }
-  }, [pageName, pageIcon, addPage, subPageParent, folderId]);
-
   // ── Save Standalone Document ──
   const handleSaveStandaloneDoc = useCallback(async () => {
     setError(null);
@@ -570,7 +546,6 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
       typeCards.push({ key: "folder", label: "Folder", desc: "Organize your pages into groups. No database required.", icon: IconFolder, type: "folder" });
     }
     typeCards.push({ key: "createTable", label: "Create Table", desc: "Build a standalone database with typed columns. No Notion required.", icon: IconTable, type: "createTable" });
-    typeCards.push({ key: "createSheet", label: "Create Sheet", desc: "Spreadsheet grid with formulas. Like Excel, powered by Cloudflare D1.", icon: IconSheet, type: "createSheet" });
     typeCards.push({ key: "database", label: "Link a Database", desc: "Connect a Notion database or Google Sheet. Add views like tables, kanban, and charts.", icon: IconDatabase, type: "database" });
     typeCards.push({ key: "document", label: "Document", desc: "Create a rich text document for notes, SOPs, and reference content.", icon: IconPage, type: "document" });
 
@@ -882,94 +857,6 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
             disabled={saving}
           >
             {saving ? "Creating..." : "Create Document"}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Create Sheet Flow ──
-  if (pageType === "createSheet") {
-    return (
-      <div style={vs.container}>
-        <div style={vs.header}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span
-              style={{ cursor: "pointer", display: "flex", alignItems: "center" }}
-              onClick={() => setPageType(null)}
-              title="Back to type selection"
-            >
-              <IconChevronLeft size={16} color={C.darkMuted} />
-            </span>
-            <div>
-              <div style={vs.headerTitle}>New Sheet</div>
-              <div style={vs.headerSub}>Create a spreadsheet grid with formulas</div>
-            </div>
-          </div>
-        </div>
-        <div style={vs.body}>
-          {/* Sheet Identity */}
-          <div style={vs.section}>
-            <div style={vs.sectionTitle}>Sheet Identity</div>
-            <div style={{ display: "flex", gap: 12, marginBottom: 14 }}>
-              <div>
-                <label style={vs.label}>Icon</label>
-                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", maxWidth: 200 }}>
-                  {ICONS.map((ic) => {
-                    const Ic = ICON_MAP[ic];
-                    return (
-                      <span key={ic} style={vs.iconBtn(pageIcon === ic)} onClick={() => setPageIcon(ic)} title={ic}>
-                        <Ic size={16} color={pageIcon === ic ? C.accent : C.darkMuted} />
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={vs.label}>Sheet Name</label>
-                <input
-                  style={vs.input}
-                  value={pageName}
-                  onChange={(e) => setPageName(e.target.value)}
-                  placeholder="e.g. Budget, Revenue, Inventory"
-                  autoFocus
-                />
-              </div>
-            </div>
-          </div>
-
-          <div style={{
-            padding: "12px 16px",
-            background: `${C.accent}10`,
-            border: `1px solid ${C.accent}30`,
-            borderRadius: RADIUS.md,
-            fontSize: 13,
-            color: C.darkMuted,
-            lineHeight: 1.5,
-          }}>
-            A spreadsheet grid (26 columns × 100 rows) with SUM, AVG, COUNT, MIN, MAX formulas.
-            Data is stored in Cloudflare D1.
-          </div>
-
-          {error && <div style={vs.error}>{error}</div>}
-          {success && <div style={vs.success}>Sheet created successfully!</div>}
-        </div>
-        <div style={vs.footer}>
-          <button style={S.btnGhost} onClick={() => setPageType(null)}>Back</button>
-          <div style={{ flex: 1 }} />
-          <button
-            style={{
-              ...S.btnPrimary,
-              padding: "10px 28px",
-              fontSize: 14,
-              fontWeight: 600,
-              opacity: saving ? 0.6 : 1,
-              cursor: saving ? "not-allowed" : "pointer",
-            }}
-            onClick={handleSaveSheet}
-            disabled={saving}
-          >
-            {saving ? "Creating..." : "Create Sheet"}
           </button>
         </div>
       </div>

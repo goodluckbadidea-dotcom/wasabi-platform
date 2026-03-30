@@ -98,7 +98,7 @@ server.tool(
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_pages",
-  "List all pages/databases in the workspace, get a page config, get table schema, or manage page configs. Use 'list' first to discover available pages and their IDs. Page types: database, document, sheet, page, dashboard. To CREATE a database: provide title, page_type='database', columns array with {id, name, type} objects. To ADD VIEWS: update the page config with views array containing {type, label, config} objects. View types: table, kanban, gantt, calendar, cardGrid, charts, form, summaryTiles, activityFeed, customView. Read wasabi://docs/data-model for full view config schemas.",
+  "List all pages/databases in the workspace, get a page config, get table schema, or manage page configs. Use 'list' first to discover available pages and their IDs. Page types: database, document, page, dashboard. To CREATE a database: provide title, page_type='database', columns array with {id, name, type} objects. To ADD VIEWS: update the page config with views array containing {type, label, config} objects. View types: table, kanban, gantt, calendar, cardGrid, charts, form, summaryTiles, activityFeed, customView. Read wasabi://docs/data-model for full view config schemas.",
   {
     action: z.enum(["list", "get", "get_schema", "create", "update", "delete"]),
     id: z.string().optional().describe("Page ID (required for get/get_schema/update/delete)"),
@@ -1120,12 +1120,11 @@ server.resource(
 ## Page Types
 - \`database\` — table with rows, columns, views (most common)
 - \`document\` — rich text page (stored in R2)
-- \`sheet\` — spreadsheet (cells, formulas)
 - \`page\` — generic container
 - \`dashboard\` — widget grid
 
 ## View Types (14 total)
-\`table\` \`kanban\` \`gantt\` \`calendar\` \`cardGrid\` \`charts\` \`form\` \`summaryTiles\` \`activityFeed\` \`document\` \`notificationFeed\` \`linked_sheet\` \`sheet\` \`customView\`
+\`table\` \`kanban\` \`gantt\` \`calendar\` \`cardGrid\` \`charts\` \`form\` \`summaryTiles\` \`activityFeed\` \`document\` \`notificationFeed\` \`linked_sheet\` \`customView\`
 
 ### View Config Examples
 \`\`\`json

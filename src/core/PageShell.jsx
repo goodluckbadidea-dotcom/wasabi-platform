@@ -80,7 +80,6 @@ export default function PageShell({
   const sourceType = resolveSourceType(pageConfig);
   const isDocumentPage = pageConfig.pageType === "document" || pageConfig.page_type === "document";
   const isLinkedSheetPage = pageConfig.pageType === "linked_sheet" || pageConfig.page_type === "linked_sheet";
-  const isSheetPage = pageConfig.pageType === "sheet" || pageConfig.page_type === "sheet";
   const isStandaloneTable = sourceType === "d1";
 
   // Get the active view config
@@ -102,7 +101,7 @@ export default function PageShell({
 
   // ── Data fetching ──
   const fetchData = useCallback(async () => {
-    if (isDocumentPage || isLinkedSheetPage || isSheetPage) {
+    if (isDocumentPage || isLinkedSheetPage) {
       setLoading(false);
       return;
     }
@@ -127,7 +126,7 @@ export default function PageShell({
     } finally {
       setLoading(false);
     }
-  }, [user, pageConfig, effectiveDbs, sourceType, isDocumentPage, isLinkedSheetPage, isSheetPage]);
+  }, [user, pageConfig, effectiveDbs, sourceType, isDocumentPage, isLinkedSheetPage]);
 
   // Initial fetch
   useEffect(() => {
@@ -443,9 +442,9 @@ export default function PageShell({
         onRenameView={handleRenameView}
         onReorderViews={handleReorderViews}
         onAddView={() => setShowViewPicker(true)}
-        refreshMs={(!isDocumentPage && !isLinkedSheetPage && !isSheetPage) ? refreshMs : undefined}
+        refreshMs={(!isDocumentPage && !isLinkedSheetPage) ? refreshMs : undefined}
         onRefreshChange={handleRefreshChange}
-        onRefresh={(!isDocumentPage && !isLinkedSheetPage && !isSheetPage) ? fetchData : undefined}
+        onRefresh={(!isDocumentPage && !isLinkedSheetPage) ? fetchData : undefined}
         onOpenViewSettings={() => setShowViewSettings(true)}
         showSync={showSync}
         onToggleSync={isStandaloneTable ? () => setShowSync((prev) => !prev) : undefined}

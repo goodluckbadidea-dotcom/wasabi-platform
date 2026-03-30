@@ -175,8 +175,8 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
         const workspaceSummary = (pages || []).map((p) => {
           const dbIds = [...(p.databaseIds || [])];
           const pt = p.page_type || p.pageType;
-          // For D1 tables, sheets, and ALL linked sources — the page's own ID is the queryable database_id
-          const localTypes = ["database", "sheet", "linked_sheet", "linked_monday", "linked_notion"];
+          // For D1 tables and ALL linked sources — the page's own ID is the queryable database_id
+          const localTypes = ["database", "linked_sheet", "linked_monday", "linked_notion"];
           if (localTypes.includes(pt) && p.id && !dbIds.includes(p.id)) {
             dbIds.push(p.id);
           }

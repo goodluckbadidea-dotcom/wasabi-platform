@@ -50,12 +50,11 @@ export default function MiniView({
   const sourceType = pageConfig ? resolveSourceType(pageConfig) : null;
   const isDocumentPage = pageConfig?.pageType === "document" || pageConfig?.page_type === "document";
   const isLinkedSheetPage = pageConfig?.pageType === "linked_sheet" || pageConfig?.page_type === "linked_sheet";
-  const isSheetPage = pageConfig?.pageType === "sheet" || pageConfig?.page_type === "sheet";
 
   // ── Fetch data ──
   const fetchData = useCallback(async () => {
     if (!pageConfig) { setLoading(false); return; }
-    if (isDocumentPage || isLinkedSheetPage || isSheetPage) { setLoading(false); return; }
+    if (isDocumentPage || isLinkedSheetPage) { setLoading(false); return; }
     if (sourceType === "notion" && !user?.workerUrl) { setLoading(false); return; }
 
     try {
@@ -70,7 +69,7 @@ export default function MiniView({
     } finally {
       setLoading(false);
     }
-  }, [pageConfig, user, sourceType, isDocumentPage, isLinkedSheetPage, isSheetPage]);
+  }, [pageConfig, user, sourceType, isDocumentPage, isLinkedSheetPage]);
 
   // Initial fetch
   useEffect(() => {

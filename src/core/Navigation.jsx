@@ -151,14 +151,14 @@ export default function Navigation({
         const dbPages = pages.filter((p) => {
           const pt = p.page_type || p.pageType || p.type;
           return !p._systemInternal && (p.databaseIds?.length > 0 ||
-            ["database", "linked_notion", "linked_monday", "linked_sheet", "sheet"].includes(pt));
+            ["database", "linked_notion", "linked_monday", "linked_sheet"].includes(pt));
         });
         const results = [];
         const seen = new Set();
         for (const page of dbPages) {
           const tableIds = [...(page.databaseIds || [])];
           const pt = page.page_type || page.pageType || page.type;
-          if (["database", "sheet", "linked_sheet", "linked_monday", "linked_notion"].includes(pt) && page.id && !tableIds.includes(page.id)) {
+          if (["database", "linked_sheet", "linked_monday", "linked_notion"].includes(pt) && page.id && !tableIds.includes(page.id)) {
             tableIds.push(page.id);
           }
           for (const tableId of tableIds) {

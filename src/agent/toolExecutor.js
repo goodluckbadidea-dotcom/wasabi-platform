@@ -1,6 +1,6 @@
 // ─── Wasabi Tool Executor ───
 // Routes tool calls to the appropriate data source functions.
-// Supports D1 tables, D1 sheets, linked Notion, linked Monday, and linked Google Sheets.
+// Supports D1 tables, linked Notion, linked Monday, and linked Google Sheets.
 
 import * as client from "../notion/client.js";
 import { queryAll } from "../notion/pagination.js";
@@ -521,10 +521,10 @@ async function getPageType(id) {
   return cfg?.page_type || null;
 }
 
-/** Check if a database_id refers to a D1 standalone table or sheet (vs Notion DB). */
+/** Check if a database_id refers to a D1 standalone table (vs Notion DB). */
 async function isD1Table(id) {
   const pt = await getPageType(id);
-  return pt === "database" || pt === "sheet";
+  return pt === "database";
 }
 
 /**
@@ -576,99 +576,6 @@ async function fetchLinkedMondayRows(pageConfig, mondayKey) {
     }
     return row;
   });
-}
-
-/**
- * Convert sheet grid cells { "A1": {v:...}, "B2": {v:...} } into row objects with headers.
- * Detects whether row 1 contains headers or data values.
- * Always collects all numeric values into _allCellValues for easy aggregation.
- */
-function sheetCellsToRows(cells, colCount = 26) {
-  if (!cells || typeof cells !== "object") return [];
-
-  // Build column labels (A, B, C, ...)
-  const colLabels = [];
-  for (let i = 0; i < colCount; i++) {
-    let label = "";
-    let n = i + 1;
-    while (n > 0) {
-      const rem = (n - 1) % 26;
-      label = String.fromCharCode(65 + rem) + label;
-      n = Math.floor((n - 1) / 26);
-    }
-    colLabels.push(label);
-  }
-
-  // Find the max row number present in cells
-  let maxRow = 0;
-  for (const key of Object.keys(cells)) {
-    const rowNum = parseInt(key.replace(/^[A-Z]+/, ""), 10);
-    if (rowNum > maxRow) maxRow = rowNum;
-  }
-  if (maxRow === 0) return [];
-
-  // Read row 1 values
-  const row1Values = {};
-  let row1Count = 0;
-  let row1NumericCount = 0;
-  for (const col of colLabels) {
-    const cell = cells[`${col}1`];
-    const val = cell && typeof cell === "object" ? cell.v : cell;
-    if (val !== undefined && val !== null && val !== "") {
-      row1Values[col] = val;
-      row1Count++;
-      const num = Number(val);
-      if (!isNaN(num) && String(val).trim() !== "") row1NumericCount++;
-    }
-  }
-
-  // Detect if row 1 is headers or data:
-  // If most row 1 values are numeric, treat as data (not headers)
-  const row1IsData = row1Count > 0 && (row1NumericCount / row1Count) > 0.5;
-
-  // Build headers (only if row 1 looks like headers)
-  const headers = {};
-  if (!row1IsData) {
-    for (const [col, val] of Object.entries(row1Values)) {
-      headers[col] = String(val).trim();
-    }
-  }
-
-  // Collect ALL numeric values across the entire sheet for easy aggregation
-  const allCellValues = [];
-  for (const key of Object.keys(cells)) {
-    if (key === "_meta") continue;
-    const cell = cells[key];
-    const val = cell && typeof cell === "object" ? cell.v : cell;
-    if (val === undefined || val === null || val === "") continue;
-    const num = Number(val);
-    if (!isNaN(num) && String(val).trim() !== "") allCellValues.push(num);
-  }
-
-  // Build rows (start from row 1 if it's data, row 2 if it's headers)
-  const startRow = row1IsData ? 1 : 2;
-  const rows = [];
-  for (let r = startRow; r <= maxRow; r++) {
-    const row = {};
-    // _row is non-enumerable so it doesn't pollute Object.values()/entries() sums
-    Object.defineProperty(row, "_row", { value: r, enumerable: false });
-    let hasData = false;
-    for (const col of colLabels) {
-      const cell = cells[`${col}${r}`];
-      const val = cell && typeof cell === "object" ? cell.v : cell;
-      const header = headers[col] || col;
-      if (val !== undefined && val !== null && val !== "") {
-        row[header] = val;
-        hasData = true;
-      }
-    }
-    if (hasData) rows.push(row);
-  }
-
-  // Attach metadata for aggregation helpers
-  rows._allCellValues = allCellValues;
-  rows._row1IsData = row1IsData;
-  return rows;
 }
 
 /** Convert Notion-format properties to flat D1 cells. */
@@ -725,25 +632,6 @@ export function createToolExecutor({
         const maxRows = toolInput._maxRows || 0;
         const chatLimit = maxRows > 0 ? maxRows : 200;
         const notionChatLimit = maxRows > 0 ? maxRows : 5000; // Notion queries are already paginated; give functions the full dataset
-
-        // D1 sheet path — grid cells converted to rows
-        if (pageType === "sheet") {
-          try {
-            const sheet = await api.getSheet(toolInput.database_id);
-            const rows = sheetCellsToRows(sheet.cells, sheet.col_count || 26);
-            const cap = maxRows > 0 ? maxRows : 200;
-            return JSON.stringify({
-              count: rows.length,
-              results: rows.slice(0, cap),
-              truncated: rows.length > cap,
-              storage: "sheet",
-              _allCellValues: rows._allCellValues || [],
-              _row1IsData: rows._row1IsData || false,
-            });
-          } catch (err) {
-            return JSON.stringify({ error: `Failed to read sheet: ${err.message}`, storage: "sheet" });
-          }
-        }
 
         // D1 standalone table path
         if (pageType === "database") {
@@ -895,11 +783,7 @@ export function createToolExecutor({
             const xCfg = await getFullPageConfig(q.database_id);
             const xType = xCfg?.page_type || null;
 
-            if (xType === "sheet") {
-              const sheet = await api.getSheet(q.database_id);
-              const rows = sheetCellsToRows(sheet.cells, sheet.col_count || 26);
-              allResults[label] = { count: rows.length, results: rows.slice(0, 100), truncated: rows.length > 100, storage: "sheet" };
-            } else if (xType === "database") {
+            if (xType === "database") {
               const queryBody = { limit: 100 };
               if (q.filter) queryBody.filters = q.filter;
               if (q.sorts) queryBody.sorts = q.sorts;
@@ -1024,30 +908,6 @@ export function createToolExecutor({
       case "detect_schema": {
         const sCfg = await getFullPageConfig(toolInput.database_id);
         const schemaPageType = sCfg?.page_type || null;
-
-        // D1 sheet — read headers from row 1
-        if (schemaPageType === "sheet") {
-          try {
-            const sheet = await api.getSheet(toolInput.database_id);
-            const colLabels = [];
-            for (let i = 0; i < (sheet.col_count || 26); i++) {
-              let label = "";
-              let n = i + 1;
-              while (n > 0) { const rem = (n - 1) % 26; label = String.fromCharCode(65 + rem) + label; n = Math.floor((n - 1) / 26); }
-              colLabels.push(label);
-            }
-            const columns = [];
-            for (const col of colLabels) {
-              const cell = sheet.cells?.[`${col}1`];
-              const val = cell && typeof cell === "object" ? cell.v : cell;
-              if (val) columns.push({ name: String(val).trim(), column: col, type: "text" });
-            }
-            const text = columns.map((c) => `- ${c.name} (column ${c.column}, text)`).join("\n");
-            return JSON.stringify({ schema: text, fieldCount: columns.length, raw: { columns, storage: "sheet" }, suggestedViews: [] });
-          } catch (err) {
-            return JSON.stringify({ error: `Failed to detect sheet schema: ${err.message}` });
-          }
-        }
 
         // D1 standalone table
         if (schemaPageType === "database") {
@@ -1362,10 +1222,7 @@ export function createToolExecutor({
         // Load rows from any source into flat row objects for fuzzy matching
         let allRows = null;
         try {
-          if (smPageType === "sheet") {
-            const sheet = await api.getSheet(database_id);
-            allRows = sheetCellsToRows(sheet.cells, sheet.col_count || 26);
-          } else if (smPageType === "database") {
+          if (smPageType === "database") {
             const res = await api.listRows(database_id, { limit: 500 });
             allRows = (res?.rows || []).map((r) => ({ id: r.id, ...(r.cells || r) }));
           } else if (smPageType === "linked_sheet") {
@@ -1510,11 +1367,6 @@ export function createToolExecutor({
                   return filtered;
                 });
               }
-              // Attach sheet metadata for easy aggregation (e.g. sum all values)
-              if (parsed.storage === "sheet" && parsed._allCellValues?.length) {
-                rows._allCellValues = parsed._allCellValues;
-                rows._row1IsData = parsed._row1IsData || false;
-              }
               datasets[key] = rows;
             } else if (inputDef.source === "external_api" && inputDef.url) {
               const proxyBody = {
@@ -1629,11 +1481,6 @@ export function createToolExecutor({
                   for (const col of colSet) { if (row[col] !== undefined) filtered[col] = row[col]; }
                   return filtered;
                 });
-              }
-              // Attach sheet metadata for easy aggregation (e.g. sum all values)
-              if (parsed.storage === "sheet" && parsed._allCellValues?.length) {
-                rows._allCellValues = parsed._allCellValues;
-                rows._row1IsData = parsed._row1IsData || false;
               }
               datasets[key] = rows;
             } else if (inputDef.source === "external_api" && inputDef.url) {
@@ -1919,10 +1766,6 @@ export function createToolExecutor({
                   for (const col of colSet) { if (row[col] !== undefined) filtered[col] = row[col]; }
                   return filtered;
                 });
-              }
-              if (parsed.storage === "sheet" && parsed._allCellValues?.length) {
-                rows._allCellValues = parsed._allCellValues;
-                rows._row1IsData = parsed._row1IsData || false;
               }
               datasets[key] = rows;
             } else if (inputDef.source === "external_api" && inputDef.url) {
