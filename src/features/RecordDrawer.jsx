@@ -176,7 +176,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction, on
     setError(null);
     try {
       if (isNotion) {
-        if (!user?.workerUrl || !user?.notionKey) throw new Error("Notion not connected");
+        if (!user?.notionKey) throw new Error("Notion not connected");
         const properties = {};
         if (fieldMap.title && title !== task.title) {
           properties[fieldMap.title] = buildProp("title", title);
@@ -198,7 +198,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction, on
           properties[fieldMap.notes] = buildProp("rich_text", notes);
         }
         if (Object.keys(properties).length > 0) {
-          await updatePage(user.workerUrl, user.notionKey, task.id, properties);
+          await updatePage(task.id, properties);
         }
         // Save notes to wasabi-internal storage if no Notion field mapped
         if (!fieldMap.notes && notes) {

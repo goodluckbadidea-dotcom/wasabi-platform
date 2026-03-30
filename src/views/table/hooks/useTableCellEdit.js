@@ -9,7 +9,7 @@ import { updateDatabase } from "../../../notion/client.js";
 
 export default function useTableCellEdit({
   schema, onUpdate, focusedCell, setFocusedCell, displayListLength,
-  canEditSchema, isNotionTable, notionDbId, workerUrl, notionKey, pageConfig, onRefresh,
+  canEditSchema, isNotionTable, notionDbId, pageConfig, onRefresh,
 }) {
   const [editCell, setEditCell] = useState(null); // { pageId, field }
   const [savingCells, setSavingCells] = useState({}); // { "pageId:field": true }
@@ -71,7 +71,7 @@ export default function useTableCellEdit({
   const handleCreateOption = useCallback(async (fieldName, newOptionName) => {
     if (!canEditSchema || !pageConfig?.id) return;
     try {
-      if (isNotionTable && notionDbId && workerUrl && notionKey) {
+      if (isNotionTable && notionDbId) {
         // Notion handles option auto-creation via page update
       } else {
         const schemaRes = await getTableSchema(pageConfig.id);
@@ -87,7 +87,7 @@ export default function useTableCellEdit({
         await updateTableSchema(pageConfig.id, cols);
       }
     } catch (err) { console.error("Create option failed:", err); }
-  }, [canEditSchema, isNotionTable, notionDbId, workerUrl, notionKey, pageConfig?.id]);
+  }, [canEditSchema, isNotionTable, notionDbId, pageConfig?.id]);
 
   // Checkbox direct toggle
   const handleCheckboxToggle = useCallback((pageId, field, currentValue) => {

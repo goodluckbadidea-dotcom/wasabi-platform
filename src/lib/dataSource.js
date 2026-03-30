@@ -82,20 +82,13 @@ async function fetchD1Table(pageConfig) {
 // ─── Notion Linked Database ───
 
 async function fetchNotionDb(pageConfig, user) {
-  const conn = getConnection();
-  const workerUrl = user?.workerUrl || conn?.workerUrl;
-  const notionKey = user?.notionKey || ""; // worker falls back to D1 if empty
-  if (!workerUrl) {
-    return { data: [], schema: null, schemas: {} };
-  }
-
   const dbIds = pageConfig.databaseIds || [];
   if (dbIds.length === 0) return { data: [], schema: null, schemas: {} };
 
   const schemas = {};
   for (const dbId of dbIds) {
     try {
-      schemas[dbId] = await detectSchema(workerUrl, notionKey, dbId);
+      schemas[dbId] = await detectSchema(dbId);
     } catch (err) {
       console.warn(`Schema fetch failed for ${dbId}:`, err.message);
     }
@@ -104,7 +97,7 @@ async function fetchNotionDb(pageConfig, user) {
   const primarySchema = schemas[dbIds[0]] || null;
   const allData = [];
   for (const dbId of dbIds) {
-    const results = await queryAll(workerUrl, notionKey, dbId);
+    const results = await queryAll(dbId);
     allData.push(...results.map((r) => {
       const page = { ...r, _databaseId: dbId };
       // Inject system timestamp properties so readField() can find them.

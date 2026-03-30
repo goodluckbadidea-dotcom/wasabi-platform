@@ -531,13 +531,13 @@ async function isD1Table(id) {
  * Fetch rows from a linked Google Sheet page.
  * Returns array of { [columnName]: value } objects.
  */
-async function fetchLinkedSheetRows(pageConfig, workerUrl) {
+async function fetchLinkedSheetRows(pageConfig) {
   // Find sheetUrl from views config
   const sheetView = pageConfig.views?.find((v) => v.type === "linked_sheet");
   const sheetUrl = sheetView?.config?.sheetUrl || pageConfig.sheetUrl;
-  if (!sheetUrl || !workerUrl) return [];
+  if (!sheetUrl) return [];
 
-  const data = await fetchSheetData(workerUrl, sheetUrl);
+  const data = await fetchSheetData(sheetUrl);
   if (!data?.columns?.length || !data?.rows?.length) return [];
 
   // Convert 2D array to row objects
@@ -695,8 +695,6 @@ function notionPropsToD1Cells(props) {
  * Create a tool executor bound to a specific user's credentials and platform config.
  *
  * @param {object} opts
- * @param {string} opts.workerUrl
- * @param {string} opts.notionKey
  * @param {string} opts.mondayKey - Monday.com API key (optional)
  * @param {string} opts.parentPageId - Root Wasabi page in user's Notion
  * @param {string} opts.kbDbId - Knowledge Base database ID
@@ -707,8 +705,6 @@ function notionPropsToD1Cells(props) {
  * @returns {Function} executeTool(toolName, toolInput) => string
  */
 export function createToolExecutor({
-  workerUrl,
-  notionKey,
   mondayKey,
   parentPageId,
   kbDbId,
@@ -775,7 +771,7 @@ export function createToolExecutor({
         // Linked Google Sheet — read-only via worker proxy
         if (pageType === "linked_sheet") {
           try {
-            const rows = await fetchLinkedSheetRows(qCfg, workerUrl);
+            const rows = await fetchLinkedSheetRows(qCfg);
             return JSON.stringify({
               count: rows.length,
               results: rows.slice(0, chatLimit),
@@ -808,7 +804,7 @@ export function createToolExecutor({
           const allData = [];
           for (const dbId of qCfg.databaseIds) {
             try {
-              const results = await queryAll(workerUrl, notionKey, dbId, toolInput.filter, toolInput.sorts);
+              const results = await queryAll(dbId, toolInput.filter, toolInput.sorts);
               const mapped = results.map((page) => ({ id: page.id, ...extractProperties(page), _databaseId: dbId }));
               allData.push(...mapped);
             } catch (err) {
@@ -825,7 +821,6 @@ export function createToolExecutor({
 
         // Direct Notion database path (fallback — raw Notion DB ID)
         const results = await queryAll(
-          workerUrl, notionKey,
           toolInput.database_id,
           toolInput.filter,
           toolInput.sorts
@@ -843,7 +838,7 @@ export function createToolExecutor({
       }
 
       case "get_page": {
-        const page = await client.getPage(workerUrl, notionKey, toolInput.page_id);
+        const page = await client.getPage(toolInput.page_id);
         const props = extractProperties(page);
         return JSON.stringify({ id: page.id, ...props });
       }
@@ -858,7 +853,6 @@ export function createToolExecutor({
         }
         // Notion path
         const page = await client.createPage(
-          workerUrl, notionKey,
           toolInput.database_id,
           toolInput.properties
         );
@@ -885,7 +879,6 @@ export function createToolExecutor({
 
         // Notion path
         await client.updatePage(
-          workerUrl, notionKey,
           pageId,
           toolInput.properties
         );
@@ -915,7 +908,7 @@ export function createToolExecutor({
               catch { rows = (await api.listRows(q.database_id, { limit: 100 }))?.rows || []; }
               allResults[label] = { count: rows.length, results: rows.slice(0, 100), truncated: rows.length > 100, storage: "d1" };
             } else if (xType === "linked_sheet") {
-              const rows = await fetchLinkedSheetRows(xCfg, workerUrl);
+              const rows = await fetchLinkedSheetRows(xCfg);
               allResults[label] = { count: rows.length, results: rows.slice(0, 100), truncated: rows.length > 100, storage: "linked_sheet", readOnly: true };
             } else if (xType === "linked_monday") {
               const rows = await fetchLinkedMondayRows(xCfg, mondayKey);
@@ -923,13 +916,13 @@ export function createToolExecutor({
             } else if (xType === "linked_notion" && xCfg?.databaseIds?.length) {
               const allData = [];
               for (const dbId of xCfg.databaseIds) {
-                const res = await queryAll(workerUrl, notionKey, dbId, q.filter, q.sorts);
+                const res = await queryAll(dbId, q.filter, q.sorts);
                 allData.push(...res.map((p) => ({ id: p.id, ...extractProperties(p) })));
               }
               allResults[label] = { count: allData.length, results: allData.slice(0, 100), truncated: allData.length > 100, storage: "linked_notion" };
             } else {
               // Direct Notion DB ID
-              const res = await queryAll(workerUrl, notionKey, q.database_id, q.filter, q.sorts);
+              const res = await queryAll(q.database_id, q.filter, q.sorts);
               const mapped = res.map((p) => ({ id: p.id, ...extractProperties(p) }));
               allResults[label] = { count: mapped.length, results: mapped.slice(0, 30), truncated: mapped.length > 30 };
             }
@@ -1009,7 +1002,7 @@ export function createToolExecutor({
           payload.properties = propUpdates;
         }
 
-        const result = await client.updateDatabase(workerUrl, notionKey, toolInput.database_id, payload);
+        const result = await client.updateDatabase(toolInput.database_id, payload);
         return JSON.stringify({ success: true, database_id: toolInput.database_id, title: toolInput.title || result.title?.[0]?.plain_text });
       }
 
@@ -1017,10 +1010,9 @@ export function createToolExecutor({
       case "create_database": {
         // Ensure root page is active (auto-unarchive if needed)
         if (parentPageId) {
-          await client.ensurePageActive(workerUrl, notionKey, parentPageId);
+          await client.ensurePageActive(parentPageId);
         }
         const db = await client.createDatabase(
-          workerUrl, notionKey,
           parentPageId,
           toolInput.title,
           toolInput.schema
@@ -1074,7 +1066,7 @@ export function createToolExecutor({
         // Linked Google Sheet — detect columns from fetched data
         if (schemaPageType === "linked_sheet") {
           try {
-            const rows = await fetchLinkedSheetRows(sCfg, workerUrl);
+            const rows = await fetchLinkedSheetRows(sCfg);
             const colNames = rows.length > 0 ? Object.keys(rows[0]).filter((k) => k !== "_row") : [];
             const text = colNames.map((c) => `- ${c} (text)`).join("\n");
             return JSON.stringify({ schema: text, fieldCount: colNames.length, raw: { columns: colNames, storage: "linked_sheet" }, suggestedViews: [] });
@@ -1096,14 +1088,14 @@ export function createToolExecutor({
 
         // Linked Notion — detect schema from first databaseId
         if (schemaPageType === "linked_notion" && sCfg?.databaseIds?.length) {
-          const schema = await detectSchema(workerUrl, notionKey, sCfg.databaseIds[0]);
+          const schema = await detectSchema(sCfg.databaseIds[0]);
           const views = autoDetectViews(schema);
           const text = schemaToText(schema);
           return JSON.stringify({ schema: text, suggestedViews: views, fieldCount: schema.allFields.length, raw: schema });
         }
 
         // Direct Notion DB ID fallback
-        const schema = await detectSchema(workerUrl, notionKey, toolInput.database_id);
+        const schema = await detectSchema(toolInput.database_id);
         const views = autoDetectViews(schema);
         const text = schemaToText(schema);
         return JSON.stringify({ schema: text, suggestedViews: views, fieldCount: schema.allFields.length, raw: schema });
@@ -1161,7 +1153,7 @@ export function createToolExecutor({
 
       // ─── Knowledge Base ───
       case "update_knowledge_base": {
-        await writeKB(workerUrl, notionKey, kbDbId, {
+        await writeKB(kbDbId, {
           key: toolInput.key,
           category: toolInput.category,
           content: toolInput.content,
@@ -1170,7 +1162,7 @@ export function createToolExecutor({
       }
 
       case "search_knowledge_base": {
-        const results = await searchKB(workerUrl, notionKey, kbDbId, {
+        const results = await searchKB(kbDbId, {
           query: toolInput.query,
           category: toolInput.category,
         });
@@ -1193,7 +1185,7 @@ export function createToolExecutor({
           await api.createNotification(notifPayload);
         } else {
           // Legacy Notion path
-          await client.postNotification(workerUrl, notionKey, notifDbId, notifPayload);
+          await client.postNotification(notifDbId, notifPayload);
         }
         return JSON.stringify({ success: true });
       }
@@ -1338,7 +1330,7 @@ export function createToolExecutor({
           for (const f of inputFiles) {
             const content = (f.text || "").substring(0, 1800); // KB entries have a size limit
             try {
-              await writeKB(workerUrl, notionKey, kbDbId, {
+              await writeKB(kbDbId, {
                 key: `upload:${f.name}`,
                 category: "business_context",
                 content: `[Uploaded file: ${f.name}]\n${content}`,
@@ -1377,11 +1369,11 @@ export function createToolExecutor({
             const res = await api.listRows(database_id, { limit: 500 });
             allRows = (res?.rows || []).map((r) => ({ id: r.id, ...(r.cells || r) }));
           } else if (smPageType === "linked_sheet") {
-            allRows = await fetchLinkedSheetRows(smCfg, workerUrl);
+            allRows = await fetchLinkedSheetRows(smCfg);
           } else if (smPageType === "linked_monday") {
             allRows = await fetchLinkedMondayRows(smCfg, mondayKey);
           } else if (smPageType === "linked_notion" && smCfg?.databaseIds?.length) {
-            const res = await queryAll(workerUrl, notionKey, smCfg.databaseIds[0]);
+            const res = await queryAll(smCfg.databaseIds[0]);
             allRows = res.map((p) => ({ id: p.id, ...extractProperties(p) }));
           }
         } catch { /* fall through to Notion path */ }
@@ -1408,7 +1400,7 @@ export function createToolExecutor({
           for (const term of search_terms.slice(0, 10)) {
             try {
               const filter = match_field ? { property: match_field, rich_text: { contains: term } } : undefined;
-              const results = await queryAll(workerUrl, notionKey, database_id, filter);
+              const results = await queryAll(database_id, filter);
               const matched = results
                 .map((page) => {
                   const props = extractProperties(page);
@@ -2093,7 +2085,7 @@ export function createToolExecutor({
 
           // Create a read-only sub-executor (no claudeKey — prevents recursive delegation)
           const subExecutor = createToolExecutor({
-            workerUrl, notionKey, mondayKey, parentPageId,
+            mondayKey, parentPageId,
             kbDbId, notifDbId, configDbId, rulesDbId,
           });
 
@@ -2105,12 +2097,13 @@ export function createToolExecutor({
                   content: `${task.instruction}\n\n${task.context ? `Context:\n${task.context}` : ""}`,
                 }];
                 const systemPrompt = "You are a focused analysis sub-agent. Answer the specific question using the tools available. Be precise with numbers — report EXACTLY what tools return, do not round, estimate, or summarize counts unless asked. Cite specific records.";
+                const conn = api.getConnection?.() || {};
                 const result = await runAgent({
                   messages,
                   tools: subAgentTools,
                   systemPrompt,
                   model: SONNET,
-                  workerUrl,
+                  workerUrl: conn.workerUrl || "",
                   claudeKey,
                   executeTool: subExecutor,
                   maxIterations: 3,

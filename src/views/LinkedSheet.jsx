@@ -237,7 +237,7 @@ export default function LinkedSheet({ config = {}, pageConfig }) {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchSheetData(user.workerUrl, sheetUrl);
+      const data = await fetchSheetData(sheetUrl);
       setSheetData(data);
       setColumnTypes(detectColumnTypes(data.columns, data.rows));
     } catch (err) {

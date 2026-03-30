@@ -7,7 +7,7 @@ import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { detectSchema, classifyProperties } from "../notion/schema.js";
-import { createDatabase, createPage, ensurePageActive } from "../notion/client.js";
+import { searchDatabases as notionSearchDatabases, createDatabase, createPage, ensurePageActive } from "../notion/client.js";
 import { getConnection, createPageConfig, updateTableSchema, createRows, uploadFile as uploadFileToR2 } from "../lib/api.js";
 import { buildProp } from "../notion/properties.js";
 import { IconSearch, IconDatabase, IconCheck, IconPlus, IconClose, IconTrash, IconSheet, IconBolt } from "../design/icons.jsx";
@@ -349,27 +349,11 @@ export default function DatabaseBrowser({
   // ── Search databases ──
   const searchDatabases = useCallback(
     async (q) => {
-      const conn = getConnection();
-      const workerUrl = user?.workerUrl || conn?.workerUrl;
-      if (!workerUrl) return;
       setSearching(true);
       setSearchError(null);
       try {
-        const searchHeaders = { "Content-Type": "application/json" };
-        if (user?.notionKey) searchHeaders["Authorization"] = `Bearer ${user.notionKey}`;
-
-        const res = await fetch(`${workerUrl}/search`, {
-          method: "POST",
-          headers: searchHeaders,
-          body: JSON.stringify({
-            query: q || "",
-            filter: { value: "database", property: "object" },
-            page_size: 20,
-          }),
-        });
-        if (!res.ok) throw new Error(`Search failed (${res.status})`);
-        const data = await res.json();
-        setResults(parseSearchResults(data.results || []));
+        const databases = await notionSearchDatabases(q || "");
+        setResults(parseSearchResults(databases));
       } catch (err) {
         setSearchError(err.message);
         setResults([]);
@@ -377,7 +361,7 @@ export default function DatabaseBrowser({
         setSearching(false);
       }
     },
-    [user]
+    []
   );
 
   // Initial search on mount (browse all)
@@ -440,8 +424,6 @@ export default function DatabaseBrowser({
         // Fallback: fetch the database fresh
         try {
           const schema = await detectSchema(
-            user.workerUrl,
-            user.notionKey,
             db.id.replace(/-/g, "")
           );
           setPreviewDb({ id: db.id, title: db.title, schema });
@@ -500,7 +482,7 @@ export default function DatabaseBrowser({
     setPasteLoading(true);
     setPasteError(null);
     try {
-      const schema = await detectSchema(user.workerUrl, user.notionKey, dbId);
+      const schema = await detectSchema(dbId);
       setPreviewDb({ id: dbId, title: schema.databaseTitle, schema });
     } catch (err) {
       setPasteError(
@@ -793,9 +775,8 @@ export default function DatabaseBrowser({
 
               if (hasNotion) {
                 // ── Notion path ──
-                await ensurePageActive(user.workerUrl, user.notionKey, platformIds.rootPageId);
+                await ensurePageActive(platformIds.rootPageId);
                 const result = await createDatabase(
-                  user.workerUrl, user.notionKey,
                   platformIds.rootPageId,
                   uploadDbTitle.trim(),
                   schema
@@ -820,14 +801,14 @@ export default function DatabaseBrowser({
                           if (built) properties[col.name.trim()] = built;
                         }
                       });
-                      return createPage(user.workerUrl, user.notionKey, dbId, properties);
+                      return createPage(dbId, properties);
                     })
                   );
                   done += batch.length;
                   setUploadProgress({ done: Math.min(done, total), total });
                 }
 
-                const detectedSchema = await detectSchema(user.workerUrl, user.notionKey, dbId);
+                const detectedSchema = await detectSchema(dbId);
                 handleConnect(dbId, uploadDbTitle.trim(), detectedSchema);
               } else {
                 // ── D1 standalone path ──

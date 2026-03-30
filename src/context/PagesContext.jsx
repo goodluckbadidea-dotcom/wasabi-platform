@@ -49,9 +49,9 @@ export function PagesProvider({ children }) {
         if (cancelled) return;
         let finalConfigs = configs.length > 0 ? configs : [];
 
-        if (finalConfigs.length > 0 && user?.workerUrl && user?.notionKey) {
+        if (finalConfigs.length > 0 && user?.notionKey) {
           try {
-            const { valid, stale } = await validatePageConfigs(user.workerUrl, user.notionKey, finalConfigs);
+            const { valid, stale } = await validatePageConfigs(user.notionKey, finalConfigs);
             if (cancelled) return;
             if (stale.length > 0) {
               finalConfigs = valid;

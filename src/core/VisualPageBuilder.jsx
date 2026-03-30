@@ -444,15 +444,15 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
       return;
     }
 
-    const hasNotion = user?.workerUrl && user?.notionKey && platformIds?.rootPageId && platformIds?.configDbId;
+    const hasNotion = user?.notionKey && platformIds?.rootPageId && platformIds?.configDbId;
 
     setSaving(true);
     try {
       if (hasNotion) {
         // Notion-linked document: create a subpage under root
-        await ensurePageActive(user.workerUrl, user.notionKey, platformIds.rootPageId);
+        await ensurePageActive(platformIds.rootPageId);
         const notionPage = await createSubpage(
-          user.workerUrl, user.notionKey, platformIds.rootPageId, pageName.trim()
+          platformIds.rootPageId, pageName.trim()
         );
         const docConfig = {
           ...createDocumentPageConfig(pageName.trim(), pageIcon, notionPage.id),

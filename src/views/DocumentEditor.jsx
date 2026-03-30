@@ -905,7 +905,7 @@ export default function DocumentEditor({ pageId: legacyPageId, config, pageConfi
     }
 
     // Guard: Notion mode requires worker + notionKey
-    if (!isStandalone && (!user?.workerUrl || !user?.notionKey)) {
+    if (!isStandalone && !user?.notionKey) {
       setLoading(false);
       return;
     }
@@ -944,7 +944,7 @@ export default function DocumentEditor({ pageId: legacyPageId, config, pageConfi
         if (migrated) needsMigrationSaveRef.current = true;
       } else {
         // ── Notion-backed: load from Notion API ──
-        const result = await getBlocks(user.workerUrl, user.notionKey, docId);
+        const result = await getBlocks(docId);
         loaded = (result || []).map((b) => ({
           ...b,
           _dirty: false,
@@ -1013,7 +1013,7 @@ export default function DocumentEditor({ pageId: legacyPageId, config, pageConfi
       }
     } else {
       // ── Notion-backed: per-block save ──
-      if (!user?.workerUrl || !user?.notionKey) return;
+      if (!user?.notionKey) return;
 
       const dirtyBlocks = blocks.filter((b) => b._dirty);
       const toDelete = [...deletedIdsRef.current];
@@ -1027,7 +1027,7 @@ export default function DocumentEditor({ pageId: legacyPageId, config, pageConfi
         // Delete removed blocks
         for (const id of toDelete) {
           if (!id.startsWith("_temp_")) {
-            await deleteBlock(user.workerUrl, user.notionKey, id);
+            await deleteBlock(id);
           }
         }
         deletedIdsRef.current = [];
@@ -1037,7 +1037,7 @@ export default function DocumentEditor({ pageId: legacyPageId, config, pageConfi
           const blockData = buildBlockPayload(block);
           if (block._isNew) {
             // Append as child of the page
-            const result = await appendBlocks(user.workerUrl, user.notionKey, docId, [blockData]);
+            const result = await appendBlocks(docId, [blockData]);
             const newId = result?.results?.[0]?.id;
             if (newId) {
               setBlocks((prev) =>
@@ -1047,7 +1047,7 @@ export default function DocumentEditor({ pageId: legacyPageId, config, pageConfi
               );
             }
           } else {
-            await updateBlock(user.workerUrl, user.notionKey, block.id, blockData);
+            await updateBlock(block.id, blockData);
             setBlocks((prev) =>
               prev.map((b) =>
                 b.id === block.id ? { ...b, _dirty: false, _lastSync: Date.now() } : b

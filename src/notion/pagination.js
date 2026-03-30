@@ -1,20 +1,20 @@
 // ─── Notion Pagination Helper ───
 // Full cursor-based pagination for Notion database queries.
+// All calls go through notionProxy → apiFetch (JWT auth).
+// Worker retrieves the Notion key from D1 server-side.
 
-// No auth headers needed — JWT handles authentication via apiFetch.
+import { notionProxy } from "../lib/api.js";
 
 /**
  * Query a Notion database with full pagination.
  * Returns ALL matching results (no cap).
  *
- * @param {string} workerUrl - Cloudflare Worker base URL
- * @param {string} notionKey - Notion API key
  * @param {string} databaseId - Target database ID
  * @param {object} [filter] - Notion filter object
  * @param {Array} [sorts] - Notion sorts array
  * @returns {Promise<Array>} All matching pages
  */
-export async function queryAll(workerUrl, notionKey, databaseId, filter, sorts) {
+export async function queryAll(databaseId, filter, sorts) {
   let results = [];
   let cursor = undefined;
   let attempts = 0;
@@ -30,21 +30,7 @@ export async function queryAll(workerUrl, notionKey, databaseId, filter, sorts) 
     if (sorts) body.sorts = sorts;
     if (cursor) body.start_cursor = cursor;
 
-    const res = await fetch(`${workerUrl}/query`, {
-      method: "POST",
-      headers: ({
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${notionKey}`,
-      }),
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text().catch(() => "Unknown error");
-      throw new Error(`Notion query failed (${res.status}): ${errText}`);
-    }
-
-    const data = await res.json();
+    const data = await notionProxy("/query", "POST", body);
 
     if (data._error) {
       throw new Error(`Notion query error: ${data._error}`);
@@ -62,7 +48,7 @@ export async function queryAll(workerUrl, notionKey, databaseId, filter, sorts) 
 /**
  * Query with a result limit (for previews, autocomplete, etc.)
  */
-export async function queryLimited(workerUrl, notionKey, databaseId, filter, sorts, limit = 50) {
+export async function queryLimited(databaseId, filter, sorts, limit = 50) {
   const body = {
     database_id: databaseId,
     page_size: Math.min(limit, 100),
@@ -70,19 +56,6 @@ export async function queryLimited(workerUrl, notionKey, databaseId, filter, sor
   if (filter) body.filter = filter;
   if (sorts) body.sorts = sorts;
 
-  const res = await fetch(`${workerUrl}/query`, {
-    method: "POST",
-    headers: ({
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${notionKey}`,
-    }),
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    throw new Error(`Notion query failed (${res.status})`);
-  }
-
-  const data = await res.json();
+  const data = await notionProxy("/query", "POST", body);
   return data.results || [];
 }

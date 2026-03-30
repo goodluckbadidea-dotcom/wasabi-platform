@@ -245,15 +245,15 @@ export default function Navigation({
     archivePageConfig(pageConfig.id).catch((err) => {
       console.error("[Navigation] Failed to delete from D1:", err);
     });
-    if (user?.workerUrl && user?.notionKey) {
+    if (user?.notionKey) {
       const pt = pageConfig.pageType || pageConfig.page_type;
       if (pt !== "linked_notion") {
         for (const dbId of (pageConfig.databaseIds || [])) {
-          archivePage(user.workerUrl, user.notionKey, dbId).catch(err => console.warn("[Navigation] archivePage:", err.message || err));
+          archivePage(dbId).catch(err => console.warn("[Navigation] archivePage:", err.message || err));
         }
       }
       if (pt === "document" && pageConfig.notionPageId) {
-        archivePage(user.workerUrl, user.notionKey, pageConfig.notionPageId).catch(err => console.warn("[Navigation] archivePage:", err.message || err));
+        archivePage(pageConfig.notionPageId).catch(err => console.warn("[Navigation] archivePage:", err.message || err));
       }
     }
   }, [user, removePage]);

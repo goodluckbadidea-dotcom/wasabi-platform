@@ -63,8 +63,6 @@ export default function PageBuilder({ initialTemplate = null, WasabiFlameIcon = 
       toolInput = { ...toolInput, parent_id: selectedParent };
     }
     const executor = createToolExecutor({
-      workerUrl: user.workerUrl,
-      notionKey: user.notionKey,
       parentPageId: selectedParent || platformIds.rootPageId,
       kbDbId: platformIds.kbDbId,
       notifDbId: platformIds.notifDbId,

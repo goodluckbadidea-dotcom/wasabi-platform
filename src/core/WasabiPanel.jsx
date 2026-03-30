@@ -120,8 +120,6 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
       const wUrl = user?.workerUrl || conn?.workerUrl;
       if (!wUrl) return "{}";
       const executor = createToolExecutor({
-        workerUrl: wUrl,
-        notionKey: user?.notionKey || "",
         mondayKey: user?.mondayKey || "",
         parentPageId: platformIds?.rootPageId,
         kbDbId: platformIds?.kbDbId,

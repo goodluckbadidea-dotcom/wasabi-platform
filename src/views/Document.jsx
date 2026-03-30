@@ -351,13 +351,13 @@ export default function Document({ config = {}, editable = false, pageConfig }) 
   }
 
   const fetchBlocks = useCallback(async () => {
-    if (!user?.workerUrl || !user?.notionKey || !pageId) {
+    if (!user?.notionKey || !pageId) {
       setLoading(false);
       return;
     }
 
     try {
-      const result = await getBlocks(user.workerUrl, user.notionKey, pageId);
+      const result = await getBlocks(pageId);
       setBlocks(result || []);
       setError(null);
     } catch (err) {

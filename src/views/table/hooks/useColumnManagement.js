@@ -9,7 +9,7 @@ import { D1_TO_NOTION_TYPE } from "../tableHelpers.js";
 
 export default function useColumnManagement({
   schema, columns, allColumnsRef, hiddenColumns, setHiddenColumns,
-  canEditSchema, isD1Table, isNotionTable, notionDbId, workerUrl, notionKey,
+  canEditSchema, isD1Table, isNotionTable, notionDbId,
   pageConfig, onRefresh, onViewConfigChange, initialColWidths,
 }) {
   // ── Column Resize ──
@@ -103,8 +103,8 @@ export default function useColumnManagement({
     if (!newName.trim() || newName === oldName) { setRenamingCol(null); return; }
     if (!canEditSchema || !pageConfig?.id) { setRenamingCol(null); return; }
     try {
-      if (isNotionTable && notionDbId && workerUrl && notionKey) {
-        await updateDatabase(workerUrl, notionKey, notionDbId, { properties: { [oldName]: { name: newName.trim() } } });
+      if (isNotionTable && notionDbId) {
+        await updateDatabase(notionDbId, { properties: { [oldName]: { name: newName.trim() } } });
       } else {
         const schemaRes = await getTableSchema(pageConfig.id);
         const cols = (schemaRes?.columns || []).map((c) =>
@@ -115,7 +115,7 @@ export default function useColumnManagement({
       if (onRefresh) onRefresh();
     } catch (err) { console.error("Rename column failed:", err); }
     setRenamingCol(null);
-  }, [canEditSchema, isNotionTable, notionDbId, workerUrl, notionKey, pageConfig?.id, onRefresh]);
+  }, [canEditSchema, isNotionTable, notionDbId, pageConfig?.id, onRefresh]);
 
   // ── Rename Sub-Column (D1 only) ──
   const handleRenameSubCol = useCallback(async (oldName, newName) => {
@@ -148,8 +148,8 @@ export default function useColumnManagement({
   const handleDeleteCol = useCallback(async (col) => {
     if (!canEditSchema || !pageConfig?.id) return;
     try {
-      if (isNotionTable && notionDbId && workerUrl && notionKey) {
-        await updateDatabase(workerUrl, notionKey, notionDbId, { properties: { [col]: null } });
+      if (isNotionTable && notionDbId) {
+        await updateDatabase(notionDbId, { properties: { [col]: null } });
       } else {
         const schemaRes = await getTableSchema(pageConfig.id);
         const cols = (schemaRes?.columns || []).filter((c) => c.name !== col);
@@ -158,7 +158,7 @@ export default function useColumnManagement({
       if (onRefresh) onRefresh();
     } catch (err) { console.error("Delete column failed:", err); }
     setColCtxMenu(null);
-  }, [canEditSchema, isNotionTable, notionDbId, workerUrl, notionKey, pageConfig?.id, onRefresh]);
+  }, [canEditSchema, isNotionTable, notionDbId, pageConfig?.id, onRefresh]);
 
   // ── Change Column Type (D1 only) ──
   const handleChangeColType = useCallback(async (col, newType) => {
@@ -176,10 +176,10 @@ export default function useColumnManagement({
 
   // ── Search Notion Databases (for relation column) ──
   const searchRelationDbs = useCallback(async (q) => {
-    if (!workerUrl || !notionKey) return;
+    if (!isNotionTable) return;
     setDbSearching(true);
     try {
-      const results = await searchDatabases(workerUrl, notionKey, q || "");
+      const results = await searchDatabases(q || "");
       setDbSearchResults(
         results
           .filter((r) => r.id !== notionDbId)
@@ -194,7 +194,7 @@ export default function useColumnManagement({
     } finally {
       setDbSearching(false);
     }
-  }, [workerUrl, notionKey, notionDbId]);
+  }, [isNotionTable, notionDbId]);
 
   // ── Add Column (D1 + Notion) ──
   const handleAddCol = useCallback(async () => {
@@ -202,7 +202,7 @@ export default function useColumnManagement({
     if (addColType === "relation" && !addColRelationDb) return;
     if (addColType === "relation" && addColSynced && !addColSyncedName.trim()) return;
     try {
-      if (isNotionTable && notionDbId && workerUrl && notionKey) {
+      if (isNotionTable && notionDbId) {
         if (addColType === "relation" && addColRelationDb) {
           const relPayload = {};
           if (addColSynced && addColSyncedName.trim()) {
@@ -218,7 +218,7 @@ export default function useColumnManagement({
               single_property: {},
             };
           }
-          await updateDatabase(workerUrl, notionKey, notionDbId, {
+          await updateDatabase(notionDbId, {
             properties: { [addColName.trim()]: relPayload },
           });
         } else {
@@ -227,7 +227,7 @@ export default function useColumnManagement({
           if (["select", "multi_select"].includes(addColType)) {
             propDef[notionType] = { options: [] };
           }
-          await updateDatabase(workerUrl, notionKey, notionDbId, { properties: { [addColName.trim()]: propDef } });
+          await updateDatabase(notionDbId, { properties: { [addColName.trim()]: propDef } });
         }
       } else {
         const schemaRes = await getTableSchema(pageConfig.id);
@@ -244,7 +244,7 @@ export default function useColumnManagement({
       setDbSearchQuery("");
       if (onRefresh) onRefresh();
     } catch (err) { console.error("Add column failed:", err); }
-  }, [addColName, addColType, addColRelationDb, addColSynced, addColSyncedName, canEditSchema, isNotionTable, isD1Table, notionDbId, workerUrl, notionKey, pageConfig?.id, onRefresh]);
+  }, [addColName, addColType, addColRelationDb, addColSynced, addColSyncedName, canEditSchema, isNotionTable, isD1Table, notionDbId, pageConfig?.id, onRefresh]);
 
   // ── Add Sub-Column (D1 only) ──
   const handleAddSubCol = useCallback(async () => {

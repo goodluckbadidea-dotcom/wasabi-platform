@@ -289,8 +289,6 @@ export default function AutomationBuilder({ automationEngine }) {
 
   const executeTool = useCallback((toolName, toolInput) => {
     const executor = createToolExecutor({
-      workerUrl: user.workerUrl,
-      notionKey: user.notionKey,
       parentPageId: platformIds.rootPageId,
       kbDbId: platformIds.kbDbId,
       notifDbId: platformIds.notifDbId,

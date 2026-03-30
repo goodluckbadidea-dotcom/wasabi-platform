@@ -133,7 +133,7 @@ function getFromPortLabel(connections, fromNodeId, toNodeId) {
  * Execute a flow graph with visual trace callbacks.
  *
  * @param {object} flow - { nodes, connections }
- * @param {object} opts - { workerUrl, notionKey, claudeKey, notifDbId, rulesDbId }
+ * @param {object} opts - { claudeKey, notifDbId, rulesDbId }
  * @param {object} contextData - Trigger context (matched pages, etc.)
  * @param {Function} onNodeStart - (nodeId) => void
  * @param {Function} onNodeComplete - (nodeId, result, "success"|"error") => void
@@ -269,7 +269,7 @@ function markDownstream(startNodeId, nodes, connections, skippedSet) {
  * Execute an action node.
  */
 async function executeAction(node, inputs, opts) {
-  const { workerUrl, notionKey, notifDbId } = opts;
+  const { notifDbId } = opts;
   const templateData = { ...inputs };
 
   switch (node.subtype) {
@@ -310,7 +310,7 @@ async function executeAction(node, inputs, opts) {
           }
         }
         try {
-          const page = await createPage(workerUrl, notionKey, node.config.databaseId, notionProps);
+          const page = await createPage(node.config.databaseId, notionProps);
           return { _action: "page_created", pageId: page.id, ...expanded };
         } catch (err) {
           return { _action: "create_page_failed", error: err.message };
@@ -354,7 +354,7 @@ async function executeAction(node, inputs, opts) {
               }
             }
             try {
-              const page = await createPage(workerUrl, notionKey, actionCfg.databaseId, notionProps);
+              const page = await createPage(actionCfg.databaseId, notionProps);
               return { _action: "page_created", pageId: page.id, ...expanded, ...inputs };
             } catch (err) {
               return { _action: "create_page_failed", error: err.message, ...inputs };

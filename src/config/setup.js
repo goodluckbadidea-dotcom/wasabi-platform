@@ -38,24 +38,24 @@ const CONFIG_SCHEMA = [
  * Run first-time setup: create all platform databases in user's Notion.
  * Returns the platform DB IDs.
  */
-export async function runFirstTimeSetup(workerUrl, notionKey, parentPageId) {
+export async function runFirstTimeSetup(parentPageId) {
   // 1. Create root page under user's chosen parent
-  const rootPage = await createSubpage(workerUrl, notionKey, parentPageId, "Wasabi Platform");
+  const rootPage = await createSubpage(parentPageId, "Wasabi Platform");
   const rootId = rootPage.id;
 
   // 2. Create Knowledge Base DB
-  const kbDbId = await initKnowledgeBase(workerUrl, notionKey, rootId);
+  const kbDbId = await initKnowledgeBase(rootId);
 
   // 3. Create Page Config DB
-  const configDb = await createDatabase(workerUrl, notionKey, rootId, "Page Configs", CONFIG_SCHEMA);
+  const configDb = await createDatabase(rootId, "Page Configs", CONFIG_SCHEMA);
   const configDbId = configDb.id;
 
   // 4. Create Notifications DB
-  const notifDb = await createDatabase(workerUrl, notionKey, rootId, "Notifications", NOTIF_SCHEMA);
+  const notifDb = await createDatabase(rootId, "Notifications", NOTIF_SCHEMA);
   const notifDbId = notifDb.id;
 
   // 5. Create Automation Rules DB
-  const rulesDb = await createDatabase(workerUrl, notionKey, rootId, "Automation Rules", RULES_SCHEMA);
+  const rulesDb = await createDatabase(rootId, "Automation Rules", RULES_SCHEMA);
   const rulesDbId = rulesDb.id;
 
   // Cell links now stored in D1 — no Notion DB needed.

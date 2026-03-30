@@ -253,8 +253,6 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
 
   // ── Notion DB helper ──
   const notionDbId = isNotionTable ? (pageConfig?.databaseIds?.[0] || null) : null;
-  const workerUrl = user?.workerUrl;
-  const notionKey = user?.notionKey;
 
   // Ref for allColumns (needed by handlers that can't close over latest allColumns)
   const allColumnsRef = useRef([]);
@@ -304,7 +302,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   // ── Column Management Hook ──
   const colMgmt = useColumnManagement({
     schema, columns, allColumnsRef, hiddenColumns, setHiddenColumns,
-    canEditSchema, isD1Table, isNotionTable, notionDbId, workerUrl, notionKey,
+    canEditSchema, isD1Table, isNotionTable, notionDbId,
     pageConfig, onRefresh, onViewConfigChange, initialColWidths: config.colWidths,
   });
   const { colWidths } = colMgmt;
@@ -362,7 +360,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   // ── Cell Edit Hook ──
   const cellEdit = useTableCellEdit({
     schema, onUpdate, focusedCell, setFocusedCell, displayListLength: displayList.length,
-    canEditSchema, isNotionTable, notionDbId, workerUrl, notionKey, pageConfig, onRefresh,
+    canEditSchema, isNotionTable, notionDbId, pageConfig, onRefresh,
   });
   const { editCell, setEditCell, savingCells, failedCells, initialChar, setInitialChar, handleEditCommit, handleCreateOption, handleCheckboxToggle } = cellEdit;
 

@@ -2,7 +2,7 @@
 // Client-side API for the Linked Sheet feature.
 // Pure functions — no React dependencies.
 
-// No direct connection import needed — JWT auth handled by apiFetch.
+import { apiFetch } from "../lib/api.js";
 
 /**
  * Detect the type of sheet URL.
@@ -62,19 +62,11 @@ export function validateSheetUrl(url) {
  * Fetch sheet data from the worker proxy.
  * Returns: { columns: string[], rows: string[][], cachedAt: number, sheetType: string, truncated?: boolean }
  */
-export async function fetchSheetData(workerUrl, sheetUrl) {
-  const headers = { "Content-Type": "application/json" };
-
-  const res = await fetch(`${workerUrl}/sheets/fetch`, {
+export async function fetchSheetData(sheetUrl) {
+  return apiFetch("/sheets/fetch", {
     method: "POST",
-    headers,
-    body: JSON.stringify({ url: sheetUrl }),
+    body: { url: sheetUrl },
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err._error || `Failed to fetch sheet data (${res.status})`);
-  }
-  return res.json();
 }
 
 /**

@@ -51,11 +51,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
 
   // Single Wasabi executor — full tool access, no scoping
   const toolExecutor = useCallback((toolName, toolInput) => {
-    const conn = getConnection();
-    const wUrl = user?.workerUrl || conn?.workerUrl;
     const executor = createToolExecutor({
-      workerUrl: wUrl,
-      notionKey: user?.notionKey || "",
       mondayKey: user?.mondayKey || "",
       parentPageId: platformIds?.rootPageId,
       kbDbId: platformIds?.kbDbId,

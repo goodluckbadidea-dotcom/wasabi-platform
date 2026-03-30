@@ -1049,8 +1049,6 @@ export default function NodeEditor({ automationEngine }) {
 
       // Run agent with the interpret tool
       const toolExecutor = createToolExecutor({
-        workerUrl: user.workerUrl,
-        notionKey: user.notionKey,
         claudeKey: user.claudeKey,
       });
 

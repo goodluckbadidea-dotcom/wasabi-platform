@@ -19,8 +19,8 @@ const KB_SCHEMA = [
  * Legacy: Create the Knowledge Base Notion database under a parent page.
  * Only used by the old Notion-based setup flow.
  */
-export async function initKnowledgeBase(workerUrl, notionKey, parentPageId) {
-  const db = await createDatabase(workerUrl, notionKey, parentPageId, "Knowledge Base", KB_SCHEMA);
+export async function initKnowledgeBase(parentPageId) {
+  const db = await createDatabase(parentPageId, "Knowledge Base", KB_SCHEMA);
   return db.id;
 }
 
@@ -28,7 +28,7 @@ export async function initKnowledgeBase(workerUrl, notionKey, parentPageId) {
  * Write an entry to the Knowledge Base.
  * Uses D1 by default. Falls back to Notion if kbDbId is provided.
  */
-export async function writeKB(workerUrl, notionKey, kbDbId, { key, category, content, source = "conversation" }) {
+export async function writeKB(kbDbId, { key, category, content, source = "conversation" }) {
   // ── D1 path (preferred) ──
   // If no kbDbId provided or it looks like a D1 signal, use D1
   if (!kbDbId || kbDbId === "d1") {
@@ -37,13 +37,13 @@ export async function writeKB(workerUrl, notionKey, kbDbId, { key, category, con
   }
 
   // ── Legacy Notion path ──
-  const existing = await queryAll(workerUrl, notionKey, kbDbId, {
+  const existing = await queryAll(kbDbId, {
     property: "Key",
     title: { equals: key },
   });
 
   if (existing.length > 0) {
-    return updatePage(workerUrl, notionKey, existing[0].id, {
+    return updatePage(existing[0].id, {
       Content: { rich_text: [{ type: "text", text: { content } }] },
       Category: { select: { name: category } },
       Source: { select: { name: source } },
@@ -51,7 +51,7 @@ export async function writeKB(workerUrl, notionKey, kbDbId, { key, category, con
     });
   }
 
-  return createPage(workerUrl, notionKey, kbDbId, {
+  return createPage(kbDbId, {
     Key: { title: [{ type: "text", text: { content: key } }] },
     Category: { select: { name: category } },
     Content: { rich_text: [{ type: "text", text: { content } }] },
@@ -63,7 +63,7 @@ export async function writeKB(workerUrl, notionKey, kbDbId, { key, category, con
 /**
  * Search the Knowledge Base by text and optional category.
  */
-export async function searchKB(workerUrl, notionKey, kbDbId, { query, category }) {
+export async function searchKB(kbDbId, { query, category }) {
   // ── D1 path ──
   if (!kbDbId || kbDbId === "d1") {
     const result = await api.searchKB(query, category);
@@ -80,7 +80,7 @@ export async function searchKB(workerUrl, notionKey, kbDbId, { query, category }
     ? { and: [{ property: "Category", select: { equals: category } }] }
     : undefined;
 
-  const all = await queryAll(workerUrl, notionKey, kbDbId, filter);
+  const all = await queryAll(kbDbId, filter);
 
   const queryLower = (query || "").toLowerCase();
   const scored = all.map((page) => {
@@ -111,7 +111,7 @@ export async function searchKB(workerUrl, notionKey, kbDbId, { query, category }
 /**
  * Read all entries in a category.
  */
-export async function readKBCategory(workerUrl, notionKey, kbDbId, category) {
+export async function readKBCategory(kbDbId, category) {
   // ── D1 path ──
   if (!kbDbId || kbDbId === "d1") {
     const result = await api.listKB({ category });
@@ -123,7 +123,7 @@ export async function readKBCategory(workerUrl, notionKey, kbDbId, category) {
   }
 
   // ── Legacy Notion path ──
-  const results = await queryAll(workerUrl, notionKey, kbDbId, {
+  const results = await queryAll(kbDbId, {
     property: "Category",
     select: { equals: category },
   });

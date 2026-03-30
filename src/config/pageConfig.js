@@ -70,8 +70,8 @@ export async function archivePageConfig(pageConfigId) {
  * Validate page configs by checking their backend resources.
  * D1 standalone tables are always valid. Only Notion-linked pages need validation.
  */
-export async function validatePageConfigs(workerUrl, notionKey, configs) {
-  if (!workerUrl || !notionKey) return { valid: configs, stale: [] };
+export async function validatePageConfigs(notionKey, configs) {
+  if (!notionKey) return { valid: configs, stale: [] };
 
   const results = await Promise.allSettled(
     configs.map(async (config) => {
@@ -84,9 +84,9 @@ export async function validatePageConfigs(workerUrl, notionKey, configs) {
       if (pt === "document") {
         const docView = config.views?.find((v) => v.type === "document");
         const pageId = docView?.config?.pageId || config.notionPageId;
-        if (pageId) await getPage(workerUrl, notionKey, pageId);
+        if (pageId) await getPage(pageId);
       } else if (config.databaseIds?.length) {
-        await getDatabase(workerUrl, notionKey, config.databaseIds[0]);
+        await getDatabase(config.databaseIds[0]);
       }
       return config;
     })

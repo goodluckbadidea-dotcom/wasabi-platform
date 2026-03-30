@@ -1,7 +1,8 @@
 // ─── Notion API Client ───
-// All calls routed through Cloudflare Worker proxy.
-// Every function takes workerUrl + notionKey (no globals).
+// All calls routed through Cloudflare Worker proxy via apiFetch (JWT auth).
+// Worker retrieves the Notion key from D1 server-side — no key needed from frontend.
 
+import { notionProxy } from "../lib/api.js";
 import { queryAll, queryLimited } from "./pagination.js";
 
 /**
@@ -12,99 +13,51 @@ export { queryAll, queryLimited };
 /**
  * Get a single page by ID.
  */
-export async function getPage(workerUrl, notionKey, pageId) {
-  const res = await fetch(`${workerUrl}/page/${pageId}`, {
-    headers: ({ Authorization: `Bearer ${notionKey}` }),
-  });
-  if (!res.ok) throw new Error(`Failed to get page (${res.status})`);
-  return res.json();
+export async function getPage(pageId) {
+  return notionProxy(`/page/${pageId}`, "GET");
 }
 
 /**
  * Create a page in a database.
  */
-export async function createPage(workerUrl, notionKey, databaseId, properties, children) {
+export async function createPage(databaseId, properties, children) {
   const body = {
     parent: { database_id: databaseId },
     properties,
   };
   if (children) body.children = children;
-
-  const res = await fetch(`${workerUrl}/page`, {
-    method: "POST",
-    headers: ({
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${notionKey}`,
-    }),
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    const detail = errData._error || errData.message || "";
-    throw new Error(`Failed to create page (${res.status})${detail ? ": " + detail : ""}`);
-  }
-  return res.json();
+  return notionProxy("/page", "POST", body);
 }
 
 /**
  * Update a page's properties.
  */
-export async function updatePage(workerUrl, notionKey, pageId, properties) {
-  const res = await fetch(`${workerUrl}/page/${pageId}`, {
-    method: "PATCH",
-    headers: ({
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${notionKey}`,
-    }),
-    body: JSON.stringify({ properties }),
-  });
-  if (!res.ok) {
-    const err = await res.text().catch(() => "");
-    throw new Error(`Failed to update page (${res.status}): ${err}`);
-  }
-  return res.json();
+export async function updatePage(pageId, properties) {
+  return notionProxy(`/page/${pageId}`, "PATCH", { properties });
 }
 
 /**
  * Archive (soft-delete) a page.
  */
-export async function archivePage(workerUrl, notionKey, pageId) {
-  const res = await fetch(`${workerUrl}/page/${pageId}`, {
-    method: "PATCH",
-    headers: ({
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${notionKey}`,
-    }),
-    body: JSON.stringify({ archived: true }),
-  });
-  if (!res.ok) throw new Error(`Failed to archive page (${res.status})`);
-  return res.json();
+export async function archivePage(pageId) {
+  return notionProxy(`/page/${pageId}`, "PATCH", { archived: true });
 }
 
 /**
  * Unarchive a page (restore from trash).
  */
-export async function unarchivePage(workerUrl, notionKey, pageId) {
-  const res = await fetch(`${workerUrl}/page/${pageId}`, {
-    method: "PATCH",
-    headers: ({
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${notionKey}`,
-    }),
-    body: JSON.stringify({ archived: false }),
-  });
-  if (!res.ok) throw new Error(`Failed to unarchive page (${res.status})`);
-  return res.json();
+export async function unarchivePage(pageId) {
+  return notionProxy(`/page/${pageId}`, "PATCH", { archived: false });
 }
 
 /**
  * Ensure a page is active (not archived). Auto-unarchives if needed.
  * Returns the page object.
  */
-export async function ensurePageActive(workerUrl, notionKey, pageId) {
-  const page = await getPage(workerUrl, notionKey, pageId);
+export async function ensurePageActive(pageId) {
+  const page = await getPage(pageId);
   if (page.archived) {
-    return unarchivePage(workerUrl, notionKey, pageId);
+    return unarchivePage(pageId);
   }
   return page;
 }
@@ -112,12 +65,8 @@ export async function ensurePageActive(workerUrl, notionKey, pageId) {
 /**
  * Get blocks (page content).
  */
-export async function getBlocks(workerUrl, notionKey, pageId) {
-  const res = await fetch(`${workerUrl}/blocks/${pageId}`, {
-    headers: ({ Authorization: `Bearer ${notionKey}` }),
-  });
-  if (!res.ok) throw new Error(`Failed to get blocks (${res.status})`);
-  const data = await res.json();
+export async function getBlocks(pageId) {
+  const data = await notionProxy(`/blocks/${pageId}`, "GET");
   return data.results || [];
 }
 
@@ -125,53 +74,30 @@ export async function getBlocks(workerUrl, notionKey, pageId) {
  * Append block children to a page or block.
  * Uses the existing PATCH /blocks/:id worker route (plural — appends children).
  */
-export async function appendBlocks(workerUrl, notionKey, parentId, children) {
-  const res = await fetch(`${workerUrl}/blocks/${parentId}`, {
-    method: "PATCH",
-    headers: ({
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${notionKey}`,
-    }),
-    body: JSON.stringify({ children }),
-  });
-  if (!res.ok) throw new Error(`Failed to append blocks (${res.status})`);
-  return res.json();
+export async function appendBlocks(parentId, children) {
+  return notionProxy(`/blocks/${parentId}`, "PATCH", { children });
 }
 
 /**
  * Update a single block's content.
  * Uses the PATCH /block/:id worker route (singular — updates one block).
  */
-export async function updateBlock(workerUrl, notionKey, blockId, blockData) {
-  const res = await fetch(`${workerUrl}/block/${blockId}`, {
-    method: "PATCH",
-    headers: ({
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${notionKey}`,
-    }),
-    body: JSON.stringify(blockData),
-  });
-  if (!res.ok) throw new Error(`Failed to update block (${res.status})`);
-  return res.json();
+export async function updateBlock(blockId, blockData) {
+  return notionProxy(`/block/${blockId}`, "PATCH", blockData);
 }
 
 /**
  * Delete a single block.
  * Uses the DELETE /block/:id worker route.
  */
-export async function deleteBlock(workerUrl, notionKey, blockId) {
-  const res = await fetch(`${workerUrl}/block/${blockId}`, {
-    method: "DELETE",
-    headers: ({ Authorization: `Bearer ${notionKey}` }),
-  });
-  if (!res.ok) throw new Error(`Failed to delete block (${res.status})`);
-  return res.json();
+export async function deleteBlock(blockId) {
+  return notionProxy(`/block/${blockId}`, "DELETE");
 }
 
 /**
  * Create a new Notion database under a parent page.
  */
-export async function createDatabase(workerUrl, notionKey, parentPageId, title, schema) {
+export async function createDatabase(parentPageId, title, schema) {
   const properties = {};
 
   for (const field of schema) {
@@ -251,75 +177,45 @@ export async function createDatabase(workerUrl, notionKey, parentPageId, title, 
     }
   }
 
-  const res = await fetch(`${workerUrl}/create-database`, {
-    method: "POST",
-    headers: ({
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${notionKey}`,
-    }),
-    body: JSON.stringify({
-      parent: { type: "page_id", page_id: parentPageId },
-      title: [{ type: "text", text: { content: title } }],
-      properties,
-    }),
+  return notionProxy("/create-database", "POST", {
+    parent: { type: "page_id", page_id: parentPageId },
+    title: [{ type: "text", text: { content: title } }],
+    properties,
   });
-
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    const detail = errData._error || errData.message || "";
-    throw new Error(`Failed to create database (${res.status})${detail ? ": " + detail : ""}`);
-  }
-  return res.json();
 }
 
 /**
  * Retrieve a database schema (properties definition).
  */
-export async function getDatabase(workerUrl, notionKey, databaseId) {
-  const res = await fetch(`${workerUrl}/database/${databaseId}`, {
-    headers: ({ Authorization: `Bearer ${notionKey}` }),
-  });
-  if (!res.ok) throw new Error(`Failed to get database (${res.status})`);
-  return res.json();
+export async function getDatabase(databaseId) {
+  return notionProxy(`/database/${databaseId}`, "GET");
 }
 
 /**
  * Update a database's schema (add/rename/remove properties) or title.
  * `payload` follows the Notion API: { title?, description?, properties? }
  */
-export async function updateDatabase(workerUrl, notionKey, databaseId, payload) {
-  const res = await fetch(`${workerUrl}/database/${databaseId}`, {
-    method: "PATCH",
-    headers: ({
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${notionKey}`,
-    }),
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    const err = await res.text().catch(() => "");
-    throw new Error(`Failed to update database (${res.status}): ${err}`);
-  }
-  return res.json();
+export async function updateDatabase(databaseId, payload) {
+  return notionProxy(`/database/${databaseId}`, "PATCH", payload);
 }
 
 /**
  * Test Notion connection by listing user info.
  */
-export async function testConnection(workerUrl, notionKey) {
-  const res = await fetch(`${workerUrl}/test`, {
-    headers: ({ Authorization: `Bearer ${notionKey}` }),
-  });
-  if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
-  const data = await res.json();
-  if (data._error) return { ok: false, error: data._error };
-  return { ok: true, data };
+export async function testConnection() {
+  try {
+    const data = await notionProxy("/test", "GET");
+    if (data._error) return { ok: false, error: data._error };
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 }
 
 /**
  * Create a page as a child of another page (not in a database).
  */
-export async function createSubpage(workerUrl, notionKey, parentPageId, title, children) {
+export async function createSubpage(parentPageId, title, children) {
   const parent = parentPageId
     ? { type: "page_id", page_id: parentPageId }
     : { type: "workspace", workspace: true };
@@ -330,21 +226,7 @@ export async function createSubpage(workerUrl, notionKey, parentPageId, title, c
     },
   };
   if (children) body.children = children;
-
-  const res = await fetch(`${workerUrl}/page`, {
-    method: "POST",
-    headers: ({
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${notionKey}`,
-    }),
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    const detail = errData._error || errData.message || "";
-    throw new Error(`Failed to create subpage (${res.status})${detail ? ": " + detail : ""}`);
-  }
-  return res.json();
+  return notionProxy("/page", "POST", body);
 }
 
 /**
@@ -352,29 +234,20 @@ export async function createSubpage(workerUrl, notionKey, parentPageId, title, c
  * @param {string} query - Optional search query
  * @returns {Array} Array of database objects
  */
-export async function searchDatabases(workerUrl, notionKey, query = "") {
-  const res = await fetch(`${workerUrl}/search`, {
-    method: "POST",
-    headers: ({
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${notionKey}`,
-    }),
-    body: JSON.stringify({
-      query,
-      filter: { value: "database", property: "object" },
-      page_size: 50,
-    }),
+export async function searchDatabases(query = "") {
+  const data = await notionProxy("/search", "POST", {
+    query,
+    filter: { value: "database", property: "object" },
+    page_size: 50,
   });
-  if (!res.ok) throw new Error(`Search failed (${res.status})`);
-  const data = await res.json();
   return (data.results || []).filter((r) => r.object === "database" && !r.archived);
 }
 
 /**
  * Post a notification to the Notifications database.
  */
-export async function postNotification(workerUrl, notionKey, notifDbId, { message, type = "notification", source = "wasabi" }) {
-  return createPage(workerUrl, notionKey, notifDbId, {
+export async function postNotification(notifDbId, { message, type = "notification", source = "wasabi" }) {
+  return createPage(notifDbId, {
     Message: { title: [{ type: "text", text: { content: message } }] },
     Type: { select: { name: type } },
     Source: { rich_text: [{ type: "text", text: { content: source } }] },

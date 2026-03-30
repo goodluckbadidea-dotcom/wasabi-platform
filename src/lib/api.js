@@ -633,10 +633,9 @@ export async function setSummaryCache(pageId, summary) {
 // ─── Notion Proxy (backward compat) ───
 // These maintain the existing API surface so current code keeps working.
 
-export async function notionProxy(path, method, body, notionKey) {
-  const headers = {};
-  if (notionKey) headers["Authorization"] = `Bearer ${notionKey}`;
-  return apiFetch(path, { method, body, headers });
+export async function notionProxy(path, method, body) {
+  // Worker retrieves the Notion key from D1 server-side — no need to send it from the frontend.
+  return apiFetch(path, { method, body });
 }
 
 // ─── Claude Proxy (backward compat) ───

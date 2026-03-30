@@ -8,8 +8,8 @@ import { getDatabase } from "./client.js";
  * Detect and classify a Notion database schema.
  * Returns a structured representation of all properties.
  */
-export async function detectSchema(workerUrl, notionKey, databaseId) {
-  const db = await getDatabase(workerUrl, notionKey, databaseId);
+export async function detectSchema(databaseId) {
+  const db = await getDatabase(databaseId);
   return classifyProperties(db);
 }
 

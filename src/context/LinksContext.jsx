@@ -73,7 +73,7 @@ export function LinksProvider({ children }) {
           return { notionData: cached.data, sheetDataMap: {} };
         }
         try {
-          const data = await queryAll(user.workerUrl, user.notionKey, dbId);
+          const data = await queryAll(dbId);
           dataCacheRef.current[cacheKey] = { data, fetchedAt: Date.now() };
           return { notionData: data, sheetDataMap: {} };
         } catch (err) { console.warn("[LinksContext] queryAll:", err.message || err); }
@@ -88,7 +88,7 @@ export function LinksProvider({ children }) {
         return { notionData: [], sheetDataMap: { [sourceRef.sheetUrl]: cached.data } };
       }
       try {
-        const data = await fetchSheetData(user.workerUrl, sourceRef.sheetUrl);
+        const data = await fetchSheetData(sourceRef.sheetUrl);
         dataCacheRef.current[cacheKey] = { data, fetchedAt: Date.now() };
         return { notionData: [], sheetDataMap: { [sourceRef.sheetUrl]: data } };
       } catch (err) { console.warn("[LinksContext] fetchSheetData:", err.message || err); }

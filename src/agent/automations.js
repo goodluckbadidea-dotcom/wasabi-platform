@@ -149,8 +149,6 @@ export async function executeRule(rule, opts, contextData = {}) {
   const { createToolExecutor } = await import("./toolExecutor.js");
 
   const executeTool = createToolExecutor({
-    workerUrl,
-    notionKey: opts.notionKey || null,
     notifDbId: "d1",
     kbDbId: "d1",
     claudeKey: opts.claudeKey || "",
@@ -225,7 +223,7 @@ async function checkEventTrigger(rule, opts) {
         timestamp: "last_edited_time",
         last_edited_time: { after: lastFiredISO },
       };
-      results = await queryAll(workerUrl, notionKey, rule.databaseId, filter);
+      results = await queryAll(rule.databaseId, filter);
     } else {
       // D1 standalone table — query for recently modified rows
       const queryResult = await api.queryTable(rule.databaseId, {

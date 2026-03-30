@@ -158,7 +158,7 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
         if (selectedView.type === "linked_sheet") {
           const sheetUrl = selectedView.config?.sheetUrl;
           if (!sheetUrl) return;
-          const data = await fetchSheetData(user.workerUrl, sheetUrl);
+          const data = await fetchSheetData(sheetUrl);
           if (!cancelled) {
             setViewData({
               type: "sheet",
@@ -173,8 +173,8 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
           const dbId = selectedView.config?.databaseId || selectedPage?.databaseIds?.[0];
           if (!dbId) return;
           const [schema, results] = await Promise.all([
-            detectSchema(user.workerUrl, user.notionKey, dbId),
-            queryAll(user.workerUrl, user.notionKey, dbId),
+            detectSchema(dbId),
+            queryAll(dbId),
           ]);
           if (!cancelled) {
             // Build column list from schema — title field always first

@@ -835,10 +835,15 @@ async function verifyPassword(text, stored) {
 
 // ─── Get Notion key: from D1 connections or request header ───
 async function getNotionKey(request, env) {
-  // First try the request header (backward compat)
-  const headerKey = request.headers.get("Authorization")?.replace("Bearer ", "");
-  if (headerKey) return headerKey;
-  // Then try D1 connections table
+  // Check Authorization header — only accept if it's actually a Notion key (ntn_/secret_ prefix).
+  // JWTs also arrive via Authorization header (from apiFetch), so we must not treat those as Notion keys.
+  const authHeader = request.headers.get("Authorization") || "";
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (match) {
+    const headerKey = match[1];
+    if (headerKey.startsWith("ntn_") || headerKey.startsWith("secret_")) return headerKey;
+  }
+  // Fall through to D1 connections table
   try {
     const row = await env.DB.prepare("SELECT value FROM connections WHERE key = 'notion'").first();
     return row?.value || null;
