@@ -141,7 +141,7 @@ const AUTH_EXEMPT_PATHS = new Set(["/init", "/auth/login", "/auth/register", "/a
 /**
  * Core fetch wrapper — adds auth header + handles errors.
  */
-async function apiFetch(path, options = {}) {
+export async function apiFetch(path, options = {}) {
   const workerUrl = getWorkerUrl();
   if (!workerUrl) {
     throw new Error("Worker URL not configured — set VITE_WORKER_URL");
