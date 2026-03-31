@@ -519,11 +519,10 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
 
     setSaving(true);
     try {
-      const properties = {};
+      // Call onUpdate per field — PageShell expects (pageId, fieldName, propPayload)
       for (const [fieldName, change] of Object.entries(pendingChanges)) {
-        properties[fieldName] = change.payload;
+        await onUpdate(page.id, fieldName, change.payload);
       }
-      await onUpdate(page.id, properties);
       setPendingChanges({});
       onClose();
     } catch (err) {
