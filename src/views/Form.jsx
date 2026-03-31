@@ -62,7 +62,7 @@ export default function Form({ data = [], schema, config = {}, onCreate, pageCon
     return fields;
   }, [schema, config.fields]);
 
-  const databaseId = config.databaseId || pageConfig?.databaseIds?.[0];
+  const databaseId = config.databaseId || pageConfig?.databaseIds?.[0] || pageConfig?.id;
 
   const handleChange = useCallback((fieldName, value) => {
     setValues((prev) => ({ ...prev, [fieldName]: value }));
