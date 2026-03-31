@@ -29,7 +29,11 @@ export const CELL_RENDERERS = {
   checkbox: ({ value, onClick }) => <span style={styles.toggle(!!value)} onClick={onClick}>{value ? "\u2713" : ""}</span>,
   date: ({ value, onClick }) => {
     const dateStr = typeof value === "object" ? value.start : value;
-    return <span style={{ cursor: onClick ? "pointer" : "default" }} onClick={onClick}>{formatDate(dateStr, { short: true })}</span>;
+    const endStr = typeof value === "object" ? value.end : null;
+    const label = endStr
+      ? `${formatDate(dateStr, { short: true })} – ${formatDate(endStr, { short: true })}`
+      : formatDate(dateStr, { short: true });
+    return <span style={{ cursor: onClick ? "pointer" : "default" }} onClick={onClick}>{label}</span>;
   },
   url: ({ value }) => (
     <a href={value} target="_blank" rel="noopener noreferrer" style={{ color: C.accent, textDecoration: "none", fontSize: 13 }} onClick={(e) => e.stopPropagation()}>

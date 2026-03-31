@@ -457,8 +457,15 @@ function wrapAsNotionProp(value, colType) {
       };
     case "number":
       return { type: "number", number: value != null ? Number(value) : null };
-    case "date":
-      return { type: "date", date: value ? { start: value } : null };
+    case "date": {
+      if (!value) return { type: "date", date: null };
+      if (typeof value === "object" && value.start) {
+        const d = { start: value.start };
+        if (value.end) d.end = value.end;
+        return { type: "date", date: d };
+      }
+      return { type: "date", date: { start: value } };
+    }
     case "select":
       return { type: "select", select: value ? { name: String(value) } : null };
     case "multi_select": {
@@ -509,8 +516,11 @@ function extractRawValue(prop, targetType) {
       return prop.rich_text?.map((t) => t.plain_text || t.text?.content || "").join("") || "";
     case "number":
       return prop.number;
-    case "date":
-      return prop.date?.start || null;
+    case "date": {
+      if (!prop.date) return null;
+      if (prop.date.end) return { start: prop.date.start, end: prop.date.end };
+      return prop.date.start || null;
+    }
     case "select":
       return prop.select?.name || null;
     case "multi_select":

@@ -52,10 +52,12 @@ export default function CellEditor({ value, type, options, schemaOptions, onComm
       if (out !== null && isNaN(out)) out = null;
     }
     if (type === "date") {
-      out = val || null;
+      if (!val) { out = null; }
+      else if (dateEnd) { out = { start: val, end: dateEnd }; }
+      else { out = val; }
     }
     onCommit(out);
-  }, [type, onCommit]);
+  }, [type, onCommit, dateEnd]);
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === "Enter") {

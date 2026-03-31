@@ -8,7 +8,7 @@ import { C, FONT, RADIUS, SHADOW, getSolidPillColor } from "../design/tokens.js"
 import { useViewport } from "../context/ViewportContext.jsx";
 import { readProp, buildProp } from "../notion/properties.js";
 import { IconClose, IconEdit, IconExpand } from "../design/icons.jsx";
-import { timeAgo } from "../utils/helpers.js";
+import { timeAgo, formatDate } from "../utils/helpers.js";
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
 import RecordNotes from "../components/RecordNotes.jsx";
 import RecordComments from "../components/RecordComments.jsx";
@@ -986,14 +986,16 @@ function DisplayValue({ prop, fieldName, schema, pendingValue, linkedValue }) {
 
     case "date": {
       if (typeof value === "object") {
+        const startFmt = formatDate(value.start) || "—";
+        const endFmt = value.end ? formatDate(value.end) : null;
         return (
           <span>
-            {value.start || "—"}
-            {value.end && <span style={{ color: C.darkMuted }}> → {value.end}</span>}
+            {startFmt}
+            {endFmt && <span style={{ color: C.darkMuted }}> – {endFmt}</span>}
           </span>
         );
       }
-      return <span>{String(value)}</span>;
+      return <span>{formatDate(String(value)) || String(value)}</span>;
     }
 
     case "checkbox":
