@@ -428,6 +428,9 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
   const [pendingChanges, setPendingChanges] = useState({});
   const [activeTab, setActiveTab] = useState("properties");
   const collab = useCollaboration();
+  // Stable ref for collab actions — avoids re-firing effects on every presence update
+  const collabRef = useRef(collab);
+  collabRef.current = collab;
 
   // ── Owner state ──
   const [ownerIds, setOwnerIds] = useState(page?._ownerUserIds || []);
@@ -454,16 +457,18 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
   }, [ownerPickerOpen]);
 
   // ── Collaboration: focus/blur on open/close ──
+  // Uses collabRef to avoid re-firing on every activeUsers change (which would
+  // cause a blur→focus feedback loop between concurrent viewers, strobing the UI).
   useEffect(() => {
-    if (!page?.id || !collab) return;
-    collab.focusRecord(page.id);
-    return () => collab.blurRecord();
-  }, [page?.id, collab]);
+    if (!page?.id || !collabRef.current) return;
+    collabRef.current.focusRecord(page.id);
+    return () => collabRef.current?.blurRecord();
+  }, [page?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clear typing indicator when user stops editing a field (clicks away, switches field)
   useEffect(() => {
-    if (!editingField && collab) collab.stopTyping();
-  }, [editingField, collab]);
+    if (!editingField && collabRef.current) collabRef.current.stopTyping();
+  }, [editingField]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Get ordered property list from schema
   const properties = useMemo(() => {
@@ -581,7 +586,7 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
             }}>
               <PresenceAvatars users={others} size={22} maxVisible={4} />
               <span>
-                {others.length} collaborator{others.length !== 1 ? "s" : ""}{" "}
+                {others.map(u => u.userName || "User").join(", ")}{" "}
                 {anyTyping ? <>editing {others.filter(u => u.isTyping && u.typingField).map(u => u.typingField).filter((v, i, a) => a.indexOf(v) === i).join(", ")}</> : "viewing"} — changes merge automatically
               </span>
             </div>
