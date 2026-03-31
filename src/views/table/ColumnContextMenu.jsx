@@ -13,9 +13,11 @@ import { COLUMN_TYPES, mapD1TypeForUI } from "./tableHelpers.js";
 /**
  * Parent column context menu — sort, hide, rename, type change (D1), delete.
  */
+const SELECT_TYPES = new Set(["select", "multi_select", "status"]);
+
 export function ParentColumnContextMenu({
   menu, schema, isD1Table, canEditSchema,
-  onSort, onHide, onRename, onChangeType, onDelete, onClose,
+  onSort, onHide, onRename, onChangeType, onManageOptions, onDelete, onClose,
 }) {
   if (!menu) return null;
   return createPortal(
@@ -36,6 +38,10 @@ export function ParentColumnContextMenu({
         <div style={ctxItem} onClick={() => onHide(menu.col)} {...hoverBg()}>{"\uD83D\uDC41\uFE0F"} Hide Column</div>
         {canEditSchema && (
           <div style={ctxItem} onClick={() => { onRename(menu.col); onClose(); }} {...hoverBg()}>{"\u270F\uFE0F"} Rename</div>
+        )}
+        {/* Manage Options (select/multi_select/status, D1 only) */}
+        {isD1Table && canEditSchema && SELECT_TYPES.has(getFieldType(schema, menu.col)) && (
+          <div style={ctxItem} onClick={() => { onManageOptions?.(menu.col); onClose(); }} {...hoverBg()}>{"\u2699\uFE0F"} Manage Options</div>
         )}
         {/* Type Change (D1 only) */}
         {isD1Table && (

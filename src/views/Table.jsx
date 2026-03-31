@@ -20,7 +20,7 @@ import NewRecordModal from "./NewRecordModal.jsx";
 import { useLinks } from "../context/LinksContext.jsx";
 import LinkPicker from "../core/LinkPicker.jsx";
 // isNeuronsMode, dispatchNeuronSelect, NeuronBadge now imported by table/TableRow.jsx
-import { listUserDirectory, updateRowOwner, notionProxy, getRecordBadgeCounts, deleteRow } from "../lib/api.js";
+import { listUserDirectory, updateRowOwner, notionProxy, getRecordBadgeCounts, deleteRow, getTableSchema, updateTableSchema } from "../lib/api.js";
 import { useTreeData } from "../lib/useTreeData.js";
 import { getPinToken } from "../components/PinLockOverlay.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
@@ -45,6 +45,7 @@ import CellDisplay, { CELL_RENDERERS } from "./table/CellDisplay.jsx";
 import { ParentColumnContextMenu, SubColumnContextMenu } from "./table/ColumnContextMenu.jsx";
 import { AddColumnDialog, AddSubColumnDialog } from "./table/AddColumnDialog.jsx";
 import CascadeDeleteDialog from "./table/CascadeDeleteDialog.jsx";
+import OptionsManagerModal from "./table/OptionsManagerModal.jsx";
 import TableToolbar from "./table/TableToolbar.jsx";
 import TableHeader from "./table/TableHeader.jsx";
 import TableRow from "./table/TableRow.jsx";
@@ -122,6 +123,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
 
   // Sub-item ghost state — from useSubItemGhost hook (called below)
   const [cascadeDialog, setCascadeDialog] = useState(null); // { rowIds, childCount }
+  const [optionsModalCol, setOptionsModalCol] = useState(null); // column object for OptionsManagerModal
 
   // Column management state — from useColumnManagement hook (called below)
   // ── Source type detection (D1 / Notion / external) ──
@@ -322,6 +324,28 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     addSubColType, setAddSubColType, handleAddSubCol,
     colDrag, handleColDragStart, handleResizeStart, colClickTimer,
   } = colMgmt;
+
+  // ── Options Manager ──
+  const handleManageOptions = useCallback((colName) => {
+    // Find column definition in schema to get current options
+    const field = schema?.allFields?.find((f) => f.name === colName);
+    if (field) setOptionsModalCol({ name: colName, options: field.options || [], type: field.type });
+  }, [schema]);
+
+  const handleSaveOptions = useCallback(async (newOptions) => {
+    if (!optionsModalCol || !pageConfig?.id) return;
+    try {
+      const schemaRes = await getTableSchema(pageConfig.id);
+      const cols = (schemaRes?.columns || []).map((c) =>
+        c.name === optionsModalCol.name ? { ...c, options: newOptions } : c
+      );
+      await updateTableSchema(pageConfig.id, cols);
+      onRefresh?.();
+    } catch (err) {
+      console.error("Save options failed:", err);
+    }
+    setOptionsModalCol(null);
+  }, [optionsModalCol, pageConfig, onRefresh]);
 
   // ── Data Pipeline Hook ──
   const { filterableFields, processedData, treeSortFn } = useTableData({
@@ -1105,9 +1129,19 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
         onHide={handleHideCol}
         onRename={(col) => { setRenamingCol(col); setRenameValue(col); }}
         onChangeType={handleChangeColType}
+        onManageOptions={handleManageOptions}
         onDelete={handleDeleteCol}
         onClose={() => setColCtxMenu(null)}
       />
+
+      {/* Options Manager Modal */}
+      {optionsModalCol && (
+        <OptionsManagerModal
+          column={optionsModalCol}
+          onSave={handleSaveOptions}
+          onClose={() => setOptionsModalCol(null)}
+        />
+      )}
 
       {/* Sub-item column context menu */}
       <SubColumnContextMenu

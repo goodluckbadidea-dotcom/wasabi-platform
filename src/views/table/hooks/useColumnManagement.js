@@ -161,13 +161,33 @@ export default function useColumnManagement({
   }, [canEditSchema, isNotionTable, notionDbId, pageConfig?.id, onRefresh]);
 
   // ── Change Column Type (D1 only) ──
+  const SELECT_LIKE = new Set(["select", "multi_select", "status"]);
   const handleChangeColType = useCallback(async (col, newType) => {
     if (!isD1Table || !pageConfig?.id) return;
     try {
       const schemaRes = await getTableSchema(pageConfig.id);
-      const cols = (schemaRes?.columns || []).map((c) =>
-        c.name === col ? { ...c, type: newType } : c
-      );
+      const existing = (schemaRes?.columns || []).find((c) => c.name === col);
+      const oldType = existing?.type;
+
+      // Warn when changing away from a select-like type that has options
+      if (oldType && SELECT_LIKE.has(oldType) && !SELECT_LIKE.has(newType) && existing?.options?.length) {
+        const ok = confirm(`Changing "${col}" from ${oldType} to ${newType} will clear its ${existing.options.length} option(s). Continue?`);
+        if (!ok) { setColCtxMenu(null); return; }
+      }
+
+      const cols = (schemaRes?.columns || []).map((c) => {
+        if (c.name !== col) return c;
+        const updated = { ...c, type: newType };
+        // Clear options when leaving select-like types
+        if (SELECT_LIKE.has(oldType) && !SELECT_LIKE.has(newType)) {
+          delete updated.options;
+        }
+        // Initialize empty options when entering select-like types
+        if (!SELECT_LIKE.has(oldType) && SELECT_LIKE.has(newType)) {
+          updated.options = updated.options || [];
+        }
+        return updated;
+      });
       await updateTableSchema(pageConfig.id, cols);
       if (onRefresh) onRefresh();
     } catch (err) { console.error("Change type failed:", err); }

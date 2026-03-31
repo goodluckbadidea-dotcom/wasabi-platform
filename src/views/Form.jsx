@@ -2,11 +2,14 @@
 // Auto-generates a form from database schema. Creates new records.
 
 import React, { useState, useMemo, useCallback } from "react";
-import { C, FONT, RADIUS } from "../design/tokens.js";
+import { C, FONT, RADIUS, getSolidPillColor } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { getFieldType, getFieldOptions, resolveField } from "./_viewHelpers.js";
 import { buildProp } from "../notion/properties.js";
 import { cellStyles } from "./_CellComponents.jsx";
+import { getTableSchema, updateTableSchema } from "../lib/api.js";
+import SelectPicker from "../components/SelectPicker.jsx";
+import MultiSelectPicker from "../components/MultiSelectPicker.jsx";
 
 const EDITABLE_TYPES = new Set([
   "title", "rich_text", "number", "select", "status",
@@ -192,6 +195,7 @@ export default function Form({ data = [], schema, config = {}, onCreate, pageCon
             value={values[field.name]}
             error={errors[field.name]}
             schema={schema}
+            pageConfig={pageConfig}
             onChange={(val) => handleChange(field.name, val)}
           />
         ))}
@@ -251,10 +255,26 @@ export default function Form({ data = [], schema, config = {}, onCreate, pageCon
 
 // ─── Form Field Component ───
 
-function FormField({ field, value, error, schema, onChange }) {
+function FormField({ field, value, error, schema, pageConfig, onChange }) {
   const { name, type } = field;
   const options = getFieldOptions(schema, name);
   const optNames = options.map((o) => o.name);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  // Create a new option and persist to schema
+  const handleCreateOption = useCallback(async (optionName) => {
+    if (!pageConfig?.id) return;
+    try {
+      const schemaRes = await getTableSchema(pageConfig.id);
+      const cols = (schemaRes?.columns || []).map((c) => {
+        if (c.name !== name) return c;
+        const existing = c.options || [];
+        if (existing.some((o) => (o.name || o) === optionName)) return c;
+        return { ...c, options: [...existing, { name: optionName }] };
+      });
+      await updateTableSchema(pageConfig.id, cols);
+    } catch (err) { console.error("Create option failed:", err); }
+  }, [pageConfig?.id, name]);
 
   const labelStyle = {
     display: "block",
@@ -299,63 +319,83 @@ function FormField({ field, value, error, schema, onChange }) {
     );
   }
 
-  // Select / Status
+  // Select / Status — use SelectPicker with inline create
   if (type === "select" || type === "status") {
+    const { fill } = value ? getSolidPillColor(value, optNames, options) : { fill: null };
     return (
       <div style={wrapStyle}>
         <label style={labelStyle}>{name}</label>
-        <select
-          value={value || ""}
-          onChange={(e) => onChange(e.target.value || null)}
-          style={{ ...inputStyle, cursor: "pointer", appearance: "none" }}
-        >
-          <option value="">-- Select --</option>
-          {optNames.map((opt) => (
-            <option key={opt} value={opt}>{opt}</option>
-          ))}
-        </select>
+        <div style={{ position: "relative" }}>
+          <div
+            onClick={() => setPickerOpen(!pickerOpen)}
+            style={{
+              ...inputStyle, cursor: "pointer", display: "flex", alignItems: "center", gap: 8,
+              color: value ? C.darkText : C.darkMuted,
+            }}
+          >
+            {value && fill && <span style={{ width: 10, height: 10, borderRadius: "50%", background: fill, flexShrink: 0 }} />}
+            {value || "-- Select --"}
+          </div>
+          {pickerOpen && (
+            <SelectPicker
+              value={value}
+              options={options}
+              onSelect={(val) => { onChange(val); setPickerOpen(false); }}
+              onClose={() => setPickerOpen(false)}
+              allowCreate={!!pageConfig?.id}
+              onCreateOption={handleCreateOption}
+            />
+          )}
+        </div>
         {error && <span style={{ fontSize: 11, color: C.error, marginTop: 4, display: "block" }}>{error}</span>}
       </div>
     );
   }
 
-  // Multi-select (comma-separated input)
+  // Multi-select — use MultiSelectPicker with inline create
   if (type === "multi_select") {
     const selectedTags = Array.isArray(value) ? value : (value ? value.split(",").map((s) => s.trim()).filter(Boolean) : []);
     return (
       <div style={wrapStyle}>
         <label style={labelStyle}>{name}</label>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
-          {selectedTags.map((tag, i) => (
-            <span key={i} style={{
-              ...cellStyles.pill(C.accent),
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              cursor: "pointer",
-            }} onClick={() => {
-              const updated = selectedTags.filter((_, j) => j !== i);
-              onChange(updated.length > 0 ? updated : null);
-            }}>
-              {tag} <span style={{ fontSize: 10, opacity: 0.7 }}>&times;</span>
-            </span>
-          ))}
+        <div style={{ position: "relative" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
+            {selectedTags.map((tag, i) => {
+              const { fill, text } = getSolidPillColor(tag, optNames, options);
+              return (
+                <span key={i} style={{
+                  ...cellStyles.pill(fill),
+                  color: text,
+                  display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer",
+                }} onClick={() => {
+                  const updated = selectedTags.filter((_, j) => j !== i);
+                  onChange(updated.length > 0 ? updated : null);
+                }}>
+                  {tag} <span style={{ fontSize: 10, opacity: 0.7 }}>&times;</span>
+                </span>
+              );
+            })}
+          </div>
+          <div
+            onClick={() => setPickerOpen(!pickerOpen)}
+            style={{ ...inputStyle, cursor: "pointer", color: C.darkMuted }}
+          >
+            Add {name}...
+          </div>
+          {pickerOpen && (
+            <SelectPicker
+              value={null}
+              options={options.filter((o) => !selectedTags.includes(typeof o === "string" ? o : o.name))}
+              onSelect={(val) => {
+                if (val && !selectedTags.includes(val)) onChange([...selectedTags, val]);
+                setPickerOpen(false);
+              }}
+              onClose={() => setPickerOpen(false)}
+              allowCreate={!!pageConfig?.id}
+              onCreateOption={handleCreateOption}
+            />
+          )}
         </div>
-        <select
-          value=""
-          onChange={(e) => {
-            if (e.target.value && !selectedTags.includes(e.target.value)) {
-              onChange([...selectedTags, e.target.value]);
-            }
-            e.target.value = "";
-          }}
-          style={{ ...inputStyle, cursor: "pointer", appearance: "none" }}
-        >
-          <option value="">Add {name}...</option>
-          {optNames.filter((o) => !selectedTags.includes(o)).map((opt) => (
-            <option key={opt} value={opt}>{opt}</option>
-          ))}
-        </select>
       </div>
     );
   }
