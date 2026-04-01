@@ -1147,8 +1147,8 @@ export default function NodeEditor({ automationEngine }) {
           workerUrl: user.workerUrl,
           notionKey: user.notionKey,
           claudeKey: user.claudeKey,
-          notifDbId: platformIds.notifDbId,
-          rulesDbId: platformIds.rulesDbId,
+          notifDbId: platformIds?.notifDbId,
+          rulesDbId: platformIds?.rulesDbId,
         },
         {}, // context data (empty for manual trigger)
         // onNodeStart
