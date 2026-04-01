@@ -1,6 +1,6 @@
 # File Map
 
-**Last Updated:** 2026-03-27
+**Last Updated:** 2026-03-30
 
 Complete source file listing for the Wasabi platform. Excludes `node_modules/`, `dist/`, and `.git/`.
 
@@ -71,7 +71,7 @@ App shell, navigation, settings. Loaded eagerly.
 | `VisualPageBuilder.jsx` | Drag-and-drop page layout builder |
 | `WasabiFlame.jsx` | Animated flame logo component |
 | `WasabiOrb.jsx` | Animated orb logo component |
-| `WasabiPanel.jsx` | Wasabi branding/info panel |
+| `WasabiPanel.jsx` | Full Wasabi agent chat panel. Pre-warms hydrated neuron cache, uses relevance-filtered neuron context. |
 
 ### src/core/SystemManager/ (9 files)
 
@@ -129,7 +129,7 @@ Database view components. Lazy-loaded by PageShell.
 
 Note: `CalendarView.jsx` was deleted (dead code).
 
-### src/views/table/ (16 files)
+### src/views/table/ (17 files)
 
 Extracted sub-modules for the Table view. Refactored from a 3,600-line monolith (2026-03-25).
 
@@ -142,8 +142,9 @@ Extracted sub-modules for the Table view. Refactored from a 3,600-line monolith 
 | `GhostRow.jsx` | `GhostCell` component for new row creation ghost input (68 lines) |
 | `CellEditor.jsx` | Inline cell editor with type-specific inputs (text, number, date, select, multi-select, checkbox, URL, email, phone) (215 lines) |
 | `CellDisplay.jsx` | Cell renderer with `CELL_RENDERERS` registry for read-only display (63 lines) |
-| `ColumnContextMenu.jsx` | Right-click context menus: `ParentColumnContextMenu` + `SubColumnContextMenu` (111 lines) |
+| `ColumnContextMenu.jsx` | Right-click context menus: `ParentColumnContextMenu` (sort, hide, rename, manage options, type change, delete) + `SubColumnContextMenu` |
 | `AddColumnDialog.jsx` | Add column dialogs: `AddColumnDialog` + `AddSubColumnDialog` with type picker, name input, options (250 lines) |
+| `OptionsManagerModal.jsx` | Modal for managing select/multi_select/status column options: CRUD, drag-reorder, color picker (VIEW_PALETTE swatches) |
 | `CascadeDeleteDialog.jsx` | Confirmation dialog for deleting parent rows with sub-items (52 lines) |
 | `TableToolbar.jsx` | Toolbar: search, new record, export, saved views dropdown, bulk actions, presence avatars (221 lines) |
 | `TableHeader.jsx` | Column headers with sort indicators, drag-to-resize, double-click rename, column visibility toggle (168 lines) |
@@ -154,7 +155,7 @@ Extracted sub-modules for the Table view. Refactored from a 3,600-line monolith 
 
 | File | Purpose |
 |------|---------|
-| `useColumnManagement.js` | Column CRUD, reorder, resize, rename, add/delete/rename sub-columns, schema persistence (361 lines) |
+| `useColumnManagement.js` | Column CRUD, reorder, resize, rename, add/delete/rename sub-columns, schema persistence. Type-change warns and clears options when leaving select-like types. |
 | `useTableData.js` | Data pipeline: text search, field filters, chip filters, sorting, debounced search (119 lines) |
 | `useTableCellEdit.js` | Inline cell edit state: active cell tracking, value commit to API, blur handling (107 lines) |
 | `useGhostRow.js` | Parent ghost row state: cell values, saving flag, commit-and-create logic (74 lines) |
@@ -171,7 +172,7 @@ Personal productivity surface. User-scoped data. Lazy-loaded.
 | File | Purpose |
 |------|---------|
 | `CalendarView.jsx` | Day/week/month calendar with Google Calendar sync |
-| `ChatPanel.jsx` | AI chat panel |
+| `ChatPanel.jsx` | Dual-tab AI chat: Assistant (Haiku, role-based tools, neuron-aware) + Agent (full Wasabi agent) |
 | `DashboardView.jsx` | Customizable widget dashboard |
 | `EmailThreadDrawer.jsx` | Email thread slide-out viewer |
 | `GmailView.jsx` | Gmail inbox, read, compose, reply |
@@ -259,12 +260,13 @@ React context providers. Wrap the app in App.jsx.
 
 ---
 
-## src/agent/ (10 files)
+## src/agent/ (11 files)
 
 AI agent system. Lazy-loaded.
 
 | File | Purpose |
 |------|---------|
+| `agentContext.js` | Context envelope builders: `buildAgentContext()` (full agent) + `buildAssistantContext()` (lightweight assistant) |
 | `aiRouter.js` | Multi-tier model routing (Haiku for fast/cheap, Sonnet for complex) |
 | `automations.js` | Automation execution engine: evaluates triggers, executes actions |
 | `dataSummary.js` | Builds data context summaries for AI within token budget |
@@ -272,9 +274,9 @@ AI agent system. Lazy-loaded.
 | `memory.js` | Persistent conversation memory for agents |
 | `queryClassifier.js` | Query intent classification for tool selection and routing |
 | `runAgent.js` | Core agent loop: prompt, classify, route, execute tools, respond |
-| `toolExecutor.js` | 50+ tool implementations: CRUD, email, calendar, automations |
-| `tools.js` | Tool definitions (schemas) for Claude's tool_use |
-| `wasabiPrompt.js` | System prompt generation for the main Wasabi agent |
+| `toolExecutor.js` | 55+ tool implementations: CRUD, email, calendar, automations, neuron CRUD |
+| `tools.js` | Tool definitions (schemas) for Claude's tool_use. Role-based assistant tool sets (admin/editor/viewer). |
+| `wasabiPrompt.js` | System prompt generation for Agent and Assistant. Context budget competition compresses workspace summary when neurons are rich. |
 
 ---
 
@@ -287,8 +289,8 @@ Relationship mapping system.
 | `NeuronBadge.jsx` | Badge showing neuron connection count |
 | `NeuronLines.jsx` | SVG line renderer connecting neuron nodes |
 | `NeuronOverlay.jsx` | Full-screen neuron visualization overlay |
-| `NeuronsContext.jsx` | Context provider for neuron state and operations |
-| `neuronStorage.js` | Neuron persistence and D1 sync utilities |
+| `NeuronsContext.jsx` | Context provider for neuron state and operations. Pre-warms hydrated cache on load. |
+| `neuronStorage.js` | Neuron persistence: 3-tier caching (list/graph/hydrated), `buildFilteredNeuronContext()` for relevance-scored AI injection, `buildNeuronContextSummary()` for unfiltered fallback |
 
 ---
 

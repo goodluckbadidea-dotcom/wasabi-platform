@@ -122,8 +122,9 @@ ISO 8601 with timezone: `2026-03-20T14:30:00-07:00`
 Wasabi does NOT access the Notion API directly from the browser. All Notion API calls route through the worker:
 
 ```
-Browser → Worker (/page/{id}, /database/{id}, /query, /blocks/{id}, /search)
-  → Worker adds Notion-Version header + Authorization
+Browser → apiFetch() with JWT → Worker (/page/{id}, /database/{id}, /query, /blocks/{id}, /search)
+  → Worker validates JWT, resolves Notion key via getNotionKey()
+  → Worker adds Notion-Version header + Authorization (Notion key)
   → Forward to https://api.notion.com/v1/...
   → Return response to browser
 ```
@@ -132,6 +133,15 @@ This pattern exists because:
 1. Notion API restricts cross-origin browser requests
 2. API keys must stay server-side
 3. Worker handles rate limiting and error transformation
+
+### Auth Chain (March 2026)
+
+All Notion client functions (`src/notion/client.js`) use `apiFetch()` from `src/lib/api.js`, which automatically attaches the user's JWT. The worker validates the JWT before proxying to Notion. Previously, the frontend passed `workerUrl` and `notionKey` params through the entire call chain and used raw `fetch()` with the Notion key as a Bearer token — this bypassed JWT auth entirely. The refactor removed `workerUrl`/`notionKey` params from 31 files across the codebase (notion client, pagination, schema, agent tools, React components).
+
+**Worker-side `getNotionKey()` resolution order:**
+1. Check `X-Notion-Key` header — only accepts keys prefixed with `ntn_` or `secret_` (rejects stale JWT tokens mistakenly passed as Notion keys)
+2. Fall back to `connections` D1 table (global Notion key)
+3. Return `null` if no key found (Notion integration is optional)
 
 ### Notion Proxy Routes (worker.js)
 
@@ -153,7 +163,7 @@ This pattern exists because:
 
 ### Frontend Client (`src/notion/client.js`)
 
-Provides typed functions: `getDatabase()`, `createDatabase()`, `updateDatabase()`, `getPage()`, `createPage()`, `updatePage()`, `archivePage()`, `getBlocks()`, `appendBlocks()`, `queryAll()` (full pagination, max 50 requests), `queryLimited()`, `searchDatabases()`, `testConnection()`.
+Provides typed functions: `getDatabase()`, `createDatabase()`, `updateDatabase()`, `getPage()`, `createPage()`, `updatePage()`, `archivePage()`, `getBlocks()`, `appendBlocks()`, `queryAll()` (full pagination, max 50 requests), `queryLimited()`, `searchDatabases()`, `testConnection()`. All functions use `apiFetch()` internally — no raw `fetch()` calls, no `workerUrl`/`notionKey` parameters.
 
 ### Schema Detection (`src/notion/schema.js`)
 

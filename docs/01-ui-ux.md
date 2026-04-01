@@ -44,6 +44,10 @@ Each entry in the `THEMES` object contains:
 - `palette` — 10-color array for data visualization
 - `dark` / `light` — both point to the same token set (mode is locked)
 
+### WCAG AA Contrast (March 2026)
+
+All 5 themes were tuned so that `textMuted` achieves 4.5:1+ contrast against both `bg` and `surface`. Surface layers (`surface`, `surfaceRaised`, `border`) were widened to create visible elevation separation. `textSecondary` was also adjusted on light themes (Shoji, Kori) to maintain hierarchy. Token changes are in `_RAW_THEMES` in `src/design/tokens.js`.
+
 ### Theme Change Flow
 
 1. User clicks theme selector in TopHeader
@@ -81,7 +85,7 @@ import { C } from "../design/tokens.js";
 |-------|---------|
 | `C.text` | Primary text color |
 | `C.textMid` | Secondary text |
-| `C.muted` | Muted/disabled text |
+| `C.muted` | Muted/disabled text (WCAG AA 4.5:1+ on all surfaces) |
 | `C.white` | Alias for `C.text` |
 
 ### Aliases (backward compatibility)
