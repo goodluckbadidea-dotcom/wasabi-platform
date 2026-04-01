@@ -19,6 +19,7 @@ import { buildAssistantPrompt } from "../agent/wasabiPrompt.js";
 import { fetchGoogleContext } from "../google/googleContext.js";
 import * as api from "../lib/api.js";
 import { useViewport } from "../context/ViewportContext.jsx";
+import { buildFilteredNeuronContext } from "../neurons/neuronStorage.js";
 
 const DEFAULT_WIDTH = 320;
 const MIN_WIDTH = 280;
@@ -124,6 +125,18 @@ async function executeChatTool(name, input) {
           location: input.location,
           attendees: input.attendees,
         }));
+      case "query_neurons": {
+        if (input.node_id) {
+          const res = await api.getNeuronsByNode(input.node_id);
+          return JSON.stringify({ count: (res.neurons || []).length, neurons: res.neurons || [] });
+        }
+        const res = await api.getNeuronGraph();
+        return JSON.stringify({ count: (res.neurons || []).length, neurons: (res.neurons || []).slice(0, 50), truncated: (res.neurons || []).length > 50 });
+      }
+      case "query_neuron_data": {
+        const res = await api.getHydratedNeuron(input.neuron_id);
+        return JSON.stringify(res);
+      }
       default:
         return JSON.stringify({ error: `Unknown tool: ${name}` });
     }
@@ -252,6 +265,7 @@ export default function ChatPanel({
         activePageConfig,
         activePageData,
         taskContext,
+        neuronSummary: buildFilteredNeuronContext(text),
       });
 
       const systemPrompt = buildAssistantPrompt(envelope);

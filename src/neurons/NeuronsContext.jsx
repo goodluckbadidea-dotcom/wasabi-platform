@@ -8,6 +8,7 @@ import {
   loadCachedNeurons,
   loadNeuron,
   loadNeuronGraph,
+  loadHydratedNeurons,
   createNeuron as apiCreateNeuron,
   deleteNeuron as apiDeleteNeuron,
   updateNeuronName as apiUpdateName,
@@ -67,6 +68,8 @@ export function NeuronsProvider({ children }) {
       }
       graphRef.current = map;
       setGraphVersion((v) => v + 1);
+      // Pre-warm hydrated cache for AI prompt injection
+      loadHydratedNeurons().catch(() => {});
     } catch {
       /* network error — keep stale map */
     }

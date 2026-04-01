@@ -720,6 +720,18 @@ export async function getNeuronGraph() {
   return apiFetch("/neurons/graph", { method: "GET" });
 }
 
+export async function getHydratedNeurons(limit = 30) {
+  return apiFetch(`/neurons/hydrated?limit=${limit}`);
+}
+
+export async function getHydratedNeuron(neuronId) {
+  return apiFetch(`/neurons/${neuronId}/hydrated`);
+}
+
+export async function removeNeuronNodeByEntityId(neuronId, nodeId) {
+  return apiFetch(`/neurons/${neuronId}/nodes/by-node-id/${encodeURIComponent(nodeId)}`, { method: "DELETE" });
+}
+
 // ─── File Storage (R2) ───
 
 export async function uploadFile(file, pageId = "") {

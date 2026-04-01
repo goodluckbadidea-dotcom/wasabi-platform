@@ -137,6 +137,7 @@ export async function buildAssistantContext({
   activePageConfig = null,
   activePageData = null,
   taskContext = "",
+  neuronSummary = "",
 }) {
   // Generate session ID
   let sessionId;
@@ -210,7 +211,7 @@ export async function buildAssistantContext({
     // --- Frozen context (assembled once, never mutated) ---
     frozenContext: {
       kbEntries: "",
-      neuronSummary: "",
+      neuronSummary,
       workspaceSummary,
       currentPageContext,
       dataSummary: "",

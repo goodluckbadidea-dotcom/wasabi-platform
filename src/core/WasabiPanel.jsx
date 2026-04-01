@@ -19,7 +19,7 @@ import { createToolExecutor } from "../agent/toolExecutor.js";
 import { routeWithClassification, shouldEscalate, SONNET } from "../agent/aiRouter.js";
 import { classifyQuery, classifyAndRoute, formatClassifierResponse } from "../agent/queryClassifier.js";
 import { buildAgentContext } from "../agent/agentContext.js";
-import { buildNeuronContextSummary } from "../neurons/neuronStorage.js";
+import { buildFilteredNeuronContext, loadHydratedNeurons } from "../neurons/neuronStorage.js";
 import { buildDataSummary, getTokenBudget, findWorkspaceAncestor } from "../agent/dataSummary.js";
 import { fetchGoogleContext } from "../google/googleContext.js";
 import * as api from "../lib/api.js";
@@ -218,8 +218,9 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
           }
         } catch (err) { console.warn("[WasabiPanel] KB search:", err.message || err); }
 
-        // Build rich neuron summary (includes full node details when graph is cached)
-        let neuronSummary = buildNeuronContextSummary();
+        // Ensure hydrated neuron cache is fresh, then build rich context summary
+        await loadHydratedNeurons().catch(() => {});
+        let neuronSummary = buildFilteredNeuronContext(agentText);
 
         // Fetch Google context (best effort, cached 5 min)
         let googleContext = "";

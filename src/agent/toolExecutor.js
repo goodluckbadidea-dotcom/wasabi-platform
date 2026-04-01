@@ -1317,6 +1317,55 @@ export function createToolExecutor({
         }
       }
 
+      case "update_neuron": {
+        try {
+          await api.updateNeuronAPI(toolInput.neuron_id, { name: toolInput.name });
+          return JSON.stringify({ success: true, neuron_id: toolInput.neuron_id });
+        } catch (err) {
+          return JSON.stringify({ error: err.message });
+        }
+      }
+
+      case "delete_neuron": {
+        try {
+          await api.deleteNeuronAPI(toolInput.neuron_id);
+          return JSON.stringify({ success: true, deleted: toolInput.neuron_id });
+        } catch (err) {
+          return JSON.stringify({ error: err.message });
+        }
+      }
+
+      case "add_neuron_node": {
+        try {
+          const res = await api.addNeuronNode(toolInput.neuron_id, {
+            node_type: toolInput.node_type,
+            node_id: toolInput.node_id,
+            node_label: toolInput.node_label,
+          });
+          return JSON.stringify({ success: true, node_row_id: res.id });
+        } catch (err) {
+          return JSON.stringify({ error: err.message });
+        }
+      }
+
+      case "remove_neuron_node": {
+        try {
+          await api.removeNeuronNodeByEntityId(toolInput.neuron_id, toolInput.node_id);
+          return JSON.stringify({ success: true, removed: toolInput.node_id });
+        } catch (err) {
+          return JSON.stringify({ error: err.message });
+        }
+      }
+
+      case "query_neuron_data": {
+        try {
+          const res = await api.getHydratedNeuron(toolInput.neuron_id);
+          return JSON.stringify(res);
+        } catch (err) {
+          return JSON.stringify({ error: err.message });
+        }
+      }
+
       // ─── Calculation Sandbox ───
 
       case "run_calculation": {

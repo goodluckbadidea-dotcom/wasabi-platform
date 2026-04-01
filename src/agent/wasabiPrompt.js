@@ -75,9 +75,27 @@ Today's date: ${dateStr}
 User role: ${role}`,
   ];
 
+  // ── Context budget competition for assistant ──
+  let assistantWorkspaceSummary = frozenContext.workspaceSummary || "";
+  if (frozenContext.neuronSummary && assistantWorkspaceSummary) {
+    const neuronTokens = estimateTokens(frozenContext.neuronSummary);
+    if (neuronTokens > 2000) {
+      if (neuronsOverlapWorkspace(frozenContext.neuronSummary, assistantWorkspaceSummary)) {
+        assistantWorkspaceSummary = "";
+      } else {
+        assistantWorkspaceSummary = compressWorkspaceSummary(assistantWorkspaceSummary);
+      }
+    }
+  }
+
   // Workspace summary
-  if (frozenContext.workspaceSummary) {
-    parts.push(`\n## Workspace Databases\n${frozenContext.workspaceSummary}`);
+  if (assistantWorkspaceSummary) {
+    parts.push(`\n## Workspace Databases\n${assistantWorkspaceSummary}`);
+  }
+
+  // Neuron connections
+  if (frozenContext.neuronSummary) {
+    parts.push(`\n## Neuron Connections\nSemantic links between items in the workspace:\n${frozenContext.neuronSummary}`);
   }
 
   // Active page context
@@ -104,6 +122,42 @@ User role: ${role}`,
 }
 
 
+// ─── Context Budget Helpers ───
+
+function estimateTokens(text) {
+  return Math.ceil((text || "").length / 4);
+}
+
+/** Compress workspace summary to page names only (strip database IDs and types). */
+function compressWorkspaceSummary(summary) {
+  return summary.split("\n").map((line) => {
+    const match = line.match(/^- (.+?) \[/);
+    return match ? `- ${match[1]}` : line;
+  }).join("\n");
+}
+
+/**
+ * Check if neurons cover most workspace databases.
+ * If neuron nodes reference > 80% of database IDs in workspace summary, return true.
+ */
+function neuronsOverlapWorkspace(neuronSummary, workspaceSummary) {
+  // Extract database IDs from workspace summary (pattern: database_id: xxx)
+  const dbIdMatches = workspaceSummary.match(/database_id:\s*([a-f0-9-]+(?:,\s*[a-f0-9-]+)*)/g) || [];
+  const workspaceDbIds = new Set();
+  for (const m of dbIdMatches) {
+    const ids = m.replace("database_id:", "").trim().split(/,\s*/);
+    ids.forEach((id) => workspaceDbIds.add(id.trim()));
+  }
+  if (workspaceDbIds.size === 0) return false;
+
+  // Check how many workspace DB IDs appear in neuron summary text
+  let covered = 0;
+  for (const id of workspaceDbIds) {
+    if (neuronSummary.includes(id)) covered++;
+  }
+  return covered / workspaceDbIds.size > 0.8;
+}
+
 function _buildPrompt({ platformDbIds, kbContext = "", currentPageContext, dataSummary, workspaceSummary, neuronSummary, currentDate, workspaceInstructions, agentMode, googleContext }) {
   let pageSection = "";
   if (currentPageContext) {
@@ -123,6 +177,26 @@ ${dataSummary ? `\n${dataSummary}` : ""}`;
 
   // Build agent behavior mode section
   const behaviorSection = getAgentBehaviorPrompt(agentMode);
+
+  // ── Context budget competition ──
+  // When neurons are rich, compress or skip workspace summary to save tokens.
+  // Budget: ~4000 tokens for variable sections. Never remove KB or current page context.
+  let effectiveWorkspaceSummary = workspaceSummary || "";
+  if (neuronSummary && effectiveWorkspaceSummary) {
+    const neuronTokens = estimateTokens(neuronSummary);
+    const pageTokens = estimateTokens(pageSection);
+    const variableBudget = 4000;
+
+    if (neuronTokens + pageTokens > variableBudget * 0.8) {
+      // Neurons + page context are large — compress workspace summary
+      if (neuronsOverlapWorkspace(neuronSummary, effectiveWorkspaceSummary)) {
+        // Neurons reference most databases — skip workspace summary entirely
+        effectiveWorkspaceSummary = "";
+      } else {
+        effectiveWorkspaceSummary = compressWorkspaceSummary(effectiveWorkspaceSummary);
+      }
+    }
+  }
 
   return `${IDENTITY}
 
@@ -151,7 +225,7 @@ ${RULES}
 ${platformDbIds ? `\n## Platform Database IDs\n${platformDbIds}` : ""}
 
 ${kbContext ? `\n## Your Knowledge Base Context\n${kbContext}` : ""}
-${workspaceSummary ? `\n## Workspace Pages\n${workspaceSummary}` : ""}
+${effectiveWorkspaceSummary ? `\n## Workspace Pages\n${effectiveWorkspaceSummary}` : ""}
 ${neuronSummary ? `\n## Neuron Connections\nThe user has created the following neuron connections (semantic links between items):\n${neuronSummary}` : ""}
 ${googleContext ? `\n${googleContext}` : ""}
 ${pageSection}`;
@@ -311,13 +385,21 @@ Neurons are the user's curated map of what matters. They represent campaigns, in
 
 **CRITICAL — Use neurons as your primary navigation tool:**
 1. When the user asks about a campaign, project, initiative, or cross-source topic — FIRST check the Neuron Connections section above. If a neuron matches, use its connected items to target your queries precisely. Do NOT scan all databases when a neuron already tells you exactly which items are relevant.
-2. When answering "What's happening with X?" — if X matches a neuron name, query ONLY the records listed in that neuron, not the entire workspace.
-3. Use \`query_neurons\` for deeper exploration or when the neuron graph isn't in your context.
+2. When answering "What's happening with X?" — if X matches a neuron name, query ONLY the records listed in that neuron, not the entire workspace. If the neuron context already includes hydrated field values (Status, Due, etc.), you may not need any tool calls at all.
+3. Use \`query_neurons\` for deeper exploration or when the neuron graph isn't in your context. Use \`query_neuron_data\` when you need full hydrated field values for a specific neuron.
 4. When a user discusses relationships between items, suggest creating a neuron with \`create_neuron\`.
 5. Neurons are multi-node clusters — a single neuron can link 2+ items across ANY data source (D1 tables, Notion, Gmail, Calendar).
 6. Each neuron can optionally have a name (e.g., "Q3 Launch Plan").
 7. After finding neuron connections, selectively query only the connected sources — never everything.
 8. If a user asks "What are my main campaigns/projects?" — your answer should be informed by the neuron graph. Neurons ARE the user's declared structure of what connects to what.
+
+**Neuron maintenance tools:**
+- Use \`update_neuron\` to rename neurons when the user requests it or when a better name becomes clear.
+- Use \`delete_neuron\` when a neuron is no longer relevant (e.g., completed project, obsolete grouping). Confirm with the user first.
+- Use \`add_neuron_node\` to expand a neuron's connections when new related items are discovered (e.g., "add this new vendor to the Acme project neuron").
+- Use \`remove_neuron_node\` to prune stale or irrelevant connections from a neuron.
+9. **Suggest neurons after cross-table work:** When you query 2+ different databases to answer a single question, and those records don't already share a neuron, suggest creating one. Frame it as: "I noticed [Record A] and [Record B] are related to [topic]. Want me to create a neuron linking them so I can find this connection faster next time?"
+10. **Don't over-suggest:** Only suggest neurons when the relationship is meaningful and likely to recur. Don't suggest neurons for one-off queries or obvious parent-child relationships already captured in the schema.
 
 When performing calculations or quantitative analysis:
 **Use \`run_calculation\` for any math beyond simple arithmetic.** Do NOT do complex calculations in your head — write code and let it execute deterministically.

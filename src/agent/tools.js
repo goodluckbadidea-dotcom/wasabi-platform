@@ -427,6 +427,71 @@ const CREATE_NEURON = {
   },
 };
 
+const UPDATE_NEURON = {
+  name: "update_neuron",
+  description: "Rename an existing neuron.",
+  input_schema: {
+    type: "object",
+    properties: {
+      neuron_id: { type: "string", description: "The neuron ID to update." },
+      name: { type: "string", description: "The new name for the neuron." },
+    },
+    required: ["neuron_id", "name"],
+  },
+};
+
+const DELETE_NEURON = {
+  name: "delete_neuron",
+  description: "Delete a neuron and all its node connections. Use when a neuron is no longer relevant.",
+  input_schema: {
+    type: "object",
+    properties: {
+      neuron_id: { type: "string", description: "The neuron ID to delete." },
+    },
+    required: ["neuron_id"],
+  },
+};
+
+const ADD_NEURON_NODE = {
+  name: "add_neuron_node",
+  description: "Add a node to an existing neuron. Use to expand a neuron's connections when new related items are discovered.",
+  input_schema: {
+    type: "object",
+    properties: {
+      neuron_id: { type: "string", description: "The neuron ID to add the node to." },
+      node_type: { type: "string", description: "Type: 'row', 'page', 'folder', 'cell', 'column', or 'document'." },
+      node_id: { type: "string", description: "The unique identifier for this node." },
+      node_label: { type: "string", description: "Human-readable label for this node." },
+    },
+    required: ["neuron_id", "node_type", "node_id", "node_label"],
+  },
+};
+
+const REMOVE_NEURON_NODE = {
+  name: "remove_neuron_node",
+  description: "Remove a node from a neuron by its entity ID. Use to prune stale or irrelevant connections.",
+  input_schema: {
+    type: "object",
+    properties: {
+      neuron_id: { type: "string", description: "The neuron ID containing the node." },
+      node_id: { type: "string", description: "The entity ID of the node to remove (the record/page/folder ID, not the internal row ID)." },
+    },
+    required: ["neuron_id", "node_id"],
+  },
+};
+
+const QUERY_NEURON_DATA = {
+  name: "query_neuron_data",
+  description: "Get hydrated data for a single neuron, including actual field values from connected records. Use when the neuron summary in your context isn't detailed enough and you need to drill into a specific neuron's data.",
+  input_schema: {
+    type: "object",
+    properties: {
+      neuron_id: { type: "string", description: "The neuron ID to query." },
+    },
+    required: ["neuron_id"],
+  },
+};
+
 // ─── CALCULATION TOOL ───
 
 const RUN_CALCULATION = {
@@ -990,6 +1055,11 @@ export const WASABI_TOOLS = [
   SMART_MATCH_RECORDS,
   QUERY_NEURONS,
   CREATE_NEURON,
+  UPDATE_NEURON,
+  DELETE_NEURON,
+  ADD_NEURON_NODE,
+  REMOVE_NEURON_NODE,
+  QUERY_NEURON_DATA,
   RUN_CALCULATION,
   SAVE_CUSTOM_FUNCTION,
   LIST_CUSTOM_FUNCTIONS,
@@ -1036,12 +1106,16 @@ export const SYSTEM_TOOLS = [
 
 export const ASSISTANT_TOOLS_VIEWER = [
   QUERY_DATABASE,
+  QUERY_NEURONS,
+  QUERY_NEURON_DATA,
   SEARCH_EMAILS,
   LIST_CALENDAR_EVENTS,
 ];
 
 export const ASSISTANT_TOOLS_EDITOR = [
   QUERY_DATABASE,
+  QUERY_NEURONS,
+  QUERY_NEURON_DATA,
   UPDATE_PAGE,
   POST_NOTIFICATION,
   SEARCH_EMAILS,
@@ -1051,6 +1125,8 @@ export const ASSISTANT_TOOLS_EDITOR = [
 
 export const ASSISTANT_TOOLS_ADMIN = [
   QUERY_DATABASE,
+  QUERY_NEURONS,
+  QUERY_NEURON_DATA,
   UPDATE_PAGE,
   POST_NOTIFICATION,
   SEARCH_EMAILS,
