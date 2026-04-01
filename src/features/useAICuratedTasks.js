@@ -963,65 +963,31 @@ Return valid JSON only, no markdown: { "tasks": [{ "title": "exact title", "prio
 Items by database:
 ${JSON.stringify(dbSummaries, null, 0)}`;
 
+          const PREFILL = '{ "tasks":';
           const aiResult = await claudeProxy({
-            messages: [{ role: "user", content: prompt }],
+            messages: [
+              { role: "user", content: prompt },
+              { role: "assistant", content: PREFILL },
+            ],
             model: "claude-haiku-4-5-20251001",
             max_tokens: 1024,
           }, user.claudeKey);
 
-          const responseText = aiResult.content?.[0]?.text || aiResult.text || "";
+          const responseText = PREFILL + (aiResult.content?.[0]?.text || aiResult.text || "");
 
-          // Parse AI response (format: { tasks: [...], insight: "..." })
-          // LLMs often return slightly malformed JSON — code fences, trailing commas,
-          // unescaped control chars in strings. Try multiple repair strategies.
+          // Parse AI response — prefill forces clean JSON, so simple parse suffices
           let prioritized = [];
           let aiInsight = null;
           let parsed = null;
-
-          function tryParse(text) {
-            try { return JSON.parse(text); } catch { return null; }
+          try {
+            parsed = JSON.parse(responseText);
+          } catch (err) {
+            console.warn("[AICurated] Failed to parse AI response:", err.message, responseText.slice(0, 300));
           }
 
-          // Extract the JSON substring: find first { and last }
-          const firstBrace = responseText.indexOf("{");
-          const lastBrace = responseText.lastIndexOf("}");
-          if (firstBrace !== -1 && lastBrace > firstBrace) {
-            const jsonStr = responseText.slice(firstBrace, lastBrace + 1);
-            // Try direct parse
-            parsed = tryParse(jsonStr);
-            // If that fails, fix common LLM JSON errors: trailing commas, control chars
-            if (!parsed) {
-              const repaired = jsonStr
-                .replace(/,\s*([}\]])/g, "$1")           // trailing commas
-                .replace(/[\x00-\x1f]/g, (ch) =>         // unescaped control chars
-                  ch === "\n" ? "\\n" : ch === "\r" ? "\\r" : ch === "\t" ? "\\t" : "");
-              parsed = tryParse(repaired);
-            }
-          }
-
-          // Extract tasks and insight from parsed object
           if (parsed) {
-            if (Array.isArray(parsed.tasks)) {
-              prioritized = parsed.tasks;
-            } else if (Array.isArray(parsed)) {
-              prioritized = parsed;
-            }
+            if (Array.isArray(parsed.tasks)) prioritized = parsed.tasks;
             if (parsed.insight) aiInsight = parsed.insight;
-          }
-
-          // Last resort: try bare array extraction (no insight possible)
-          if (prioritized.length === 0) {
-            const firstBracket = responseText.indexOf("[");
-            const lastBracket = responseText.lastIndexOf("]");
-            if (firstBracket !== -1 && lastBracket > firstBracket) {
-              const arrStr = responseText.slice(firstBracket, lastBracket + 1);
-              const arr = tryParse(arrStr) || tryParse(arrStr.replace(/,\s*([}\]])/g, "$1"));
-              if (Array.isArray(arr)) prioritized = arr;
-            }
-          }
-
-          if (prioritized.length === 0) {
-            console.warn("[AICurated] Failed to parse AI response:", responseText.slice(0, 300));
           }
 
           // Store insight
