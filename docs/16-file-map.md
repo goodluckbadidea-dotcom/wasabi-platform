@@ -1,6 +1,6 @@
 # File Map
 
-**Last Updated:** 2026-03-30
+**Last Updated:** 2026-04-01
 
 Complete source file listing for the Wasabi platform. Excludes `node_modules/`, `dist/`, and `.git/`.
 
@@ -178,7 +178,7 @@ Personal productivity surface. User-scoped data. Lazy-loaded.
 | `GmailView.jsx` | Gmail inbox, read, compose, reply |
 | `KnowledgeHub.jsx` | Knowledge base browser |
 | `NotesView.jsx` | Personal notes view |
-| `RecordDrawer.jsx` | Slide-out record editor (primary edit surface for all views) |
+| `RecordDrawer.jsx` | Slide-out record editor (primary edit surface for all views). "Go to Task" uses `navigateToRecord()` for drawer-after-navigation. |
 | `RecordDrawerContext.jsx` | Context provider for RecordDrawer state |
 | `TaskList.jsx` | Task list rendering component |
 | `TasksView.jsx` | Personal task list with calendar integration |
@@ -190,7 +190,7 @@ Personal productivity surface. User-scoped data. Lazy-loaded.
 
 | File | Purpose |
 |------|---------|
-| `useAICuratedTasks.js` | AI-powered task curation/prioritization hook. Scans D1 databases, enriches with per-user signals, calls Claude Haiku. Features: stale-while-revalidate (2hr TTL), event-driven invalidation, interaction deprioritization with time decay, D1-backed snooze, interaction-aware Claude prompt with formula suggestions |
+| `useAICuratedTasks.js` | AI-powered task curation/prioritization hook. Scans D1 databases, enriches with per-user signals, calls Claude Haiku. Features: stale-while-revalidate (2hr TTL), event-driven invalidation, interaction deprioritization with time decay, D1-backed snooze, interaction-aware Claude prompt with formula suggestions. Response parsing strips code fences (Haiku 4.5 wraps JSON despite instructions). Auto-scan checks for missing insight before skipping rescan. |
 | `useDismissedTasks.js` | Dismissed task state management hook |
 | `useInsight.js` | AI insight generation hook |
 | `useTasksTable.js` | Task table data fetching/management hook |

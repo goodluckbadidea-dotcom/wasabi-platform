@@ -1,6 +1,6 @@
 # Security Posture & Known Issues
 
-**Last Updated:** 2026-03-31
+**Last Updated:** 2026-04-01
 
 ## Product Context
 
@@ -144,9 +144,23 @@ Fixes:
 
 The Notes tab was removed from RecordDetail and DocumentEditor. It was redundant with Comments, which serves the same purpose. Removed: `RecordNotes.jsx` component, the Notes tab + panel from both views, and the `GET/PUT /records/:id/notes` worker endpoints (`handleGetNote`, `handleSaveNote`). The `record_notes` D1 table is retained until a scheduled schema migration drops it.
 
-### RecordDetail Save Path (Resolved 2026-03-31)
+### RecordDetail Save Path (Resolved 2026-03-31, updated 2026-04-01)
 
 RecordDetail's `handleSave` passed all pending changes as a single batch object to `onUpdate(page.id, properties)`, but PageShell's `handleUpdate` expects per-field calls `onUpdate(pageId, fieldName, propPayload)`. Fixed to iterate and call per-field.
+
+**Second fix (2026-04-01):** Table.jsx and RecordDetailPortals.jsx still had wrapper functions expecting the old batch signature `(pageId, propertiesObject)`. The wrapper ran `Object.entries()` on a string (the field name), silently corrupting all saves from RecordDetail — not just date ranges. Fixed by passing `onUpdate` directly (no wrapper). Affected views: Table, Kanban, Calendar, CardGrid.
+
+### DateEditor Enter Key (Resolved 2026-04-01)
+
+The DateEditor component in RecordDetail used React state (`start`, `end`) in `onKeyDown` handlers, but `setState` from `onChange` is async — pressing Enter could read stale values. Fixed by using refs (`startRef`, `endRef`) updated synchronously alongside state, and a shared `commit()` function used by both Enter handlers and the Set button.
+
+### Workspace Insight Never Generating (Resolved 2026-04-01)
+
+Two issues prevented the sidebar workspace insight from generating:
+
+1. **claudeKey race condition:** The auto-scan effect in `useAICuratedTasks.js` skipped rescans when the task cache was fresh, even if insight was never generated. The first scan often ran before `claudeKey` loaded from D1 via `getConnections()`, skipping the Claude call entirely. Fixed: the auto-scan effect now also checks for missing insight before skipping.
+
+2. **AI response parsing failure:** Claude Haiku 4.5 wraps JSON responses in markdown code fences despite prompt instructions to return raw JSON. Assistant message prefilling (the standard technique for forcing clean JSON) is not supported on Claude 4.5+ models. Fixed: removed the broken prefill approach and added targeted code fence stripping (`replace` for `` ```json `` / `` ``` `` wrappers) before `JSON.parse`.
 
 ### Console and Error Hygiene
 

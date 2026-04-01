@@ -27,7 +27,7 @@ Personal productivity surface. User-scoped data. All components lazy-loaded.
 |-----------|------|---------|
 | TasksView | `src/features/TasksView.jsx` | Personal task list + calendar integration |
 | CalendarView | `src/features/CalendarView.jsx` | Day/week/month calendar with Google Calendar sync |
-| RecordDrawer | `src/features/RecordDrawer.jsx` | Slide-out record editor (primary edit surface for all views) |
+| RecordDrawer | `src/features/RecordDrawer.jsx` | Slide-out record editor (primary edit surface for all views). "Go to Task" button uses `navigateToRecord()` to open RecordDetail drawer after navigating to source database. |
 | ChatPanel | `src/features/ChatPanel.jsx` | Dual-tab AI chat: Assistant (Haiku, lightweight tools, neuron-aware) and Agent (full Wasabi agent with all tools) |
 | GmailView | `src/features/GmailView.jsx` | Gmail inbox, read, compose, reply |
 | DashboardView | `src/features/DashboardView.jsx` | Customizable widget dashboard |
@@ -118,7 +118,11 @@ Users can snooze tasks from the RecordDrawer (3 preset buttons: 2 hours, Tomorro
 
 ### Workspace Insight
 
-Claude generates a one-line insight (max 120 chars) alongside the task ranking. Cached separately (`wasabi_insight`, 24hr TTL). Displayed in the navigation sidebar.
+Claude generates a one-line insight (max 120 chars) alongside the task ranking. Cached separately (`wasabi_insight`, 7-day TTL). Displayed in the navigation sidebar via `useInsight` hook (polls localStorage every 5s). Falls back to "Visit Tasks to generate your workspace insight" after 10s if no cached insight exists.
+
+**Response parsing:** Haiku 4.5 wraps JSON in markdown code fences despite prompt instructions. Assistant message prefilling is not supported on Claude 4.5+ models. Response text has code fences stripped before `JSON.parse`. The insight field is extracted separately from task ranking so a failure in one doesn't block the other.
+
+**claudeKey timing:** The auto-scan effect checks for missing insight when deciding whether to skip a rescan. If tasks are cached but insight was never generated (because the first scan ran before `claudeKey` loaded from D1), the scan re-runs once the key is available.
 
 ---
 
@@ -212,7 +216,7 @@ Shared database views. Workspace-scoped with per-page permissions.
 | Charts | `Charts.jsx` | Data visualization (bar, line, pie, etc.) |
 | SummaryTiles | `SummaryTiles.jsx` | Metric summary cards |
 | ChatPanel | `ChatPanel.jsx` | Workspace-scoped AI chat |
-| RecordDetail | `RecordDetail.jsx` | Record detail drawer with tabs: Properties, Sub-Items (D1 parent records only), Comments, Files. Receives `parentTitle` prop for sub-item records. DateEditor supports date ranges ({ start, end }). Save calls `onUpdate` per field (not batch). Collaboration banner shows user names via collabRef pattern. Text field inputs use `RADIUS.md` (rounded rectangle). |
+| RecordDetail | `RecordDetail.jsx` | Record detail drawer with tabs: Properties, Sub-Items (D1 parent records only), Comments, Files. Receives `parentTitle` prop for sub-item records. DateEditor supports date ranges ({ start, end }), uses refs for Enter key handling to avoid stale React state. Save calls `onUpdate` per field (not batch) — parent views (Table, Kanban, Calendar, CardGrid) pass `onUpdate` directly (no wrapper). Collaboration banner shows user names via collabRef pattern. Text field inputs use `RADIUS.md` (rounded rectangle). |
 
 **Note:** `src/views/CalendarView.jsx` was deleted (dead code). The active calendar is `src/views/Calendar.jsx` for Workspace mode and `src/features/CalendarView.jsx` for the Calendar View.
 

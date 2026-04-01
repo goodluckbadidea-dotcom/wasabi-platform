@@ -210,7 +210,7 @@ User message → queryClassifier (strategy/complexity/model)
 
 ---
 
-## Current State (March 2026)
+## Current State (April 2026)
 
 - Multi-user beta with 5 users (admin + 4 viewers)
 - Security hardened across all critical vectors
@@ -226,8 +226,10 @@ User message → queryClassifier (strategy/complexity/model)
 - Type-change safety: warning when changing column type away from select-like types with existing options
 - Date range support: date fields support optional end dates ({ start, end } objects), displayed as "Jan 15 – Apr 1" in table cells
 - Real-time collaboration: presence banner shows user names, collabRef pattern prevents layout strobe
-- RecordDetail save: per-field onUpdate calls to PageShell (not batch)
+- RecordDetail save: per-field onUpdate calls to PageShell (not batch), all parent views pass onUpdate directly
 - User Tasks table: pagesLoaded gate prevents duplicate creation on login
+- RecordDrawer "Go to Task" navigates to source database AND opens RecordDetail drawer via `navigateToRecord()`
+- AI task curation: Haiku 4.5 response parsing handles code fence wrapping; claudeKey race condition resolved
 - 0 hardcoded error/warning colors (all tokenized)
 - 0 console.log debug statements in production code
 
