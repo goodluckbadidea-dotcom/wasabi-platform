@@ -963,19 +963,16 @@ Return valid JSON only, no markdown: { "tasks": [{ "title": "exact title", "prio
 Items by database:
 ${JSON.stringify(dbSummaries, null, 0)}`;
 
-          const PREFILL = '{ "tasks":';
           const aiResult = await claudeProxy({
-            messages: [
-              { role: "user", content: prompt },
-              { role: "assistant", content: PREFILL },
-            ],
+            messages: [{ role: "user", content: prompt }],
             model: "claude-haiku-4-5-20251001",
             max_tokens: 1024,
           }, user.claudeKey);
 
-          const responseText = PREFILL + (aiResult.content?.[0]?.text || aiResult.text || "");
+          const rawText = aiResult.content?.[0]?.text || aiResult.text || "";
+          // Strip markdown code fences — Haiku wraps JSON despite prompt instructions
+          const responseText = rawText.replace(/^[^{]*```(?:json)?\s*/i, "").replace(/```[^}]*$/i, "").trim();
 
-          // Parse AI response — prefill forces clean JSON, so simple parse suffices
           let prioritized = [];
           let aiInsight = null;
           let parsed = null;
