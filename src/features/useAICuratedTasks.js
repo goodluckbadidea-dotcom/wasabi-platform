@@ -971,28 +971,47 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
 
           const responseText = aiResult.content?.[0]?.text || aiResult.text || "";
 
-          // Parse AI response (new format: { tasks: [...], insight: "..." })
+          // Parse AI response (format: { tasks: [...], insight: "..." })
+          // Multiple strategies to handle markdown fences, malformed JSON, etc.
           let prioritized = [];
           let aiInsight = null;
+          let parsed = null;
+
+          // Strategy 1: Strip code fences and parse directly
           try {
-            // Try object format first: { tasks: [...], insight: "..." }
-            const objMatch = responseText.match(/\{[\s\S]*\}/);
-            if (objMatch) {
-              const parsed = JSON.parse(objMatch[0]);
-              if (Array.isArray(parsed.tasks)) {
-                prioritized = parsed.tasks;
-                aiInsight = parsed.insight || null;
-              } else if (Array.isArray(parsed)) {
-                prioritized = parsed;
-              }
+            const stripped = responseText.replace(/```(?:json)?\s*/gi, "").replace(/```/g, "").trim();
+            parsed = JSON.parse(stripped);
+          } catch {}
+
+          // Strategy 2: Greedy regex match for outermost { ... }
+          if (!parsed) {
+            try {
+              const objMatch = responseText.match(/\{[\s\S]*\}/);
+              if (objMatch) parsed = JSON.parse(objMatch[0]);
+            } catch {}
+          }
+
+          // Extract tasks from parsed object
+          if (parsed) {
+            if (Array.isArray(parsed.tasks)) {
+              prioritized = parsed.tasks;
+            } else if (Array.isArray(parsed)) {
+              prioritized = parsed;
             }
-            // Fallback: bare array format
-            if (prioritized.length === 0) {
+            // Extract insight (separate from task parsing)
+            if (parsed.insight) aiInsight = parsed.insight;
+          }
+
+          // Strategy 3: Bare array fallback (no insight possible)
+          if (prioritized.length === 0) {
+            try {
               const arrMatch = responseText.match(/\[[\s\S]*\]/);
               if (arrMatch) prioritized = JSON.parse(arrMatch[0]);
-            }
-          } catch {
-            console.warn("[AICurated] Failed to parse AI response");
+            } catch {}
+          }
+
+          if (prioritized.length === 0) {
+            console.warn("[AICurated] Failed to parse AI response:", responseText.slice(0, 200));
           }
 
           // Store insight
