@@ -917,7 +917,7 @@ ${ownershipGuidance}`
           const prompt = `You are a smart task prioritizer and workspace advisor. You are ranking ALL active (non-complete) tasks from the user's databases. Your job is to score and rank them so the most important surface first.
 
 Each task includes:
-- nearestDate: the closest date across ALL date fields (timeline ends, deadlines, etc.)
+- nearestDate: the most relevant date for this task (matched to current status phase when possible, otherwise closest date across all fields)
 - nearestDateField: which field it came from (e.g., "Design Deadline", "Timeline")
 - isOverdue: true if this date passed and the task wasn't updated since
 - isStale: true if the task hasn't been touched relative to how close its deadline is

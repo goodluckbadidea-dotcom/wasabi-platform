@@ -176,7 +176,26 @@ export function normalizeD1Task(row, columns) {
     const colType = (col?.type || "").toLowerCase();
     const colName = (col?.name || key).toLowerCase();
     if (colType === "date" || colName.includes("date") || colName.includes("deadline") || colName.includes("timeline")) {
-      if (val && typeof val === "string") allDates.push({ date: val, fieldName: col?.name || key });
+      if (val && typeof val === "string") {
+        allDates.push({ date: val, fieldName: col?.name || key });
+      } else if (val && typeof val === "object" && val.start) {
+        // Date range: use end date (deadline/target), fall back to start
+        allDates.push({ date: val.end || val.start, fieldName: col?.name || key });
+      }
+    }
+  }
+
+  // Status-aware date selection: prefer date fields matching current status
+  const statusForDateMatch = (findCell(["status"]) || "").toString().toLowerCase().trim();
+  if (statusForDateMatch && allDates.length > 1) {
+    const statusWords = statusForDateMatch.split(/[\s\-_\/]+/).filter(w => w.length > 2);
+    const matched = allDates.filter(entry => {
+      const fieldLower = entry.fieldName.toLowerCase();
+      return statusWords.some(word => fieldLower.includes(word));
+    });
+    if (matched.length) {
+      allDates.length = 0;
+      allDates.push(...matched);
     }
   }
 
