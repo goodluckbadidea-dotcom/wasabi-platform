@@ -99,6 +99,7 @@ export function usePlatform() {
 
     // Pages (with cross-context wiring)
     pages: pagesCtx.pages,
+    pagesLoaded: pagesCtx.pagesLoaded,
     addPage,
     updatePageConfig: pagesCtx.updatePageConfig,
     removePage,

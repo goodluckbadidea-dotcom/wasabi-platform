@@ -1658,6 +1658,112 @@ export default {
 
       // ─── Neurons CRUD ───
 
+      // GET /neurons/hydrated — neurons with actual field values from connected records
+      if (path === "/neurons/hydrated" && request.method === "GET") {
+        const url = new URL(request.url);
+        const limit = Math.min(parseInt(url.searchParams.get("limit") || "30", 10), 50);
+
+        // 1. Fetch neurons
+        const { results: neurons } = await env.DB.prepare(
+          "SELECT * FROM neurons ORDER BY updated_at DESC LIMIT ?"
+        ).bind(limit).all();
+        if (!neurons.length) return jsonResponse({ neurons: [] });
+
+        const neuronIds = neurons.map(n => n.id);
+
+        // 2. Fetch nodes + joined row data
+        const placeholders = neuronIds.map(() => "?").join(",");
+        const { results: nodesWithRows } = await env.DB.prepare(
+          `SELECT nn.*, tr.cells, tr.table_id
+           FROM neuron_nodes nn
+           LEFT JOIN table_rows tr ON nn.node_id = tr.id
+           WHERE nn.neuron_id IN (${placeholders})
+           ORDER BY nn.neuron_id, nn.created_at`
+        ).bind(...neuronIds).all();
+
+        // 3. Collect page_config IDs we need: table_ids (for column defs) + page/folder/doc nodes
+        const configIdsNeeded = new Set();
+        for (const nd of nodesWithRows) {
+          if (nd.table_id) configIdsNeeded.add(nd.table_id);
+          if (nd.page_config_id) configIdsNeeded.add(nd.page_config_id);
+          if (["page", "folder", "document"].includes(nd.node_type)) configIdsNeeded.add(nd.node_id);
+        }
+
+        // 4. Fetch page configs for column definitions and page names
+        let configMap = {};
+        if (configIdsNeeded.size > 0) {
+          const cfgIds = [...configIdsNeeded];
+          const cfgPlaceholders = cfgIds.map(() => "?").join(",");
+          const { results: configs } = await env.DB.prepare(
+            `SELECT id, title, config FROM page_configs WHERE id IN (${cfgPlaceholders})`
+          ).bind(...cfgIds).all();
+          for (const c of configs) configMap[c.id] = c;
+        }
+
+        // 5. Key field heuristic: pick up to 3 fields by column type priority
+        const TYPE_PRIORITY = { status: 0, select: 1, date: 2, number: 3 };
+        function pickKeyFields(cells, tableId) {
+          if (!cells || !tableId) return null;
+          const cfg = configMap[tableId];
+          if (!cfg) return null;
+          let columns;
+          try { columns = JSON.parse(cfg.config || "{}").columns; } catch { return null; }
+          if (!columns?.length) return null;
+
+          let cellObj;
+          try { cellObj = typeof cells === "string" ? JSON.parse(cells) : cells; } catch { return null; }
+
+          // Sort columns by type priority, pick top 3 that have values
+          const ranked = columns
+            .filter(c => TYPE_PRIORITY[c.type] !== undefined && cellObj[c.id] != null && cellObj[c.id] !== "")
+            .sort((a, b) => (TYPE_PRIORITY[a.type] ?? 99) - (TYPE_PRIORITY[b.type] ?? 99));
+
+          const fields = {};
+          for (const col of ranked.slice(0, 3)) {
+            fields[col.name] = cellObj[col.id];
+          }
+          return Object.keys(fields).length > 0 ? fields : null;
+        }
+
+        // 6. Assemble response
+        const nodesByNeuron = {};
+        for (const nd of nodesWithRows) {
+          if (!nodesByNeuron[nd.neuron_id]) nodesByNeuron[nd.neuron_id] = [];
+          if (nodesByNeuron[nd.neuron_id].length >= 10) continue; // cap 10 nodes per neuron
+
+          let hydrated = null;
+          if (nd.cells && nd.table_id) {
+            // Row node — extract key fields
+            hydrated = pickKeyFields(nd.cells, nd.table_id);
+          } else if (["page", "folder", "document"].includes(nd.node_type)) {
+            // Page/folder/document node — use title
+            const pc = configMap[nd.node_id];
+            if (pc) hydrated = { title: pc.title };
+          }
+
+          // Resolve page name for context
+          const pageCfg = configMap[nd.page_config_id] || configMap[nd.table_id];
+          const pageName = pageCfg?.title || null;
+
+          nodesByNeuron[nd.neuron_id].push({
+            node_id: nd.node_id,
+            node_type: nd.node_type,
+            node_label: nd.node_label,
+            page_config_id: nd.page_config_id,
+            page_name: pageName,
+            hydrated,
+          });
+        }
+
+        return jsonResponse({
+          neurons: neurons.map(n => ({
+            id: n.id,
+            name: n.name,
+            nodes: nodesByNeuron[n.id] || [],
+          })),
+        });
+      }
+
       // GET /neurons/graph — full dump for Wasabi agent
       if (path === "/neurons/graph" && request.method === "GET") {
         const { results: neurons } = await env.DB.prepare("SELECT * FROM neurons ORDER BY updated_at DESC").all();
@@ -1684,6 +1790,85 @@ export default {
         return jsonResponse({ neurons: results });
       }
 
+      // GET /neurons/:id/hydrated — single neuron with hydrated field values
+      const hydratedSingleMatch = path.match(/^\/neurons\/([^/]+)\/hydrated$/);
+      if (hydratedSingleMatch && request.method === "GET") {
+        const neuronId = hydratedSingleMatch[1];
+        const neuron = await env.DB.prepare("SELECT * FROM neurons WHERE id = ?").bind(neuronId).first();
+        if (!neuron) return jsonResponse({ _error: "Neuron not found" }, 404);
+
+        const { results: nodesWithRows } = await env.DB.prepare(
+          `SELECT nn.*, tr.cells, tr.table_id
+           FROM neuron_nodes nn
+           LEFT JOIN table_rows tr ON nn.node_id = tr.id
+           WHERE nn.neuron_id = ?
+           ORDER BY nn.created_at`
+        ).bind(neuronId).all();
+
+        // Collect config IDs needed
+        const configIdsNeeded = new Set();
+        for (const nd of nodesWithRows) {
+          if (nd.table_id) configIdsNeeded.add(nd.table_id);
+          if (nd.page_config_id) configIdsNeeded.add(nd.page_config_id);
+          if (["page", "folder", "document"].includes(nd.node_type)) configIdsNeeded.add(nd.node_id);
+        }
+
+        let configMap = {};
+        if (configIdsNeeded.size > 0) {
+          const cfgIds = [...configIdsNeeded];
+          const cfgPlaceholders = cfgIds.map(() => "?").join(",");
+          const { results: configs } = await env.DB.prepare(
+            `SELECT id, title, config FROM page_configs WHERE id IN (${cfgPlaceholders})`
+          ).bind(...cfgIds).all();
+          for (const c of configs) configMap[c.id] = c;
+        }
+
+        const TYPE_PRIORITY = { status: 0, select: 1, date: 2, number: 3 };
+        function pickKeyFields(cells, tableId) {
+          if (!cells || !tableId) return null;
+          const cfg = configMap[tableId];
+          if (!cfg) return null;
+          let columns;
+          try { columns = JSON.parse(cfg.config || "{}").columns; } catch { return null; }
+          if (!columns?.length) return null;
+          let cellObj;
+          try { cellObj = typeof cells === "string" ? JSON.parse(cells) : cells; } catch { return null; }
+          const ranked = columns
+            .filter(c => TYPE_PRIORITY[c.type] !== undefined && cellObj[c.id] != null && cellObj[c.id] !== "")
+            .sort((a, b) => (TYPE_PRIORITY[a.type] ?? 99) - (TYPE_PRIORITY[b.type] ?? 99));
+          const fields = {};
+          for (const col of ranked.slice(0, 3)) {
+            fields[col.name] = cellObj[col.id];
+          }
+          return Object.keys(fields).length > 0 ? fields : null;
+        }
+
+        const hydratedNodes = nodesWithRows.map((nd) => {
+          let hydrated = null;
+          if (nd.cells && nd.table_id) {
+            hydrated = pickKeyFields(nd.cells, nd.table_id);
+          } else if (["page", "folder", "document"].includes(nd.node_type)) {
+            const pc = configMap[nd.node_id];
+            if (pc) hydrated = { title: pc.title };
+          }
+          const pageCfg = configMap[nd.page_config_id] || configMap[nd.table_id];
+          return {
+            node_id: nd.node_id,
+            node_type: nd.node_type,
+            node_label: nd.node_label,
+            page_config_id: nd.page_config_id,
+            page_name: pageCfg?.title || null,
+            hydrated,
+          };
+        });
+
+        return jsonResponse({
+          id: neuron.id,
+          name: neuron.name,
+          nodes: hydratedNodes,
+        });
+      }
+
       // POST /neurons/:id/nodes — add a node to an existing neuron
       const addNodeMatch = path.match(/^\/neurons\/([^/]+)\/nodes$/);
       if (addNodeMatch && request.method === "POST") {
@@ -1695,6 +1880,16 @@ export default {
         ).bind(nodeRowId, neuronId, node.node_type, node.node_id, node.node_label || "", node.page_config_id || "", JSON.stringify(node.meta || {})).run();
         await env.DB.prepare("UPDATE neurons SET updated_at = datetime('now') WHERE id = ?").bind(neuronId).run();
         return jsonResponse({ id: nodeRowId }, 201);
+      }
+
+      // DELETE /neurons/:neuronId/nodes/by-node-id/:nodeId — remove node by entity ID
+      const removeByEntityMatch = path.match(/^\/neurons\/([^/]+)\/nodes\/by-node-id\/(.+)$/);
+      if (removeByEntityMatch && request.method === "DELETE") {
+        const [, neuronId, rawNodeId] = removeByEntityMatch;
+        const nodeId = decodeURIComponent(rawNodeId);
+        await env.DB.prepare("DELETE FROM neuron_nodes WHERE neuron_id = ? AND node_id = ?").bind(neuronId, nodeId).run();
+        await env.DB.prepare("UPDATE neurons SET updated_at = datetime('now') WHERE id = ?").bind(neuronId).run();
+        return jsonResponse({ ok: true });
       }
 
       // DELETE /neurons/:id/nodes/:nodeId — remove a node from a neuron
@@ -2949,12 +3144,18 @@ async function handlePutUserState(env, user, body) {
     if (body.zen_tasks_table_id !== undefined) { sets.push("zen_tasks_table_id = ?"); binds.push(body.zen_tasks_table_id); }
     if (body.view_prefs !== undefined) { sets.push("view_prefs = ?"); binds.push(JSON.stringify(body.view_prefs)); }
 
-    // Upsert
+    // Two-step upsert: ensure row exists, then update only provided fields.
+    // Previous single INSERT...ON CONFLICT clobbered zen_tasks_table_id with null
+    // when unrelated fields (e.g. last_page) were written to a new row.
     await env.DB.prepare(
-      `INSERT INTO user_state (user_id, last_page, zen_tasks_table_id, view_prefs, updated_at)
-       VALUES (?, ?, ?, ?, datetime('now'))
-       ON CONFLICT(user_id) DO UPDATE SET ${sets.join(", ")}`
-    ).bind(user.sub, body.last_page || null, body.zen_tasks_table_id || null, JSON.stringify(body.view_prefs || {}), ...binds).run();
+      `INSERT OR IGNORE INTO user_state (user_id, updated_at) VALUES (?, datetime('now'))`
+    ).bind(user.sub).run();
+
+    if (binds.length > 0) {
+      await env.DB.prepare(
+        `UPDATE user_state SET ${sets.join(", ")} WHERE user_id = ?`
+      ).bind(...binds, user.sub).run();
+    }
 
     return jsonResponse({ ok: true });
   } catch (err) {

@@ -14,6 +14,7 @@ export function PagesProvider({ children }) {
   const { user, workerConnection, isAuthenticated } = useAuth();
 
   const [pages, setPages] = useState(() => loadCachedConfigs());
+  const [pagesLoaded, setPagesLoaded] = useState(false);
 
   // Save status: "idle" | "saving" | "saved" | "error"
   const [saveStatus, setSaveStatus] = useState("idle");
@@ -85,9 +86,13 @@ export function PagesProvider({ children }) {
           } catch (err) { console.warn("[Pages] Failed to create dashboard:", err); }
         }
 
-        if (!cancelled) setPages(finalConfigs);
+        if (!cancelled) {
+          setPages(finalConfigs);
+          setPagesLoaded(true);
+        }
       } catch (err) {
         console.error("[Pages] Sync failed:", err);
+        if (!cancelled) setPagesLoaded(true); // Mark loaded even on error so hooks don't hang
       }
     })();
 
@@ -270,6 +275,7 @@ export function PagesProvider({ children }) {
 
   const value = {
     pages,
+    pagesLoaded,
     addPage: addPageRaw,
     updatePageConfig,
     removePage: removePageRaw,

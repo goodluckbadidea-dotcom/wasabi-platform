@@ -19,7 +19,7 @@ const TASK_COLUMNS = [
 ];
 
 export default function useTasksTable() {
-  const { pages, addPage, identity } = usePlatform();
+  const { pages, pagesLoaded, addPage, identity } = usePlatform();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tableId, setTableId] = useState(null);
@@ -27,7 +27,11 @@ export default function useTasksTable() {
   const hasInitRef = useRef(false);
 
   // ── Find or create per-user tasks table ──
+  // IMPORTANT: Only runs after pagesLoaded is true (D1 sync complete).
+  // Running against stale localStorage cache caused false "stale table" detection
+  // and duplicate table creation on every login.
   useEffect(() => {
+    if (!pagesLoaded) return; // Wait for authoritative page list from D1
     let cancelled = false;
 
     async function initTable() {
@@ -39,21 +43,25 @@ export default function useTasksTable() {
         try {
           const { state } = await getUserState();
           if (state?.zen_tasks_table_id) {
-            // Verify ownership: the saved table must belong to THIS user.
-            // Check that the page exists in pages and its name matches this user.
-            const expectedSuffix = identity.display_name ? `(${identity.display_name})` : null;
-            const page = pages.find((p) => p.id === state.zen_tasks_table_id);
-            if (page && (!expectedSuffix || (page.name && page.name.includes(expectedSuffix)))) {
-              if (!cancelled) setTableId(state.zen_tasks_table_id);
-              return;
-            }
-            // Stale or mismatched table — clear it and provision a new one
-            console.warn("[useTasksTable] Stale tasks table ID detected, provisioning new table");
-            putUserState({ zen_tasks_table_id: null }).catch(() => {});
+            // Trust the saved ID — the table exists in D1 even if not in the pages list
+            // (system-internal pages are filtered from sidebar). Don't null it out.
+            if (!cancelled) setTableId(state.zen_tasks_table_id);
+            return;
           }
         } catch (err) { console.warn("[useTasksTable] getUserState:", err.message || err); }
 
-        // No fallback to shared pages — each user must get their own table.
+        // No saved ID — check if a matching table already exists in pages
+        const expectedSuffix = identity.display_name ? `(${identity.display_name})` : null;
+        const existing = pages.find((p) =>
+          p._systemInternal && p.name && p.name.startsWith("User Tasks") &&
+          (!expectedSuffix || p.name.includes(expectedSuffix))
+        );
+        if (existing) {
+          if (!cancelled) setTableId(existing.id);
+          putUserState({ zen_tasks_table_id: existing.id }).catch(() => {});
+          return;
+        }
+
         // Falling through to auto-provision below.
       }
 
@@ -66,7 +74,7 @@ export default function useTasksTable() {
         }
 
         // Search existing pages for a system-internal page
-        const existing = pages.find((p) => p._systemInternal || (p.name && (p.name.startsWith("User Tasks") || p.name.startsWith("User Tasks"))));
+        const existing = pages.find((p) => p._systemInternal || (p.name && p.name.startsWith("User Tasks")));
         if (existing) {
           if (!cancelled) setTableId(existing.id);
           localStorage.setItem("wasabi_tasks_table_id", existing.id);
@@ -103,7 +111,7 @@ export default function useTasksTable() {
 
     initTable();
     return () => { cancelled = true; };
-  }, [pages, addPage, identity]);
+  }, [pagesLoaded, pages, addPage, identity]);
 
   // Reset when user changes
   useEffect(() => {
