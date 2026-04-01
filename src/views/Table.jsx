@@ -1099,12 +1099,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           page={detailPage}
           schema={schema}
           onClose={() => setDetailPage(null)}
-          onUpdate={async (pageId, properties) => {
-            if (!onUpdate) throw new Error("Updates not available");
-            for (const [fieldName, payload] of Object.entries(properties)) {
-              await onUpdate(pageId, fieldName, payload);
-            }
-          }}
+          onUpdate={onUpdate}
           onDelete={onDelete ? (ids) => { onDelete(ids); setDetailPage(null); } : undefined}
           pageConfigId={pageConfig?.id}
           resolvedLinks={resolvedLinks}

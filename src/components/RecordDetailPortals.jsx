@@ -34,11 +34,7 @@ export default function RecordDetailPortals({
           page={detailPage}
           schema={schema}
           onClose={closeDetail}
-          onUpdate={onUpdate ? async (pageId, properties) => {
-            for (const [fieldName, payload] of Object.entries(properties)) {
-              await onUpdate(pageId, fieldName, payload);
-            }
-          } : undefined}
+          onUpdate={onUpdate}
           onDelete={onDelete ? (ids) => { onDelete(ids); closeDetail(); } : undefined}
           pageConfigId={pageConfigId}
         />

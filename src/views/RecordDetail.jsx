@@ -1226,34 +1226,42 @@ function DateEditor({ value, onCommit, onCancel }) {
   const endVal = typeof value === "object" ? value?.end : "";
   const [start, setStart] = useState(startVal?.slice(0, 10) || "");
   const [end, setEnd] = useState(endVal?.slice(0, 10) || "");
+  const startRef = useRef(start);
+  const endRef = useRef(end);
+
+  const commit = () => {
+    const s = startRef.current;
+    const e = endRef.current;
+    onCommit(e ? { start: s, end: e } : s);
+  };
 
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center", flex: 1 }} onClick={(e) => e.stopPropagation()}>
       <input
         type="date"
         value={start}
-        onChange={(e) => setStart(e.target.value)}
+        onChange={(e) => { setStart(e.target.value); startRef.current = e.target.value; }}
         style={{ ...ds.input, width: "auto", flex: 1 }}
         autoFocus
         onKeyDown={(e) => {
           if (e.key === "Escape") onCancel();
-          if (e.key === "Enter") onCommit(end ? { start, end } : start);
+          if (e.key === "Enter") commit();
         }}
       />
       <span style={{ color: C.darkMuted, fontSize: 12 }}>to</span>
       <input
         type="date"
         value={end}
-        onChange={(e) => setEnd(e.target.value)}
+        onChange={(e) => { setEnd(e.target.value); endRef.current = e.target.value; }}
         style={{ ...ds.input, width: "auto", flex: 1 }}
         onKeyDown={(e) => {
           if (e.key === "Escape") onCancel();
-          if (e.key === "Enter") onCommit(end ? { start, end } : start);
+          if (e.key === "Enter") commit();
         }}
       />
       <button
         style={ds.btn(true)}
-        onClick={() => onCommit(end ? { start, end } : start)}
+        onClick={commit}
       >
         Set
       </button>
