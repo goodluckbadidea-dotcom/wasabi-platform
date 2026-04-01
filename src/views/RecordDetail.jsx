@@ -886,8 +886,13 @@ function RecordSubItems({ parentId, tableId, schema, onRefresh }) {
             id: r.id,
             title: (() => {
               const cells = typeof r.cells === "string" ? JSON.parse(r.cells) : (r.cells || {});
-              const titleField = schema?.title?.name;
-              return titleField && cells[titleField] ? String(cells[titleField]) : r.id.slice(0, 8);
+              // Cells are keyed by col.id. Resolve the sub-schema title column ID.
+              const subCols = schema?._subColumns || [];
+              const titleColId = subCols.length > 0
+                ? (subCols.find(c => c.type === "title") || subCols[0])?.id
+                : schema?.title?.id;
+              const val = titleColId ? cells[titleColId] : null;
+              return val ? String(val) : r.id.slice(0, 8);
             })(),
             cells: typeof r.cells === "string" ? JSON.parse(r.cells) : (r.cells || {}),
           }));
