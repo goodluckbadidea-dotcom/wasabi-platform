@@ -103,7 +103,8 @@ async function compressHistory(messages, workerUrl, claudeKey) {
 const WRITE_TOOL_NAMES = new Set([
   "create_page", "update_page", "batch_operations", "create_database",
   "update_database", "create_page_config", "create_automation_rule",
-  "create_neuron", "update_knowledge_base", "post_notification",
+  "create_neuron", "update_neuron", "delete_neuron", "add_neuron_node", "remove_neuron_node",
+  "update_knowledge_base", "post_notification",
   "process_uploaded_files", "smart_match_records", "export_report",
   "delegate_task",
   // Gmail write tools
@@ -347,6 +348,7 @@ async function callClaude({
       const res = await fetch(`${workerUrl}/claude`, {
         method: "POST",
         headers: authHeaders,
+        credentials: "include",
         body: JSON.stringify(body),
       });
 
