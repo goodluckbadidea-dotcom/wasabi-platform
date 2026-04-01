@@ -557,11 +557,11 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   }, [displayList]);
 
   // ── Bulk Delete ──
-  const handleBulkDelete = useCallback(() => {
+  const handleBulkDelete = useCallback(async () => {
     if (!onDelete || selectedRows.size === 0) return;
     const confirmed = window.confirm(`Archive ${selectedRows.size} selected record${selectedRows.size !== 1 ? "s" : ""}?`);
     if (!confirmed) return;
-    onDelete([...selectedRows]);
+    await onDelete([...selectedRows]);
     setSelectedRows(new Set());
   }, [onDelete, selectedRows]);
 

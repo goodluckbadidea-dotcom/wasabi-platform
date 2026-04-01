@@ -3,7 +3,7 @@
 // Expandable (hamburger toggle). Bottom nav: Workspaces, Dashboard, To-Do, Notes, Gmail, etc.
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
-import { C, FONT, RADIUS } from "../design/tokens.js";
+import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
 import { useViewport } from "../context/ViewportContext.jsx";
 import { ANIM, TRANSITION } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
@@ -49,6 +49,8 @@ export default function Navigation({
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [insightPopover, setInsightPopover] = useState(false);
+  const insightRef = useRef(null);
   const [dbResults, setDbResults] = useState([]); // { pageId, pageName, rowId, title }[]
   const [dbSearching, setDbSearching] = useState(false);
   const dbSearchTimer = useRef(null);
@@ -401,14 +403,56 @@ export default function Navigation({
           {/* Insight + spacer */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: collapsed ? 0 : "20px 16px", overflow: "hidden" }}>
             {!collapsed && insight && !searchQuery && (
-              <div style={{
-                fontSize: 13, lineHeight: 1.6, fontFamily: FONT,
-                color: navInactiveColor, fontStyle: "italic",
-                opacity: 0.85, transition: "opacity 0.4s ease",
-                textAlign: "center", padding: "0 2px",
-              }}>
-                {insight}
-              </div>
+              <>
+                <div
+                  ref={insightRef}
+                  onClick={() => setInsightPopover((v) => !v)}
+                  style={{
+                    fontSize: 13, lineHeight: 1.6, fontFamily: FONT,
+                    color: navInactiveColor, fontStyle: "italic",
+                    opacity: 0.85, transition: "opacity 0.4s ease",
+                    textAlign: "center", padding: "0 2px",
+                    cursor: "pointer",
+                    display: "-webkit-box", WebkitLineClamp: 3,
+                    WebkitBoxOrient: "vertical", overflow: "hidden",
+                  }}
+                >
+                  {insight}
+                </div>
+                {insightPopover && (() => {
+                  const rect = insightRef.current?.getBoundingClientRect();
+                  if (!rect) return null;
+                  return (
+                    <div
+                      onClick={() => setInsightPopover(false)}
+                      onKeyDown={(e) => e.key === "Escape" && setInsightPopover(false)}
+                      style={{
+                        position: "fixed", inset: 0, zIndex: Z.dropdown,
+                      }}
+                    >
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          position: "fixed",
+                          left: rect.right + 8,
+                          top: rect.top,
+                          maxWidth: 320, minWidth: 200,
+                          background: C.surfaceRaised,
+                          border: `1px solid ${C.border}`,
+                          borderRadius: RADIUS.lg,
+                          padding: "14px 16px",
+                          boxShadow: SHADOW.dropdown,
+                          zIndex: Z.dropdown + 1,
+                          fontSize: 13, lineHeight: 1.6, fontFamily: FONT,
+                          color: C.text, fontStyle: "italic",
+                        }}
+                      >
+                        {insight}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </>
             )}
             {/* Search results (expanded, when query active) */}
             {!collapsed && searchQuery && (

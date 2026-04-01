@@ -817,9 +817,9 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
                     marginRight: "auto",
                     fontSize: 11,
                   }}
-                  onClick={() => {
+                  onClick={async () => {
                     if (confirmDelete) {
-                      onDelete([page.id]);
+                      await onDelete([page.id]);
                       onClose();
                     } else {
                       setConfirmDelete(true);

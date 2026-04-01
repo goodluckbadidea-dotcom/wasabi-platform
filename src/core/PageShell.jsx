@@ -25,6 +25,7 @@ import PinLockOverlay, { getPinToken } from "../components/PinLockOverlay.jsx";
 import { useColorMapping } from "../context/ColorMappingContext.jsx";
 import { CollaborationProvider, useCollaboration } from "../context/CollaborationContext.jsx";
 import { useRecordDrawer } from "../features/RecordDrawerContext.jsx";
+import { globalToast } from "../context/ToastContext.jsx";
 import { useNavigation } from "../context/NavigationContext.jsx";
 import useViewPrefs from "../hooks/useViewPrefs.js";
 
@@ -263,12 +264,14 @@ export default function PageShell({
         const pinToken = getPinToken(pageConfig?.id);
         await deleteRecords(pageConfig, pageIds, user, { pinToken });
         await fetchData();
+        globalToast(`${pageIds.length} record${pageIds.length !== 1 ? "s" : ""} deleted`, "success");
       } catch (err) {
         console.error("Bulk delete failed:", err);
         if (err.data?.pin_required) {
           try { sessionStorage.removeItem(`wasabi_pin_token_${pageConfig?.id}`); sessionStorage.removeItem(`wasabi_pin_expiry_${pageConfig?.id}`); } catch {}
           setPinRelockKey((k) => k + 1);
         }
+        globalToast("Delete failed — please try again", "error");
       }
     },
     [pageConfig, user, fetchData]
