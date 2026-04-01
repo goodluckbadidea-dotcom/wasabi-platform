@@ -102,7 +102,7 @@ function toDateInput(isoStr) {
 // TaskEditor
 // ════════════════════════════════════════════
 function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction, onSnooze }) {
-  const { user, pages, setActivePage, identity } = usePlatform();
+  const { user, pages, setActivePage, navigateToRecord, identity } = usePlatform();
   const { notifySaved, notifyDeleted } = useRecordDrawer();
   const isNotion = task.source && task.source.startsWith("notion:");
   const isD1 = task.source === "manual" || (task.source && task.source.startsWith("d1:"));
@@ -333,9 +333,9 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction, on
     const matchedPage = findSourcePage();
     if (matchedPage) {
       onClose();
-      setActivePage(matchedPage.id);
+      navigateToRecord(matchedPage.id, task.id);
     }
-  }, [findSourcePage, setActivePage, onClose]);
+  }, [findSourcePage, navigateToRecord, task.id, onClose]);
 
   const canGoToTask = task.source !== "manual" && !!findSourcePage();
 
