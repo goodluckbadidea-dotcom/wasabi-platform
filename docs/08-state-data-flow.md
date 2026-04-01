@@ -420,11 +420,11 @@ TasksView mounts
 ```
 User interacts with task (view, edit, comment, status change)
   → recordInteraction(taskId, type, detail)
-    → 1. persistInteraction() → localStorage ledger (with time decay)
+    → 1. persistInteraction(userId) → user-scoped localStorage ledger (with time decay)
     → 2. logTaskInteraction() → D1 fire-and-forget (for Claude's next scan)
     → 3. setAiTasks() → immediate local re-sort with accumulated adjustment
     → 4. Update localStorage cache → reloads see adjustments
-  → On next scan: mergeInteractionAdjustments() applies ledger to fresh results
+  → On next scan: mergeInteractionAdjustments(tasks, userId) applies ledger to fresh results
   → Claude sees: formulaSuggestion ("deprioritize 60%"), interactionBreakdown ("3 views today")
 ```
 

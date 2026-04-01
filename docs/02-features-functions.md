@@ -45,9 +45,9 @@ Personal productivity surface. User-scoped data. All components lazy-loaded.
 | `TaskList.jsx` | Task rows, quick-add input, section grouping |
 | `taskHelpers.js` | Task utility functions, cache helpers (`getCached`, `setCache`, `getStaleCache`), interaction tracking (`persistInteraction`, `mergeInteractionAdjustments`, `loadInteractionLedger`) |
 | `useTasksTable.js` | Hook for D1 task CRUD. Auto-provisions per-user "User Tasks" table on first use. Gates on `pagesLoaded` to avoid running against stale localStorage cache. Trusts saved `zen_tasks_table_id` from D1 user_state. |
-| `useAICuratedTasks.js` | Hook for AI-curated tasks: scans D1 databases, enriches with signals, calls Claude Haiku for prioritization. Features: stale-while-revalidate caching (2hr TTL), event-driven invalidation via dirty flags, interaction-based deprioritization with time decay, D1-backed snooze, interaction-aware Claude prompt with formula suggestions |
+| `useAICuratedTasks.js` | Hook for AI-curated tasks: scans D1 databases, enriches with signals, calls Claude Haiku for prioritization. Features: stale-while-revalidate caching (2hr TTL), event-driven invalidation via dirty flags, interaction-based deprioritization with time decay (user-scoped), D1-backed snooze, interaction-aware Claude prompt with formula suggestions, pipeline-aware date reasoning, people column matching, cross-user cache invalidation |
 | `useDismissedTasks.js` | Hook for dismissed task tracking (session-scoped, sessionStorage) |
-| `useInsight.js` | Hook for AI-generated insights (sidebar insight, 24hr cache) |
+| `useInsight.js` | Hook for AI-generated insights (sidebar insight, 7-day cache, user-scoped via userId param) |
 | `calendar/` | Calendar sub-components (DayColumn, WeekListView, MonthGrid) |
 
 ### Record Editing
@@ -93,16 +93,17 @@ When users interact with tasks, scores adjust immediately and persist across rem
 
 | Interaction | Score Weight | Persisted |
 |------------|-------------|-----------|
-| `view` | -2 | localStorage + D1 |
-| `field_edit` | -5 | localStorage + D1 |
-| `status_change` | -8 | localStorage + D1 |
-| `comment` | +2 (needs follow-through) | localStorage + D1 |
+| `view` | -1 | localStorage + D1 |
+| `field_edit` | -2 | localStorage + D1 |
+| `file_upload` | -2 | localStorage + D1 |
+| `comment` | -1 | localStorage + D1 |
+| `status_change` | -6 | localStorage + D1 |
 | `dismiss` | -15 | localStorage + D1 |
 
 **Time decay:** Today = full weight, yesterday = 50%, 2+ days = 25%.
 
 **Persistence layers:**
-1. **localStorage interaction ledger** (`wasabi_task_interactions`): accumulates per-task interactions with timestamps. `persistInteraction()` writes, `mergeInteractionAdjustments()` applies to task lists.
+1. **localStorage interaction ledger** (`wasabi_task_interactions_{userId}`): user-scoped, accumulates per-task interactions with timestamps. `persistInteraction()` writes, `mergeInteractionAdjustments()` applies to task lists. All functions accept `userId` parameter for scoping.
 2. **D1 `task_interactions` table**: fire-and-forget write via `logTaskInteraction()` so Claude sees history on next scan.
 3. **Claude prompt**: includes `formulaSuggestion` (e.g., "deprioritize 60%") and `interactionBreakdown` (e.g., "3 views, 2 field_edits today"). Claude follows the suggestion unless new external urgency exists.
 
@@ -118,11 +119,28 @@ Users can snooze tasks from the RecordDrawer (3 preset buttons: 2 hours, Tomorro
 
 ### Workspace Insight
 
-Claude generates a one-line insight (max 120 chars) alongside the task ranking. Cached separately (`wasabi_insight`, 7-day TTL). Displayed in the navigation sidebar via `useInsight` hook (polls localStorage every 5s). Falls back to "Visit Tasks to generate your workspace insight" after 10s if no cached insight exists.
+Claude generates a one-line insight (max 120 chars) alongside the task ranking. Cached separately (`wasabi_insight_{userId}`, 7-day TTL) — user-scoped so multi-user workspaces don't overwrite each other's insights. Displayed in the navigation sidebar via `useInsight(userId)` hook (polls localStorage every 5s). Falls back to "Visit Tasks to generate your workspace insight" after 10s if no cached insight exists. Sidebar shows truncated insight (3 lines) with click-to-expand popover.
 
-**Response parsing:** Haiku 4.5 wraps JSON in markdown code fences despite prompt instructions. Assistant message prefilling is not supported on Claude 4.5+ models. Response text has code fences stripped before `JSON.parse`. The insight field is extracted separately from task ranking so a failure in one doesn't block the other.
+**Response parsing:** Haiku 4.5 wraps JSON in markdown code fences despite prompt instructions. Assistant message prefilling is not supported on Claude 4.5+ models. Response text has code fences stripped before `JSON.parse`. The insight field is extracted separately from task ranking so a failure in one doesn't block the other. `max_tokens` set to 4096 to prevent JSON truncation.
 
 **claudeKey timing:** The auto-scan effect checks for missing insight when deciding whether to skip a rescan. If tasks are cached but insight was never generated (because the first scan ran before `claudeKey` loaded from D1), the scan re-runs once the key is available.
+
+### People Column Matching
+
+Assignee detection handles both string-type and people-type columns. People columns store values as arrays of `{name, id}` objects (e.g., `[{name: "Kat", id: "abc123"}]`). In `normalizeD1Task()`, array values are flattened to comma-separated names for display. In the enrichment step, user matching checks both display name (string match) and user ID (array `.some(p => p.id === userId)`).
+
+### Pipeline-Aware Prioritization
+
+The Claude prompt includes pipeline reasoning instructions for tasks with multiple date fields:
+- **Date field → status mapping:** Claude matches date field names to status values semantically (e.g., "Design Timeline" → "Design" status)
+- **Ahead/behind schedule:** If the task status has advanced past a date's stage but that date hasn't lapsed, the task is ahead of schedule (lower priority). If the date has passed but status hasn't advanced, the task is behind (higher priority).
+- **All dates sent:** `compressTask()` includes all date fields (not just nearest) so Claude can reason about the full timeline.
+- **Hold states (boost):** "Waiting on Vendor", "Waiting on Deposit", "Quality Check", "Awaiting PO" — external dependencies needing proactive check-ins
+- **Pause states (lower):** "Paused" — intentional pause, don't nag
+
+### Cross-User Task Cache Invalidation
+
+When a record is saved with a status/done field change OR an `owner_user_id` change (task reassignment), the worker broadcasts `task_cache_invalidate` to ALL active UserRoom Durable Objects. This ensures all users' task caches refresh when tasks are reassigned or progressed, not just the saving user's cache.
 
 ---
 

@@ -278,3 +278,8 @@ Comprehensive collaboration audit — 18 fixes across 4 phases:
 **Collaboration UI fixes (2 fixes):**
 - RecordDetail banner now shows collaborator names (e.g., "Graham editing Status") instead of anonymous count ("1 collaborator viewing")
 - Fixed layout strobe/jumping when 2+ users view the same record. Root cause: `collab` in effect dependency arrays caused a blur/focus feedback loop between users. Fix: `collabRef` pattern — effects use a ref for stable action access, dependency arrays exclude `collab`
+
+## Changelog (2026-04-01 Session)
+
+**Cross-user task cache invalidation (1 fix):**
+- `handleUpdateRow()` in worker.js now broadcasts `task_cache_invalidate` to ALL UserRoom DOs when `owner_user_id` changes (task reassignment), not just when status/done fields change. Previously, assigning a task to another user only invalidated the saving user's task cache — the assignee's cache stayed stale for up to 2 hours.

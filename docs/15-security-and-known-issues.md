@@ -162,6 +162,21 @@ Two issues prevented the sidebar workspace insight from generating:
 
 2. **AI response parsing failure:** Claude Haiku 4.5 wraps JSON responses in markdown code fences despite prompt instructions to return raw JSON. Assistant message prefilling (the standard technique for forcing clean JSON) is not supported on Claude 4.5+ models. Fixed: removed the broken prefill approach and added targeted code fence stripping (`replace` for `` ```json `` / `` ``` `` wrappers) before `JSON.parse`.
 
+### Delete Record Flow — 409 hasChildren (Resolved 2026-04-01)
+
+`deleteRecords()` in `dataSource.js` expected `deleteRow()` to return `{ hasChildren: true }` when a record had sub-items (worker returns HTTP 409). But `apiFetch()` throws on non-2xx responses, so `deleteRecords()` never saw the response — it threw a generic error, and PageShell showed "Delete failed — please try again." Fixed: `deleteRecords()` now catches 409 errors and returns the `hasChildren` data. `handleDelete()` in PageShell prompts the user to choose how to handle sub-items (orphan or cancel) before retrying with cascade.
+
+### AI Insight Truncation (Resolved 2026-04-01)
+
+The AI insight was permanently stuck on the fallback message ("Visit Tasks to generate your workspace insight"). Root cause: `max_tokens: 1024` caused Claude's JSON response to be truncated mid-object. The fragile regex parser then failed silently. Fixed: increased `max_tokens` to 4096, replaced regex with brace-matching extraction (`rawText.indexOf("{")` / `lastIndexOf("}")`), added `stop_reason === "max_tokens"` warning.
+
+### Multi-User Task Cache Scoping (Resolved 2026-04-01)
+
+Three localStorage cache keys were shared across all users on the same browser, causing cross-user data pollution:
+1. **Insight cache** (`wasabi_insight`): Users overwrote each other's AI-generated insights. Fixed: key is now `wasabi_insight_{userId}`. `useInsight()` accepts userId parameter.
+2. **Interaction ledger** (`wasabi_task_interactions`): User A's task interactions (views, edits, dismissals) affected User B's priority scores. Fixed: key is now `wasabi_task_interactions_{userId}`. All ledger functions accept userId parameter.
+3. **Cross-user cache invalidation**: Assigning a task to another user only invalidated the saving user's task cache. Fixed: worker broadcasts `task_cache_invalidate` to all UserRoom DOs on owner changes.
+
 ### Console and Error Hygiene
 
 All `console.log` debug statements have been removed from production code. Error handling uses the ToastContext system for user-visible errors and silent catch for non-critical failures (localStorage, optional features).
