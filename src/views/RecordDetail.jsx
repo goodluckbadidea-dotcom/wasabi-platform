@@ -10,7 +10,6 @@ import { readProp, buildProp } from "../notion/properties.js";
 import { IconClose, IconEdit, IconExpand } from "../design/icons.jsx";
 import { timeAgo, formatDate } from "../utils/helpers.js";
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
-import RecordNotes from "../components/RecordNotes.jsx";
 import RecordComments from "../components/RecordComments.jsx";
 import RecordFiles from "../components/RecordFiles.jsx";
 import { useCollaboration } from "../context/CollaborationContext.jsx";
@@ -151,7 +150,7 @@ const ds = {
     width: "100%",
     background: C.dark,
     border: `1px solid ${C.darkBorder}`,
-    borderRadius: RADIUS.pill,
+    borderRadius: RADIUS.md,
     padding: "6px 10px",
     fontSize: 13,
     fontFamily: FONT,
@@ -597,7 +596,6 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
           {[
             { key: "properties", label: "Properties" },
             ...(page?._source === "d1" && !page?._parentRowId ? [{ key: "subitems", label: "Sub-Items" }] : []),
-            { key: "notes", label: "Notes" },
             { key: "comments", label: "Comments" },
             { key: "files", label: "Files" },
           ].map((t) => (
@@ -861,9 +859,6 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
             onRefresh={onRefresh}
           />
         )}
-
-        {/* Notes Tab */}
-        {activeTab === "notes" && <RecordNotes recordId={page.id} pageConfigId={pageConfigId} />}
 
         {/* Comments Tab */}
         {activeTab === "comments" && <RecordComments recordId={page.id} pageConfigId={pageConfigId} userId={identity?.id} userName={identity?.display_name} userRole={identity?.role} />}
