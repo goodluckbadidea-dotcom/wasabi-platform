@@ -8,7 +8,6 @@ import { C, FONT, FONT_DISPLAY, MONO, RADIUS, SHADOW, Z } from "../design/tokens
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { getBlocks, appendBlocks, updateBlock, deleteBlock } from "../notion/client.js";
 import { getDocument, saveDocument } from "../lib/api.js";
-import RecordNotes from "../components/RecordNotes.jsx";
 import RecordComments from "../components/RecordComments.jsx";
 import RecordFiles from "../components/RecordFiles.jsx";
 
@@ -889,7 +888,7 @@ export default function DocumentEditor({ pageId: legacyPageId, config, pageConfi
   const [slashMenu, setSlashMenu] = useState(null); // { index, position, filter }
   const [linkPopup, setLinkPopup] = useState(null); // { position }
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarTab, setSidebarTab] = useState("notes"); // notes | comments | files
+  const [sidebarTab, setSidebarTab] = useState("comments"); // comments | files
   const saveTimerRef = useRef(null);
   const blockRefs = useRef({});
   const deletedIdsRef = useRef([]);
@@ -1652,7 +1651,6 @@ export default function DocumentEditor({ pageId: legacyPageId, config, pageConfi
             borderBottom: `1px solid ${C.darkBorder}`,
           }}>
             {[
-              { key: "notes", label: "Notes" },
               { key: "comments", label: "Comments" },
               { key: "files", label: "Files" },
             ].map((t) => {
@@ -1682,9 +1680,6 @@ export default function DocumentEditor({ pageId: legacyPageId, config, pageConfi
 
           {/* Sidebar content */}
           <div style={{ flex: 1, padding: "0 12px", overflowY: "auto" }}>
-            {sidebarTab === "notes" && (
-              <RecordNotes recordId={docId} pageConfigId={docPageConfigId} />
-            )}
             {sidebarTab === "comments" && (
               <RecordComments recordId={docId} pageConfigId={docPageConfigId} />
             )}
