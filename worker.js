@@ -879,6 +879,7 @@ export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(runAutomationTick(env));
     ctx.waitUntil(runSyncFlushTick(env));
+    ctx.waitUntil(runNeuronPruneTick(env));
     // Clean up expired PIN sessions
     ctx.waitUntil(
       env.DB.prepare("DELETE FROM pin_sessions WHERE expires_at < datetime('now')").run().catch(() => {})
@@ -4517,7 +4518,14 @@ async function handleDeletePage(env, id) {
         try { await env.DOCS.delete(docMeta.r2_key); } catch {}
       }
       await env.DB.prepare("DELETE FROM documents WHERE id = ?").bind(pid).run();
+      // Remove neuron nodes referencing this page
+      await env.DB.prepare("DELETE FROM neuron_nodes WHERE page_config_id = ?").bind(pid).run();
     }
+
+    // Clean up neurons left with zero nodes after page deletion
+    await env.DB.prepare(
+      "DELETE FROM neurons WHERE id NOT IN (SELECT DISTINCT neuron_id FROM neuron_nodes)"
+    ).run();
 
     // Remove child page configs
     await env.DB.prepare("DELETE FROM page_configs WHERE parent_id = ?").bind(id).run();
@@ -4959,6 +4967,24 @@ async function handleDeleteRow(env, tableId, rowId, cascade) {
 
     // Invalidate data summary cache
     invalidateSummaryCache(env, tableId).catch(() => {});
+
+    // Remove neuron nodes referencing this row (and cascade-deleted children)
+    await env.DB.prepare("DELETE FROM neuron_nodes WHERE node_id = ?").bind(rowId).run();
+    if (childCount > 0 && cascade === "delete") {
+      await env.DB.prepare(`
+        DELETE FROM neuron_nodes WHERE node_id IN (
+          WITH RECURSIVE descendants(id) AS (
+            SELECT id FROM table_rows WHERE parent_row_id = ? AND table_id = ?
+            UNION ALL
+            SELECT tr.id FROM table_rows tr JOIN descendants d ON tr.parent_row_id = d.id WHERE tr.table_id = ?
+          ) SELECT id FROM descendants
+        )
+      `).bind(rowId, tableId, tableId).run();
+    }
+    // Clean up empty neurons
+    await env.DB.prepare(
+      "DELETE FROM neurons WHERE id NOT IN (SELECT DISTINCT neuron_id FROM neuron_nodes)"
+    ).run();
 
     return jsonResponse({ ok: true, id: rowId });
   } catch (err) {
@@ -8004,6 +8030,37 @@ async function checkAutomationTriggers(env, tableId, rowId, oldCells, newCells) 
  * Cron-triggered sync flush — processes dirty rows to Notion.
  * Runs alongside the automation tick on every cron invocation.
  */
+
+// ─── Neuron Pruning (cron safety net) ───
+// Removes orphaned neuron nodes pointing to deleted pages or archived rows,
+// then cleans up any neurons left with zero nodes.
+async function runNeuronPruneTick(env) {
+  try {
+    // Remove nodes pointing to deleted pages
+    const pageResult = await env.DB.prepare(`
+      DELETE FROM neuron_nodes
+      WHERE page_config_id != '' AND page_config_id NOT IN (SELECT id FROM page_configs)
+    `).run();
+
+    // Remove nodes pointing to archived/deleted rows
+    const rowResult = await env.DB.prepare(`
+      DELETE FROM neuron_nodes
+      WHERE node_type = 'row' AND node_id NOT IN (SELECT id FROM table_rows WHERE archived = 0)
+    `).run();
+
+    const pruned = (pageResult.meta?.changes || 0) + (rowResult.meta?.changes || 0);
+
+    // Clean up empty neurons (no remaining nodes)
+    if (pruned > 0) {
+      await env.DB.prepare(`
+        DELETE FROM neurons WHERE id NOT IN (SELECT DISTINCT neuron_id FROM neuron_nodes)
+      `).run();
+    }
+  } catch (_) {
+    // Non-critical — swallow errors to avoid blocking cron
+  }
+}
+
 async function runSyncFlushTick(env) {
   const LOG = "[SyncCron]";
   try {
