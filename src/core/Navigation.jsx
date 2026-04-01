@@ -44,7 +44,7 @@ export default function Navigation({
   const { isTouch } = useViewport();
   const userSync = useUserSync();
 
-  const insight = useInsight();
+  const insight = useInsight(identity?.id);
 
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);

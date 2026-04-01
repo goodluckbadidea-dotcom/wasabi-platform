@@ -12,20 +12,21 @@ const CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days — insight persists across
 const POLL_INTERVAL = 5000; // check for new insight every 5s
 const FALLBACK_DELAY = 10000; // show fallback after 10s if no insight
 
-export default function useInsight() {
-  const [insight, setInsight] = useState(() => getCached(INSIGHT_CACHE_KEY, CACHE_TTL));
+export default function useInsight(userId) {
+  const cacheKey = userId ? `${INSIGHT_CACHE_KEY}_${userId}` : INSIGHT_CACHE_KEY;
+  const [insight, setInsight] = useState(() => getCached(cacheKey, CACHE_TTL));
   const [fallback, setFallback] = useState(null);
 
   // Poll localStorage for updates (written by useAICuratedTasks)
   useEffect(() => {
     const check = () => {
-      const cached = getCached(INSIGHT_CACHE_KEY, CACHE_TTL);
+      const cached = getCached(cacheKey, CACHE_TTL);
       if (cached) setFallback(null); // clear fallback once real insight arrives
       setInsight((prev) => cached !== prev ? cached : prev);
     };
     const id = setInterval(check, POLL_INTERVAL);
     return () => clearInterval(id);
-  }, []);
+  }, [cacheKey]);
 
   // Show fallback message if no insight after 10 seconds
   useEffect(() => {

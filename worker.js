@@ -4818,35 +4818,37 @@ async function handleUpdateRow(env, tableId, rowId, body, user) {
     }
 
     // ── Task cache invalidation broadcast (cross-user) ──
-    // When a status/done field changes, notify all users to refresh their task caches
+    // Notify all users to refresh their task caches when status/done/owner changes
+    const ownerChanged = body.owner_user_id !== undefined;
+    let statusChanged = false;
     if (body.cells !== undefined && !body._fromSync) {
       const STATUS_FIELDS = ["status", "stage", "state", "phase", "done", "complete", "completed"];
       const schema = await env.DB.prepare("SELECT columns FROM table_schemas WHERE id = ?").bind(tableId).first();
       const cols = schema ? JSON.parse(schema.columns || "[]") : [];
       const colMap = Object.fromEntries(cols.map((c) => [c.id, c]));
-      const changedStatusField = Object.keys(body.cells).some((colId) => {
+      statusChanged = Object.keys(body.cells).some((colId) => {
         const col = colMap[colId];
         if (!col) return false;
         const colName = (col.name || "").toLowerCase();
         return col.type === "status" || col.type === "checkbox" || STATUS_FIELDS.some((s) => colName.includes(s));
       });
-      if (changedStatusField) {
-        (async () => {
-          try {
-            const allUsers = await env.DB.prepare("SELECT id FROM users WHERE deleted_at IS NULL").all();
-            for (const u of (allUsers.results || [])) {
-              try {
-                const roomId = env.USER_ROOMS.idFromName(`user:${u.id}`);
-                const room = env.USER_ROOMS.get(roomId);
-                await room.fetch(new Request("https://internal/broadcast", {
-                  method: "POST",
-                  body: JSON.stringify({ type: "task_cache_invalidate", tableId }),
-                }));
-              } catch (_) {}
-            }
-          } catch (_) {}
-        })();
-      }
+    }
+    if (statusChanged || ownerChanged) {
+      (async () => {
+        try {
+          const allUsers = await env.DB.prepare("SELECT id FROM users WHERE deleted_at IS NULL").all();
+          for (const u of (allUsers.results || [])) {
+            try {
+              const roomId = env.USER_ROOMS.idFromName(`user:${u.id}`);
+              const room = env.USER_ROOMS.get(roomId);
+              await room.fetch(new Request("https://internal/broadcast", {
+                method: "POST",
+                body: JSON.stringify({ type: "task_cache_invalidate", tableId }),
+              }));
+            } catch (_) {}
+          }
+        } catch (_) {}
+      })();
     }
 
     // ── Assignment change notifications (Sprint 11B) ──

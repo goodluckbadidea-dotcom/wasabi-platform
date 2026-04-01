@@ -239,6 +239,8 @@ export function normalizeD1Task(row, columns) {
   if (notesKey) _fieldMap.notes = notesKey;
   const dueKey = findCellKey(["due", "deadline"]);
   if (dueKey) _fieldMap.due = dueKey;
+  const assigneeKey = findCellKey(["assignee", "assigned", "owner", "responsible"]);
+  if (assigneeKey) _fieldMap.assignee = assigneeKey;
 
   // Extract status options from column schema (for dropdown in RecordDrawer)
   const _statusOptions = [];
@@ -273,7 +275,11 @@ export function normalizeD1Task(row, columns) {
     nearestDateField,
     allDates,
     notes: findCell(["notes", "note", "description"]) || "",
-    assignee: findCell(["assignee", "assigned", "owner", "responsible"]) || "",
+    assignee: (() => {
+      let raw = findCell(["assignee", "assigned", "owner", "responsible"]) || "";
+      if (Array.isArray(raw)) raw = raw.map(p => p.name || p.email || "").filter(Boolean).join(", ");
+      return raw;
+    })(),
     status: statusVal,
     source: "manual",
     sourceName: "User Tasks",
@@ -625,19 +631,24 @@ export function getStaleCache(key) {
 // accumulate and decay over time (today=full, yesterday=50%, 2d+=25%).
 
 const INTERACTION_CACHE_KEY = "wasabi_task_interactions";
+function interactionKey(userId) {
+  return userId ? `${INTERACTION_CACHE_KEY}_${userId}` : INTERACTION_CACHE_KEY;
+}
 
 const INTERACTION_WEIGHTS = {
-  view: -2,
-  field_edit: -5,
-  status_change: -8,
-  comment: +2,       // bumps UP — needs follow-through
+  view: -1,
+  field_edit: -2,
+  file_upload: -2,
+  comment: -1,
+  status_change: -6,
   dismiss: -15,
 };
 
 /** Persist interaction to localStorage ledger. Accumulates per-task. */
-export function persistInteraction(taskId, type, detail) {
+export function persistInteraction(taskId, type, detail, userId) {
   try {
-    const raw = localStorage.getItem(INTERACTION_CACHE_KEY);
+    const key = interactionKey(userId);
+    const raw = localStorage.getItem(key);
     const ledger = raw ? JSON.parse(raw) : {};
     if (!ledger[taskId]) ledger[taskId] = { interactions: [] };
     const entry = ledger[taskId];
@@ -645,7 +656,7 @@ export function persistInteraction(taskId, type, detail) {
     // Cap interaction history at 20 per task to bound localStorage size
     if (entry.interactions.length > 20) entry.interactions = entry.interactions.slice(-20);
     entry.totalAdjustment = calculateDecayedAdjustment(entry.interactions);
-    localStorage.setItem(INTERACTION_CACHE_KEY, JSON.stringify(ledger));
+    localStorage.setItem(key, JSON.stringify(ledger));
     return entry;
   } catch {
     return null;
@@ -666,9 +677,9 @@ export function calculateDecayedAdjustment(interactions) {
 }
 
 /** Load interaction ledger from localStorage. */
-export function loadInteractionLedger() {
+export function loadInteractionLedger(userId) {
   try {
-    const raw = localStorage.getItem(INTERACTION_CACHE_KEY);
+    const raw = localStorage.getItem(interactionKey(userId));
     return raw ? JSON.parse(raw) : {};
   } catch {
     return {};
@@ -676,8 +687,8 @@ export function loadInteractionLedger() {
 }
 
 /** Merge persisted interaction adjustments into tasks from a fresh scan. */
-export function mergeInteractionAdjustments(tasks) {
-  const ledger = loadInteractionLedger();
+export function mergeInteractionAdjustments(tasks, userId) {
+  const ledger = loadInteractionLedger(userId);
   if (!Object.keys(ledger).length) return tasks;
   return tasks.map(task => {
     const entry = ledger[task.id];

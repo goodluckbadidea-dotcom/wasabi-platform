@@ -259,6 +259,12 @@ function compressTask(task) {
   if (task.status) obj.status = task.status;
   if (task.done) obj.done = true;
   if (task.priority) obj.priority = task.priority;
+  if (task.allDates?.length) {
+    obj.dates = task.allDates.map(d => ({
+      field: d.fieldName,
+      date: typeof d.date === "object" ? `${d.date.start} – ${d.date.end}` : d.date,
+    }));
+  }
   if (task.nearestDate) {
     obj.nearestDate = task.nearestDate;
     obj.nearestDateField = task.nearestDateField;
@@ -301,6 +307,7 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
   const { user, pages, identity } = usePlatform();
   const userSync = useUserSync();
   const CACHE_KEY = cacheKeyForUser(identity?.id);
+  const INSIGHT_KEY = identity?.id ? `${INSIGHT_CACHE_KEY}_${identity.id}` : INSIGHT_CACHE_KEY;
   const [aiTasks, setAiTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false); // background re-scan indicator
@@ -352,7 +359,7 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
       setLastUpdated(new Date(cached.ts));
       setLoading(false);
     }
-    const cachedInsight = getCached(INSIGHT_CACHE_KEY, 7 * 24 * 60 * 60 * 1000);
+    const cachedInsight = getCached(INSIGHT_KEY, 7 * 24 * 60 * 60 * 1000);
     if (cachedInsight) setInsight(cachedInsight);
   }, [CACHE_KEY, identity?.id, identity?.role]);
 
@@ -616,6 +623,14 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
             if (assignee && assignee.includes(userName)) {
               task._isAssigned = true;
             }
+            // Also match people-column user IDs (array of {name, id} objects)
+            if (!task._isAssigned && task._fieldMap) {
+              const assigneeKey = task._fieldMap.assignee;
+              const rawAssignee = assigneeKey && task._raw?.cells?.[assigneeKey];
+              if (Array.isArray(rawAssignee) && rawAssignee.some(p => p.id === userId)) {
+                task._isAssigned = true;
+              }
+            }
 
             // Last viewed: days since user viewed this record
             const lastViewed = viewMap.get(task.id);
@@ -851,7 +866,7 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
       // This adds _interactionBreakdown (e.g., "3 views, 2 edits today") to each task
       // so compressTask() can include it and the formula suggestion in the Claude prompt.
       try {
-        const ledger = loadInteractionLedger();
+        const ledger = loadInteractionLedger(identity?.id);
         const now = Date.now();
         for (const task of filteredTasks) {
           const entry = ledger[task.id];
@@ -917,12 +932,30 @@ ${ownershipGuidance}`
           const prompt = `You are a smart task prioritizer and workspace advisor. You are ranking ALL active (non-complete) tasks from the user's databases. Your job is to score and rank them so the most important surface first.
 
 Each task includes:
-- nearestDate: the most relevant date for this task (matched to current status phase when possible, otherwise closest date across all fields)
-- nearestDateField: which field it came from (e.g., "Design Deadline", "Timeline")
+- dates: all date fields on this task (e.g., [{field: "Design Timeline", date: "2026-03-15"}, {field: "Production Timeline", date: "2026-04-10 – 2026-05-01"}])
+- nearestDate: the system's pick for the most relevant date (closest upcoming or most recently passed)
+- nearestDateField: which field nearestDate came from
 - isOverdue: true if this date passed and the task wasn't updated since
 - isStale: true if the task hasn't been touched relative to how close its deadline is
 ${userContext}
 Today is ${today}.
+
+PIPELINE REASONING:
+When a task has multiple date fields AND a status field, reason about pipeline position:
+- Match date field names to status values (e.g., "Design Timeline" relates to "Design" status, "Production Timeline" relates to "In Production")
+- If the task's current status is PAST a date field's stage but that date hasn't lapsed yet, the task is AHEAD of schedule → lower priority
+- If a date field's deadline has passed but the task status hasn't advanced past that stage, the task is BEHIND schedule → higher priority
+- Use ALL date fields to understand the full timeline, not just the nearest date
+
+HOLD STATES:
+These statuses indicate external dependencies requiring proactive check-ins — BOOST priority:
+- "Waiting on Vendor" — outside partner dependency, forgetting causes deadline lapse
+- "Waiting on Deposit" — financial dependency needing follow-up
+- "Quality Check" — inspection hold, can happen at any pipeline stage
+- "Awaiting PO" — purchase order dependency
+
+These statuses indicate intentional pauses — LOWER priority:
+- "Paused" — user chose to pause, don't nag
 
 Do TWO things:
 
@@ -1003,7 +1036,7 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
           // Store insight
           if (aiInsight) {
             setInsight(aiInsight);
-            setCache(INSIGHT_CACHE_KEY, aiInsight);
+            setCache(INSIGHT_KEY, aiInsight);
           }
 
           // Map AI prioritized titles back to full task objects
@@ -1022,7 +1055,7 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
               }
             }
             // Merge persisted interaction adjustments so user interactions survive rescans
-            const merged = mergeInteractionAdjustments(result);
+            const merged = mergeInteractionAdjustments(result, identity?.id);
             // Sort by AI priority score (highest first)
             merged.sort((a, b) => (b._aiScore || 0) - (a._aiScore || 0));
             // Dynamic fill: show more tasks as user completes/dismisses items
@@ -1033,7 +1066,7 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
             setCache(CACHE_KEY, merged); // cache includes interaction adjustments
           } else {
             // Fallback: show filtered tasks sorted by nearest date
-            const merged = mergeInteractionAdjustments(filteredTasks);
+            const merged = mergeInteractionAdjustments(filteredTasks, identity?.id);
             merged.sort((a, b) => {
               // Primary: interaction-adjusted score (if any), secondary: date
               const scoreDiff = (b._aiScore || 0) - (a._aiScore || 0);
@@ -1052,7 +1085,7 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
           }
         } catch (err) {
           console.warn("[AICurated] AI call failed, using fallback:", err.message);
-          const merged = mergeInteractionAdjustments(filteredTasks);
+          const merged = mergeInteractionAdjustments(filteredTasks, identity?.id);
           merged.sort((a, b) => {
             const scoreDiff = (b._aiScore || 0) - (a._aiScore || 0);
             if (Math.abs(scoreDiff) > 1) return scoreDiff;
@@ -1070,7 +1103,7 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
         }
       } else {
         // No Claude key or no filtered tasks — sort by nearest date
-        const merged = mergeInteractionAdjustments(filteredTasks);
+        const merged = mergeInteractionAdjustments(filteredTasks, identity?.id);
         merged.sort((a, b) => {
           const scoreDiff = (b._aiScore || 0) - (a._aiScore || 0);
           if (Math.abs(scoreDiff) > 1) return scoreDiff;
@@ -1104,7 +1137,7 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
   useEffect(() => {
     if (!identity?.id) return; // Don't scan until we know who the user is
     const cached = getCached(CACHE_KEY, CACHE_TTL);
-    const hasInsight = getCached(INSIGHT_CACHE_KEY, 7 * 24 * 60 * 60 * 1000);
+    const hasInsight = getCached(INSIGHT_KEY, 7 * 24 * 60 * 60 * 1000);
     if (cached && cached.length > 0 && !cacheDirty && (hasInsight || !user?.claudeKey)) {
       // Cache is fresh and not invalidated. Skip rescan unless insight is missing
       // and claudeKey is now available (race: first scan ran before key loaded).
@@ -1182,7 +1215,7 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
 
   const recordInteraction = useCallback((taskId, type, detail) => {
     // 1. Persist to localStorage interaction ledger (accumulates with time decay)
-    const entry = persistInteraction(taskId, type, detail);
+    const entry = persistInteraction(taskId, type, detail, identity?.id);
 
     // 2. Fire-and-forget: persist to D1 so Claude sees interaction history on next scan
     const id = identityRef.current;
@@ -1219,7 +1252,7 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed.data)) {
-          const updated = mergeInteractionAdjustments(parsed.data);
+          const updated = mergeInteractionAdjustments(parsed.data, identity?.id);
           localStorage.setItem(CACHE_KEY, JSON.stringify({ data: updated, ts: parsed.ts }));
         }
       }
