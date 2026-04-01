@@ -74,7 +74,7 @@ Worker (Cloudflare Workers — single file: worker.js, ~9500 lines)
 | Database | D1 (SQLite at edge) | Source of truth for all workspace data |
 | Storage | R2 | File attachments, document exports |
 | Real-time | Durable Objects | WebSocket rooms per table (TableRoom) and per user (UserRoom) |
-| AI | Claude API | Haiku (fast/cheap) and Sonnet (complex) with 50+ tools |
+| AI | Claude API | Haiku (fast/cheap) and Sonnet (complex) with 55+ tools |
 | Auth | JWT + HttpOnly cookies | 15-min access token (memory), 7-day refresh token (cookie) |
 
 ### Key Technical Decisions
@@ -85,7 +85,7 @@ Worker (Cloudflare Workers — single file: worker.js, ~9500 lines)
 - **Single worker.js** handles all API routes, auth, WebSocket upgrade, cron, and OAuth
 - **Schema version fast path** on `/init`: returning users skip all DDL (~2-3 queries in <1s instead of ~92). First boot and version bumps use batched DDL via `env.DB.batch()`. Version tracked in `connections` table as `schema_version`.
 - **Auth gate in PlatformContext**: `AuthGate` component sits between AuthProvider and data-fetching providers (PagesProvider, NavigationProvider), ensuring nothing mounts pre-auth
-- **AI routing**: `queryClassifier.js` determines complexity → Haiku (fast/cheap) or Sonnet (complex reasoning) with 50+ tools available to the agent
+- **AI routing**: `queryClassifier.js` determines complexity → Haiku (fast/cheap) or Sonnet (complex reasoning) with 55+ tools available to the agent
 - **Real-time collaboration** via Durable Objects — field-level conflict detection with `cell_versions`
 
 ---
@@ -144,9 +144,11 @@ Shared database views. Workspace-scoped with per-page permissions.
 | File | Purpose |
 |------|---------|
 | `src/agent/runAgent.js` | Agent loop: prompt → classify → route to model → execute tools → respond |
-| `src/agent/toolExecutor.js` | 50+ tool implementations: CRUD pages/rows, email, calendar, automations |
+| `src/agent/agentContext.js` | Context envelope builders for Agent and Assistant modes |
+| `src/agent/toolExecutor.js` | 55+ tool implementations: CRUD pages/rows, email, calendar, automations, neuron CRUD |
 | `src/agent/queryClassifier.js` | Determines query complexity → routes to Haiku or Sonnet |
-| `src/agent/tools.js` | Tool definitions (name, description, parameters) for Claude |
+| `src/agent/tools.js` | Tool definitions (name, description, parameters) for Claude. Role-based assistant tool sets. |
+| `src/agent/wasabiPrompt.js` | System prompt builder for Agent and Assistant. Context budget competition. |
 | `src/agent/automations.js` | Cron-triggered automation engine: evaluates rules, executes actions |
 | `src/agent/flowExecutor.js` | DAG-based flow execution: trigger → conditions → actions → delays |
 | `src/agent/dataSummary.js` | Builds data context for AI within token budget constraints |
@@ -154,7 +156,7 @@ Shared database views. Workspace-scoped with per-page permissions.
 ### How AI Uses the Scaffolding
 
 1. **Knowledge Base** (`knowledge_base` D1 table) — User-curated domain rules, business context. Injected into every AI system prompt.
-2. **Neurons** (`neurons` D1 table + `src/neurons/`) — Named relationship clusters linking records, pages, and fields. AI queries these to understand connections.
+2. **Neurons** (`neurons` D1 table + `src/neurons/`) — Named relationship clusters linking records, pages, and fields across the workspace. AI receives **hydrated** neuron context (actual field values from connected records, not just labels) filtered by relevance to the user's query. Full CRUD tools let the AI create, rename, delete neurons and add/remove nodes conversationally. When neurons are rich enough, the system automatically compresses or skips the workspace summary to save tokens.
 3. **Page Structure** — The organization of pages, folders, and views tells the AI what matters and how data relates.
 4. **Automation History** — Past automation executions provide operational patterns the AI learns from.
 
@@ -218,6 +220,14 @@ User message → queryClassifier (strategy/complexity/model)
 - Test infrastructure: vitest with 29 security unit tests
 - Toast notification system for save/error/warning feedback
 - Loading states: SkeletonLoader, EmptyState, ErrorState components
+- WCAG AA contrast: all 5 themes pass 4.5:1+ for muted text on surfaces (surface, surfaceRaised, border, textMuted updated)
+- Column options management: OptionsManagerModal for select/multi_select/status CRUD, reorder, color assignment
+- Form view: inline option creation via SelectPicker/MultiSelectPicker, databaseId fallback to pageConfig.id
+- Type-change safety: warning when changing column type away from select-like types with existing options
+- Date range support: date fields support optional end dates ({ start, end } objects), displayed as "Jan 15 – Apr 1" in table cells
+- Real-time collaboration: presence banner shows user names, collabRef pattern prevents layout strobe
+- RecordDetail save: per-field onUpdate calls to PageShell (not batch)
+- User Tasks table: pagesLoaded gate prevents duplicate creation on login
 - 0 hardcoded error/warning colors (all tokenized)
 - 0 console.log debug statements in production code
 

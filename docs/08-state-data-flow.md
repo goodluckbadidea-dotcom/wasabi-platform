@@ -126,6 +126,7 @@ Manages the array of page configurations and provides CRUD operations.
 
 **Key state:**
 - `pages` — array of all PageConfig objects
+- `pagesLoaded` — boolean, `true` after D1 sync completes (not just localStorage cache). Used by `useTasksTable` to avoid running against stale data.
 - `activePage` — currently selected page ID or system route string
 - `pageTree` — nested hierarchy computed from pages
 - `folders` — computed list of folder-type pages

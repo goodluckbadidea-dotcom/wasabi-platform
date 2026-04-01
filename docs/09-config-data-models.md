@@ -154,6 +154,8 @@ interface TableRow {
   id: string;                      // UUID primary key
   table_id: string;                // Foreign key to page_configs.id
   cells: Record<string, any>;      // JSON: column ID → cell value (includes both parent col IDs and subcol_* IDs)
+                                     // Date values: string ("2026-04-01") for single dates,
+                                     //   or { start: string, end: string } for date ranges
   sort_order: number;              // Display order within the table
   parent_row_id: string | null;    // If set, this row is a sub-item of the referenced parent row
   created_at: string;              // ISO 8601

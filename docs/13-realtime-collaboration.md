@@ -1,6 +1,6 @@
 # Real-Time Collaboration
 
-**Last Updated:** 2026-03-24
+**Last Updated:** 2026-03-31
 
 ## Product Context
 
@@ -192,7 +192,9 @@ Renders colored avatar circles with initials for all active users in the table h
 
 **File:** `src/views/RecordDetail.jsx`
 
-When other users are focused on the same record, RecordDetail shows a collaboration banner below the header. The banner displays which specific fields are being edited (e.g., "2 collaborators editing Status, Name") rather than just a generic "editing" message. Uses design system gradient styling with `C.accent`.
+When other users are focused on the same record, RecordDetail shows a collaboration banner below the header. The banner displays collaborator names and which specific fields are being edited (e.g., "Graham editing Status") rather than just an anonymous count. Uses design system gradient styling with `C.accent`.
+
+**collabRef pattern:** RecordDetail uses a `collabRef` (useRef tracking the collab context) for its focus/blur and typing effects. The effect dependency arrays reference `page?.id` and `editingField` but NOT `collab` — this prevents a feedback loop where every presence update from the WebSocket would re-fire `focusRecord`/`blurRecord`, causing layout strobing when 2+ users view the same record. The banner and per-field typing indicators still read from `collab` directly for reactive re-renders.
 
 ---
 
@@ -270,3 +272,9 @@ Comprehensive collaboration audit — 18 fixes across 4 phases:
 - Conflict "Keep Mine" resolution captures response `cell_versions` into `cellVersionsRef`
 - Conflict dismiss requires ConfirmDialog instead of silent discard
 - RecordDetail collaboration banner shows specific field names being edited
+
+## Changelog (2026-03-31 Session)
+
+**Collaboration UI fixes (2 fixes):**
+- RecordDetail banner now shows collaborator names (e.g., "Graham editing Status") instead of anonymous count ("1 collaborator viewing")
+- Fixed layout strobe/jumping when 2+ users view the same record. Root cause: `collab` in effect dependency arrays caused a blur/focus feedback loop between users. Fix: `collabRef` pattern — effects use a ref for stable action access, dependency arrays exclude `collab`

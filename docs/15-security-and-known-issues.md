@@ -1,6 +1,6 @@
 # Security Posture & Known Issues
 
-**Last Updated:** 2026-03-27
+**Last Updated:** 2026-03-31
 
 ## Product Context
 
@@ -31,6 +31,8 @@ The following security features are implemented and active in production.
 | ARIA accessibility | role="dialog", aria-modal, aria-labelledby on dialogs; role="alert", aria-live on toasts | ConfirmDialog, NewRecordModal, ConflictToast, etc. |
 | Tab deduplication | Only active browser tab maintains UserRoom WebSocket; prevents duplicate presence | `UserSyncContext.jsx` via localStorage active-tab tracking |
 | Typing TTL guard | Typing indicators auto-expire after 8s to prevent ghost state from crashed browsers | `CollaborationContext.jsx` |
+| Notion JWT auth | All Notion API calls routed through JWT-authenticated `apiFetch()`. Worker `getNotionKey()` validates key prefix (`ntn_`/`secret_`) before accepting. Raw fetch with Notion key as Bearer removed from 31 files. | `src/notion/client.js`, `worker.js` getNotionKey() |
+| WCAG AA contrast | All 5 themes pass 4.5:1+ for muted text on all surfaces; surface/border/text token gaps widened | `src/design/tokens.js` |
 
 ---
 
@@ -104,9 +106,16 @@ The auth gate lives in `PlatformContext.jsx` as the `AuthGate` component, positi
 
 Approximately 134 bare `catch` blocks remain in the codebase. The majority are intentional -- guarding `localStorage` access, `JSON.parse` calls, and optional feature detection where the failure mode is "do nothing." Roughly 10 API-level catch blocks that previously swallowed errors have been fixed to surface error state to the user.
 
-### Sub-Item Title Type Mismatch (Resolved 2026-03-25)
+### Sub-Item Data Path Fixes (Resolved 2026-03-25)
 
-Sub-columns created before the `type: "title"` enforcement fix stored the first column with `type: "text"` instead of `type: "title"`. `d1SchemaToClassified` treated `idx === 0` as title regardless of stored type, but `d1RowToPage` originally used the raw column type to wrap values. This caused a format mismatch (schema said "title", property said "rich_text") and sub-item titles displayed as "--". Fixed by making `d1RowToPage` mirror the same title detection logic as `d1SchemaToClassified`.
+A series of fixes addressed data-path mismatches in the sub-item system:
+
+1. **Ghost row schema** — Ghost row used parent schema for title validation and type lookup. Fixed to use sub-item schema (`subColumns`).
+2. **Creation write path** — `createRecord()` mapped sub-column names incorrectly into the `cells` object and used the wrong schema. Fixed to map sub-column names to cells and use sub-item column definitions.
+3. **Read path** — `d1RowToPage()` did not map sub-column cells into properties. Fixed to iterate sub-columns and produce Notion-compatible property objects.
+4. **Title type mismatch** — Sub-columns created before the `type: "title"` enforcement fix stored the first column with `type: "text"` instead of `type: "title"`. `d1SchemaToClassified` treated `idx === 0` as title regardless of stored type, but `d1RowToPage` used the raw column type. Fixed by making `d1RowToPage` mirror the same title detection logic as `d1SchemaToClassified`.
+5. **Write path title type** — `extractRawValue()` used the raw column type to determine how to read the value. Fixed to use the classified title type so writes go through the correct extraction path.
+6. **Record detail** — Sub-item records incorrectly showed the "Sub-Items" tab (sub-items cannot have sub-items). Fixed to hide the tab and show `parentTitle` in the header.
 
 ### Editable Column Headers — Double-Click Delay
 
@@ -115,6 +124,20 @@ Parent column headers use a 250ms `setTimeout` to disambiguate single-click (con
 ### Conflict Detection Scope
 
 Real-time conflict detection only works for D1-backed tables. Notion-linked databases in proxy mode have no cell versioning and no conflict detection. Multiple users editing the same Notion-linked data in Wasabi can produce lost updates.
+
+### Duplicate User Tasks Table Creation (Resolved 2026-03-31)
+
+`useTasksTable.js` had a race condition that created a new "User Tasks" table on every login. The ownership check ran against the stale localStorage page cache before D1 sync completed, causing false "stale table" detection. When verification failed, the hook destructively nulled out the saved `zen_tasks_table_id` and provisioned a new table. Additionally, `handlePutUserState` in worker.js had an INSERT path that clobbered `zen_tasks_table_id` with null on unrelated field writes.
+
+Fixes:
+1. PagesContext exposes `pagesLoaded` flag (true after D1 sync). `useTasksTable` gates on it.
+2. Removed the destructive null-out — hook now trusts the saved ID from user_state.
+3. Worker `handlePutUserState` uses INSERT OR IGNORE + conditional UPDATE instead of a single INSERT...ON CONFLICT that clobbered unset fields.
+4. D1 cleanup: deleted 347 duplicate page_configs and orphaned rows.
+
+### RecordDetail Save Path (Resolved 2026-03-31)
+
+RecordDetail's `handleSave` passed all pending changes as a single batch object to `onUpdate(page.id, properties)`, but PageShell's `handleUpdate` expects per-field calls `onUpdate(pageId, fieldName, propPayload)`. Fixed to iterate and call per-field.
 
 ### Console and Error Hygiene
 

@@ -28,7 +28,7 @@ Personal productivity surface. User-scoped data. All components lazy-loaded.
 | TasksView | `src/features/TasksView.jsx` | Personal task list + calendar integration |
 | CalendarView | `src/features/CalendarView.jsx` | Day/week/month calendar with Google Calendar sync |
 | RecordDrawer | `src/features/RecordDrawer.jsx` | Slide-out record editor (primary edit surface for all views) |
-| ChatPanel | `src/features/ChatPanel.jsx` | AI chat with context from current page/data |
+| ChatPanel | `src/features/ChatPanel.jsx` | Dual-tab AI chat: Assistant (Haiku, lightweight tools, neuron-aware) and Agent (full Wasabi agent with all tools) |
 | GmailView | `src/features/GmailView.jsx` | Gmail inbox, read, compose, reply |
 | DashboardView | `src/features/DashboardView.jsx` | Customizable widget dashboard |
 | WorkspaceBrowser | `src/features/WorkspaceBrowser.jsx` | Folder-based page navigation |
@@ -44,7 +44,7 @@ Personal productivity surface. User-scoped data. All components lazy-loaded.
 | `RecordDrawerContext.jsx` | Context provider for drawer open/close state |
 | `TaskList.jsx` | Task rows, quick-add input, section grouping |
 | `taskHelpers.js` | Task utility functions, cache helpers (`getCached`, `setCache`, `getStaleCache`), interaction tracking (`persistInteraction`, `mergeInteractionAdjustments`, `loadInteractionLedger`) |
-| `useTasksTable.js` | Hook for D1 task CRUD |
+| `useTasksTable.js` | Hook for D1 task CRUD. Auto-provisions per-user "User Tasks" table on first use. Gates on `pagesLoaded` to avoid running against stale localStorage cache. Trusts saved `zen_tasks_table_id` from D1 user_state. |
 | `useAICuratedTasks.js` | Hook for AI-curated tasks: scans D1 databases, enriches with signals, calls Claude Haiku for prioritization. Features: stale-while-revalidate caching (2hr TTL), event-driven invalidation via dirty flags, interaction-based deprioritization with time decay, D1-backed snooze, interaction-aware Claude prompt with formula suggestions |
 | `useDismissedTasks.js` | Hook for dismissed task tracking (session-scoped, sessionStorage) |
 | `useInsight.js` | Hook for AI-generated insights (sidebar insight, 24hr cache) |
@@ -122,6 +122,37 @@ Claude generates a one-line insight (max 120 chars) alongside the task ranking. 
 
 ---
 
+## Date Range Support
+
+Date fields support optional end dates. A single `date` column type handles both single dates and date ranges — no separate column type.
+
+### Storage Format
+
+- **Single date:** plain string in cells — `"2026-04-01"`
+- **Date range:** object in cells — `{ start: "2026-04-01", end: "2026-04-15" }`
+- **Backward compatible:** existing plain string values continue working unchanged
+
+### Data Path
+
+| Layer | File | Behavior |
+|-------|------|----------|
+| Table cell editor | `CellEditor.jsx` | End date input always visible. `commit()` returns `{ start, end }` when end date set, plain string otherwise. |
+| Table cell display | `CellDisplay.jsx` | Shows "Jan 15 – Apr 1" (en-dash) for ranges, "Jan 15" for single dates. |
+| Data source write | `dataSource.js` `wrapAsNotionProp()` | Preserves `{ start, end }` when value is an object. |
+| Data source read | `dataSource.js` `extractRawValue()` | Returns `{ start, end }` for dates with end, plain string otherwise. |
+| Record detail display | `RecordDetail.jsx` | Uses `formatDate()` with en-dash separator for ranges. |
+| Record detail editor | `RecordDetail.jsx` `DateEditor` | Already supported — two date inputs with "Set" button. Returns `{ start, end }` or plain string. |
+| Gantt view | `Gantt.jsx` | Already reads `value.end` via `parseDateEnd()` — works automatically. |
+| Calendar view | `Calendar.jsx` | Already spans multi-day when `raw.end` exists — works automatically. |
+| Sort (useTableData) | `useTableData.js` | Already normalizes `typeof value === "object"` to `value.start` — works automatically. |
+
+### Not Yet Implemented (Phase 2)
+
+- Notion sync round-trip for date ranges (worker.js `readNotionPropValue` / `buildNotionPropValue`)
+- Agent toolExecutor date range handling
+
+---
+
 ## Sub-Items (Table View)
 
 Sub-items are hierarchical child records within a D1 table. They share the same `table_rows` D1 table as parent records, distinguished by `parent_row_id`.
@@ -165,11 +196,11 @@ Shared database views. Workspace-scoped with per-page permissions.
 
 | View | File | Purpose |
 |------|------|---------|
-| Table | `Table.jsx` + `table/` (16 files) | Spreadsheet-like grid with columns, filters, sorting, inline cell editing, sub-items, and editable column headers. Orchestrator (~1,205 lines) + extracted sub-modules in `src/views/table/`. |
+| Table | `Table.jsx` + `table/` (17 files) | Spreadsheet-like grid with columns, filters, sorting, inline cell editing, sub-items, editable column headers, and options management modal. Orchestrator (~1,205 lines) + extracted sub-modules in `src/views/table/`. |
 | Kanban | `Kanban.jsx` | Card-based board grouped by status/select columns |
 | Gantt | `Gantt.jsx` | Timeline bar chart for date-range records |
 | Calendar | `Calendar.jsx` | Calendar view of date-based records |
-| Form | `Form.jsx` | Public/private form for data collection |
+| Form | `Form.jsx` | Form for data collection. Falls back to `pageConfig.id` for D1 tables. Uses SelectPicker/MultiSelectPicker with inline option creation. |
 | LinkedSheet | `LinkedSheet.jsx` | Read-only Google Sheets/CSV viewer |
 | DocumentEditor | `DocumentEditor.jsx` | Rich text document with blocks |
 | Document | `Document.jsx` | Document page container |
@@ -181,7 +212,7 @@ Shared database views. Workspace-scoped with per-page permissions.
 | Charts | `Charts.jsx` | Data visualization (bar, line, pie, etc.) |
 | SummaryTiles | `SummaryTiles.jsx` | Metric summary cards |
 | ChatPanel | `ChatPanel.jsx` | Workspace-scoped AI chat |
-| RecordDetail | `RecordDetail.jsx` | Record detail drawer with tabs: Properties, Sub-Items (D1 parent records only), Notes, Comments, Files. Receives `parentTitle` prop for sub-item records. |
+| RecordDetail | `RecordDetail.jsx` | Record detail drawer with tabs: Properties, Sub-Items (D1 parent records only), Notes, Comments, Files. Receives `parentTitle` prop for sub-item records. DateEditor supports date ranges ({ start, end }). Save calls `onUpdate` per field (not batch). Collaboration banner shows user names via collabRef pattern. |
 
 **Note:** `src/views/CalendarView.jsx` was deleted (dead code). The active calendar is `src/views/Calendar.jsx` for Workspace mode and `src/features/CalendarView.jsx` for the Calendar View.
 
@@ -274,7 +305,7 @@ Refactored from a single file into a folder with 9 files:
 | File | Purpose |
 |------|---------|
 | `runAgent.js` | Agent loop: prompt, classify, route to model, execute tools, respond |
-| `toolExecutor.js` | 50+ tool implementations: CRUD pages/rows, email, calendar, automations |
+| `toolExecutor.js` | 55+ tool implementations: CRUD pages/rows, email, calendar, automations, neuron CRUD |
 | `queryClassifier.js` | Determines query complexity, routes to Haiku (fast/cheap) or Sonnet (complex) |
 | `tools.js` | Tool definitions (name, description, parameters) for Claude |
 | `automations.js` | Cron-triggered automation engine: evaluates rules, executes actions |
@@ -294,7 +325,7 @@ The agent has access to 50+ tools covering CRUD operations, email, calendar, aut
 ### How AI Uses the Scaffolding
 
 1. **Knowledge Base** (`knowledge_base` D1 table) — User-curated domain rules and business context, injected into every AI system prompt
-2. **Neurons** (`neurons` + `neuron_nodes` D1 tables) — Named relationship clusters linking records, pages, and fields. AI queries these to understand connections.
+2. **Neurons** (`neurons` + `neuron_nodes` D1 tables) — Named relationship clusters linking records, pages, and fields. AI receives hydrated neuron context (actual field values) filtered by relevance to the user's query. Full CRUD via 7 tools (see Neurons section). Context budget competition compresses workspace summary when neurons are rich.
 3. **Page Structure** — Organization of pages, folders, and views tells the AI what matters
 4. **Automation History** — Past execution logs provide operational patterns
 
@@ -306,11 +337,11 @@ Named relationship clusters that form the semantic scaffolding. 5 files:
 
 | File | Purpose |
 |------|---------|
-| `NeuronsContext.jsx` | Global neurons state and CRUD |
+| `NeuronsContext.jsx` | Global neurons state and CRUD. Pre-warms hydrated neuron cache on load. |
 | `NeuronOverlay.jsx` | Visual overlay rendering nodes + connections |
 | `NeuronLines.jsx` | SVG lines connecting neuron nodes |
 | `NeuronBadge.jsx` | Neuron indicator badge |
-| `neuronStorage.js` | Persistence helpers |
+| `neuronStorage.js` | Persistence, caching (list/graph/hydrated), and AI context builders |
 
 ### What Neurons Do
 
@@ -320,7 +351,59 @@ Neurons are named relationship clusters linking:
 - External data sources (calendars, emails)
 - Arbitrary fields
 
-Visual representation: nodes (circles) connected by lines, color-coded per neuron. Hover highlights connections; click navigates to the linked entity. The AI agent queries neurons to understand cross-table relationships and context.
+Visual representation: nodes (circles) connected by lines, color-coded per neuron. Hover highlights connections; click navigates to the linked entity. Both the Agent and Assistant AI modes use neurons as their primary navigation tool for cross-table reasoning.
+
+### Hydrated Neurons
+
+The worker endpoint `GET /neurons/hydrated` returns neurons with actual field values from connected records (not just labels). For each node, the worker joins `neuron_nodes` → `table_rows` → `page_configs` to extract up to 3 key fields per row, prioritized by type: `status > select > date > number`. Cap: 30 neurons, 10 nodes each.
+
+Single-neuron hydration is available via `GET /neurons/:id/hydrated` (no node cap).
+
+### Neuron Caching (neuronStorage.js)
+
+Three separate localStorage caches with 5-minute TTL:
+
+| Cache | Key | Content |
+|-------|-----|---------|
+| List | `wasabi_neurons` | Neuron names + node counts |
+| Graph | `wasabi_neuron_graph` | Full graph with node labels |
+| Hydrated | `wasabi_neuron_hydrated` | Nodes with actual field values |
+
+All three caches are invalidated together on any CRUD operation.
+
+### AI Context Injection
+
+`buildFilteredNeuronContext(query, maxNeurons)` scores neurons by keyword relevance to the user's message:
+- Neuron name match: +3 per keyword
+- Node label match: +2 per keyword
+- Hydrated field value match: +1 per keyword
+
+Falls back to `buildNeuronContextSummary()` (unfiltered, priority chain: hydrated → graph → list) when no keywords are extracted.
+
+### AI Neuron Tools
+
+The Agent has full CRUD tools for neurons:
+
+| Tool | Purpose |
+|------|---------|
+| `query_neurons` | Query neuron graph by node ID or list all |
+| `query_neuron_data` | Get hydrated data for a single neuron |
+| `create_neuron` | Create neuron with initial nodes |
+| `update_neuron` | Rename a neuron |
+| `delete_neuron` | Delete neuron and all nodes |
+| `add_neuron_node` | Add a node to an existing neuron |
+| `remove_neuron_node` | Remove a node by entity ID |
+
+The Assistant (lightweight chat) has read-only access: `query_neurons` and `query_neuron_data`.
+
+Write tools (`update_neuron`, `delete_neuron`, `add_neuron_node`, `remove_neuron_node`) require user approval in confirm mode.
+
+### Context Budget Competition
+
+When neuron context is rich, the system compresses or skips the workspace summary to save tokens:
+- If neuron + page tokens exceed 80% of the variable budget (~4000 tokens): compress workspace summary to page names only
+- If neurons reference >80% of workspace databases: skip workspace summary entirely
+- KB context and current page context are never compressed
 
 ---
 
@@ -496,7 +579,7 @@ React context providers wrapping the app in `App.jsx`:
 | Context | Purpose |
 |---------|---------|
 | `AuthContext` | JWT auth, user session, refresh tokens |
-| `PagesContext` | Page configs, CRUD, navigation state |
+| `PagesContext` | Page configs, CRUD, `pagesLoaded` flag, navigation state |
 | `ThemeContext` | Theme switching, applyTheme() |
 | `NavigationContext` | Route/view state management |
 | `CollaborationContext` | Real-time sync via WebSocket (Durable Objects) |
