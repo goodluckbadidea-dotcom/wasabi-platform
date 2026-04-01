@@ -246,9 +246,15 @@ export async function deleteRecords(pageConfig, recordIds, user, { pinToken, cas
   if (type === "d1") {
     const tableId = pageConfig.id;
     for (const id of recordIds) {
-      const result = await deleteRow(tableId, id, { pinToken, cascade });
-      // If server returns 409 (has children, needs cascade decision), propagate it
-      if (result?.hasChildren) return result;
+      try {
+        const result = await deleteRow(tableId, id, { pinToken, cascade });
+        // If server returns 409 (has children, needs cascade decision), propagate it
+        if (result?.hasChildren) return result;
+      } catch (err) {
+        // 409 = has children, needs cascade decision — propagate instead of throwing
+        if (err.status === 409 && err.data?.hasChildren) return err.data;
+        throw err;
+      }
     }
     return true;
   }

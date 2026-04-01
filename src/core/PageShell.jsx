@@ -258,11 +258,21 @@ export default function PageShell({
   );
 
   const handleDelete = useCallback(
-    async (pageIds) => {
+    async (pageIds, { cascade } = {}) => {
       if (!pageIds?.length) return;
       try {
         const pinToken = getPinToken(pageConfig?.id);
-        await deleteRecords(pageConfig, pageIds, user, { pinToken });
+        const result = await deleteRecords(pageConfig, pageIds, user, { pinToken, cascade });
+        // Row has children — ask user how to handle
+        if (result?.hasChildren) {
+          const choice = window.confirm(
+            `This record has ${result.childCount} sub-item${result.childCount !== 1 ? "s" : ""}.\n\nOK = archive record and keep sub-items\nCancel = don't delete`
+          );
+          if (choice) {
+            return handleDelete(pageIds, { cascade: "orphan" });
+          }
+          return; // user cancelled
+        }
         await fetchData();
         globalToast(`${pageIds.length} record${pageIds.length !== 1 ? "s" : ""} deleted`, "success");
       } catch (err) {
