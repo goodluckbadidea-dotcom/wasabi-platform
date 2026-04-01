@@ -106,7 +106,7 @@ The auth gate lives in `PlatformContext.jsx` as the `AuthGate` component, positi
 
 Approximately 134 bare `catch` blocks remain in the codebase. The majority are intentional -- guarding `localStorage` access, `JSON.parse` calls, and optional feature detection where the failure mode is "do nothing." Roughly 10 API-level catch blocks that previously swallowed errors have been fixed to surface error state to the user.
 
-### Sub-Item Data Path Fixes (Resolved 2026-03-25)
+### Sub-Item Data Path Fixes (Resolved 2026-03-25, updated 2026-03-31)
 
 A series of fixes addressed data-path mismatches in the sub-item system:
 
@@ -116,6 +116,7 @@ A series of fixes addressed data-path mismatches in the sub-item system:
 4. **Title type mismatch** — Sub-columns created before the `type: "title"` enforcement fix stored the first column with `type: "text"` instead of `type: "title"`. `d1SchemaToClassified` treated `idx === 0` as title regardless of stored type, but `d1RowToPage` used the raw column type. Fixed by making `d1RowToPage` mirror the same title detection logic as `d1SchemaToClassified`.
 5. **Write path title type** — `extractRawValue()` used the raw column type to determine how to read the value. Fixed to use the classified title type so writes go through the correct extraction path.
 6. **Record detail** — Sub-item records incorrectly showed the "Sub-Items" tab (sub-items cannot have sub-items). Fixed to hide the tab and show `parentTitle` in the header.
+7. **RecordDetail sub-item title display (2026-03-31)** — `RecordSubItems` in the detail drawer read cell values by `schema?.title?.name` (column name, e.g. `"Task"`), but D1 cells are keyed by `col.id` (e.g. `"subcol_1743..."`). All sub-items fell back to showing the raw UUID prefix. Fixed to resolve the title column ID from `schema._subColumns` and look up `cells[titleColId]`, matching the write path in `createRecord()`.
 
 ### Editable Column Headers — Double-Click Delay
 
@@ -134,6 +135,14 @@ Fixes:
 2. Removed the destructive null-out — hook now trusts the saved ID from user_state.
 3. Worker `handlePutUserState` uses INSERT OR IGNORE + conditional UPDATE instead of a single INSERT...ON CONFLICT that clobbered unset fields.
 4. D1 cleanup: deleted 347 duplicate page_configs and orphaned rows.
+
+### File Upload Bug in RecordDetail (Resolved 2026-03-31)
+
+`handleListFiles` in worker.js queried `FROM rows` (table does not exist — should be `FROM table_rows`) and used the column name `page_config_id` (should be `table_id`). This caused a SQL error and "Failed to load files" on every Files tab open for record-scoped file listings. Fixed to use the correct table and column names.
+
+### Notes Feature Removal (2026-03-31)
+
+The Notes tab was removed from RecordDetail and DocumentEditor. It was redundant with Comments, which serves the same purpose. Removed: `RecordNotes.jsx` component, the Notes tab + panel from both views, and the `GET/PUT /records/:id/notes` worker endpoints (`handleGetNote`, `handleSaveNote`). The `record_notes` D1 table is retained until a scheduled schema migration drops it.
 
 ### RecordDetail Save Path (Resolved 2026-03-31)
 

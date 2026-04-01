@@ -212,7 +212,7 @@ Shared database views. Workspace-scoped with per-page permissions.
 | Charts | `Charts.jsx` | Data visualization (bar, line, pie, etc.) |
 | SummaryTiles | `SummaryTiles.jsx` | Metric summary cards |
 | ChatPanel | `ChatPanel.jsx` | Workspace-scoped AI chat |
-| RecordDetail | `RecordDetail.jsx` | Record detail drawer with tabs: Properties, Sub-Items (D1 parent records only), Notes, Comments, Files. Receives `parentTitle` prop for sub-item records. DateEditor supports date ranges ({ start, end }). Save calls `onUpdate` per field (not batch). Collaboration banner shows user names via collabRef pattern. |
+| RecordDetail | `RecordDetail.jsx` | Record detail drawer with tabs: Properties, Sub-Items (D1 parent records only), Comments, Files. Receives `parentTitle` prop for sub-item records. DateEditor supports date ranges ({ start, end }). Save calls `onUpdate` per field (not batch). Collaboration banner shows user names via collabRef pattern. Text field inputs use `RADIUS.md` (rounded rectangle). |
 
 **Note:** `src/views/CalendarView.jsx` was deleted (dead code). The active calendar is `src/views/Calendar.jsx` for Workspace mode and `src/features/CalendarView.jsx` for the Calendar View.
 
@@ -523,7 +523,7 @@ Notifications are **user-scoped** — every user (including admins) sees only no
 - **Resolution:** Extracted names are matched case-insensitively against `users.display_name`
 - **Self-mentions:** Allowed. A user can @mention themselves and will receive the notification.
 - **Dedup guard:** Duplicate mention notifications (same type, record, target, actor) within 5 minutes are skipped
-- **Available in:** Record comments (`RecordComments.jsx`) and record notes (`RecordNotes.jsx`) via `MentionInput` component
+- **Available in:** Record comments (`RecordComments.jsx`) via `MentionInput` component
 
 ### Notification Click-Through
 
@@ -557,7 +557,6 @@ The sidebar notification badge updates instantly via WebSocket, not just polling
 | `createNotificationInternal()` | worker.js | Inserts notification + WebSocket push to target user |
 | `extractMentions()` | worker.js | Regex extraction of @mention names from text |
 | `handleCreateComment()` | worker.js | Comment creation + owner/mention notification triggers |
-| `handleSaveNote()` | worker.js | Note save + mention notification triggers |
 
 ---
 

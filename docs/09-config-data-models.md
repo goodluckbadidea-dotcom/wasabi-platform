@@ -439,20 +439,11 @@ interface CellLink {
 }
 ```
 
-### RecordNote and RecordComment
+### RecordComment
 
-Stored in `record_notes` and `record_comments` D1 tables.
+Stored in `record_comments` D1 table. (The `record_notes` table is vestigial — Notes feature removed 2026-03-31.)
 
 ```typescript
-interface RecordNote {
-  id: string;
-  record_id: string;
-  page_config_id: string;
-  content: string;                 // Markdown
-  created_at: string;
-  updated_at: string;
-}
-
 interface RecordComment {
   id: string;
   record_id: string;

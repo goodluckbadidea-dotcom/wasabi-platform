@@ -228,7 +228,6 @@ Shared UI components used across views.
 | `RecordComments.jsx` | Record-level comment thread |
 | `RecordDetailPortals.jsx` | Portal components for record detail overlays |
 | `RecordFiles.jsx` | File attachment management for records |
-| `RecordNotes.jsx` | Record-level notes editor |
 | `SavedViewsDropdown.jsx` | Saved views selector dropdown |
 | `SelectPicker.jsx` | Single-select picker |
 | `Spinner.jsx` | Loading spinner component |
