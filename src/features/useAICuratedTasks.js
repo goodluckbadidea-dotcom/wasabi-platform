@@ -966,12 +966,20 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
           const aiResult = await claudeProxy({
             messages: [{ role: "user", content: prompt }],
             model: "claude-haiku-4-5-20251001",
-            max_tokens: 1024,
+            max_tokens: 4096,
           }, user.claudeKey);
 
+          if (aiResult.stop_reason === "max_tokens") {
+            console.warn("[AICurated] Response truncated: stop_reason is max_tokens");
+          }
+
           const rawText = aiResult.content?.[0]?.text || aiResult.text || "";
-          // Strip markdown code fences — Haiku wraps JSON despite prompt instructions
-          const responseText = rawText.replace(/^[^{]*```(?:json)?\s*/i, "").replace(/```[^}]*$/i, "").trim();
+          // Extract JSON object by finding outermost braces — handles code fences, leading text, or clean JSON
+          const firstBrace = rawText.indexOf("{");
+          const lastBrace = rawText.lastIndexOf("}");
+          const responseText = firstBrace !== -1 && lastBrace > firstBrace
+            ? rawText.slice(firstBrace, lastBrace + 1)
+            : rawText.trim();
 
           let prioritized = [];
           let aiInsight = null;
@@ -979,7 +987,12 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
           try {
             parsed = JSON.parse(responseText);
           } catch (err) {
-            console.warn("[AICurated] Failed to parse AI response:", err.message, responseText.slice(0, 300));
+            console.warn(
+              "[AICurated] Failed to parse AI response:", err.message,
+              `(len=${rawText.length}, stop=${aiResult.stop_reason})`,
+              "start:", responseText.slice(0, 200),
+              "end:", responseText.slice(-200)
+            );
           }
 
           if (parsed) {
