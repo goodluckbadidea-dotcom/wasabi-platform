@@ -1099,8 +1099,10 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
   useEffect(() => {
     if (!identity?.id) return; // Don't scan until we know who the user is
     const cached = getCached(CACHE_KEY, CACHE_TTL);
-    if (cached && cached.length > 0 && !cacheDirty) {
-      // Cache is fresh (within CACHE_TTL) and not invalidated — no rescan needed
+    const hasInsight = getCached(INSIGHT_CACHE_KEY, 7 * 24 * 60 * 60 * 1000);
+    if (cached && cached.length > 0 && !cacheDirty && (hasInsight || !user?.claudeKey)) {
+      // Cache is fresh and not invalidated. Skip rescan unless insight is missing
+      // and claudeKey is now available (race: first scan ran before key loaded).
       return;
     }
     // Delay scan slightly so cached local tasks render first
