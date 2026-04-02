@@ -218,22 +218,21 @@ export async function createRecord(pageConfig, properties, user, { pinToken, par
     const cells = {};
     for (const col of allColumns) {
       if (properties[col.name] !== undefined) {
-        // If this sub-column is classified as title (explicit or first), tell
-        // extractRawValue to read it as "title" regardless of raw col.type
+        // d1SchemaToClassified treats col.type === "title" OR idx === 0 as title,
+        // so buildProp produces title-format props. Match that logic here so
+        // extractRawValue reads the correct property key for all records.
         let effectiveType = col.type;
-        if (parentRowId) {
-          if (subColumns.length > 0) {
-            const subIdx = subColumns.indexOf(col);
-            if (subIdx >= 0 && (col.type === "title" || (subIdx === 0 && !subHasExplicitTitle))) {
-              effectiveType = "title";
-            }
-          } else {
-            // No sub-columns: sub-item uses parent schema — correct title type for idx 0
-            const parentHasExplicitTitle = columns.some(c => c.type === "title");
-            const parentIdx = columns.indexOf(col);
-            if (col.type === "title" || (parentIdx === 0 && !parentHasExplicitTitle)) {
-              effectiveType = "title";
-            }
+        const isParentCol = columns.includes(col);
+        if (isParentCol) {
+          const parentHasExplicitTitle = columns.some(c => c.type === "title");
+          const parentIdx = columns.indexOf(col);
+          if (col.type === "title" || (parentIdx === 0 && !parentHasExplicitTitle)) {
+            effectiveType = "title";
+          }
+        } else {
+          const subIdx = subColumns.indexOf(col);
+          if (subIdx >= 0 && (col.type === "title" || (subIdx === 0 && !subHasExplicitTitle))) {
+            effectiveType = "title";
           }
         }
         cells[col.id] = extractRawValue(properties[col.name], effectiveType);
