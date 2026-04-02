@@ -29,7 +29,10 @@ export default function useTableData({
 
   // Filter + search + sort pipeline
   const processedData = useMemo(() => {
-    let rows = [...data];
+    // Separate sub-items before filtering — they don't have parent column values
+    // and would be incorrectly excluded by chip filters, dropdown filters, and search
+    const subItems = data.filter(r => r._parentRowId);
+    let rows = data.filter(r => !r._parentRowId);
 
     // Apply chip filters (multi-select OR within field, AND across fields)
     rows = applyChipFilters(rows, chipFilters, schema);
@@ -89,7 +92,11 @@ export default function useTableData({
       });
     }
 
-    return rows;
+    // Re-attach sub-items whose parent survived filtering
+    const survivingIds = new Set(rows.map(r => r.id));
+    const keptSubs = subItems.filter(r => survivingIds.has(r._parentRowId));
+
+    return [...rows, ...keptSubs];
   }, [data, filters, chipFilters, debouncedSearch, sortField, sortDir, columns, schema]);
 
   // Tree sort function (used by useTreeData)

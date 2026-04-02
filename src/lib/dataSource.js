@@ -221,10 +221,19 @@ export async function createRecord(pageConfig, properties, user, { pinToken, par
         // If this sub-column is classified as title (explicit or first), tell
         // extractRawValue to read it as "title" regardless of raw col.type
         let effectiveType = col.type;
-        if (parentRowId && subColumns.length > 0) {
-          const subIdx = subColumns.indexOf(col);
-          if (subIdx >= 0 && (col.type === "title" || (subIdx === 0 && !subHasExplicitTitle))) {
-            effectiveType = "title";
+        if (parentRowId) {
+          if (subColumns.length > 0) {
+            const subIdx = subColumns.indexOf(col);
+            if (subIdx >= 0 && (col.type === "title" || (subIdx === 0 && !subHasExplicitTitle))) {
+              effectiveType = "title";
+            }
+          } else {
+            // No sub-columns: sub-item uses parent schema — correct title type for idx 0
+            const parentHasExplicitTitle = columns.some(c => c.type === "title");
+            const parentIdx = columns.indexOf(col);
+            if (col.type === "title" || (parentIdx === 0 && !parentHasExplicitTitle)) {
+              effectiveType = "title";
+            }
           }
         }
         cells[col.id] = extractRawValue(properties[col.name], effectiveType);
