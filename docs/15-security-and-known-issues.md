@@ -1,6 +1,6 @@
 # Security Posture & Known Issues
 
-**Last Updated:** 2026-04-01
+**Last Updated:** 2026-04-02
 
 ## Product Context
 
@@ -176,6 +176,18 @@ Three localStorage cache keys were shared across all users on the same browser, 
 1. **Insight cache** (`wasabi_insight`): Users overwrote each other's AI-generated insights. Fixed: key is now `wasabi_insight_{userId}`. `useInsight()` accepts userId parameter.
 2. **Interaction ledger** (`wasabi_task_interactions`): User A's task interactions (views, edits, dismissals) affected User B's priority scores. Fixed: key is now `wasabi_task_interactions_{userId}`. All ledger functions accept userId parameter.
 3. **Cross-user cache invalidation**: Assigning a task to another user only invalidated the saving user's task cache. Fixed: worker broadcasts `task_cache_invalidate` to all UserRoom DOs on owner changes.
+
+### Record Creation Title Type Mismatch (Resolved 2026-04-02)
+
+`createRecord()` in `dataSource.js` used raw `col.type` (often `"text"`) as the `effectiveType` for `extractRawValue()`. But `d1SchemaToClassified` treats idx===0 as `"title"`, so the ghost row's `buildProp("title", val)` creates `{ title: [{...}] }`. When `extractRawValue` received `effectiveType: "text"`, it read `prop.rich_text` (undefined) and returned empty string — silently dropping all titles on creation.
+
+The title correction was initially scoped to sub-items only (`if (parentRowId)`), which meant regular record creation on tables where the first column had raw `type: "text"` also lost titles. Fixed by removing the `parentRowId` guard and applying the title type correction universally — matching `d1SchemaToClassified` logic (explicit `type: "title"` or idx===0) for both parent and sub-column schemas.
+
+### Chip Filters Excluding Sub-Items from Tree (Resolved 2026-04-02)
+
+`useTableData.js` ran all rows (including sub-items) through the chip filter, dropdown filter, and search pipeline. Sub-items lack parent column values (status, channel, market, etc.), so `applyChipFilters` returned `false` for every sub-item when any chip filter was active. This made sub-items invisible in the tree even though `useTreeData` could build the parent→child mapping.
+
+Fixed by separating sub-items (rows with `_parentRowId`) from parent rows before the filter pipeline, then re-attaching sub-items whose parent survived filtering. Sub-items are now always visible when their parent is visible, regardless of active filters or search text.
 
 ### Console and Error Hygiene
 

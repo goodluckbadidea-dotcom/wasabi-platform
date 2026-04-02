@@ -156,7 +156,7 @@ Extracted sub-modules for the Table view. Refactored from a 3,600-line monolith 
 | File | Purpose |
 |------|---------|
 | `useColumnManagement.js` | Column CRUD, reorder, resize, rename, add/delete/rename sub-columns, schema persistence. Type-change warns and clears options when leaving select-like types. |
-| `useTableData.js` | Data pipeline: text search, field filters, chip filters, sorting, debounced search (119 lines) |
+| `useTableData.js` | Data pipeline: text search, field filters, chip filters, sorting, debounced search. Sub-items separated before filtering and re-attached after (126 lines) |
 | `useTableCellEdit.js` | Inline cell edit state: active cell tracking, value commit to API, blur handling (107 lines) |
 | `useGhostRow.js` | Parent ghost row state: cell values, saving flag, commit-and-create logic (74 lines) |
 | `useSubItemGhost.js` | Sub-item ghost row state: parent tracking, cell values, commit-and-create logic (81 lines) |

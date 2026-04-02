@@ -187,7 +187,7 @@ Sub-items are hierarchical child records within a D1 table. They share the same 
 
 ### Data Flow
 
-1. **Write path:** `createRecord()` in `dataSource.js` merges `sub_columns` into the column lookup when `parentRowId` is present, so sub-column cell values are correctly mapped by `subcol_*` IDs.
+1. **Write path:** `createRecord()` in `dataSource.js` merges `sub_columns` into the column lookup when `parentRowId` is present, so sub-column cell values are correctly mapped by `subcol_*` IDs. The `effectiveType` correction mirrors `d1SchemaToClassified` logic (explicit `type: "title"` or idx===0) for both parent and sub-column schemas, ensuring `extractRawValue` reads the correct property key regardless of raw column type.
 2. **Read path:** `d1RowToPage()` iterates both parent columns and `subColumns`. Sub-column title values are wrapped in Notion-compatible `{type: "title", title: [...]}` format (not `rich_text`) so the cell renderer displays them correctly.
 3. **Schema classification:** `d1SchemaToClassified()` is called separately for sub-columns to produce `schema._subSchema`. The table view uses `subSchema` for sub-item rows and parent `schema` for regular rows.
 
@@ -202,6 +202,7 @@ The table view's sub-item logic is spread across the orchestrator and extracted 
 - **Add column dialog:** `AddSubColumnDialog` (`AddColumnDialog.jsx`) for creating new sub-columns.
 - **Display columns:** `subColsList` = visible sub-columns, or falls back to `[subTitleField]` if no sub-columns exist. Computed in the Table.jsx orchestrator.
 - **Tree data:** `useTreeData` hook (`src/lib/useTreeData.js`) handles expand/collapse state, `displayList` flattening, and parent-child relationships.
+- **Filter pipeline:** `useTableData` separates sub-items from parent rows before applying chip filters, dropdown filters, and search. After filtering, sub-items whose parent survived are re-attached. This prevents sub-items (which lack parent column values) from being incorrectly excluded by filters.
 
 ### RecordDetail Integration (RecordDetail.jsx)
 
