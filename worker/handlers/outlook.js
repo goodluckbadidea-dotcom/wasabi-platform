@@ -66,11 +66,20 @@ export async function handleOutlookSearch(env, body, userId, jsonResponse) {
 
   const { q, maxResults = 20, folder = "inbox" } = body;
   try {
-    let url = `${GRAPH}/mailFolders/${folder}/messages?$top=${maxResults}&$select=id,subject,from,to,receivedDateTime,bodyPreview,isRead,conversationId`;
-    if (q) url += `&$search="${encodeURIComponent(q)}"`;
+    let url = `${GRAPH}/mailFolders/${folder}/messages?$top=${maxResults}&$select=id,subject,from,toRecipients,receivedDateTime,bodyPreview,isRead,conversationId`;
+    // $search requires ConsistencyLevel header; omit when no query
+    const headers = { Authorization: `Bearer ${tokens.access_token}` };
+    if (q) {
+      url += `&$search="${encodeURIComponent(q)}"`;
+      headers["ConsistencyLevel"] = "eventual";
+    }
 
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${tokens.access_token}` } });
+    const res = await fetch(url, { headers });
     const data = await res.json();
+
+    if (!res.ok) {
+      return jsonResponse({ _error: data?.error?.message || `Graph error ${res.status}` }, res.status);
+    }
 
     const messages = (data.value || []).map((m) => ({
       id: m.id,

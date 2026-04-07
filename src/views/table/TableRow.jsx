@@ -3,13 +3,13 @@
 // and inline sub-item ghost row when applicable.
 
 import React from "react";
-import { C, FONT, RADIUS } from "../../design/tokens.js";
+import { C, FONT, RADIUS, getStatusColor } from "../../design/tokens.js";
 import { ANIM } from "../../design/animations.js";
 import { IconPlus, IconChevronDown } from "../../design/icons.jsx";
 import { getPageTitle } from "../../notion/properties.js";
 import { isNeuronsMode, dispatchNeuronSelect } from "../../neurons/NeuronsContext.jsx";
 import NeuronBadge from "../../neurons/NeuronBadge.jsx";
-import { getFieldType, readField } from "../_viewHelpers.js";
+import { getFieldType, readField, getFieldOptions, getOptionNames } from "../_viewHelpers.js";
 import { OWNER_COL_NAME, ROW_HEIGHT, EDITABLE_TYPES } from "./tableHelpers.js";
 import { styles } from "./tableStyles.js";
 import { OwnerCellDisplay } from "./OwnerCell.jsx";
@@ -53,7 +53,21 @@ export default function TableRow({
   const activeSchema = isSubItem && subSchema ? subSchema : schema;
 
   const childBgTint = rowDepth > 0 ? "rgba(255,255,255,0.015)" : "transparent";
-  const cardBg = isSelected ? C.accent + "10" : isHovered ? C.darkSurf2 : childBgTint;
+
+  // Derive status color for gradient hover wash
+  const _statusField = activeCols.find((col) => {
+    const t = getFieldType(activeSchema, col);
+    return t === "status" || t === "select";
+  });
+  const _statusValue = _statusField ? readField(page, _statusField) : null;
+  const _statusColor = _statusValue
+    ? getStatusColor(_statusValue, getOptionNames(getFieldOptions(activeSchema, _statusField)), config.colorMapping)
+    : null;
+  const hoverBg = _statusColor
+    ? `linear-gradient(to right, ${_statusColor}18 0%, ${_statusColor}08 36px, ${C.darkSurf2} 120px)`
+    : C.darkSurf2;
+
+  const cardBg = isSelected ? C.accent + "10" : isHovered ? hoverBg : childBgTint;
   const othersOnRow = collab?.getUsersOnRecord?.(pageId) || [];
   const presenceColor = othersOnRow.length > 0 ? othersOnRow[0].color : null;
   const presenceBorder = othersOnRow.length > 1

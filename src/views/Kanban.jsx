@@ -465,9 +465,14 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
                   fontSize: 11,
                   color: C.darkMuted,
                   background: C.darkSurf2,
-                  borderRadius: RADIUS.pill,
-                  padding: "2px 8px",
+                  borderRadius: 7,
+                  width: 22,
+                  height: 18,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                   fontWeight: 600,
+                  flexShrink: 0,
                 }}>
                   {col.pages.length}
                 </span>
@@ -481,7 +486,17 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
                 display: "flex",
                 flexDirection: "column",
                 gap: 8,
+                position: "relative",
               }}>
+                {/* Atmospheric color bleed from column header */}
+                <div style={{
+                  position: "absolute",
+                  top: 0, left: 0, right: 0,
+                  height: 120,
+                  background: `linear-gradient(to bottom, ${col.color}15 0%, ${col.color}06 50%, transparent 100%)`,
+                  pointerEvents: "none",
+                  borderRadius: `${RADIUS.lg}px ${RADIUS.lg}px 0 0`,
+                }} />
                 {col.pages.length === 0 && (
                   <div style={{
                     padding: 24,
@@ -547,17 +562,34 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
                         <NeuronBadge nodeId={page.id} />
                       </div>
 
-                      {/* Preview fields */}
-                      {previewFields.map((fieldName) => {
-                        const val = readField(page, fieldName);
-                        const type = getFieldType(schema, fieldName);
-                        if (val === null || val === undefined) return null;
-                        return (
-                          <div key={fieldName} style={{ fontSize: 12, color: C.darkMuted, marginTop: 2 }}>
-                            <CellDisplay value={val} type={type} fieldName={fieldName} schema={schema} colorMapping={config.colorMapping} />
+                      {/* Preview fields with separator + inset zone */}
+                      {previewFields.some((f) => readField(page, f) !== null && readField(page, f) !== undefined) && (
+                        <>
+                          <div style={{
+                            height: 1,
+                            background: "rgba(255,255,255,0.05)",
+                            marginBottom: 5,
+                            marginLeft: -12, marginRight: -12,
+                          }} />
+                          <div style={{
+                            background: "rgba(0,0,0,0.08)",
+                            borderRadius: RADIUS.sm,
+                            padding: "3px 5px",
+                            margin: "0 -5px",
+                          }}>
+                            {previewFields.map((fieldName) => {
+                              const val = readField(page, fieldName);
+                              const type = getFieldType(schema, fieldName);
+                              if (val === null || val === undefined) return null;
+                              return (
+                                <div key={fieldName} style={{ fontSize: 12, color: C.darkMuted, marginTop: 2 }}>
+                                  <CellDisplay value={val} type={type} fieldName={fieldName} schema={schema} colorMapping={config.colorMapping} />
+                                </div>
+                              );
+                            })}
                           </div>
-                        );
-                      })}
+                        </>
+                      )}
 
                       {/* Presence avatars */}
                       {othersOnCard.length > 0 && (

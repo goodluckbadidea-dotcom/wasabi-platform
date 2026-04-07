@@ -308,7 +308,8 @@ export default function Navigation({
 
   // -- Style helpers --
   const bottomBtnStyle = (isActive) => ({
-    background: isActive ? C.accent : "none",
+    background: isActive ? C.darkSurf2 : "none",
+    boxShadow: isActive ? `inset 0 1px 0 rgba(255,255,255,0.07), 0 1px 3px rgba(0,0,0,0.15)` : "none",
     border: "none",
     cursor: "pointer",
     display: "flex",
@@ -317,7 +318,7 @@ export default function Navigation({
     padding: collapsed ? (isTouch ? "12px 10px" : "10px 8px") : "10px 14px",
     minHeight: isTouch ? 48 : 44,
     borderRadius: RADIUS.lg,
-    transition: "background 0.15s, transform 0.12s",
+    transition: "background 0.15s, box-shadow 0.15s, transform 0.12s",
     outline: "none",
     width: "100%",
     justifyContent: collapsed ? "center" : "flex-start",
@@ -330,7 +331,7 @@ export default function Navigation({
     fontFamily: "'Outfit',sans-serif",
     fontSize: 13,
     fontWeight: isActive ? 600 : 500,
-    color: isActive ? "#fff" : navInactiveColor,
+    color: isActive ? C.accent : navInactiveColor,
     letterSpacing: "0.02em",
   });
 
@@ -605,7 +606,7 @@ export default function Navigation({
                   onMouseEnter={(e) => { if (!isWsActive) e.currentTarget.style.background = C.darkSurf2; }}
                   onMouseLeave={(e) => { if (!isWsActive) e.currentTarget.style.background = "transparent"; }}
                 >
-                  <IconGlobe size={iconSize(isWsActive)} color={isWsActive ? "#fff" : navInactiveColor} />
+                  <IconGlobe size={iconSize(isWsActive)} color={isWsActive ? C.accent : navInactiveColor} />
                   {!collapsed && <span style={bottomLabelStyle(isWsActive)}>Workspaces</span>}
                 </button>
               );
@@ -620,10 +621,10 @@ export default function Navigation({
               onMouseLeave={(e) => { if (activePage !== "dashboard") e.currentTarget.style.background = "transparent"; }}
             >
               <svg width={iconSize(activePage === "dashboard")} height={iconSize(activePage === "dashboard")} viewBox="0 0 16 16" fill="none">
-                <rect x="1" y="1" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? "#fff" : navInactiveColor} strokeWidth="1.3" fill="none" />
-                <rect x="9" y="1" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? "#fff" : navInactiveColor} strokeWidth="1.3" fill="none" />
-                <rect x="1" y="9" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? "#fff" : navInactiveColor} strokeWidth="1.3" fill="none" />
-                <rect x="9" y="9" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? "#fff" : navInactiveColor} strokeWidth="1.3" fill="none" />
+                <rect x="1" y="1" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? C.accent : navInactiveColor} strokeWidth="1.3" fill="none" />
+                <rect x="9" y="1" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? C.accent : navInactiveColor} strokeWidth="1.3" fill="none" />
+                <rect x="1" y="9" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? C.accent : navInactiveColor} strokeWidth="1.3" fill="none" />
+                <rect x="9" y="9" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? C.accent : navInactiveColor} strokeWidth="1.3" fill="none" />
               </svg>
               {!collapsed && <span style={bottomLabelStyle(activePage === "dashboard")}>Dashboard</span>}
             </button>
@@ -636,7 +637,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "tasks" && activePage !== null) e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "tasks" && activePage !== null) e.currentTarget.style.background = "transparent"; }}
             >
-              <IconCalendar size={iconSize(activePage === "tasks" || activePage === null)} color={(activePage === "tasks" || activePage === null) ? "#fff" : navInactiveColor} />
+              <IconCalendar size={iconSize(activePage === "tasks" || activePage === null)} color={(activePage === "tasks" || activePage === null) ? C.accent : navInactiveColor} />
               {!collapsed && <span style={bottomLabelStyle(activePage === "tasks" || activePage === null)}>To-Do & Calendar</span>}
             </button>
 
@@ -649,10 +650,10 @@ export default function Navigation({
               onMouseLeave={(e) => { if (activePage !== "notes") e.currentTarget.style.background = "transparent"; }}
             >
               <svg width={iconSize(activePage === "notes")} height={iconSize(activePage === "notes")} viewBox="0 0 16 16" fill="none">
-                <rect x="3" y="2" width="10" height="12" rx="1.5" stroke={activePage === "notes" ? "#fff" : navInactiveColor} strokeWidth="1.3" fill="none" />
-                <line x1="5.5" y1="5.5" x2="10.5" y2="5.5" stroke={activePage === "notes" ? "#fff" : navInactiveColor} strokeWidth="1" />
-                <line x1="5.5" y1="8" x2="10.5" y2="8" stroke={activePage === "notes" ? "#fff" : navInactiveColor} strokeWidth="1" />
-                <line x1="5.5" y1="10.5" x2="8.5" y2="10.5" stroke={activePage === "notes" ? "#fff" : navInactiveColor} strokeWidth="1" />
+                <rect x="3" y="2" width="10" height="12" rx="1.5" stroke={activePage === "notes" ? C.accent : navInactiveColor} strokeWidth="1.3" fill="none" />
+                <line x1="5.5" y1="5.5" x2="10.5" y2="5.5" stroke={activePage === "notes" ? C.accent : navInactiveColor} strokeWidth="1" />
+                <line x1="5.5" y1="8" x2="10.5" y2="8" stroke={activePage === "notes" ? C.accent : navInactiveColor} strokeWidth="1" />
+                <line x1="5.5" y1="10.5" x2="8.5" y2="10.5" stroke={activePage === "notes" ? C.accent : navInactiveColor} strokeWidth="1" />
               </svg>
               {!collapsed && <span style={bottomLabelStyle(activePage === "notes")}>Notes</span>}
             </button>
@@ -667,14 +668,15 @@ export default function Navigation({
                 onMouseLeave={(e) => { if (activePage !== "outlook") e.currentTarget.style.background = "transparent"; }}
               >
                 <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                  <IconMail size={iconSize(activePage === "outlook")} color={activePage === "outlook" ? "#fff" : navInactiveColor} />
+                  <IconMail size={iconSize(activePage === "outlook")} color={activePage === "outlook" ? C.accent : navInactiveColor} />
                   {outlookUnreadCount > 0 && (
                     <span style={{
                       position: "absolute", top: -5, right: -8,
                       background: C.accent, color: "#fff",
-                      borderRadius: "99px", fontSize: 9, fontWeight: 700,
-                      padding: "1px 4px", fontFamily: FONT, lineHeight: 1.4,
-                      minWidth: 14, textAlign: "center",
+                      borderRadius: 7, fontSize: 9, fontWeight: 700,
+                      fontFamily: FONT, lineHeight: 1,
+                      width: 18, height: 18,
+                      display: "flex", alignItems: "center", justifyContent: "center",
                     }}>
                       {outlookUnreadCount > 99 ? "99+" : outlookUnreadCount}
                     </span>
@@ -694,15 +696,16 @@ export default function Navigation({
                 onMouseLeave={(e) => { if (activePage !== "gmail") e.currentTarget.style.background = "transparent"; }}
               >
                 <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                  <IconMail size={iconSize(activePage === "gmail")} color={activePage === "gmail" ? "#fff" : navInactiveColor} />
+                  <IconMail size={iconSize(activePage === "gmail")} color={activePage === "gmail" ? C.accent : navInactiveColor} />
                   {unreadCount > 0 && (
                     <span style={{
                       position: "absolute", top: -5, right: -8,
                       background: C.accent, color: "#fff",
-                      fontSize: 10, fontWeight: 700, fontFamily: FONT,
-                      borderRadius: 999, minWidth: 14, height: 14,
+                      fontSize: 9, fontWeight: 700, fontFamily: FONT,
+                      borderRadius: 7,
+                      width: 18, height: 18,
                       display: "flex", alignItems: "center", justifyContent: "center",
-                      padding: "0 3px", lineHeight: 1,
+                      lineHeight: 1,
                     }}>
                       {unreadCount > 99 ? "99+" : unreadCount}
                     </span>
@@ -720,19 +723,18 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "notifications") e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "notifications") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconBell size={iconSize(activePage === "notifications")} color={activePage === "notifications" ? "#fff" : navInactiveColor} />
+              <IconBell size={iconSize(activePage === "notifications")} color={activePage === "notifications" ? C.accent : navInactiveColor} />
               {notifUnreadCount > 0 && (
                 <span style={{
                   position: "absolute",
                   top: collapsed ? 4 : 6,
                   right: collapsed ? 10 : 8,
-                  minWidth: 16, height: 16,
-                  borderRadius: 99,
+                  width: 18, height: 18,
+                  borderRadius: 7,
                   background: C.accent,
                   color: "#fff",
                   fontSize: 9, fontWeight: 700, fontFamily: FONT,
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  padding: "0 3px",
                   lineHeight: 1,
                   boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
                 }}>
@@ -750,7 +752,7 @@ export default function Navigation({
               onMouseEnter={(e) => { if (activePage !== "knowledge") e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (activePage !== "knowledge") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconBrain size={iconSize(activePage === "knowledge")} color={activePage === "knowledge" ? "#fff" : navInactiveColor} />
+              <IconBrain size={iconSize(activePage === "knowledge")} color={activePage === "knowledge" ? C.accent : navInactiveColor} />
               {!collapsed && <span style={bottomLabelStyle(activePage === "knowledge")}>Knowledge Base</span>}
             </button>
 
@@ -763,7 +765,7 @@ export default function Navigation({
                 onMouseEnter={(e) => { if (activePage !== "system") e.currentTarget.style.background = C.darkSurf2; }}
                 onMouseLeave={(e) => { if (activePage !== "system") e.currentTarget.style.background = "transparent"; }}
               >
-                <IconGear size={iconSize(activePage === "system")} color={activePage === "system" ? "#fff" : navInactiveColor} />
+                <IconGear size={iconSize(activePage === "system")} color={activePage === "system" ? C.accent : navInactiveColor} />
                 {!collapsed && <span style={bottomLabelStyle(activePage === "system")}>Settings</span>}
               </button>
             )}

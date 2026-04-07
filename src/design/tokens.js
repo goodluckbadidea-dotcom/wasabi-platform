@@ -55,6 +55,7 @@ const _RAW_THEMES = [
     border: "#AEA898",
     textPrimary: "#1A1714", textSecondary: "#524C44", textMuted: "#6D6558",
     accentSoft: "#EDD8D0",
+    bgGradient: "radial-gradient(ellipse at 50% -30%, #FFFFFF, #F8F6F1 45%)",
   },
   {
     id: "obsidian",
@@ -66,6 +67,7 @@ const _RAW_THEMES = [
     border: "#3A3A42",
     textPrimary: "#F2F2F3", textSecondary: "#9898A4", textMuted: "#84849A",
     accentSoft: "#142810",
+    bgGradient: "radial-gradient(ellipse at 50% -20%, #12121A, #080809 55%)",
   },
   {
     id: "hinoki",
@@ -77,6 +79,7 @@ const _RAW_THEMES = [
     border: "#4A3E2E",
     textPrimary: "#F4EDD8", textSecondary: "#9E8E72", textMuted: "#8E7E64",
     accentSoft: "#281F10",
+    bgGradient: "radial-gradient(ellipse at -10% 50%, #140E08, #0B0906 60%)",
   },
   {
     id: "kori",
@@ -88,6 +91,7 @@ const _RAW_THEMES = [
     border: "#A0AAC0",
     textPrimary: "#121820", textSecondary: "#48546C", textMuted: "#5A667E",
     accentSoft: "#D4E4F6",
+    bgGradient: "radial-gradient(ellipse at 85% -15%, #FFFFFF, #F4F7FB 45%)",
   },
   {
     id: "sumi",
@@ -99,6 +103,7 @@ const _RAW_THEMES = [
     border: "#42464E",
     textPrimary: "#E8ECF4", textSecondary: "#8490A8", textMuted: "#7E88A2",
     accentSoft: "#28180E",
+    bgGradient: "radial-gradient(ellipse at 50% 100%, #171A20, #0E1014 50%)",
   },
 ];
 
@@ -142,6 +147,7 @@ for (const t of _RAW_THEMES) {
     accent: t.accent,
     accentDim,
     accentPale: t.accentSoft,
+    bgGradient: t.bgGradient,
     palette,
     // Both keys point to the same tokens (mode is locked)
     dark: tokens,
@@ -190,10 +196,11 @@ const _initTokens = _theme[_currentThemeMode];
 // Color system: mutable token object, updated by applyTheme()
 export const C = {
   ..._initTokens,
-  accent:     _theme.accent,
-  accentDim:  _theme.accentDim,
-  accentPale: _theme.accentPale,
-  green:      "#2A6B38",
+  accent:      _theme.accent,
+  accentDim:   _theme.accentDim,
+  accentPale:  _theme.accentPale,
+  bgGradient:  _theme.bgGradient,
+  green:       "#2A6B38",
 
   // Orange — TE highlight color (unchanged across themes)
   orange:     "#FF4800",
@@ -547,9 +554,10 @@ export function applyTheme(name, _mode) {
 
   // Update C tokens
   Object.assign(C, tokens, {
-    accent: theme.accent,
-    accentDim: theme.accentDim,
+    accent:     theme.accent,
+    accentDim:  theme.accentDim,
     accentPale: theme.accentPale,
+    bgGradient: theme.bgGradient,
   });
 
   // Rebuild info palette from theme-specific colors
@@ -610,19 +618,23 @@ function _buildShadows(themeName) {
   // Light themes get softer shadows; dark themes get deeper ones
   if (tint.light) {
     return {
-      card:      `0 1px 3px rgba(${r},0.05), 0 1px 2px rgba(${r},0.03)`,
-      cardHover: `0 4px 12px rgba(${r},0.07), 0 2px 4px rgba(${r},0.04)`,
-      dropdown:  `0 8px 32px rgba(${r},0.12), 0 2px 8px rgba(${r},0.06)`,
-      inset:     `inset 0 1px 3px rgba(${r},0.06)`,
-      glow:      `0 0 20px rgba(${r},0.08)`,
+      card:             `0 1px 3px rgba(${r},0.05), 0 1px 2px rgba(${r},0.03)`,
+      cardHover:        `0 4px 12px rgba(${r},0.07), 0 2px 4px rgba(${r},0.04)`,
+      cardMaterial:     `inset 0 1px 0 rgba(255,255,255,0.85), inset 0 -1px 0 rgba(0,0,0,0.06), 0 2px 8px rgba(${r},0.07), 0 1px 2px rgba(${r},0.04)`,
+      cardMaterialHover:`inset 0 1px 0 rgba(255,255,255,0.85), inset 0 -1px 0 rgba(0,0,0,0.06), 0 4px 12px rgba(${r},0.09), 0 2px 4px rgba(${r},0.05)`,
+      dropdown:         `0 8px 32px rgba(${r},0.12), 0 2px 8px rgba(${r},0.06)`,
+      inset:            `inset 0 1px 3px rgba(${r},0.06)`,
+      glow:             `0 0 20px rgba(${r},0.08)`,
     };
   }
   return {
-    card:      `0 1px 3px rgba(${r},0.12), 0 1px 2px rgba(${r},0.08)`,
-    cardHover: `0 4px 12px rgba(${r},0.16), 0 2px 4px rgba(${r},0.08)`,
-    dropdown:  `0 8px 32px rgba(${r},0.28), 0 2px 8px rgba(${r},0.14)`,
-    inset:     `inset 0 1px 3px rgba(${r},0.12)`,
-    glow:      `0 0 24px rgba(${r},0.14)`,
+    card:             `0 1px 3px rgba(${r},0.12), 0 1px 2px rgba(${r},0.08)`,
+    cardHover:        `0 4px 12px rgba(${r},0.16), 0 2px 4px rgba(${r},0.08)`,
+    cardMaterial:     `inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -1px 0 rgba(0,0,0,0.22), 0 2px 8px rgba(${r},0.14), 0 1px 2px rgba(${r},0.10)`,
+    cardMaterialHover:`inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -1px 0 rgba(0,0,0,0.22), 0 4px 14px rgba(${r},0.18), 0 2px 4px rgba(${r},0.10)`,
+    dropdown:         `0 8px 32px rgba(${r},0.28), 0 2px 8px rgba(${r},0.14)`,
+    inset:            `inset 0 1px 3px rgba(${r},0.12)`,
+    glow:             `0 0 24px rgba(${r},0.14)`,
   };
 }
 

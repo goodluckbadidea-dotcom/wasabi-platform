@@ -13,7 +13,7 @@ function buildStyles() {
       width: "100vw",
       fontFamily: FONT,
       color: C.darkText,
-      background: C.dark,
+      background: C.bgGradient,
       overflow: "hidden",
     },
 
@@ -71,7 +71,7 @@ function buildStyles() {
       flex: 1,
       display: "flex",
       flexDirection: "column",
-      background: C.dark,
+      background: "transparent",
       overflow: "hidden",
       position: "relative",
     },
@@ -265,12 +265,12 @@ function buildStyles() {
       border: `1px solid ${C.darkBorder}`,
       padding: 16,
       transition: "border-color 0.15s, box-shadow 0.15s",
-      boxShadow: `${SHADOW.card}, inset 0 1px 0 0 ${C.edgeLine}`,
+      boxShadow: SHADOW.cardMaterial,
     },
 
     cardHover: {
       borderColor: C.accent + "66",
-      boxShadow: SHADOW.cardHover,
+      boxShadow: SHADOW.cardMaterialHover,
     },
 
     // ─── Tables ───

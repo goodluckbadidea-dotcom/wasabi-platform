@@ -501,7 +501,7 @@ function AppContent() {
         width: "100%",
         fontFamily: "'Outfit','DM Sans',sans-serif",
         color: C.darkText,
-        background: C.dark,
+        background: C.bgGradient,
         overflow: "hidden",
       }}
     >
