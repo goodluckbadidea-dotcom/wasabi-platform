@@ -142,7 +142,7 @@ export default function OutlookView() {
       setMessages(Array.isArray(result?.messages) ? result.messages : []);
     } catch (err) {
       console.error("[Outlook] Fetch failed:", err);
-      setError("Failed to load messages. Make sure Microsoft is connected.");
+      setError(err.message || "Failed to load messages. Make sure Microsoft is connected.");
       setMessages([]);
     } finally {
       setLoading(false);
