@@ -378,8 +378,9 @@ export async function handleOutlookDeleteEvent(env, eventId, userId, jsonRespons
 function ensureUtcSuffix(dt) {
   if (!dt || typeof dt !== "string") return dt;
   // Microsoft Graph returns datetimes without Z even when requested in UTC.
-  // Without the suffix, new Date() treats them as local time, causing offset bugs.
-  if (/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(dt)) return dt + "Z";
+  // Format is typically "2026-04-07T14:00:00.0000000" (with fractional seconds, no Z).
+  // Without the Z suffix, new Date() treats them as local time, causing offset bugs.
+  if (/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(dt)) return dt + "Z";
   return dt;
 }
 
