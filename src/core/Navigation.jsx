@@ -14,7 +14,7 @@ import {
   IconGear, IconSearch, IconBrain, IconBell,
   IconMail, IconCalendar, IconGlobe,
 } from "../design/icons.jsx";
-import { getGoogleStatus, getGmailSummary, getCalendarSummary, getUnreadNotificationCount, listRows } from "../lib/api.js";
+import { getGoogleStatus, getGmailSummary, getCalendarSummary, getMicrosoftStatus, getOutlookSummary, getUnreadNotificationCount, listRows } from "../lib/api.js";
 import { useUserSync } from "../context/UserSyncContext.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
@@ -60,6 +60,11 @@ export default function Navigation({
   const [unreadCount, setUnreadCount] = useState(0);
   const [nextEventLabel, setNextEventLabel] = useState("");
   const googlePollRef = useRef(null);
+
+  // ── Microsoft status + sidebar widgets ──
+  const [microsoftConnected, setMicrosoftConnected] = useState(false);
+  const [outlookUnreadCount, setOutlookUnreadCount] = useState(0);
+  const msPollRef = useRef(null);
 
   // ── Notification unread count polling (30s) ──
   const [notifUnreadCount, setNotifUnreadCount] = useState(0);
@@ -131,6 +136,24 @@ export default function Navigation({
     // Re-poll every 2 min (more responsive than 5min for connection state changes)
     googlePollRef.current = setInterval(checkGoogle, 2 * 60 * 1000);
     return () => { cancelled = true; clearInterval(googlePollRef.current); };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function checkMicrosoft() {
+      try {
+        const status = await getMicrosoftStatus();
+        if (cancelled) return;
+        setMicrosoftConnected(!!status?.connected);
+        if (status?.connected) {
+          const res = await getOutlookSummary().catch(() => null);
+          if (!cancelled && res) setOutlookUnreadCount(res.unread || 0);
+        }
+      } catch { /* non-fatal */ }
+    }
+    checkMicrosoft();
+    msPollRef.current = setInterval(checkMicrosoft, 2 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(msPollRef.current); };
   }, []);
 
   // Active view index (from App.jsx viewStates)
@@ -551,7 +574,7 @@ export default function Navigation({
 
             {/* Workspaces — also highlighted when viewing a real page opened from workspaces */}
             {(() => {
-              const SYSTEM_PAGES = new Set(["system", "wasabi", "inbox", "automations", "functions", "build", "knowledge-base", "dashboard", "workspaces", "tasks", "notes", "gmail", "notifications", "knowledge"]);
+              const SYSTEM_PAGES = new Set(["system", "wasabi", "inbox", "automations", "functions", "build", "knowledge-base", "dashboard", "workspaces", "tasks", "notes", "gmail", "outlook", "notifications", "knowledge"]);
               const isWsActive = activePage === "workspaces" ||
                 (activePage && !SYSTEM_PAGES.has(activePage) && pages.some(p => p.id === activePage));
               return (
@@ -633,6 +656,33 @@ export default function Navigation({
               </svg>
               {!collapsed && <span style={bottomLabelStyle(activePage === "notes")}>Notes</span>}
             </button>
+
+            {/* Outlook (only when Microsoft connected) */}
+            {microsoftConnected && (
+              <button
+                onClick={() => setActivePage("outlook")}
+                title="Outlook"
+                style={bottomBtnStyle(activePage === "outlook")}
+                onMouseEnter={(e) => { if (activePage !== "outlook") e.currentTarget.style.background = C.darkSurf2; }}
+                onMouseLeave={(e) => { if (activePage !== "outlook") e.currentTarget.style.background = "transparent"; }}
+              >
+                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                  <IconMail size={iconSize(activePage === "outlook")} color={activePage === "outlook" ? "#fff" : navInactiveColor} />
+                  {outlookUnreadCount > 0 && (
+                    <span style={{
+                      position: "absolute", top: -5, right: -8,
+                      background: C.accent, color: "#fff",
+                      borderRadius: "99px", fontSize: 9, fontWeight: 700,
+                      padding: "1px 4px", fontFamily: FONT, lineHeight: 1.4,
+                      minWidth: 14, textAlign: "center",
+                    }}>
+                      {outlookUnreadCount > 99 ? "99+" : outlookUnreadCount}
+                    </span>
+                  )}
+                </div>
+                {!collapsed && <span style={bottomLabelStyle(activePage === "outlook")}>Outlook</span>}
+              </button>
+            )}
 
             {/* Gmail (only when Google connected) */}
             {googleConnected && (
