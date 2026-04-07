@@ -103,6 +103,7 @@ Personal productivity surface. User-scoped data.
 | RecordDrawer | `src/features/RecordDrawer.jsx` | Slide-out record editor (primary edit surface for all views) |
 | ChatPanel | `src/features/ChatPanel.jsx` | AI chat with context from current page/data |
 | GmailView | `src/features/GmailView.jsx` | Gmail inbox, read, compose, reply |
+| FigmaView | `src/features/FigmaView.jsx` | Browse Figma projects/files, import as Design Assets |
 | DashboardView | `src/features/DashboardView.jsx` | Customizable widget dashboard |
 | WorkspaceBrowser | `src/features/WorkspaceBrowser.jsx` | Folder-based page navigation |
 

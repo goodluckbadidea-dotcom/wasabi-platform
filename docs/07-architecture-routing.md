@@ -91,6 +91,8 @@ The `activePage` value is either a system string or a page UUID:
 | `"notes"` | NotesView | Notes scratchpad |
 | `"dashboard"` | DashboardView | Customizable widget dashboard |
 | `"gmail"` | GmailView | Gmail inbox/compose/reply |
+| `"outlook"` | OutlookView | Outlook inbox/compose/reply |
+| `"figma"` | FigmaView | Figma project browser + import |
 | `"workspaces"` | WorkspaceBrowser | Folder-based page navigation |
 | `"notifications"` | NotificationFeed | Notification inbox |
 | `"knowledge-base"` | KnowledgeHub | Knowledge base management |
@@ -139,6 +141,7 @@ const ChatPanel = lazyWithRetry(() => import("./features/ChatPanel.jsx"));
 const TasksView = lazyWithRetry(() => import("./features/TasksView.jsx"));
 const DashboardView = lazyWithRetry(() => import("./features/DashboardView.jsx"));
 const GmailView = lazyWithRetry(() => import("./features/GmailView.jsx"));
+const FigmaView = lazyWithRetry(() => import("./features/FigmaView.jsx"));
 const WorkspaceBrowser = lazyWithRetry(() => import("./features/WorkspaceBrowser.jsx"));
 const KnowledgeHub = lazyWithRetry(() => import("./features/KnowledgeHub.jsx"));
 // ... etc.

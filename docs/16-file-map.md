@@ -28,6 +28,7 @@ Extracted from worker.js during the 2026-04-06 refactor. Each file is a named ES
 | `worker/handlers/google.js` | Google OAuth callback, status, disconnect, token refresh. All token values encrypted at rest. |
 | `worker/handlers/microsoft.js` | Microsoft Entra OAuth: auth URL generation, callback (find/create user by email, issue JWT), status, disconnect, `getMicrosoftAccessToken()` with auto-refresh. |
 | `worker/handlers/outlook.js` | Microsoft Graph API handlers: Outlook mail (summary, search, read, thread, send, modify) and calendar (summary, list, create, update, delete). |
+| `worker/handlers/figma.js` | Figma REST API proxy: status, projects, files, file detail, import. Creates/reuses "Design Assets" page_config with predefined schema. De-duplicates imports by file key. |
 | `worker/handlers/notion-sync.js` | Notion→D1 sync: pull, push, flush, bootstrap. Lazy-decrypts Notion key if stored as plaintext. |
 | `worker/handlers/rows.js` | D1 table CRUD: create, read, update, delete rows |
 | `worker/handlers/pages.js` | Page config CRUD |
@@ -200,6 +201,7 @@ Personal productivity surface. User-scoped data. Lazy-loaded.
 | `ChatPanel.jsx` | Dual-tab AI chat: Assistant (Haiku, role-based tools, neuron-aware) + Agent (full Wasabi agent) |
 | `DashboardView.jsx` | Customizable widget dashboard |
 | `EmailThreadDrawer.jsx` | Email thread slide-out viewer |
+| `FigmaView.jsx` | Figma project browser: project sidebar, file thumbnail grid, search/filter, detail panel, multi-select import to Design Assets database |
 | `GmailView.jsx` | Gmail inbox, read, compose, reply |
 | `KnowledgeHub.jsx` | Knowledge base browser |
 | `NotesView.jsx` | Personal notes view |

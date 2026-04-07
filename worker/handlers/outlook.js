@@ -375,12 +375,20 @@ export async function handleOutlookDeleteEvent(env, eventId, userId, jsonRespons
   }
 }
 
+function ensureUtcSuffix(dt) {
+  if (!dt || typeof dt !== "string") return dt;
+  // Microsoft Graph returns datetimes without Z even when requested in UTC.
+  // Without the suffix, new Date() treats them as local time, causing offset bugs.
+  if (/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(dt)) return dt + "Z";
+  return dt;
+}
+
 function mapEvent(e) {
   return {
     id: e.id,
     summary: e.subject || "",
-    start: e.start?.dateTime || e.start?.date || "",
-    end: e.end?.dateTime || e.end?.date || "",
+    start: ensureUtcSuffix(e.start?.dateTime) || e.start?.date || "",
+    end: ensureUtcSuffix(e.end?.dateTime) || e.end?.date || "",
     location: e.location?.displayName || "",
     isAllDay: e.isAllDay || false,
     organizer: e.organizer?.emailAddress?.address || "",

@@ -106,7 +106,7 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
           pageId={widget.pageId}
           viewIndex={widget.viewIndex ?? 0}
           width="100%"
-          widgetConfig={widget.widgetConfig}
+          widgetViewConfig={widget.widgetConfig}
           onWidgetViewConfigChange={(configUpdates) => {
             onUpdateWidgets(widgets.map((w) =>
               w.id === widget.id
@@ -513,6 +513,7 @@ function WidgetPickerInline({ onClose, onAddWidget }) {
                     pageId: page.id,
                     viewIndex: vIdx,
                     label: `${page.name} -- ${view.label || view.type}`,
+                    widgetConfig: view.config ? { ...view.config } : undefined,
                   })}
                   style={{
                     width: "100%", background: "transparent",

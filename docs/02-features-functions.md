@@ -30,6 +30,7 @@ Personal productivity surface. User-scoped data. All components lazy-loaded.
 | RecordDrawer | `src/features/RecordDrawer.jsx` | Slide-out record editor (primary edit surface for all views). "Go to Task" button uses `navigateToRecord()` to open RecordDetail drawer after navigating to source database. |
 | ChatPanel | `src/features/ChatPanel.jsx` | Dual-tab AI chat: Assistant (Haiku, lightweight tools, neuron-aware) and Agent (full Wasabi agent with all tools) |
 | GmailView | `src/features/GmailView.jsx` | Gmail inbox, read, compose, reply |
+| FigmaView | `src/features/FigmaView.jsx` | Browse Figma team projects and files. Project sidebar, file thumbnail grid, search/filter, file detail panel. Multi-select import creates/reuses a "Design Assets" database with status tracking (Draft/In Review/Approved/Archived). De-duplicates by file key. |
 | DashboardView | `src/features/DashboardView.jsx` | Customizable widget dashboard |
 | WorkspaceBrowser | `src/features/WorkspaceBrowser.jsx` | Folder-based page navigation |
 | KnowledgeHub | `src/features/KnowledgeHub.jsx` | Knowledge base browser |
@@ -620,4 +621,5 @@ React context providers wrapping the app in `App.jsx`:
 | Notion | Proxy — worker forwards to Notion API | Bidirectional sync via `sync_configs` table |
 | Google Sheets | Cached — fetch + parse as CSV, 300s cache | Read-only, proxied through worker |
 | Monday.com | Proxy — GraphQL forwarded through worker | Read-only, no write support |
+| Figma | Proxy — REST API forwarded through worker | Browse projects/files, import as Design Assets records |
 | R2 | File storage — documents, attachments, exports | Worker serves presigned URLs |

@@ -34,6 +34,7 @@ The following security features are implemented and active in production.
 | Notion JWT auth | All Notion API calls routed through JWT-authenticated `apiFetch()`. Worker `getNotionKey()` validates key prefix (`ntn_`/`secret_`) before accepting. Raw fetch with Notion key as Bearer removed from 31 files. | `src/notion/client.js`, `worker.js` getNotionKey() |
 | D1 credential encryption | All API keys and OAuth tokens in D1 (`connections` + `user_connections`) encrypted at rest using AES-256-GCM. DEK derived via HKDF from `WASABI_SECRET` with fixed salt `"wasabi-dek-v1"`. Ciphertext format: `enc:v1:{base64url-iv}:{base64url-ciphertext}`. Legacy plaintext values auto-migrated on next read/write (zero-downtime). Non-secret keys (schema_version, table_pin, external_api_whitelist, external_api:*) are not encrypted. | `worker/crypto.js` encryptSecret/decryptSecret, `worker/handlers/connections.js`, `worker/handlers/notion-sync.js`, `worker/automation/engine.js`, `worker/handlers/google.js` |
 | Microsoft OAuth security | Popup postMessage payload XSS-hardened: `JSON.stringify(payload).replace(/</g, "\\u003c")`. OAuth state includes HMAC nonce encoded as btoa(JSON.stringify({ mode, userId, nonce })). Auth-exempt path uses `startsWith` not exact match to handle query strings. | `worker/handlers/microsoft.js` |
+| Figma API proxy | Figma API key stored encrypted in D1 (same AES-256-GCM pattern). All Figma API calls proxied through worker with `X-FIGMA-TOKEN` header — key never exposed to frontend. Team ID stored unencrypted (non-secret config). | `worker/handlers/figma.js`, `worker/handlers/connections.js` NON_SECRET_KEYS |
 | WCAG AA contrast | All 5 themes pass 4.5:1+ for muted text on all surfaces; surface/border/text token gaps widened | `src/design/tokens.js` |
 
 ---
@@ -190,6 +191,10 @@ The title correction was initially scoped to sub-items only (`if (parentRowId)`)
 `useTableData.js` ran all rows (including sub-items) through the chip filter, dropdown filter, and search pipeline. Sub-items lack parent column values (status, channel, market, etc.), so `applyChipFilters` returned `false` for every sub-item when any chip filter was active. This made sub-items invisible in the tree even though `useTreeData` could build the parent→child mapping.
 
 Fixed by separating sub-items (rows with `_parentRowId`) from parent rows before the filter pipeline, then re-attaching sub-items whose parent survived filtering. Sub-items are now always visible when their parent is visible, regardless of active filters or search text.
+
+### NewRecordModal Rich Text Textarea Clipping (Resolved 2026-04-07)
+
+The `rich_text` textarea in `NewRecordModal.jsx` inherited `borderRadius: RADIUS.pill` (999px) from the shared `ms.input` style. When the textarea grew with multiline content, the extreme pill radius clipped text at the corners, making content unreadable. Fixed by overriding `borderRadius` to `RADIUS.md` (10px) on the rich_text textarea only. Single-line inputs retain the pill shape.
 
 ### Console and Error Hygiene
 
