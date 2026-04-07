@@ -137,6 +137,7 @@ export function clearConnection() {
  * Paths that don't require auth — they work without any JWT or refresh token.
  */
 const AUTH_EXEMPT_PATHS = new Set(["/init", "/auth/login", "/auth/register", "/auth/me", "/auth/refresh"]);
+const AUTH_EXEMPT_PREFIXES = ["/auth/microsoft"];
 
 /**
  * Core fetch wrapper — adds auth header + handles errors.
@@ -151,7 +152,7 @@ export async function apiFetch(path, options = {}) {
   // This prevents 401 storms from providers that mount before login completes.
   let jwt = getJwt();
   const rt = getRefreshToken();
-  if (!jwt && !rt && !AUTH_EXEMPT_PATHS.has(path)) {
+  if (!jwt && !rt && !AUTH_EXEMPT_PATHS.has(path) && !AUTH_EXEMPT_PREFIXES.some((p) => path.startsWith(p))) {
     const err = new Error("Not authenticated");
     err.status = 401;
     throw err;
@@ -992,6 +993,72 @@ export async function checkFreeBusy(timeMin, timeMax) {
     method: "POST",
     body: { timeMin, timeMax },
   });
+}
+
+// ─── Microsoft OAuth ───
+
+export async function getMicrosoftAuthUrl(mode = "login") {
+  return apiFetch(`/auth/microsoft?mode=${mode}`, { method: "GET" });
+}
+
+export async function getMicrosoftStatus() {
+  return apiFetch("/microsoft/status", { method: "GET" });
+}
+
+export async function disconnectMicrosoft() {
+  return apiFetch("/microsoft/disconnect", { method: "POST" });
+}
+
+// ─── Microsoft Outlook ───
+
+export async function getOutlookSummary() {
+  return apiFetch("/microsoft/mail/summary", { method: "GET" });
+}
+
+export async function searchOutlookMessages(query, maxResults = 20, folder = "inbox") {
+  return apiFetch("/microsoft/mail/messages", { method: "POST", body: { q: query, maxResults, folder } });
+}
+
+export async function getOutlookMessage(messageId) {
+  return apiFetch(`/microsoft/mail/messages/${messageId}`, { method: "GET" });
+}
+
+export async function getOutlookThread(conversationId) {
+  return apiFetch(`/microsoft/mail/conversations/${conversationId}`, { method: "GET" });
+}
+
+export async function sendOutlookEmail({ to, subject, bodyText, bodyHtml, replyToId }) {
+  return apiFetch("/microsoft/mail/send", { method: "POST", body: { to, subject, bodyText, bodyHtml, replyToId } });
+}
+
+export async function modifyOutlookMessage(messageId, action) {
+  return apiFetch(`/microsoft/mail/modify/${messageId}`, { method: "POST", body: { action } });
+}
+
+// ─── Microsoft Calendar ───
+
+export async function getOutlookCalendarSummary() {
+  return apiFetch("/microsoft/calendar/summary", { method: "GET" });
+}
+
+export async function listOutlookEvents(timeMin, timeMax, maxResults = 50) {
+  const params = new URLSearchParams();
+  if (timeMin) params.set("timeMin", timeMin);
+  if (timeMax) params.set("timeMax", timeMax);
+  if (maxResults) params.set("maxResults", String(maxResults));
+  return apiFetch(`/microsoft/calendar/events?${params}`, { method: "GET" });
+}
+
+export async function createOutlookEvent({ summary, start, end, description, location, attendees, isAllDay }) {
+  return apiFetch("/microsoft/calendar/events", { method: "POST", body: { summary, start, end, description, location, attendees, isAllDay } });
+}
+
+export async function updateOutlookEvent(eventId, updates) {
+  return apiFetch(`/microsoft/calendar/events/${eventId}`, { method: "PATCH", body: updates });
+}
+
+export async function deleteOutlookEvent(eventId) {
+  return apiFetch(`/microsoft/calendar/events/${eventId}`, { method: "DELETE" });
 }
 
 // ─── Auth ───
