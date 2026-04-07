@@ -196,6 +196,7 @@ function FieldRow({ field, value, options, onChange, isTitle }) {
             rows={2}
             style={{
               ...ms.input,
+              borderRadius: RADIUS.md,
               resize: "none",
               minHeight: 48,
               maxHeight: 160,
