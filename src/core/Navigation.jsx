@@ -14,7 +14,7 @@ import {
   IconGear, IconSearch, IconBrain, IconBell,
   IconMail, IconCalendar, IconGlobe,
 } from "../design/icons.jsx";
-import { getGoogleStatus, getGmailSummary, getCalendarSummary, getMicrosoftStatus, getOutlookSummary, getUnreadNotificationCount, listRows } from "../lib/api.js";
+import { getGoogleStatus, getGmailSummary, getCalendarSummary, getMicrosoftStatus, getOutlookSummary, getFigmaStatus, getUnreadNotificationCount, listRows } from "../lib/api.js";
 import { useUserSync } from "../context/UserSyncContext.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
@@ -65,6 +65,23 @@ export default function Navigation({
   const [microsoftConnected, setMicrosoftConnected] = useState(false);
   const [outlookUnreadCount, setOutlookUnreadCount] = useState(0);
   const msPollRef = useRef(null);
+
+  // ── Figma status ──
+  const [figmaConnected, setFigmaConnected] = useState(false);
+  const figmaPollRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function checkFigma() {
+      try {
+        const status = await getFigmaStatus();
+        if (!cancelled) setFigmaConnected(!!status?.connected);
+      } catch { /* non-fatal */ }
+    }
+    checkFigma();
+    figmaPollRef.current = setInterval(checkFigma, 2 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(figmaPollRef.current); };
+  }, []);
 
   // ── Notification unread count polling (30s) ──
   const [notifUnreadCount, setNotifUnreadCount] = useState(0);
@@ -712,6 +729,26 @@ export default function Navigation({
                   )}
                 </div>
                 {!collapsed && <span style={bottomLabelStyle(activePage === "gmail")}>Gmail</span>}
+              </button>
+            )}
+
+            {/* Figma (only when connected) */}
+            {figmaConnected && (
+              <button
+                onClick={() => setActivePage("figma")}
+                title="Figma"
+                style={bottomBtnStyle(activePage === "figma")}
+                onMouseEnter={(e) => { if (activePage !== "figma") e.currentTarget.style.background = C.darkSurf2; }}
+                onMouseLeave={(e) => { if (activePage !== "figma") e.currentTarget.style.background = "transparent"; }}
+              >
+                <svg width={iconSize(activePage === "figma")} height={iconSize(activePage === "figma")} viewBox="0 0 24 24" fill="none">
+                  <path d="M8 24c2.2 0 4-1.8 4-4v-4H8c-2.2 0-4 1.8-4 4s1.8 4 4 4z" fill={activePage === "figma" ? "#0ACF83" : (C.darkMuted + "99")} />
+                  <path d="M4 12c0-2.2 1.8-4 4-4h4v8H8c-2.2 0-4-1.8-4-4z" fill={activePage === "figma" ? "#A259FF" : (C.darkMuted + "88")} />
+                  <path d="M4 4c0-2.2 1.8-4 4-4h4v8H8C5.8 8 4 6.2 4 4z" fill={activePage === "figma" ? "#F24E1E" : (C.darkMuted + "77")} />
+                  <path d="M12 0h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4V0z" fill={activePage === "figma" ? "#FF7262" : (C.darkMuted + "88")} />
+                  <path d="M20 12c0 2.2-1.8 4-4 4s-4-1.8-4-4 1.8-4 4-4 4 1.8 4 4z" fill={activePage === "figma" ? "#1ABCFE" : (C.darkMuted + "99")} />
+                </svg>
+                {!collapsed && <span style={bottomLabelStyle(activePage === "figma")}>Figma</span>}
               </button>
             )}
 

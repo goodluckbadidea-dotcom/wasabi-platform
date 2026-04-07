@@ -25,6 +25,7 @@ import { handleListComments, handleCreateComment, handleDeleteComment } from './
 import { handleGoogleAuthUrl, handleGoogleCallback, handleGoogleStatus, handleGoogleDisconnect, handleGmailSummary, handleGmailSearch, handleGmailGetMessage, handleGmailGetThread, handleGmailUpdateDraft, handleGmailSend, handleGmailCreateDraft, handleGmailModify, handleCalendarSummary, handleCalendarList, handleCalendarListEvents, handleCalendarCreateEvent, handleCalendarUpdateEvent, handleCalendarDeleteEvent, handleCalendarFreeBusy } from './worker/handlers/google.js';
 import { handleMicrosoftAuthUrl, handleMicrosoftCallback, handleMicrosoftStatus, handleMicrosoftDisconnect } from './worker/handlers/microsoft.js';
 import { handleOutlookSummary, handleOutlookSearch, handleOutlookGetMessage, handleOutlookGetThread, handleOutlookSend, handleOutlookModify, handleOutlookCalendarSummary, handleOutlookListEvents, handleOutlookCreateEvent, handleOutlookUpdateEvent, handleOutlookDeleteEvent } from './worker/handlers/outlook.js';
+import { handleFigmaStatus, handleFigmaProjects, handleFigmaFiles, handleFigmaFile, handleFigmaImport } from './worker/handlers/figma.js';
 import { runAutomationTick, checkAutomationTriggers, runNeuronPruneTick } from './worker/automation/engine.js';
 import { runSyncFlushTick, handleSyncConfigure, handleSyncPush, handleSyncPull, handleSyncStatus, handleSyncDelete, handleDisconnect, handleSyncBackup, handleSyncBootstrap, handleSyncFlush, getNotionKeyFromDB, invalidateSummaryCache } from './worker/handlers/notion-sync.js';
 import { handleListPages, handleCreatePage, handleGetSummaryCache, handleSetSummaryCache, handleGetPage, handleUpdatePage, handleReorderPages, handleDeletePage } from './worker/handlers/pages.js';
@@ -364,6 +365,29 @@ export default {
       if (path.startsWith("/connections/") && request.method === "DELETE") {
         const key = path.split("/connections/")[1];
         return await handleDeleteConnection(env, key, jsonResponse);
+      }
+
+      // ─── Figma API Proxy ───
+      if (path === "/figma/status" && request.method === "GET") {
+        return await handleFigmaStatus(env, jsonResponse);
+      }
+      if (path === "/figma/projects" && request.method === "GET") {
+        return await handleFigmaProjects(env, jsonResponse);
+      }
+      if (path.startsWith("/figma/files") && request.method === "GET") {
+        const parts = path.split("/");
+        if (parts.length === 4) {
+          // /figma/files/:fileKey — get single file metadata
+          return await handleFigmaFile(env, parts[3], jsonResponse);
+        }
+        // /figma/files?project=X — list files in project
+        const projectId = url.searchParams.get("project");
+        return await handleFigmaFiles(env, projectId, jsonResponse);
+      }
+
+      if (path === "/figma/import" && request.method === "POST") {
+        const body = await request.json();
+        return await handleFigmaImport(env, body, user?.sub, jsonResponse);
       }
 
       // ─── Microsoft OAuth (per-user) ───

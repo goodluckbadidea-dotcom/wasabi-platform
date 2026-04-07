@@ -5,6 +5,8 @@ const CONNECTION_DEFS = [
   { key: "notion", label: "Notion", placeholder: "ntn_...", description: "Connect a Notion integration to link databases and sync data." },
   { key: "claude", label: "Claude", placeholder: "sk-ant-...", description: "Anthropic API key for AI chat, automations, and agent tools." },
   { key: "monday", label: "Monday.com", placeholder: "eyJhbGc...", description: "Connect to Monday.com boards to sync items and columns." },
+  { key: "figma", label: "Figma", placeholder: "figd_...", description: "Personal access token for browsing Figma projects and importing design files." },
+  { key: "figma_team_id", label: "Figma Team ID", placeholder: "123456789", description: "Team ID from your Figma team URL (figma.com/files/team/{id}).", inputType: "text" },
 ];
 
 function ConnectionRow({ def, connected, onSave, onDelete }) {
@@ -107,7 +109,7 @@ function ConnectionRow({ def, connected, onSave, onDelete }) {
       {editing && (
         <div style={{ display: "flex", gap: 8 }}>
           <input
-            type="password"
+            type={def.inputType || "password"}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder={def.placeholder}

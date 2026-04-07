@@ -1061,6 +1061,28 @@ export async function deleteOutlookEvent(eventId) {
   return apiFetch(`/microsoft/calendar/events/${eventId}`, { method: "DELETE" });
 }
 
+// ─── Figma ───
+
+export async function getFigmaStatus() {
+  return apiFetch("/figma/status", { method: "GET" });
+}
+
+export async function getFigmaProjects() {
+  return apiFetch("/figma/projects", { method: "GET" });
+}
+
+export async function getFigmaFiles(projectId) {
+  return apiFetch(`/figma/files?project=${projectId}`, { method: "GET" });
+}
+
+export async function getFigmaFile(fileKey) {
+  return apiFetch(`/figma/files/${fileKey}`, { method: "GET" });
+}
+
+export async function importFigmaFiles(files) {
+  return apiFetch("/figma/import", { method: "POST", body: { files } });
+}
+
 // ─── Auth ───
 
 function getDeviceInfo() {

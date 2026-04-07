@@ -65,6 +65,7 @@ const NotesView = lazyWithRetry(() => import("./features/NotesView.jsx"));
 const DashboardView = lazyWithRetry(() => import("./features/DashboardView.jsx"));
 const GmailView = lazyWithRetry(() => import("./features/GmailView.jsx"));
 const OutlookView = lazyWithRetry(() => import("./features/OutlookView.jsx"));
+const FigmaView = lazyWithRetry(() => import("./features/FigmaView.jsx"));
 const WorkspaceBrowser = lazyWithRetry(() => import("./features/WorkspaceBrowser.jsx"));
 const KnowledgeHub = lazyWithRetry(() => import("./features/KnowledgeHub.jsx"));
 
@@ -406,6 +407,20 @@ function AppContent() {
             </div>
           }>
             <OutlookView />
+          </React.Suspense>
+        </ErrorBoundary>
+      );
+    }
+    // Figma
+    if (activePage === "figma") {
+      return (
+        <ErrorBoundary fallbackLabel="Figma">
+          <React.Suspense fallback={
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
+              Loading...
+            </div>
+          }>
+            <FigmaView />
           </React.Suspense>
         </ErrorBoundary>
       );
