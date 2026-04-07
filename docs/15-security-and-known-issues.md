@@ -1,6 +1,6 @@
 # Security Posture & Known Issues
 
-**Last Updated:** 2026-04-02
+**Last Updated:** 2026-04-07
 
 ## Product Context
 
@@ -32,6 +32,8 @@ The following security features are implemented and active in production.
 | Tab deduplication | Only active browser tab maintains UserRoom WebSocket; prevents duplicate presence | `UserSyncContext.jsx` via localStorage active-tab tracking |
 | Typing TTL guard | Typing indicators auto-expire after 8s to prevent ghost state from crashed browsers | `CollaborationContext.jsx` |
 | Notion JWT auth | All Notion API calls routed through JWT-authenticated `apiFetch()`. Worker `getNotionKey()` validates key prefix (`ntn_`/`secret_`) before accepting. Raw fetch with Notion key as Bearer removed from 31 files. | `src/notion/client.js`, `worker.js` getNotionKey() |
+| D1 credential encryption | All API keys and OAuth tokens in D1 (`connections` + `user_connections`) encrypted at rest using AES-256-GCM. DEK derived via HKDF from `WASABI_SECRET` with fixed salt `"wasabi-dek-v1"`. Ciphertext format: `enc:v1:{base64url-iv}:{base64url-ciphertext}`. Legacy plaintext values auto-migrated on next read/write (zero-downtime). Non-secret keys (schema_version, table_pin, external_api_whitelist, external_api:*) are not encrypted. | `worker/crypto.js` encryptSecret/decryptSecret, `worker/handlers/connections.js`, `worker/handlers/notion-sync.js`, `worker/automation/engine.js`, `worker/handlers/google.js` |
+| Microsoft OAuth security | Popup postMessage payload XSS-hardened: `JSON.stringify(payload).replace(/</g, "\\u003c")`. OAuth state includes HMAC nonce encoded as btoa(JSON.stringify({ mode, userId, nonce })). Auth-exempt path uses `startsWith` not exact match to handle query strings. | `worker/handlers/microsoft.js` |
 | WCAG AA contrast | All 5 themes pass 4.5:1+ for muted text on all surfaces; surface/border/text token gaps widened | `src/design/tokens.js` |
 
 ---

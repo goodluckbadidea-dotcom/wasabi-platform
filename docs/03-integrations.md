@@ -381,12 +381,145 @@ async function apiFetch(path, options = {})
 
 ---
 
+---
+
+## Microsoft Entra (Azure AD) SSO
+
+### Overview
+
+Microsoft 365 integration uses OAuth 2.0 with tenant-specific Microsoft Entra endpoints. Two modes exist: SSO login (creates/links a Wasabi account on first use) and link mode (attaches a Microsoft account to an existing logged-in user).
+
+### Auth Flow
+
+**Login mode (SSO):**
+1. Frontend calls `GET /auth/microsoft?mode=login` to get the OAuth consent URL
+2. URL opens in a popup window (`window.open`)
+3. User authenticates with Microsoft, grants consent
+4. Microsoft redirects to `/auth/microsoft/callback?code=...&state=...`
+5. Worker exchanges code for access + refresh tokens via Microsoft token endpoint
+6. Worker finds or creates a Wasabi user record by `email` (added to `users` table)
+7. Worker issues a Wasabi JWT + refresh token, embeds them in a `postMessage` to the opener
+8. Frontend receives `microsoft-oauth-login` message, calls `loginWithToken(token, refreshToken, user)`
+9. Popup closes
+
+**Link mode (connect existing account):**
+1. User is already logged in to Wasabi with a password account
+2. ConnectionsTab calls `GET /auth/microsoft?mode=link` with the user's JWT
+3. Same popup flow; callback stores tokens in `user_connections` for the authenticated user
+4. Worker posts `microsoft-oauth-link` message to opener
+
+### OAuth Endpoints
+
+| Endpoint | Method | Auth | Purpose |
+|----------|--------|------|---------|
+| `/auth/microsoft` | GET | Optional | Returns Microsoft OAuth consent URL. Accepts `mode` query param (`login`\|`link`). Exempt from auth gate when `mode=login`. |
+| `/auth/microsoft/callback` | GET | None | Exchange code → tokens, create/find user, issue JWT, postMessage to opener |
+| `/microsoft/status` | GET | JWT | Check if Microsoft is connected for the current user |
+| `/microsoft/disconnect` | POST | JWT | Delete Microsoft tokens from `user_connections` |
+
+### Token Storage
+
+Tokens stored per-user in `user_connections`:
+
+```
+user_connections (
+  user_id TEXT,
+  key TEXT,          -- "microsoft"
+  value TEXT,        -- JSON: { access_token, refresh_token, expires_at }
+  updated_at TEXT,
+  PRIMARY KEY (user_id, key)
+)
+```
+
+All values encrypted at rest with AES-256-GCM (see Security docs).
+
+### D1 Schema Change
+
+The `users` table gained an `email TEXT` column (schema version 4) with an index:
+
+```sql
+ALTER TABLE users ADD COLUMN email TEXT;
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+```
+
+This enables email-based account lookup for SSO user find-or-create.
+
+### Required Azure App Registration Settings
+
+- **Redirect URI:** `https://wasabi-worker.goodluckbadidea.workers.dev/auth/microsoft/callback`
+- **Scopes:** `openid`, `profile`, `email`, `offline_access`, `Mail.ReadWrite`, `Mail.Send`, `Calendars.ReadWrite`
+
+### Handler
+
+`worker/handlers/microsoft.js` — all Microsoft OAuth logic including `getMicrosoftAccessToken()` which auto-refreshes expired tokens.
+
+---
+
+## Outlook Mail (Microsoft Graph)
+
+All Outlook/Exchange operations use the Microsoft Graph API (`https://graph.microsoft.com/v1.0/me`) proxied through the worker. The frontend client functions live in `src/lib/api.js`.
+
+### Endpoints
+
+| Action | Endpoint | Method | Purpose |
+|--------|----------|--------|---------|
+| summary | `/microsoft/mail/summary` | GET | Unread count (ConsistencyLevel + $filter) + 5 recent messages |
+| search | `/microsoft/mail/messages` | POST | List/search messages (q, maxResults, folder). `$search` adds `ConsistencyLevel: eventual` automatically |
+| read | `/microsoft/mail/messages/{id}` | GET | Get full message with body (HTML or text) |
+| thread | `/microsoft/mail/thread/{conversationId}` | GET | All messages in a conversation, ordered by date |
+| send | `/microsoft/mail/send` | POST | Send or reply. Pass `replyToId` to reply to a specific message |
+| modify | `/microsoft/mail/modify/{id}` | POST | Mark read/unread (`action: "read"\|"unread"`) |
+
+### $select Field Names
+
+The Graph API property for recipients is `toRecipients` (not `to`). Using `to` in a `$select` query returns a 400 error.
+
+### Frontend View
+
+`src/features/OutlookView.jsx` — Full inbox view with folder tabs (Inbox/Sent/Drafts), search, inline message expand, compose modal, and reply. Uses `isRead` boolean (not `labelIds` like Gmail).
+
+### Handler
+
+`worker/handlers/outlook.js` — All mail and calendar handlers.
+
+---
+
+## Outlook Calendar (Microsoft Graph)
+
+### Endpoints
+
+| Action | Endpoint | Method | Purpose |
+|--------|----------|--------|---------|
+| summary | `/microsoft/calendar/summary` | GET | Upcoming events for next 7 days |
+| events | `/microsoft/calendar/events` | GET | Events in range (timeMin, timeMax, maxResults) |
+| create | `/microsoft/calendar/events` | POST | Create event (summary, start, end, description, location, attendees, isAllDay) |
+| update | `/microsoft/calendar/events/{id}` | PATCH | Update event fields |
+| delete | `/microsoft/calendar/events/{id}` | DELETE | Delete event |
+
+### Date Format
+
+All datetimes passed as ISO 8601 UTC. Worker sets `timeZone: "UTC"` on all Graph API calls. Graph returns events with `Prefer: outlook.timezone="UTC"` header.
+
+### Calendar View Integration
+
+`src/features/CalendarView.jsx` fetches both Google Calendar and Outlook Calendar events in parallel (`Promise.all`). Outlook events are normalized to match Google's `{ start: { dateTime }, calendarId, calendarName }` shape before merging. The "Outlook Calendar" calendar appears in the filter dropdown with `calendarId: "outlook"`.
+
+The footer banner "Connect Google Calendar in Settings" only appears when **neither** Google nor Microsoft calendar is connected.
+
+### Handler
+
+`worker/handlers/outlook.js` — shared with Outlook Mail.
+
+---
+
 ## Integration Summary
 
 | Integration | Read | Write | Auth | Cache | Proxy Route |
 |------------|------|-------|------|-------|-------------|
 | Gmail | Full (summary, search, read, thread) | Full (send, draft, modify) | Google OAuth (per-user) | None | `/google/gmail/*` |
-| Calendar | Full (list, events, freebusy) | Full (create, update, delete) | Google OAuth (per-user) | None | `/google/calendar/*` |
+| Google Calendar | Full (list, events, freebusy) | Full (create, update, delete) | Google OAuth (per-user) | None | `/google/calendar/*` |
+| Outlook Mail | Full (summary, search, read, thread) | Full (send, reply, mark read) | Microsoft OAuth (per-user) | None | `/microsoft/mail/*` |
+| Outlook Calendar | Full (summary, events) | Full (create, update, delete) | Microsoft OAuth (per-user) | None | `/microsoft/calendar/*` |
 | Notion | Full (pages, databases, blocks, search) | Full (create, update, archive) | API key (per-user or global) | None | `/page/*`, `/database/*`, `/blocks/*`, `/query`, `/search` |
 | Notion Sync | Pull + status | Push + flush | API key | sync_configs table | `/sync/{id}/*` |
 | Monday.com | Full (boards, columns, items) | None | API key (global) | None | `/monday/graphql` |

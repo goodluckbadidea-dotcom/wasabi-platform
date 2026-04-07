@@ -1,6 +1,6 @@
 # File Map
 
-**Last Updated:** 2026-04-01
+**Last Updated:** 2026-04-07
 
 Complete source file listing for the Wasabi platform. Excludes `node_modules/`, `dist/`, and `.git/`.
 
@@ -10,7 +10,30 @@ Complete source file listing for the Wasabi platform. Excludes `node_modules/`, 
 
 | File | Purpose |
 |------|---------|
-| `worker.js` | Cloudflare Worker backend (~9533 lines). All API routes, auth, WebSocket upgrade, cron, OAuth, Durable Objects (TableRoom, UserRoom). |
+| `worker.js` | Cloudflare Worker backend (~1,880 lines). Routing-only entry point. Imports all handlers from `worker/` ES modules. Durable Objects (TableRoom, UserRoom) remain inline. |
+
+---
+
+## worker/ (ES Module Handler Directory)
+
+Extracted from worker.js during the 2026-04-06 refactor. Each file is a named ES module with named exports.
+
+| File | Purpose |
+|------|---------|
+| `worker/crypto.js` | `hashPassword`, `verifyPassword` (PBKDF2), `encryptSecret`, `decryptSecret` (AES-256-GCM), `signJwt`, `verifyJwt`. DEK derived via HKDF from `WASABI_SECRET`. |
+| `worker/schema.js` | D1 schema definitions for all tables. Source of truth for CREATE TABLE statements. |
+| `worker/handlers/init.js` | Database initialization, schema migrations, schema version tracking |
+| `worker/handlers/auth.js` | Login, register, refresh, session management |
+| `worker/handlers/connections.js` | API key CRUD (`connections` + `user_connections` tables). Encrypts secret keys on write, decrypts on read. |
+| `worker/handlers/google.js` | Google OAuth callback, status, disconnect, token refresh. All token values encrypted at rest. |
+| `worker/handlers/microsoft.js` | Microsoft Entra OAuth: auth URL generation, callback (find/create user by email, issue JWT), status, disconnect, `getMicrosoftAccessToken()` with auto-refresh. |
+| `worker/handlers/outlook.js` | Microsoft Graph API handlers: Outlook mail (summary, search, read, thread, send, modify) and calendar (summary, list, create, update, delete). |
+| `worker/handlers/notion-sync.js` | Notion→D1 sync: pull, push, flush, bootstrap. Lazy-decrypts Notion key if stored as plaintext. |
+| `worker/handlers/rows.js` | D1 table CRUD: create, read, update, delete rows |
+| `worker/handlers/pages.js` | Page config CRUD |
+| `worker/handlers/users.js` | User management: list, invite, roles, sessions |
+| `worker/handlers/files.js` | R2 file uploads and retrieval |
+| `worker/automation/engine.js` | Automation rule evaluation and execution. Lazy-decrypts Claude key if stored as plaintext. |
 | `index.html` | HTML shell for React SPA. Loads fonts (DM Sans, DM Mono, Outfit), mounts into `#root`. |
 | `package.json` | npm manifest. React 18, Vite 5, vitest, jsPDF. |
 | `vite.config.js` | Vite build config. Dev server on 0.0.0.0:5173, React plugin. |
@@ -55,7 +78,7 @@ App shell, navigation, settings. Loaded eagerly.
 | `InlineEdit.jsx` | Inline text editing component |
 | `KnowledgeBase.jsx` | Knowledge base management UI |
 | `LinkPicker.jsx` | Link/relation picker for connecting records |
-| `LoginScreen.jsx` | Multi-user login with password |
+| `LoginScreen.jsx` | Multi-user login with password + Microsoft SSO (popup OAuth flow, login mode only) |
 | `MiniView.jsx` | Compact/minimal view renderer |
 | `Navigation.jsx` | Left sidebar: page list, search, system nav |
 | `NodeEditor.jsx` | Visual node editor for automation flows |
@@ -88,6 +111,7 @@ Settings panel with tabbed interface.
 | `AuditLogTab.jsx` | Activity audit log viewer |
 | `components/ConnectionRow.jsx` | Single connection row component |
 | `components/GoogleConnectionRow.jsx` | Google-specific connection row |
+| `components/MicrosoftConnectionRow.jsx` | Microsoft-specific connection row (Outlook + Calendar) |
 | `components/IdRow.jsx` | ID display row component |
 | `components/StatCard.jsx` | Statistics card component |
 
@@ -171,7 +195,8 @@ Personal productivity surface. User-scoped data. Lazy-loaded.
 
 | File | Purpose |
 |------|---------|
-| `CalendarView.jsx` | Day/week/month calendar with Google Calendar sync |
+| `CalendarView.jsx` | Day/week/month calendar with Google Calendar + Outlook Calendar sync. Fetches both providers in parallel; normalizes Outlook events to Google shape for unified display. |
+| `OutlookView.jsx` | Outlook inbox view: folder tabs (Inbox/Sent/Drafts), search, inline expand, compose, reply. Uses Microsoft Graph via worker. |
 | `ChatPanel.jsx` | Dual-tab AI chat: Assistant (Haiku, role-based tools, neuron-aware) + Agent (full Wasabi agent) |
 | `DashboardView.jsx` | Customizable widget dashboard |
 | `EmailThreadDrawer.jsx` | Email thread slide-out viewer |
