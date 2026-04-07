@@ -81,12 +81,21 @@ export async function validatePageConfigs(notionKey, configs) {
       if (pt === "database" || pt === "linked_sheet") return config;
       if (pt === "sub_page" && !config.databaseIds?.length) return config;
 
-      if (pt === "document") {
-        const docView = config.views?.find((v) => v.type === "document");
-        const pageId = docView?.config?.pageId || config.notionPageId;
-        if (pageId) await getPage(pageId);
-      } else if (config.databaseIds?.length) {
-        await getDatabase(config.databaseIds[0]);
+      try {
+        if (pt === "document") {
+          const docView = config.views?.find((v) => v.type === "document");
+          const pageId = docView?.config?.pageId || config.notionPageId;
+          if (pageId) await getPage(pageId);
+        } else if (config.databaseIds?.length) {
+          await getDatabase(config.databaseIds[0]);
+        }
+      } catch (err) {
+        // Only mark stale if Notion explicitly says the resource doesn't exist.
+        // Never delete on transient errors (network, rate limits, 401, 5xx).
+        const msg = (err?.message || "").toLowerCase();
+        const isNotFound = msg.includes("object_not_found") || msg.includes("could not find");
+        if (!isNotFound) return config; // transient error — leave the page alone
+        throw err; // genuine 404 from Notion — mark stale and remove
       }
       return config;
     })
