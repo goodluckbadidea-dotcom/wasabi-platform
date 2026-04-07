@@ -61,7 +61,7 @@ export default function TableRow({
   });
   const _statusValue = _statusField ? readField(page, _statusField) : null;
   const _statusColor = _statusValue
-    ? getStatusColor(_statusValue, getOptionNames(getFieldOptions(activeSchema, _statusField)), config.colorMapping)
+    ? getStatusColor(_statusValue, getOptionNames(activeSchema, _statusField), config.colorMapping)
     : null;
   const hoverBg = _statusColor
     ? `linear-gradient(to right, ${_statusColor}18 0%, ${_statusColor}08 36px, ${C.darkSurf2} 120px)`
