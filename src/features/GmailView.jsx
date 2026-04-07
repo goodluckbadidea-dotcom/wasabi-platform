@@ -402,7 +402,7 @@ export default function GmailView() {
   return (
     <div style={{
       flex: 1, display: "flex", flexDirection: "column",
-      overflow: "hidden", background: C.dark,
+      overflow: "hidden", background: "transparent",
     }}>
       {/* Header */}
       <div style={{
@@ -510,7 +510,7 @@ export default function GmailView() {
       </div>
 
       {/* Message list */}
-      <div style={{ flex: 1, overflowY: "auto" }}>
+      <div style={{ flex: 1, overflowY: "auto", background: C.darkSurf }}>
         {loading ? (
           <div style={{ padding: "12px 16px" }}>
             {[1, 2, 3, 4, 5].map((i) => (

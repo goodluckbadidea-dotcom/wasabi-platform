@@ -100,7 +100,7 @@ export default function DashboardView() {
   return (
     <div style={{
       flex: 1, display: "flex", flexDirection: "column",
-      overflow: "hidden", background: C.dark,
+      overflow: "hidden", background: "transparent",
     }}>
       {/* Header */}
       <div style={{

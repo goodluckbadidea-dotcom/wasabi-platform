@@ -35,7 +35,7 @@ export default function KnowledgeHub({ onOpenChat }) {
   return (
     <div style={{
       display: "flex", flexDirection: "column", height: "100%",
-      overflow: "hidden", background: C.dark, fontFamily: FONT,
+      overflow: "hidden", background: "transparent", fontFamily: FONT,
     }}>
       {/* ── Tab bar ── */}
       <div style={{
@@ -66,7 +66,7 @@ export default function KnowledgeHub({ onOpenChat }) {
       </div>
 
       {/* ── Tab content ── */}
-      <div style={{ flex: 1, overflow: "auto" }}>
+      <div style={{ flex: 1, overflow: "auto", background: C.darkSurf }}>
         <ErrorBoundary fallbackLabel={TABS.find((t) => t.key === activeTab)?.label}>
           <React.Suspense fallback={FALLBACK}>
             {activeTab === "kb" && <KnowledgeBase />}

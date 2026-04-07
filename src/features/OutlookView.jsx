@@ -208,7 +208,7 @@ export default function OutlookView() {
   }, [fetchMessages, searchQuery]);
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: C.dark }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "transparent" }}>
       {/* Header */}
       <div style={{ flexShrink: 0, padding: "14px 20px 8px", borderBottom: `1px solid ${C.darkBorder}` }}>
         <div style={{
@@ -295,7 +295,7 @@ export default function OutlookView() {
       </div>
 
       {/* Message list */}
-      <div style={{ flex: 1, overflowY: "auto" }}>
+      <div style={{ flex: 1, overflowY: "auto", background: C.darkSurf }}>
         {loading ? (
           <div style={{ padding: "12px 16px" }}>
             {[1,2,3,4,5].map((i) => (

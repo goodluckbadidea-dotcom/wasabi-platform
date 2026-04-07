@@ -3,7 +3,7 @@
 // Quick-add input at top, manual tasks, AI-curated tasks, completed section.
 
 import React, { useState, useRef, useCallback, useMemo } from "react";
-import { C, FONT, RADIUS, VIEW_PALETTE, getSolidPillColor, isLightColor, getThemeMode, resolveUnifiedColor } from "../design/tokens.js";
+import { C, FONT, RADIUS, SHADOW, VIEW_PALETTE, getSolidPillColor, isLightColor, getThemeMode, resolveUnifiedColor } from "../design/tokens.js";
 import { formatDueDate, isOverdue, isToday, parseDate } from "./taskHelpers.js";
 
 // ── Priority → palette index mapping ──
@@ -141,8 +141,10 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping, dateChip
         marginBottom: 4,
         borderRadius: RADIUS.lg,
         cursor: "pointer",
-        transition: "background 0.15s ease",
+        transition: "background 0.15s ease, box-shadow 0.15s ease",
         background: overdueBg || (hovered ? C.darkSurf2 : C.darkSurf),
+        border: `1px solid ${hovered ? C.border2 : C.darkBorder}`,
+        boxShadow: SHADOW.cardMaterial,
         opacity: task.done ? 0.5 : 1,
         position: "relative",
         overflow: "hidden",

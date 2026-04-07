@@ -164,7 +164,7 @@ export default function TasksView() {
   return (
     <div style={{
       flex: 1, display: "flex", overflow: "hidden",
-      background: C.dark,
+      background: "transparent",
     }}>
       {/* Left panel: To-Do List (40%) */}
       <div style={{
@@ -172,7 +172,8 @@ export default function TasksView() {
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
-        borderRight: `3px solid ${C.dark}`,
+        background: C.darkSurf,
+        borderRight: `1px solid ${C.darkBorder}`,
       }}>
         {/* Panel header */}
         <div style={{

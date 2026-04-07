@@ -84,7 +84,7 @@ export default function NotesView() {
   return (
     <div style={{
       flex: 1, display: "flex", flexDirection: "column",
-      overflow: "hidden", background: C.dark,
+      overflow: "hidden", background: "transparent",
     }}>
       {/* ── Header ── */}
       <div style={{
@@ -217,7 +217,7 @@ export default function NotesView() {
       )}
 
       {/* ── Document Editor ── */}
-      <div style={{ flex: 1, overflow: "hidden" }}>
+      <div style={{ flex: 1, overflow: "hidden", background: C.darkSurf }}>
         <DocumentEditor key={resetKey} pageConfig={PAGE_CONFIG} />
       </div>
     </div>

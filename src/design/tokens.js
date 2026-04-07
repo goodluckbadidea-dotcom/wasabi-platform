@@ -55,7 +55,7 @@ const _RAW_THEMES = [
     border: "#AEA898",
     textPrimary: "#1A1714", textSecondary: "#524C44", textMuted: "#6D6558",
     accentSoft: "#EDD8D0",
-    bgGradient: "radial-gradient(ellipse at 50% -30%, #FFFFFF, #F8F6F1 45%)",
+    bgGradient: "radial-gradient(ellipse at 50% -20%, #FFFFFF 0%, #F8F6F1 55%)",
   },
   {
     id: "obsidian",
@@ -67,7 +67,7 @@ const _RAW_THEMES = [
     border: "#3A3A42",
     textPrimary: "#F2F2F3", textSecondary: "#9898A4", textMuted: "#84849A",
     accentSoft: "#142810",
-    bgGradient: "radial-gradient(ellipse at 50% -20%, #12121A, #080809 55%)",
+    bgGradient: "radial-gradient(ellipse at 50% -10%, #22223A 0%, #080809 60%)",
   },
   {
     id: "hinoki",
@@ -79,7 +79,7 @@ const _RAW_THEMES = [
     border: "#4A3E2E",
     textPrimary: "#F4EDD8", textSecondary: "#9E8E72", textMuted: "#8E7E64",
     accentSoft: "#281F10",
-    bgGradient: "radial-gradient(ellipse at -10% 50%, #140E08, #0B0906 60%)",
+    bgGradient: "radial-gradient(ellipse at -5% 40%, #281E0A 0%, #0B0906 65%)",
   },
   {
     id: "kori",
@@ -91,7 +91,7 @@ const _RAW_THEMES = [
     border: "#A0AAC0",
     textPrimary: "#121820", textSecondary: "#48546C", textMuted: "#5A667E",
     accentSoft: "#D4E4F6",
-    bgGradient: "radial-gradient(ellipse at 85% -15%, #FFFFFF, #F4F7FB 45%)",
+    bgGradient: "radial-gradient(ellipse at 90% -10%, #FFFFFF 0%, #F4F7FB 55%)",
   },
   {
     id: "sumi",
@@ -103,7 +103,7 @@ const _RAW_THEMES = [
     border: "#42464E",
     textPrimary: "#E8ECF4", textSecondary: "#8490A8", textMuted: "#7E88A2",
     accentSoft: "#28180E",
-    bgGradient: "radial-gradient(ellipse at 50% 100%, #171A20, #0E1014 50%)",
+    bgGradient: "radial-gradient(ellipse at 50% 115%, #2A2E3C 0%, #0E1014 58%)",
   },
 ];
 
