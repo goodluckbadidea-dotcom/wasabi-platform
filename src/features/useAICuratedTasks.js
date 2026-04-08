@@ -19,7 +19,7 @@ import {
 
 const CACHE_KEY_PREFIX = "wasabi_ai_tasks_v10"; // v10: D1-only scan, no Notion API dependency
 const INSIGHT_CACHE_KEY = "wasabi_insight";
-const CACHE_TTL = 2 * 60 * 60 * 1000; // 2 hours — stale-while-revalidate shows cached data instantly
+const CACHE_TTL = 30 * 60 * 1000; // 30 minutes — stale-while-revalidate shows cached data instantly
 const MAX_DATABASES = 5;
 const MAX_ITEMS_PER_DB = 30;
 
@@ -39,6 +39,92 @@ function applyRoleFilter(tasks, identity) {
     // Owned/mentioned/assigned — visible
     return t._isOwned || t._isMentioned || t._isAssigned;
   });
+}
+
+// ── Local heuristic adjustments (instant, no AI call) ──
+// Applied when enriched WebSocket events arrive so task list reacts immediately
+const DONE_STATUSES = new Set([
+  "done", "complete", "completed", "shipped", "delivered",
+  "closed", "archived", "cancelled", "canceled", "resolved", "finished",
+]);
+const HOLD_STATUSES = new Set([
+  "waiting", "waiting on vendor", "blocked", "on hold", "pending",
+]);
+
+function applyLocalAdjustment(tasks, changeEvent, identity) {
+  const { recordId, changes } = changeEvent;
+  if (!changes) return tasks;
+  const userId = identity?.id;
+  let modified = tasks.map((t) => ({ ...t })); // shallow clone each task
+  let needsResort = false;
+
+  // --- Ownership change ---
+  if (changes.ownerChanged) {
+    const newOwners = changes.newOwnerUserIds || [];
+    const myIdInNewOwners = userId && newOwners.includes(userId);
+
+    modified = modified.map((t) => {
+      if (t.id !== recordId) return t;
+      const baseScore = t._aiBaseScore ?? t._aiScore ?? 3;
+      // Update ownership flags
+      t._ownerUserIds = newOwners;
+      t._isOwned = !!myIdInNewOwners;
+      if (myIdInNewOwners) {
+        // Assigned to me → boost
+        t._aiBaseScore = baseScore;
+        t._aiScore = baseScore + 2;
+      } else if (identity?.role !== "admin") {
+        // Removed from me (non-admin) → remove from list
+        t._aiScore = -99;
+      } else {
+        // Admin still sees it but deprioritized
+        t._aiBaseScore = baseScore;
+        t._aiScore = baseScore - 2;
+      }
+      needsResort = true;
+      return t;
+    });
+
+    // If ownership was assigned to me and the task isn't in the list yet, we can't
+    // add it locally (we don't have full task data). Mark dirty for a background rescan.
+    if (myIdInNewOwners && !modified.some((t) => t.id === recordId)) {
+      // Task not in list — will be picked up by background rescan
+    }
+  }
+
+  // --- Status change ---
+  if (changes.statusChanged && changes.newStatus != null) {
+    const statusLower = String(changes.newStatus).toLowerCase().trim();
+    modified = modified.map((t) => {
+      if (t.id !== recordId) return t;
+      const baseScore = t._aiBaseScore ?? t._aiScore ?? 3;
+      t.status = changes.newStatus;
+      if (DONE_STATUSES.has(statusLower)) {
+        // Terminal status → remove
+        t._aiScore = -99;
+        t.done = true;
+      } else if (statusLower === "paused") {
+        t._aiBaseScore = baseScore;
+        t._aiScore = baseScore - 1;
+      } else if (HOLD_STATUSES.has(statusLower)) {
+        t._aiBaseScore = baseScore;
+        t._aiScore = baseScore + 1;
+      } else {
+        // Other status change — mark recently active
+        t._recentlyActive = true;
+      }
+      needsResort = true;
+      return t;
+    });
+  }
+
+  // Filter out removed tasks and re-sort
+  if (needsResort) {
+    modified = modified.filter((t) => (t._aiScore || 0) > -5);
+    modified.sort((a, b) => (b._aiScore || 0) - (a._aiScore || 0));
+  }
+
+  return modified;
 }
 
 // ── Task-likeness scoring ──
@@ -1173,11 +1259,31 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
   // Cleanup debounce timer on unmount
   useEffect(() => () => clearTimeout(debounceTimerRef.current), []);
 
-  // Cross-user cache invalidation via UserSocket
+  // Cross-user cache invalidation via UserSocket (enriched events)
   useEffect(() => {
     if (!userSync?.onTaskCacheInvalidate) return;
-    return userSync.onTaskCacheInvalidate(() => markDirty());
-  }, [userSync, markDirty]);
+    return userSync.onTaskCacheInvalidate((event) => {
+      // Enriched event: apply local heuristic adjustments instantly
+      if (event?.type === "task_record_changed" && event.changes) {
+        setAiTasks((prev) => {
+          const updated = applyLocalAdjustment(prev, event, identityRef.current);
+          // Update localStorage cache with adjusted scores
+          try {
+            const raw = localStorage.getItem(CACHE_KEY);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed.data)) {
+                localStorage.setItem(CACHE_KEY, JSON.stringify({ data: updated, ts: parsed.ts }));
+              }
+            }
+          } catch {}
+          return updated;
+        });
+      }
+      // Always mark dirty so background AI rescan picks up the full context
+      markDirty();
+    });
+  }, [userSync, markDirty, CACHE_KEY]);
 
   // Visibility-aware lazy polling: every 10 min, scan if visible + cache expired
   useEffect(() => {

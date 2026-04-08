@@ -50,9 +50,10 @@ export function UserSyncProvider({ children }) {
           }
           break;
 
+        case "task_record_changed":
         case "task_cache_invalidate":
           for (const handler of taskCacheHandlers.current) {
-            try { handler(msg.tableId); } catch (e) { console.warn("[UserSync] handler error:", e); }
+            try { handler(msg); } catch (e) { console.warn("[UserSync] handler error:", e); }
           }
           break;
 

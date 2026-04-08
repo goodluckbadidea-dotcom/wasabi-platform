@@ -177,8 +177,8 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping, dateChip
       <DueBadge due={task.due} dateChipColors={dateChipColors} />
       <SourceBadge sourceName={task.sourceName} />
 
-      {/* Delete (on hover, manual tasks only) */}
-      {hovered && task.source === "manual" && (
+      {/* Delete (on hover, manual tasks only, hidden when readOnly/no handler) */}
+      {hovered && task.source === "manual" && onDelete && (
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(task.id); }}
           style={{
@@ -198,7 +198,7 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping, dateChip
   );
 }
 
-export default function TaskList({ userTasks, aiTasks, aiLoading, aiRefreshing, dismissedIds, onToggleTask, onToggleAI, onAddTask, onDeleteTask, onTaskClick, colorMapping, dateChipColors, snoozedTasks = [], onUnsnooze }) {
+export default function TaskList({ userTasks, aiTasks, aiLoading, aiRefreshing, dismissedIds, onToggleTask, onToggleAI, onAddTask, onDeleteTask, onTaskClick, colorMapping, dateChipColors, snoozedTasks = [], onUnsnooze, readOnly = false }) {
   const [inputValue, setInputValue] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
   const [showSnoozed, setShowSnoozed] = useState(false);
@@ -237,31 +237,33 @@ export default function TaskList({ userTasks, aiTasks, aiLoading, aiRefreshing, 
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-      {/* Quick-add input */}
-      <form onSubmit={handleSubmit} style={{ flexShrink: 0, padding: "12px 14px 4px" }}>
-        <input
-          ref={inputRef}
-          type="text"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          placeholder="Add a task..."
-          style={{
-            width: "100%",
-            boxSizing: "border-box",
-            padding: "12px 16px",
-            borderRadius: RADIUS.md,
-            border: `1px solid ${C.darkBorder}`,
-            background: C.darkSurf2,
-            color: C.darkText,
-            fontSize: 13,
-            fontFamily: FONT,
-            outline: "none",
-            transition: "border-color 0.15s",
-          }}
-          onFocus={(e) => { e.target.style.borderColor = C.accent; }}
-          onBlur={(e) => { e.target.style.borderColor = C.darkBorder; }}
-        />
-      </form>
+      {/* Quick-add input (hidden for read-only viewers) */}
+      {!readOnly && (
+        <form onSubmit={handleSubmit} style={{ flexShrink: 0, padding: "12px 14px 4px" }}>
+          <input
+            ref={inputRef}
+            type="text"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            placeholder="Add a task..."
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              padding: "12px 16px",
+              borderRadius: RADIUS.md,
+              border: `1px solid ${C.darkBorder}`,
+              background: C.darkSurf2,
+              color: C.darkText,
+              fontSize: 13,
+              fontFamily: FONT,
+              outline: "none",
+              transition: "border-color 0.15s",
+            }}
+            onFocus={(e) => { e.target.style.borderColor = C.accent; }}
+            onBlur={(e) => { e.target.style.borderColor = C.darkBorder; }}
+          />
+        </form>
+      )}
 
       {/* Scrollable task list */}
       <div style={{ flex: 1, overflowY: "auto", padding: "4px 8px" }}>
@@ -279,8 +281,8 @@ export default function TaskList({ userTasks, aiTasks, aiLoading, aiRefreshing, 
               <TaskRow
                 key={task.id}
                 task={task}
-                onToggle={onToggleTask}
-                onDelete={onDeleteTask}
+                onToggle={readOnly ? undefined : onToggleTask}
+                onDelete={readOnly ? undefined : onDeleteTask}
                 onTaskClick={onTaskClick}
                 colorMapping={colorMapping}
                 dateChipColors={dateChipColors}
@@ -338,8 +340,8 @@ export default function TaskList({ userTasks, aiTasks, aiLoading, aiRefreshing, 
                 >
                   <TaskRow
                     task={task}
-                    onToggle={onToggleAI}
-                    onDelete={() => {}}
+                    onToggle={readOnly ? undefined : onToggleAI}
+                    onDelete={readOnly ? undefined : () => {}}
                     onTaskClick={onTaskClick}
                     colorMapping={colorMapping}
                     dateChipColors={dateChipColors}
@@ -360,7 +362,7 @@ export default function TaskList({ userTasks, aiTasks, aiLoading, aiRefreshing, 
               <circle cx="8" cy="8" r="6" stroke={C.darkMuted} strokeWidth="1.3" fill="none" />
               <path d="M5 8L7 10L11 6" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" />
             </svg>
-            <div>All clear! Add a task above.</div>
+            <div>{readOnly ? "No tasks assigned to you." : "All clear! Add a task above."}</div>
           </div>
         )}
 
@@ -396,7 +398,7 @@ export default function TaskList({ userTasks, aiTasks, aiLoading, aiRefreshing, 
                 <span style={{ fontSize: 10, fontFamily: FONT, color: C.darkMuted, flexShrink: 0 }}>
                   {formatSnoozeTime(task._snoozeUntil)}
                 </span>
-                {onUnsnooze && (
+                {onUnsnooze && !readOnly && (
                   <button
                     onClick={() => onUnsnooze(task._snoozeId, task.id)}
                     style={{
@@ -438,8 +440,8 @@ export default function TaskList({ userTasks, aiTasks, aiLoading, aiRefreshing, 
               <TaskRow
                 key={task.id}
                 task={task}
-                onToggle={task.source === "manual" ? onToggleTask : onToggleAI}
-                onDelete={task.source === "manual" ? onDeleteTask : () => {}}
+                onToggle={readOnly ? undefined : (task.source === "manual" ? onToggleTask : onToggleAI)}
+                onDelete={readOnly ? undefined : (task.source === "manual" ? onDeleteTask : () => {})}
                 onTaskClick={onTaskClick}
                 colorMapping={colorMapping}
                 dateChipColors={dateChipColors}

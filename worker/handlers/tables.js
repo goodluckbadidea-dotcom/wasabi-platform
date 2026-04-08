@@ -302,21 +302,52 @@ async function handleUpdateRow(env, tableId, rowId, body, user, jsonResponse) {
 
     // ── Task cache invalidation broadcast (cross-user) ──
     // Notify all users to refresh their task caches when status/done/owner changes
+    // Enriched with change details so clients can apply local heuristic adjustments instantly
     const ownerChanged = body.owner_user_id !== undefined;
     let statusChanged = false;
+    let newStatusValue = null;
+    let statusFieldName = null;
     if (body.cells !== undefined && !body._fromSync) {
       const STATUS_FIELDS = ["status", "stage", "state", "phase", "done", "complete", "completed"];
       const schema = await env.DB.prepare("SELECT columns FROM table_schemas WHERE id = ?").bind(tableId).first();
       const cols = schema ? JSON.parse(schema.columns || "[]") : [];
       const colMap = Object.fromEntries(cols.map((c) => [c.id, c]));
-      statusChanged = Object.keys(body.cells).some((colId) => {
+      for (const colId of Object.keys(body.cells)) {
         const col = colMap[colId];
-        if (!col) return false;
+        if (!col) continue;
         const colName = (col.name || "").toLowerCase();
-        return col.type === "status" || col.type === "checkbox" || STATUS_FIELDS.some((s) => colName.includes(s));
-      });
+        const isStatus = col.type === "status" || col.type === "checkbox" || STATUS_FIELDS.some((s) => colName.includes(s));
+        if (isStatus) {
+          statusChanged = true;
+          statusFieldName = col.name || colId;
+          newStatusValue = newCells[colId] ?? body.cells[colId];
+          break;
+        }
+      }
     }
     if (statusChanged || ownerChanged) {
+      // Resolve new owner IDs for the enriched event
+      let newOwnerUserIds = null;
+      if (ownerChanged) {
+        const ov = body.owner_user_id;
+        if (ov === null || ov === "unassigned") newOwnerUserIds = [];
+        else if (Array.isArray(ov)) newOwnerUserIds = ov;
+        else newOwnerUserIds = [ov];
+      }
+      const changeEvent = {
+        type: "task_record_changed",
+        tableId,
+        recordId: rowId,
+        changes: {
+          ownerChanged,
+          newOwnerUserIds,
+          statusChanged,
+          newStatus: newStatusValue,
+          statusField: statusFieldName,
+          fieldChanged: body.cells !== undefined,
+          updatedBy: user?.sub || null,
+        },
+      };
       (async () => {
         try {
           const allUsers = await env.DB.prepare("SELECT id FROM users WHERE deleted_at IS NULL").all();
@@ -326,7 +357,7 @@ async function handleUpdateRow(env, tableId, rowId, body, user, jsonResponse) {
               const room = env.USER_ROOMS.get(roomId);
               await room.fetch(new Request("https://internal/broadcast", {
                 method: "POST",
-                body: JSON.stringify({ type: "task_cache_invalidate", tableId }),
+                body: JSON.stringify(changeEvent),
               }));
             } catch (_) {}
           }
