@@ -239,7 +239,13 @@ export default {
       }
 
       // ─── Role Gate (centralized permission check) ───
-      const user = await extractUser(request, env);
+      // Extract user from JWT. If no JWT but auth passed (MCP key or no-secret setup), use synthetic admin.
+      const jwtUser = await extractUser(request, env);
+      const isMcpOrSetup = !jwtUser && (
+        !env.WASABI_SECRET || // First-time setup (no secret configured yet)
+        request.headers.get("X-Wasabi-Key") === env.WASABI_SECRET // MCP server key
+      );
+      const user = jwtUser || (isMcpOrSetup ? { sub: "__mcp__", role: "admin", name: "MCP Server" } : null);
       if (!checkRoutePermission(path, request.method, user)) {
         return jsonResponse({ _error: "Insufficient permissions" }, 403);
       }

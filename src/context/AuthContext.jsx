@@ -79,13 +79,9 @@ export function AuthProvider({ children }) {
       }
 
       // Step 2: Validate JWT — try memory first, fall back to refresh token.
-      // On page refresh, memory is empty but the refresh token restores the session.
-      if (!isMultiUser) {
-        // Single-user mode — no auth needed
-        setIdentityLoading(false);
-        setBootState("ready");
-        return;
-      }
+      // All users must have an identity. If no users exist yet, init returns admin_invite
+      // and LoginScreen handles registration. There is no "single-user mode."
+      setMultiUserEnabled(true); // Always multi-user — every deployment requires identity
 
       try {
         const result = await withTimeout(authMe(), 10_000);
@@ -200,7 +196,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   const hasRole = useCallback((minRole) => {
-    if (!identity) return true; // Single-user mode: allow everything
+    if (!identity) return false; // No identity = no access
     return (ROLE_LEVEL[identity.role] || 0) >= (ROLE_LEVEL[minRole] || 99);
   }, [identity]);
 
@@ -212,7 +208,7 @@ export function AuthProvider({ children }) {
   const value = {
     user,
     setUserKeys,
-    isAuthenticated: isWorkerConnected && !bootError && (!multiUserEnabled || !!identity),
+    isAuthenticated: isWorkerConnected && !bootError && !!identity,
     workerConnection,
     completeSetup,
     updateConnectionKey,

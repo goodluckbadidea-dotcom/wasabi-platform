@@ -8,6 +8,7 @@ import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { IconPlus, IconEdit, IconChart, IconBolt, IconForm, IconFunction } from "../design/icons.jsx";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
+import useViewPrefs from "../hooks/useViewPrefs.js";
 import DashboardWidget from "../core/DashboardWidget.jsx";
 import MiniView from "../core/MiniView.jsx";
 import PluginWidget from "../core/PluginWidget.jsx";
@@ -26,6 +27,7 @@ function defaultHeight(type) {
 
 export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
   const { setActivePage } = usePlatform();
+  const viewPrefs = useViewPrefs();
 
   const [editMode, setEditMode] = useState(false);
   const [widgetPickerOpen, setWidgetPickerOpen] = useState(false);
@@ -513,7 +515,7 @@ function WidgetPickerInline({ onClose, onAddWidget }) {
                     pageId: page.id,
                     viewIndex: vIdx,
                     label: `${page.name} -- ${view.label || view.type}`,
-                    widgetConfig: view.config ? { ...view.config } : undefined,
+                    widgetConfig: { ...viewPrefs.getEffectiveConfig(page.id, vIdx, view.config || {}) },
                   })}
                   style={{
                     width: "100%", background: "transparent",

@@ -32,7 +32,7 @@ function cacheKeyForUser(userId) {
 // Unowned tasks (owner_user_id='default' from Notion sync) are visible to everyone.
 // Tasks explicitly assigned to OTHER users are hidden from non-admins.
 function applyRoleFilter(tasks, identity) {
-  if (!identity || identity.role === "admin") return tasks;
+  if (identity?.role === "admin") return tasks;
   return tasks.filter((t) => {
     // Unowned tasks (no explicit owner) — visible to all
     if (!t._ownerUserIds || t._ownerUserIds.length === 0) return true;
@@ -661,7 +661,7 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
       // Step 2.75: Role-based task filtering
       // Non-admins: ONLY see tasks they own or are mentioned in
       // Admins: see all tasks (ownership influences AI scoring weight)
-      const isAdmin = !identity || identity.role === "admin";
+      const isAdmin = identity?.role === "admin";
       let filteredTasks = applyRoleFilter(allTasks, identity);
 
       // Step 2.76: Snooze filtering — remove snoozed tasks from active list

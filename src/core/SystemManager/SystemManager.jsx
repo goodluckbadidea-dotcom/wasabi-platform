@@ -97,12 +97,12 @@ export default function SystemManager() {
           <button style={tabBtn(tab === "settings")} onClick={() => setTab("settings")}>
             Settings
           </button>
-          {(!identity || isAdmin(identity)) && (
+          {isAdmin(identity) && (
             <button style={tabBtn(tab === "users")} onClick={() => setTab("users")}>
               Users
             </button>
           )}
-          {(!identity || isAdmin(identity)) && (
+          {isAdmin(identity) && (
             <button style={tabBtn(tab === "audit")} onClick={() => setTab("audit")}>
               Audit Log
             </button>
@@ -121,8 +121,8 @@ export default function SystemManager() {
         {tab === "overview" && <OverviewTab />}
         {tab === "connections" && <ConnectionsTab />}
         {tab === "settings" && <SettingsTab />}
-        {tab === "users" && (!identity || isAdmin(identity)) && <UsersTab identity={identity} />}
-        {tab === "audit" && (!identity || isAdmin(identity)) && <AuditLogTab />}
+        {tab === "users" && isAdmin(identity) && <UsersTab identity={identity} />}
+        {tab === "audit" && isAdmin(identity) && <AuditLogTab />}
       </div>
     </div>
   );

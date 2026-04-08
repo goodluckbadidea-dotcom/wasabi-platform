@@ -794,7 +794,7 @@ export default function Navigation({
             </button>
 
             {/* Settings (admin only when multi-user is active) */}
-            {(!identity || identity.role === "admin") && (
+            {identity?.role === "admin" && (
               <button
                 onClick={() => setActivePage("system")}
                 title="Settings"

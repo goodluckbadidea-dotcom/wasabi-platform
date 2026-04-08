@@ -82,7 +82,8 @@ export default function useTasksTable() {
         }
       }
 
-      // 3. Auto-provision a new table for this user
+      // 3. Auto-provision a new table for this user (viewers don't get personal to-do tables)
+      if (identity?.role === "viewer") { setLoading(false); return; }
       if (provisioningRef.current) return;
       provisioningRef.current = true;
 

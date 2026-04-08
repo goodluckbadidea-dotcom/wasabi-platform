@@ -59,7 +59,7 @@ export async function authenticate(request, env) {
 export const ROLE_LEVEL = { admin: 3, editor: 2, viewer: 1 };
 
 export function requireRole(user, minRole) {
-  if (!user) return true; // single-user mode: no JWT = full access
+  if (!user) return false; // No identity = no access (MCP uses synthetic admin user)
   return (ROLE_LEVEL[user.role] || 0) >= (ROLE_LEVEL[minRole] || 99);
 }
 
@@ -101,11 +101,11 @@ export const ROUTE_PERMISSIONS = [
   { pattern: "/pages/reorder", method: "POST", minRole: "admin", exact: true },
   // Summary cache — editor for writes
   { pattern: /^\/pages\/[^/]+\/summary$/, method: "PUT", minRole: "editor" },
-  // Schema — admin for mutations
-  { pattern: /^\/pages\/[^/]+\/schema$/, method: "PATCH", minRole: "admin" },
-  // Page config — admin for create/update/delete
-  { pattern: "/pages", method: "POST", minRole: "admin", exact: true },
-  { pattern: /^\/pages\/[^/]+$/, method: "PATCH", minRole: "admin" },
+  // Schema — editor for mutations
+  { pattern: /^\/pages\/[^/]+\/schema$/, method: "PATCH", minRole: "editor" },
+  // Page config — editor for create/update, admin for delete
+  { pattern: "/pages", method: "POST", minRole: "editor", exact: true },
+  { pattern: /^\/pages\/[^/]+$/, method: "PATCH", minRole: "editor" },
   { pattern: /^\/pages\/[^/]+$/, method: "DELETE", minRole: "admin" },
   // Table row mutations — editor
   { pattern: /^\/tables\//, method: "POST", minRole: "editor" },
@@ -141,28 +141,28 @@ export const ROUTE_PERMISSIONS = [
   { pattern: "/d1/notifications", method: "POST", minRole: "editor", exact: true },
   { pattern: /^\/d1\/notifications\/[^/]+$/, method: "PATCH", minRole: "editor" },
   { pattern: /^\/d1\/notifications\/[^/]+$/, method: "DELETE", minRole: "admin" },
-  // Knowledge base — admin for mutations
-  { pattern: /^\/d1\/kb/, method: "POST", minRole: "admin" },
-  { pattern: /^\/d1\/kb/, method: "PATCH", minRole: "admin" },
-  { pattern: /^\/d1\/kb/, method: "DELETE", minRole: "admin" },
-  // Custom functions — admin for mutations
-  { pattern: /^\/d1\/custom-functions/, method: "POST", minRole: "admin" },
-  { pattern: /^\/d1\/custom-functions/, method: "PATCH", minRole: "admin" },
-  { pattern: /^\/d1\/custom-functions/, method: "DELETE", minRole: "admin" },
-  // Neurons — admin for mutations
-  { pattern: /^\/neurons/, method: "POST", minRole: "admin" },
-  { pattern: /^\/neurons/, method: "PATCH", minRole: "admin" },
-  { pattern: /^\/neurons/, method: "DELETE", minRole: "admin" },
-  // Cell links — admin for mutations
-  { pattern: /^\/links/, method: "POST", minRole: "admin" },
-  { pattern: /^\/links/, method: "PATCH", minRole: "admin" },
-  { pattern: /^\/links/, method: "DELETE", minRole: "admin" },
-  // Sync — admin for all mutations
-  { pattern: /^\/sync\//, method: "POST", minRole: "admin" },
-  { pattern: /^\/sync\//, method: "DELETE", minRole: "admin" },
-  // Disconnect & Sync Backup — admin only
-  { pattern: /^\/pages\/[^/]+\/disconnect$/, method: "POST", minRole: "admin" },
-  { pattern: /^\/pages\/[^/]+\/sync-backup$/, method: "POST", minRole: "admin" },
+  // Knowledge base — editor for mutations
+  { pattern: /^\/d1\/kb/, method: "POST", minRole: "editor" },
+  { pattern: /^\/d1\/kb/, method: "PATCH", minRole: "editor" },
+  { pattern: /^\/d1\/kb/, method: "DELETE", minRole: "editor" },
+  // Custom functions — editor for mutations
+  { pattern: /^\/d1\/custom-functions/, method: "POST", minRole: "editor" },
+  { pattern: /^\/d1\/custom-functions/, method: "PATCH", minRole: "editor" },
+  { pattern: /^\/d1\/custom-functions/, method: "DELETE", minRole: "editor" },
+  // Neurons — editor for mutations
+  { pattern: /^\/neurons/, method: "POST", minRole: "editor" },
+  { pattern: /^\/neurons/, method: "PATCH", minRole: "editor" },
+  { pattern: /^\/neurons/, method: "DELETE", minRole: "editor" },
+  // Cell links — editor for mutations
+  { pattern: /^\/links/, method: "POST", minRole: "editor" },
+  { pattern: /^\/links/, method: "PATCH", minRole: "editor" },
+  { pattern: /^\/links/, method: "DELETE", minRole: "editor" },
+  // Sync — editor for all mutations
+  { pattern: /^\/sync\//, method: "POST", minRole: "editor" },
+  { pattern: /^\/sync\//, method: "DELETE", minRole: "editor" },
+  // Disconnect & Sync Backup — editor
+  { pattern: /^\/pages\/[^/]+\/disconnect$/, method: "POST", minRole: "editor" },
+  { pattern: /^\/pages\/[^/]+\/sync-backup$/, method: "POST", minRole: "editor" },
   // Files — editor for mutations
   { pattern: "/files", method: "POST", minRole: "editor", exact: true },
   { pattern: /^\/files\/[^/]+$/, method: "DELETE", minRole: "editor" },
@@ -188,7 +188,7 @@ export const ROUTE_PERMISSIONS = [
 ];
 
 export function checkRoutePermission(path, method, user) {
-  if (!user) return true; // single-user / MCP server — full access
+  if (!user) return false; // No identity = no access (MCP uses synthetic admin user)
   for (const rule of ROUTE_PERMISSIONS) {
     if (rule.method !== "*" && rule.method !== method) continue;
     const match = rule.pattern instanceof RegExp
@@ -215,7 +215,7 @@ export async function getFreshRole(env, user) {
 const PERM_LEVEL = { owner: 4, editor: 3, viewer: 2, none: 0 };
 
 export async function checkPagePermission(env, user, pageId, requiredLevel) {
-  if (!user) return true;                    // single-user / MCP — full access
+  if (!user) return false;                   // No identity = no access (MCP uses synthetic admin user)
   const role = await getFreshRole(env, user);
   if (role === "admin") return true;         // admin bypasses page permissions
   // Shared workspace: all authenticated users with sufficient route-level role
@@ -236,7 +236,7 @@ export async function checkPagePermission(env, user, pageId, requiredLevel) {
 // Enforces server-side PIN verification for protected pages.
 // Admin bypasses, non-protected pages pass, otherwise requires valid pin_sessions token.
 export async function checkPinProtection(env, user, request, tableId) {
-  if (!user) return true;                      // single-user / MCP — no PIN needed
+  if (!user) return false;                     // No identity = no access (MCP uses synthetic admin user)
   const role = await getFreshRole(env, user);
   if (role === "admin") return true;            // admin bypasses PIN
   const page = await env.DB.prepare(

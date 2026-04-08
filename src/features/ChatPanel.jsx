@@ -158,7 +158,7 @@ export default function ChatPanel({
   const { user, identity, pages } = usePlatform();
   const { isTablet } = useViewport();
   const maxW = isTablet ? TABLET_MAX_WIDTH : MAX_WIDTH;
-  const canUseAgent = !identity || identity.role === "admin";
+  const canUseAgent = identity?.role === "admin";
 
   // ── Tab state (persisted) ──
   const [activeTab, setActiveTab] = useState(() => {
