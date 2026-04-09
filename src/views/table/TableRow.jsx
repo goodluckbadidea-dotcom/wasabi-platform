@@ -34,7 +34,7 @@ export default function TableRow({
   collab,
   // Sub-item column management
   renamingSubCol, setRenamingSubCol, renameSubValue, setRenameSubValue,
-  handleRenameSubCol, setSubColCtxMenu, setAddSubColOpen,
+  handleRenameSubCol, setSubColCtxMenu, setAddSubColOpen, handleSubResizeStart,
   // Sub-item ghost
   subItemGhostParent, setSubItemGhostParent,
   subItemGhostValues, setSubItemGhostValues,
@@ -94,7 +94,7 @@ export default function TableRow({
           {subColsList.map((col) => (
             <div
               key={col}
-              style={{ padding: "0 8px", fontSize: 11, fontWeight: 700, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.06em", cursor: canEditSchema ? "pointer" : "default", userSelect: "none" }}
+              style={{ padding: "0 8px", fontSize: 11, fontWeight: 700, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.06em", cursor: canEditSchema ? "pointer" : "default", userSelect: "none", position: "relative", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
               onDoubleClick={(e) => {
                 e.preventDefault(); e.stopPropagation();
                 if (canEditSchema) { setRenamingSubCol(col); setRenameSubValue(col); setSubColCtxMenu(null); }
@@ -125,6 +125,18 @@ export default function TableRow({
                   }}
                 />
               ) : col}
+              {/* Resize handle */}
+              {handleSubResizeStart && (
+                <span
+                  style={{
+                    position: "absolute", right: 0, top: 0, bottom: 0, width: 5,
+                    cursor: "col-resize", background: "transparent", zIndex: 3,
+                  }}
+                  onMouseDown={(e) => { e.stopPropagation(); handleSubResizeStart(col, e); }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = C.accent + "44"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                />
+              )}
             </div>
           ))}
           <div />

@@ -305,9 +305,9 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   const colMgmt = useColumnManagement({
     schema, columns, allColumnsRef, hiddenColumns, setHiddenColumns,
     canEditSchema, isD1Table, isNotionTable, notionDbId,
-    pageConfig, onRefresh, onViewConfigChange, initialColWidths: config.colWidths,
+    pageConfig, onRefresh, onViewConfigChange, initialColWidths: config.colWidths, initialSubColWidths: config.subColWidths,
   });
-  const { colWidths } = colMgmt;
+  const { colWidths, subColWidths } = colMgmt;
   // Destructure commonly used values
   const {
     colCtxMenu, setColCtxMenu, handleColRightClick, handleHideCol,
@@ -322,7 +322,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     searchRelationDbs, handleAddCol,
     addSubColOpen, setAddSubColOpen, addSubColName, setAddSubColName,
     addSubColType, setAddSubColType, handleAddSubCol,
-    colDrag, handleColDragStart, handleResizeStart, colClickTimer,
+    colDrag, handleColDragStart, handleResizeStart, handleSubResizeStart, colClickTimer,
   } = colMgmt;
 
   // ── Options Manager ──
@@ -943,7 +943,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
             // Sub-item grid: checkbox + indent + sub-columns + badge + neuron + optional add-col
             const subColsList = subVisibleColumns.length > 0 ? subVisibleColumns : (subTitleField ? [subTitleField] : []);
             const subGtc = subColsList.length > 0
-              ? `52px ${subColsList.map(() => "120px").join(" ")} 56px 40px${canEditSchema ? " 44px" : ""}`
+              ? `52px ${subColsList.map((col) => `${subColWidths[col] || 150}px`).join(" ")} 56px 40px${canEditSchema ? " 44px" : ""}`
               : gtc;
 
             return (
@@ -1028,6 +1028,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                               handleRenameSubCol={handleRenameSubCol}
                               setSubColCtxMenu={setSubColCtxMenu}
                               setAddSubColOpen={setAddSubColOpen}
+                              handleSubResizeStart={handleSubResizeStart}
                               subItemGhostParent={subItemGhostParent}
                               setSubItemGhostParent={setSubItemGhostParent}
                               subItemGhostValues={subItemGhostValues}
@@ -1097,7 +1098,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
       {detailPage && (
         <RecordDetail
           page={detailPage}
-          schema={schema}
+          schema={detailPage?._parentRowId && subSchema ? subSchema : schema}
           onClose={() => setDetailPage(null)}
           onUpdate={onUpdate}
           onDelete={onDelete ? (ids) => { onDelete(ids); setDetailPage(null); } : undefined}

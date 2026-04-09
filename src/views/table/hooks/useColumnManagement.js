@@ -10,13 +10,19 @@ import { D1_TO_NOTION_TYPE } from "../tableHelpers.js";
 export default function useColumnManagement({
   schema, columns, allColumnsRef, hiddenColumns, setHiddenColumns,
   canEditSchema, isD1Table, isNotionTable, notionDbId,
-  pageConfig, onRefresh, onViewConfigChange, initialColWidths,
+  pageConfig, onRefresh, onViewConfigChange, initialColWidths, initialSubColWidths,
 }) {
   // ── Column Resize ──
   const [colWidths, setColWidths] = useState(() => initialColWidths || {});
   const resizeDrag = useRef(null);
   const colWidthsRef = useRef(colWidths);
   colWidthsRef.current = colWidths;
+
+  // ── Sub-Column Resize ──
+  const [subColWidths, setSubColWidths] = useState(() => initialSubColWidths || {});
+  const subResizeDrag = useRef(null);
+  const subColWidthsRef = useRef(subColWidths);
+  subColWidthsRef.current = subColWidths;
 
   // ── Column Context Menu ──
   const [colCtxMenu, setColCtxMenu] = useState(null);
@@ -68,6 +74,33 @@ export default function useColumnManagement({
         onViewConfigChange({ colWidths: finalWidths });
       }
       resizeDrag.current = null;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [onViewConfigChange]);
+
+  // ── Sub-Column Resize Handler ──
+  const handleSubResizeStart = useCallback((col, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startW = subColWidthsRef.current[col] || 150;
+    subResizeDrag.current = { col, startX, startW };
+
+    const onMove = (me) => {
+      if (!subResizeDrag.current) return;
+      const dx = me.clientX - subResizeDrag.current.startX;
+      const newW = Math.max(60, subResizeDrag.current.startW + dx);
+      setSubColWidths((prev) => ({ ...prev, [subResizeDrag.current.col]: newW }));
+    };
+    const onUp = () => {
+      if (subResizeDrag.current && onViewConfigChange) {
+        const finalWidths = { ...subColWidthsRef.current };
+        onViewConfigChange({ subColWidths: finalWidths });
+      }
+      subResizeDrag.current = null;
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
     };
@@ -351,9 +384,17 @@ export default function useColumnManagement({
     }
   }, []);
 
+  // Initialize subColWidths from config
+  const initSubColWidths = useCallback((configSubColWidths) => {
+    if (configSubColWidths && Object.keys(configSubColWidths).length > 0) {
+      setSubColWidths(configSubColWidths);
+    }
+  }, []);
+
   return {
     // Resize
     colWidths, setColWidths, handleResizeStart, initColWidths,
+    subColWidths, setSubColWidths, handleSubResizeStart, initSubColWidths,
     // Context menu
     colCtxMenu, setColCtxMenu, handleColRightClick,
     // Rename
