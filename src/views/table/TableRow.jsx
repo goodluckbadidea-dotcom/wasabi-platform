@@ -62,7 +62,7 @@ export default function TableRow({
   });
   const _statusValue = _statusField ? readField(page, _statusField) : null;
   const _statusColor = _statusValue
-    ? getStatusColor(_statusValue, getOptionNames(activeSchema, _statusField), config.colorMapping)
+    ? getStatusColor(_statusValue, getOptionNames(activeSchema, _statusField))
     : null;
   const hoverBg = _statusColor
     ? `linear-gradient(to right, ${_statusColor}18 0%, ${_statusColor}08 36px, ${C.darkSurf2} 120px)`
@@ -301,7 +301,6 @@ export default function TableRow({
                       type={type}
                       fieldName={col}
                       schema={activeSchema}
-                      colorMapping={config.colorMapping}
                       relationTitles={relationTitles}
                       linkInfo={linkData ? { sourceName: linkData.link?.name, stale: linkData.stale } : undefined}
                       linkedValue={linkData?.value}
@@ -324,7 +323,6 @@ export default function TableRow({
                   type={type}
                   fieldName={col}
                   schema={activeSchema}
-                  colorMapping={config.colorMapping}
                   relationTitles={relationTitles}
                   linkInfo={linkData ? { sourceName: linkData.link?.name, stale: linkData.stale } : undefined}
                   linkedValue={linkData?.value}

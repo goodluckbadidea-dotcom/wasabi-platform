@@ -5,6 +5,7 @@ import { useState, useCallback } from "react";
 import { getFieldType } from "../../_viewHelpers.js";
 import { buildProp } from "../../../notion/properties.js";
 import { getTableSchema, updateTableSchema } from "../../../lib/api.js";
+import { assignOptionColor } from "../../../lib/dataSource.js";
 import { updateDatabase } from "../../../notion/client.js";
 
 export default function useTableCellEdit({
@@ -79,7 +80,7 @@ export default function useTableCellEdit({
           if (c.name === fieldName) {
             const existing = c.options || [];
             if (!existing.some((o) => (typeof o === "string" ? o : o.name) === newOptionName)) {
-              return { ...c, options: [...existing, { name: newOptionName }] };
+              return { ...c, options: [...existing, { name: newOptionName, color: assignOptionColor(existing.length) }] };
             }
           }
           return c;

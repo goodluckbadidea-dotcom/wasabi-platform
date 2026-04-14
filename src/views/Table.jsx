@@ -21,6 +21,7 @@ import { useLinks } from "../context/LinksContext.jsx";
 import LinkPicker from "../core/LinkPicker.jsx";
 // isNeuronsMode, dispatchNeuronSelect, NeuronBadge now imported by table/TableRow.jsx
 import { listUserDirectory, updateRowOwner, notionProxy, getRecordBadgeCounts, deleteRow, getTableSchema, updateTableSchema, updateSubColumnSchema } from "../lib/api.js";
+import { assignOptionColor } from "../lib/dataSource.js";
 import { useTreeData } from "../lib/useTreeData.js";
 import { getPinToken } from "../components/PinLockOverlay.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
@@ -412,7 +413,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
         if (c.name !== colName) return c;
         const existing = Array.isArray(c.options) ? c.options : [];
         if (existing.some((o) => o.name === trimmed)) return c;
-        return { ...c, options: [...existing, { name: trimmed }] };
+        return { ...c, options: [...existing, { name: trimmed, color: assignOptionColor(existing.length) }] };
       });
       if (isSubItem) {
         await updateSubColumnSchema(pageConfig.id, updated);

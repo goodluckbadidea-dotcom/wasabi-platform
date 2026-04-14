@@ -973,20 +973,25 @@ export default function ViewSettingsPanel({
                 </>
               )}
 
-              {/* Color sections (inline) */}
-              <ColorMappingSection
-                colorableFields={colorableFields}
-                colorField={colorField}
-                colorOptions={colorOptions}
-                colorMapping={colorMapping}
-                globalColorMapping={null}
-                onColorFieldChange={handleColorFieldChange}
-                onColorMappingChange={handleColorMappingChange}
-                isGantt={isGantt}
-                colorMode={colorMode}
-                onColorModeChange={handleColorModeChange}
-                showInheritedBadges={false}
-              />
+              {/* Color sections (inline) — hidden for Table views: option colors
+                  live on the schema (col.options[i].color) and are edited via
+                  the column header "Manage Options" modal, not here. Other
+                  view types (Gantt, Kanban, cardGrid) still use this picker. */}
+              {!isTable && (
+                <ColorMappingSection
+                  colorableFields={colorableFields}
+                  colorField={colorField}
+                  colorOptions={colorOptions}
+                  colorMapping={colorMapping}
+                  globalColorMapping={null}
+                  onColorFieldChange={handleColorFieldChange}
+                  onColorMappingChange={handleColorMappingChange}
+                  isGantt={isGantt}
+                  colorMode={colorMode}
+                  onColorModeChange={handleColorModeChange}
+                  showInheritedBadges={false}
+                />
+              )}
 
               {/* Sidebar Fields */}
               {isGantt && allFields.length > 0 && (

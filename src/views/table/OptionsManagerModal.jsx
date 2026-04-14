@@ -5,6 +5,7 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { C, FONT, RADIUS, SHADOW, VIEW_PALETTE, Z } from "../../design/tokens.js";
+import { assignOptionColor } from "../../lib/dataSource.js";
 
 const PALETTE_KEYS = ["default", "gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red", "orchid"];
 const PALETTE_LABELS = ["Default", "Gray", "Brown", "Orange", "Yellow", "Green", "Blue", "Purple", "Pink", "Red", "Orchid"];
@@ -43,7 +44,7 @@ export default function OptionsManagerModal({ column, onSave, onClose }) {
     const trimmed = newName.trim();
     if (!trimmed) return;
     if (options.some((o) => o.name.toLowerCase() === trimmed.toLowerCase())) return;
-    setOptions((prev) => [...prev, { name: trimmed, color: null }]);
+    setOptions((prev) => [...prev, { name: trimmed, color: assignOptionColor(prev.length) }]);
     setNewName("");
     requestAnimationFrame(() => newInputRef.current?.focus());
   }, [newName, options]);

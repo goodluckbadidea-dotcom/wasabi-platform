@@ -9,20 +9,22 @@ import { formatDate, truncate } from "../../utils/helpers.js";
 import { styles } from "./tableStyles.js";
 
 // Cell type renderers — keyed by Notion property type.
-// Each receives { value, fieldName, schema, onClick, colorMapping, relationTitles }.
+// Each receives { value, fieldName, schema, onClick, relationTitles }.
+// Option colors are resolved from the schema itself (col.options[i].color) —
+// there is no per-view colorMapping override. See Phase 1 unification notes.
 export const CELL_RENDERERS = {
-  select: ({ value, fieldName, schema, onClick, colorMapping }) => {
-    const { fill, text } = getSolidPillColor(value, getOptionNames(schema, fieldName), getFieldOptions(schema, fieldName), colorMapping);
+  select: ({ value, fieldName, schema, onClick }) => {
+    const { fill, text } = getSolidPillColor(value, getOptionNames(schema, fieldName), getFieldOptions(schema, fieldName));
     return <span style={styles.pill(fill, text)} onClick={onClick}>{value}</span>;
   },
   status: (...args) => CELL_RENDERERS.select(...args),
-  multi_select: ({ value, fieldName, schema, colorMapping }) => {
+  multi_select: ({ value, fieldName, schema }) => {
     if (!Array.isArray(value)) return null;
     const optNames = getOptionNames(schema, fieldName);
     const schemaOpts = getFieldOptions(schema, fieldName);
     return (
       <span style={styles.multiPillWrap}>
-        {value.map((v, i) => { const { fill, text } = getSolidPillColor(v, optNames, schemaOpts, colorMapping); return <span key={i} style={styles.pill(fill, text)}>{v}</span>; })}
+        {value.map((v, i) => { const { fill, text } = getSolidPillColor(v, optNames, schemaOpts); return <span key={i} style={styles.pill(fill, text)}>{v}</span>; })}
       </span>
     );
   },
@@ -57,11 +59,11 @@ export const CELL_RENDERERS = {
   created_time: ({ value }) => <span style={{ fontSize: 12, color: C.darkMuted, fontVariantNumeric: "tabular-nums" }}>{formatDate(String(value), { short: true })}</span>,
 };
 
-export default function CellDisplay({ value, type, fieldName, schema, onClick, colorMapping, relationTitles }) {
+export default function CellDisplay({ value, type, fieldName, schema, onClick, relationTitles }) {
   if (value === null || value === undefined || value === "") {
     return <span style={{ color: C.darkMuted, fontSize: 12, fontStyle: "italic", cursor: onClick ? "pointer" : "default" }} onClick={onClick}>--</span>;
   }
   const renderer = CELL_RENDERERS[type];
-  if (renderer) return renderer({ value, fieldName, schema, onClick, colorMapping, relationTitles });
+  if (renderer) return renderer({ value, fieldName, schema, onClick, relationTitles });
   return <span style={{ cursor: onClick ? "pointer" : "default" }} onClick={onClick}>{truncate(String(value), 120)}</span>;
 }

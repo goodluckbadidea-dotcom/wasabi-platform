@@ -8,7 +8,7 @@
 
 import { queryAll } from "../notion/pagination.js";
 import { detectSchema } from "../notion/schema.js";
-import { listRows, createRows, updateRow, deleteRow, queryTable, getTableSchema, getConnection } from "./api.js";
+import { listRows, createRows, updateRow, deleteRow, queryTable, getTableSchema, getConnection, updateTableSchema, updateSubColumnSchema } from "./api.js";
 import { fetchBoardItems, fetchBoardColumns } from "../monday/client.js";
 import { mondayColumnsToSchema, mondayItemToPage } from "../monday/schema.js";
 
@@ -97,8 +97,28 @@ async function fetchD1Table(pageConfig) {
     rowsRes = { rows: [] };
   }
 
-  const columns = dedupeColumnNames(schemaRes.columns || []);
-  const subColumns = dedupeColumnNames(schemaRes.sub_columns || []);
+  const dedupedColumns = dedupeColumnNames(schemaRes.columns || []);
+  const dedupedSubColumns = dedupeColumnNames(schemaRes.sub_columns || []);
+
+  // Phase 1 color-repair pass: backfill missing option colors so native
+  // D1 tables render identically to linked-Notion tables. User-picked
+  // colors are preserved. Fire-and-forget writeback if anything changed
+  // — we always return the in-memory repaired shape so first paint is
+  // correct even if the write is still in flight. Deterministic, so
+  // concurrent opens converge on the same result.
+  const { repaired: columns, changed: columnsChanged } = repairOptionColors(dedupedColumns);
+  const { repaired: subColumns, changed: subColumnsChanged } = repairOptionColors(dedupedSubColumns);
+  if (columnsChanged) {
+    updateTableSchema(tableId, columns).catch((err) => {
+      console.warn("[dataSource] option-color repair writeback failed (columns):", err?.message || err);
+    });
+  }
+  if (subColumnsChanged) {
+    updateSubColumnSchema(tableId, subColumns).catch((err) => {
+      console.warn("[dataSource] option-color repair writeback failed (sub_columns):", err?.message || err);
+    });
+  }
+
   const rows = rowsRes.rows || [];
 
   const schema = d1SchemaToClassified(tableId, pageConfig.title || pageConfig.name, columns);
@@ -657,4 +677,52 @@ function normalizeOptions(options) {
     name: typeof o === "string" ? o : (o.name || o.label),
     color: typeof o === "string" ? "default" : (o.color || "default"),
   }));
+}
+
+// ─── Option color auto-assignment ───
+// Round-robin over the existing in-app palette keys understood by
+// WASABI_COLORS / NOTION_TO_PALETTE_IDX in src/design/tokens.js. These
+// are identifiers into the app's own palette, NOT a Notion dependency —
+// we reuse the same key space so a single `getSolidPillColor` chain
+// serves both native D1 and linked-Notion-derived tables.
+const OPTION_COLOR_PALETTE = [
+  "red", "orange", "yellow", "green", "blue", "purple", "pink", "brown", "gray",
+];
+
+export function assignOptionColor(optionIndex) {
+  const i = Math.max(0, optionIndex | 0);
+  return OPTION_COLOR_PALETTE[i % OPTION_COLOR_PALETTE.length];
+}
+
+// Walk a column array and backfill any missing/"default" option color on
+// select-like columns. Returns { repaired, changed } — `changed` is true
+// iff at least one option was actually rewritten. User-picked colors
+// (anything not "default") are left alone. Deterministic by option index
+// so concurrent repairs from different clients converge.
+const SELECT_LIKE_TYPES = new Set(["select", "multi_select", "status"]);
+
+function repairOptionColors(cols) {
+  let changed = false;
+  const repaired = (cols || []).map((col) => {
+    if (!col || !SELECT_LIKE_TYPES.has(col.type) || !Array.isArray(col.options)) {
+      return col;
+    }
+    let colChanged = false;
+    const newOptions = col.options.map((opt, idx) => {
+      // Support both string and object option shapes defensively.
+      if (typeof opt === "string") {
+        colChanged = true;
+        return { name: opt, color: assignOptionColor(idx) };
+      }
+      if (!opt.color || opt.color === "default") {
+        colChanged = true;
+        return { ...opt, color: assignOptionColor(idx) };
+      }
+      return opt;
+    });
+    if (!colChanged) return col;
+    changed = true;
+    return { ...col, options: newOptions };
+  });
+  return { repaired, changed };
 }
