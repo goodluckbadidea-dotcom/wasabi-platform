@@ -417,7 +417,7 @@ const OwnerPickerDropdown = React.forwardRef(function OwnerPickerDropdown({ owne
 });
 
 // ── Main Component ──
-export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete, pageConfigId, resolvedLinks, onLinkField, onUnlinkField, onRefresh, parentTitle }) {
+export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete, pageConfigId, resolvedLinks, onLinkField, onUnlinkField, onRefresh, onCreateOption, parentTitle }) {
   const { isTablet } = useViewport();
   const { identity } = usePlatform();
   const [editingField, setEditingField] = useState(null);
@@ -746,6 +746,7 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
                           schemaField={getSchemaField(fieldName, prop.type)}
                           onCommit={(val) => commitEdit(fieldName, prop.type, val)}
                           onCancel={() => { setEditingField(null); setEditValue(null); }}
+                          onCreateOption={onCreateOption}
                         />
                       ) : (
                         <DisplayValue
@@ -1116,7 +1117,7 @@ function AutoResizeTextarea({ inputRef, defaultValue, style, onKeyDown, onBlur, 
 }
 
 // ── Edit Field (inline editor) ──
-function EditField({ fieldName, type, value, schemaField, onCommit, onCancel }) {
+function EditField({ fieldName, type, value, schemaField, onCommit, onCancel, onCreateOption }) {
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -1201,6 +1202,7 @@ function EditField({ fieldName, type, value, schemaField, onCommit, onCancel }) 
           onCommit={onCommit}
           onCancel={onCancel}
           multi={false}
+          onCreateOption={onCreateOption ? (name) => onCreateOption(fieldName, name) : null}
         />
       );
 
@@ -1212,6 +1214,7 @@ function EditField({ fieldName, type, value, schemaField, onCommit, onCancel }) 
           onCommit={onCommit}
           onCancel={onCancel}
           multi={true}
+          onCreateOption={onCreateOption ? (name) => onCreateOption(fieldName, name) : null}
         />
       );
 
@@ -1298,10 +1301,12 @@ function CheckboxEditor({ value, onCommit }) {
 }
 
 // ── Select / Multi-Select Editor ──
-function SelectEditor({ value, options, onCommit, onCancel, multi }) {
+function SelectEditor({ value, options, onCommit, onCancel, multi, onCreateOption }) {
   const [selected, setSelected] = useState(
     multi ? (Array.isArray(value) ? value : []) : value
   );
+  const [newOptionText, setNewOptionText] = useState("");
+  const [creating, setCreating] = useState(false);
   const wrapRef = useRef(null);
 
   // Close on outside click
@@ -1327,6 +1332,39 @@ function SelectEditor({ value, options, onCommit, onCancel, multi }) {
   };
 
   const optNames = options.map((o) => o.name);
+
+  const handleCreate = async () => {
+    const name = newOptionText.trim();
+    if (!name || !onCreateOption || creating) return;
+    if (optNames.includes(name)) {
+      // Already exists — just select it
+      setNewOptionText("");
+      if (multi) {
+        setSelected((prev) => {
+          const arr = Array.isArray(prev) ? prev : [];
+          return arr.includes(name) ? arr : [...arr, name];
+        });
+      } else {
+        onCommit(name);
+      }
+      return;
+    }
+    setCreating(true);
+    try {
+      await onCreateOption(name);
+      setNewOptionText("");
+      if (multi) {
+        setSelected((prev) => {
+          const arr = Array.isArray(prev) ? prev : [];
+          return [...arr, name];
+        });
+      } else {
+        onCommit(name);
+      }
+    } finally {
+      setCreating(false);
+    }
+  };
 
   return (
     <div ref={wrapRef} style={{ position: "relative", flex: 1 }} onClick={(e) => e.stopPropagation()}>
@@ -1388,6 +1426,55 @@ function SelectEditor({ value, options, onCommit, onCancel, multi }) {
             </div>
           );
         })}
+        {onCreateOption && (
+          <div
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "6px 8px",
+              borderTop: `1px solid ${C.edgeLine}`,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <input
+              type="text"
+              value={newOptionText}
+              onChange={(e) => setNewOptionText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); handleCreate(); }
+                if (e.key === "Escape") { e.preventDefault(); setNewOptionText(""); }
+                e.stopPropagation();
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              placeholder="+ Create new option"
+              disabled={creating}
+              style={{
+                flex: 1,
+                border: `1px solid ${C.darkBorder}`,
+                borderRadius: RADIUS.sm,
+                background: C.darkSurf2,
+                color: C.darkText,
+                fontFamily: FONT,
+                fontSize: 11,
+                padding: "4px 8px",
+                outline: "none",
+              }}
+            />
+            {newOptionText.trim() && (
+              <button
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); handleCreate(); }}
+                disabled={creating}
+                style={{
+                  background: C.accent, color: "#fff", border: "none",
+                  borderRadius: RADIUS.sm, padding: "4px 8px",
+                  fontSize: 11, fontWeight: 600, cursor: "pointer",
+                  opacity: creating ? 0.5 : 1,
+                }}
+              >
+                {creating ? "…" : "Add"}
+              </button>
+            )}
+          </div>
+        )}
         {multi && (
           <div
             style={{ ...ds.selectOption, justifyContent: "center", borderTop: `1px solid ${C.edgeLine}` }}

@@ -2,7 +2,7 @@
 // Renders a single data row (parent or sub-item), including sub-item mini-header
 // and inline sub-item ghost row when applicable.
 
-import React from "react";
+import React, { useRef } from "react";
 import { C, FONT, RADIUS, getStatusColor } from "../../design/tokens.js";
 import { ANIM } from "../../design/animations.js";
 import { IconPlus, IconChevronDown } from "../../design/icons.jsx";
@@ -43,6 +43,7 @@ export default function TableRow({
   // Tree
   getChildren,
 }) {
+  const subHeaderClickTimer = useRef(null);
   const page = entry.row;
   const { depth: rowDepth, hasChildren, isExpanded } = entry;
   const pageId = page.id;
@@ -94,9 +95,28 @@ export default function TableRow({
           {subColsList.map((col) => (
             <div
               key={col}
-              style={{ padding: "0 8px", fontSize: 11, fontWeight: 700, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.06em", cursor: canEditSchema ? "pointer" : "default", userSelect: "none", position: "relative", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+              style={{ padding: "0 8px", fontSize: 11, fontWeight: 700, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.06em", cursor: canEditSchema ? "pointer" : "default", userSelect: "none", position: "relative", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 4 }}
+              onClick={(e) => {
+                if (!canEditSchema) return;
+                e.preventDefault(); e.stopPropagation();
+                // 250ms delay so double-click (rename) beats single-click (menu)
+                if (subHeaderClickTimer.current) {
+                  clearTimeout(subHeaderClickTimer.current);
+                  subHeaderClickTimer.current = null;
+                  return;
+                }
+                const rect = e.currentTarget.getBoundingClientRect();
+                const menuW = 180;
+                const x = Math.min(rect.left, window.innerWidth - menuW);
+                const y = rect.bottom + 2;
+                subHeaderClickTimer.current = setTimeout(() => {
+                  subHeaderClickTimer.current = null;
+                  setSubColCtxMenu({ col, x, y });
+                }, 250);
+              }}
               onDoubleClick={(e) => {
                 e.preventDefault(); e.stopPropagation();
+                if (subHeaderClickTimer.current) { clearTimeout(subHeaderClickTimer.current); subHeaderClickTimer.current = null; }
                 if (canEditSchema) { setRenamingSubCol(col); setRenameSubValue(col); setSubColCtxMenu(null); }
               }}
               onContextMenu={(e) => {
@@ -105,6 +125,9 @@ export default function TableRow({
                 setSubColCtxMenu({ col, x: e.clientX, y: e.clientY });
               }}
             >
+              {canEditSchema && renamingSubCol !== col && (
+                <IconChevronDown size={9} color={C.darkMuted} />
+              )}
               {renamingSubCol === col ? (
                 <input
                   autoFocus

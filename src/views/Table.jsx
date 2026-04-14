@@ -397,6 +397,34 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     setSubOptionsModalCol(null);
   }, [subOptionsModalCol, pageConfig, onRefresh]);
 
+  // ── Inline Create Option (for SelectEditor in RecordDetail) ──
+  // Appends a new option to a select/status/multi_select column's options array.
+  // Handles both parent columns and sub-item columns based on page._parentRowId.
+  const handleCreateSchemaOption = useCallback(async (page, colName, optionName) => {
+    if (!pageConfig?.id || !optionName?.trim()) return;
+    const trimmed = optionName.trim();
+    const isSubItem = !!page?._parentRowId;
+    try {
+      const schemaRes = await getTableSchema(pageConfig.id);
+      const bucket = isSubItem ? "sub_columns" : "columns";
+      const cols = schemaRes?.[bucket] || [];
+      const updated = cols.map((c) => {
+        if (c.name !== colName) return c;
+        const existing = Array.isArray(c.options) ? c.options : [];
+        if (existing.some((o) => o.name === trimmed)) return c;
+        return { ...c, options: [...existing, { name: trimmed }] };
+      });
+      if (isSubItem) {
+        await updateSubColumnSchema(pageConfig.id, updated);
+      } else {
+        await updateTableSchema(pageConfig.id, updated);
+      }
+      onRefresh?.();
+    } catch (err) {
+      console.error("Create option failed:", err);
+    }
+  }, [pageConfig, onRefresh]);
+
   const subTitleField = useMemo(() => {
     if (subColumns.length === 0) return schema?.title?.name || null;
     const titleCol = subColumns.find(c => c.type === "title");
@@ -1141,6 +1169,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
             resolveLinksForView(pageConfig?.id, viewIdx).then(setResolvedLinks).catch(err => console.warn("[Table] resolveLinksForView:", err.message || err));
           }}
           onRefresh={onRefresh}
+          onCreateOption={(colName, optionName) => handleCreateSchemaOption(detailPage, colName, optionName)}
           parentTitle={detailPage?._parentRowId ? getPageTitle(processedData.find(r => r.id === detailPage._parentRowId)) : undefined}
         />
       )}
