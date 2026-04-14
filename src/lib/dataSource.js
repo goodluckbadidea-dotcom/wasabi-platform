@@ -433,7 +433,7 @@ function d1RowToPage(row, columns, subColumns = [], parentCellMap = {}) {
           title: [{ type: "text", plain_text: str, text: { content: str } }],
         };
         subHasTitle = true;
-      } else if (value !== undefined && value !== null) {
+      } else {
         properties[col.name] = wrapAsNotionProp(value, col.type);
       }
     });
