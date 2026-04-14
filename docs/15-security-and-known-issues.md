@@ -123,7 +123,7 @@ A series of fixes addressed data-path mismatches in the sub-item system:
 
 ### Editable Column Headers — Double-Click Delay
 
-Parent column headers use a 250ms `setTimeout` to disambiguate single-click (context menu) from double-click (inline rename). This introduces a perceptible delay on single-click. Sub-item headers use only double-click and right-click (no single-click context menu delay).
+Both parent and sub-item column headers use a 250ms `setTimeout` to disambiguate single-click (context menu) from double-click (inline rename). This introduces a perceptible delay on single-click but enables one-click access to Rename, Manage Options, Change Type, and Delete. Sub-item headers use the same pattern as of 2026-04-14 — previously they only responded to double-click and right-click, creating a discoverability gap.
 
 ### Conflict Detection Scope
 
@@ -191,6 +191,20 @@ The title correction was initially scoped to sub-items only (`if (parentRowId)`)
 `useTableData.js` ran all rows (including sub-items) through the chip filter, dropdown filter, and search pipeline. Sub-items lack parent column values (status, channel, market, etc.), so `applyChipFilters` returned `false` for every sub-item when any chip filter was active. This made sub-items invisible in the tree even though `useTreeData` could build the parent→child mapping.
 
 Fixed by separating sub-items (rows with `_parentRowId`) from parent rows before the filter pipeline, then re-attaching sub-items whose parent survived filtering. Sub-items are now always visible when their parent is visible, regardless of active filters or search text.
+
+### Sub-Item Column Management Parity (Resolved 2026-04-14)
+
+Sub-item columns were second-class compared to parent columns. Multiple gaps fixed over one session:
+
+1. **Row limit** — `fetchD1Table()` loaded only 500 rows, which meant sub-items below the cutoff were invisible. Raised to 1000.
+2. **d1RowToPage property split** — Parent and sub-item rows were both iterating the same column list, leaving sub-item properties empty for any column whose value was null. Fixed to map parent columns for parent rows and sub-columns for sub-items, unconditionally regardless of null values, so RecordDetail shows every configured field.
+3. **Parent field inheritance** — Sub-items now carry `_parentFields` (priority, status, date range) from their parent row, used by task helpers and AI curation.
+4. **Sub-item owner column** — New `showSubItemOwnerColumn` config gate with full grid/render support in TableRow.
+5. **Context menu parity** — `SubColumnContextMenu` gained Manage Options, Change Type (full D1 type submenu), matching `ParentColumnContextMenu`. Previously only Rename + Delete.
+6. **Single-click dropdown on sub-item headers** — Sub-item mini-header cells now open the context menu on single click (250ms timer), matching parent header UX. A chevron icon renders as a visible affordance. Double-click still inline-renames.
+7. **Duplicate column name prevention** — Because Notion-compatible `properties` objects are keyed by column name (not ID), two columns with the same name silently overwrote each other. `handleAddCol`/`handleAddSubCol` auto-suffix duplicates (`"Status"` → `"Status 2"`). `handleRenameCol`/`handleRenameSubCol` alert and abort on collision.
+8. **Inline option creation in RecordDetail** — `SelectEditor` previously only allowed picking from existing options. Newly created select/status columns had no options, making the dropdown unusable until the user opened Manage Options from the column header. Fixed by adding a "+ Create new option" input at the bottom of the dropdown. The handler (`handleCreateSchemaOption` in Table.jsx) branches on `page._parentRowId` to call `updateTableSchema` or `updateSubColumnSchema`, then auto-selects the new option after refresh.
+9. **TDZ crash** — An earlier iteration placed `handleManageSubOptions` above the `subSchema` useMemo, with `subSchema` in its useCallback deps — const TDZ error at render time. Fixed by moving both sub-option handlers to immediately after the `subSchema` declaration.
 
 ### NewRecordModal Rich Text Textarea Clipping (Resolved 2026-04-07)
 

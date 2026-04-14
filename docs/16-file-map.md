@@ -144,7 +144,7 @@ Database view components. Lazy-loaded by PageShell.
 | `NodeConfigPanel.jsx` | Configuration panel for flow nodes |
 | `NodeRenderer.jsx` | Individual node renderer for flow editor |
 | `NotificationFeed.jsx` | Notification inbox with filtering, sticky recently-read items in Unread tab |
-| `RecordDetail.jsx` | Record detail drawer: Properties, Sub-Items (parent records only), Notes, Comments, Files tabs. Accepts `parentTitle` prop for sub-items. |
+| `RecordDetail.jsx` | Record detail drawer: Properties, Sub-Items (parent records only), Comments, Files tabs. Accepts `parentTitle` prop for sub-items. `SelectEditor` supports inline option creation via the `onCreateOption` prop (used for both parent and sub-item records, routed through `handleCreateSchemaOption` in Table.jsx which calls `updateTableSchema` or `updateSubColumnSchema` based on `page._parentRowId`). |
 | `SummaryTiles.jsx` | Summary tiles/metrics view |
 | `Table.jsx` | Primary table/grid view — **orchestrator** (~1,205 lines). Wires hooks from `table/hooks/`, composes components from `table/`, manages virtual scrolling, keyboard navigation, and saved views. See `src/views/table/` below for extracted sub-modules. |
 | `ViewRenderer.jsx` | View type router/dispatcher |
@@ -167,20 +167,20 @@ Extracted sub-modules for the Table view. Refactored from a 3,600-line monolith 
 | `GhostRow.jsx` | `GhostCell` component for new row creation ghost input (68 lines) |
 | `CellEditor.jsx` | Inline cell editor with type-specific inputs (text, number, date, select, multi-select, checkbox, URL, email, phone) (215 lines) |
 | `CellDisplay.jsx` | Cell renderer with `CELL_RENDERERS` registry for read-only display (63 lines) |
-| `ColumnContextMenu.jsx` | Right-click context menus: `ParentColumnContextMenu` (sort, hide, rename, manage options, type change, delete) + `SubColumnContextMenu` |
+| `ColumnContextMenu.jsx` | Column context menus: `ParentColumnContextMenu` (sort, hide, rename, manage options, type change, delete) + `SubColumnContextMenu` (rename, manage options, change type, delete — full parity with parent as of 2026-04-14). Both open on single-click header tap, double-click to rename, right-click for cursor-anchored menu. |
 | `AddColumnDialog.jsx` | Add column dialogs: `AddColumnDialog` + `AddSubColumnDialog` with type picker, name input, options (250 lines) |
 | `OptionsManagerModal.jsx` | Modal for managing select/multi_select/status column options: CRUD, drag-reorder, color picker (VIEW_PALETTE swatches) |
 | `CascadeDeleteDialog.jsx` | Confirmation dialog for deleting parent rows with sub-items (52 lines) |
 | `TableToolbar.jsx` | Toolbar: search, new record, export, saved views dropdown, bulk actions, presence avatars (221 lines) |
 | `TableHeader.jsx` | Column headers with sort indicators, drag-to-resize, double-click rename, column visibility toggle (168 lines) |
-| `TableRow.jsx` | Row rendering: parent rows, sub-item rows, expand/collapse, sub-item mini-headers, neuron badges (381 lines) |
+| `TableRow.jsx` | Row rendering: parent rows, sub-item rows, expand/collapse, sub-item mini-headers (with chevron affordance, single-click opens `SubColumnContextMenu`, double-click inline rename, 250ms disambiguation timer), neuron badges |
 | `TableFooter.jsx` | Row count display footer (41 lines) |
 
 #### src/views/table/hooks/ (5 files)
 
 | File | Purpose |
 |------|---------|
-| `useColumnManagement.js` | Column CRUD, reorder, resize, rename, add/delete/rename sub-columns, schema persistence. Type-change warns and clears options when leaving select-like types. |
+| `useColumnManagement.js` | Column CRUD, reorder, resize, rename, add/delete/rename sub-columns, `handleChangeSubColType` (sub-item type change with options warning), schema persistence. Type-change warns and clears options when leaving select-like types. Add/rename paths auto-suffix duplicate column names (parent and sub) to prevent Notion-properties-by-name collisions. |
 | `useTableData.js` | Data pipeline: text search, field filters, chip filters, sorting, debounced search. Sub-items separated before filtering and re-attached after (126 lines) |
 | `useTableCellEdit.js` | Inline cell edit state: active cell tracking, value commit to API, blur handling (107 lines) |
 | `useGhostRow.js` | Parent ghost row state: cell values, saving flag, commit-and-create logic (74 lines) |
@@ -341,7 +341,7 @@ Utility functions, API client, WebSocket helpers.
 | File | Purpose |
 |------|---------|
 | `api.js` | Fetch wrapper: auth headers, auto-refresh, error handling |
-| `dataSource.js` | Data source abstraction layer (D1, Notion, Monday normalization). Key functions: `createRecord()` (single write path for all records including sub-items), `d1RowToPage()` (converts D1 rows to Notion-compatible page objects, handles sub-column title wrapping), `d1SchemaToClassified()` (converts D1 column arrays to classified schema). |
+| `dataSource.js` | Data source abstraction layer (D1, Notion, Monday normalization). Key functions: `createRecord()` (single write path for all records including sub-items), `fetchD1Table()` (loads up to 1000 rows, builds `parentCellMap` for sub-item parent lookup), `d1RowToPage()` (converts D1 rows to Notion-compatible page objects — parent rows map parent columns only, sub-item rows map sub-columns only, each unconditionally regardless of null value, so RecordDetail shows every configured field), `buildParentFields()` (extracts parent priority/status/date range into `_parentFields` for sub-item inheritance), `d1SchemaToClassified()` (converts D1 column arrays to classified schema — called separately for `columns` and `sub_columns` to produce `schema` and `schema._subSchema`). |
 | `iframeHelpers.js` | Iframe sandbox helpers, escapeHtml, auto-execute code |
 | `roles.js` | Role constants and permission utilities |
 | `tableSocket.js` | WebSocket client for table collaboration (TableRoom), double-connect guard |

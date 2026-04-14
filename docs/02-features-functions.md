@@ -198,8 +198,9 @@ The table view's sub-item logic is spread across the orchestrator and extracted 
 
 - **Ghost row:** `useSubItemGhost` hook (`table/hooks/useSubItemGhost.js`) manages sub-item ghost row state (`subItemGhostParent`, `subItemGhostValues`, `subItemGhostSaving`). Ghost cell rendering in `GhostRow.jsx`.
 - **Row rendering:** `TableRow.jsx` renders both parent and sub-item rows, including expand/collapse toggle, sub-item mini-headers (uppercase, 11px), and the branch icon for creating sub-items.
-- **Editable headers:** Double-click a sub-item header to rename inline. Right-click opens `SubColumnContextMenu` (`ColumnContextMenu.jsx`) with Rename and Delete options.
-- **Column management:** `useColumnManagement` hook (`table/hooks/useColumnManagement.js`) handles `handleAddSubCol`, `handleRenameSubCol`, `handleDeleteSubCol` via `updateSubColumnSchema`.
+- **Editable headers:** Sub-item column headers have full parity with parent headers. **Single-click** opens `SubColumnContextMenu` (250ms timer to disambiguate from double-click, matching parent header behavior). **Double-click** renames inline. **Right-click** opens the same menu at cursor. A chevron (`IconChevronDown`) renders before the label as a visible dropdown affordance.
+- **Sub-column menu contents:** `SubColumnContextMenu` (`ColumnContextMenu.jsx`) offers Rename, Manage Options (for select/multi_select/status types), Change Type (full D1 type submenu mirroring parent), and Delete — full parity with `ParentColumnContextMenu`.
+- **Column management:** `useColumnManagement` hook (`table/hooks/useColumnManagement.js`) handles `handleAddSubCol`, `handleRenameSubCol`, `handleDeleteSubCol`, and `handleChangeSubColType` via `updateSubColumnSchema`. Add/rename paths auto-suffix duplicate names (`"Status"` → `"Status 2"`) on both parent and sub-column operations to prevent the Notion-compatible `properties` object (keyed by name) from silently overwriting fields.
 - **Add column dialog:** `AddSubColumnDialog` (`AddColumnDialog.jsx`) for creating new sub-columns.
 - **Display columns:** `subColsList` = visible sub-columns, or falls back to `[subTitleField]` if no sub-columns exist. Computed in the Table.jsx orchestrator.
 - **Tree data:** `useTreeData` hook (`src/lib/useTreeData.js`) handles expand/collapse state, `displayList` flattening, and parent-child relationships.
@@ -209,6 +210,14 @@ The table view's sub-item logic is spread across the orchestrator and extracted 
 
 - Sub-item records do NOT show the "Sub-Items" tab (sub-items cannot have sub-items).
 - Sub-item records show a "Parent" field linking to the parent record. The parent record's title is displayed (passed as `parentTitle` prop from Table.jsx), not the raw row ID.
+- **Schema switch:** When `detailPage._parentRowId` is set, RecordDetail is passed `subSchema` instead of the parent `schema` so select/status dropdowns read the correct option lists and field types.
+- **Inline option creation:** The `SelectEditor` component inside RecordDetail renders a "+ Create new option" input at the bottom of the dropdown whenever `onCreateOption` is provided. Typing a name and pressing Enter (or clicking Add) calls `handleCreateSchemaOption` in Table.jsx, which:
+  1. Detects parent vs. sub-item routing via `page._parentRowId`.
+  2. Fetches the current schema via `getTableSchema`.
+  3. Appends the new option (dedup by name) to the target column.
+  4. Calls `updateTableSchema` (parent) or `updateSubColumnSchema` (sub-item).
+  5. Refreshes, then auto-selects the newly created option.
+  This removes the prior requirement of opening Manage Options first to pre-populate options before a select/status field was usable — applies to both parent and sub-item records.
 
 ---
 
