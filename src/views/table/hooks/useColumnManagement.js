@@ -140,10 +140,16 @@ export default function useColumnManagement({
         await updateDatabase(notionDbId, { properties: { [oldName]: { name: newName.trim() } } });
       } else {
         const schemaRes = await getTableSchema(pageConfig.id);
-        const cols = (schemaRes?.columns || []).map((c) =>
+        const cols = schemaRes?.columns || [];
+        if (cols.some((c) => c.name === newName.trim() && c.name !== oldName)) {
+          alert(`A column named "${newName.trim()}" already exists.`);
+          setRenamingCol(null);
+          return;
+        }
+        const updated = cols.map((c) =>
           c.name === oldName ? { ...c, name: newName.trim() } : c
         );
-        await updateTableSchema(pageConfig.id, cols);
+        await updateTableSchema(pageConfig.id, updated);
       }
       if (onRefresh) onRefresh();
     } catch (err) { console.error("Rename column failed:", err); }
@@ -156,10 +162,17 @@ export default function useColumnManagement({
     if (!canEditSchema || !pageConfig?.id) { setRenamingSubCol(null); return; }
     try {
       const schemaRes = await getTableSchema(pageConfig.id);
-      const subs = (schemaRes?.sub_columns || []).map((c) =>
+      const subs = schemaRes?.sub_columns || [];
+      // Prevent duplicate names
+      if (subs.some((c) => c.name === newName.trim() && c.name !== oldName)) {
+        alert(`A sub-item column named "${newName.trim()}" already exists.`);
+        setRenamingSubCol(null);
+        return;
+      }
+      const updated = subs.map((c) =>
         c.name === oldName ? { ...c, name: newName.trim() } : c
       );
-      await updateSubColumnSchema(pageConfig.id, subs);
+      await updateSubColumnSchema(pageConfig.id, updated);
       if (onRefresh) onRefresh();
     } catch (err) { console.error("Rename sub-column failed:", err); }
     setRenamingSubCol(null);
@@ -227,6 +240,36 @@ export default function useColumnManagement({
     setColCtxMenu(null);
   }, [isD1Table, pageConfig?.id, onRefresh]);
 
+  // ── Change Sub-Column Type (D1 only) ──
+  const handleChangeSubColType = useCallback(async (col, newType) => {
+    if (!isD1Table || !pageConfig?.id) return;
+    try {
+      const schemaRes = await getTableSchema(pageConfig.id);
+      const existing = (schemaRes?.sub_columns || []).find((c) => c.name === col);
+      const oldType = existing?.type;
+
+      if (oldType && SELECT_LIKE.has(oldType) && !SELECT_LIKE.has(newType) && existing?.options?.length) {
+        const ok = confirm(`Changing "${col}" from ${oldType} to ${newType} will clear its ${existing.options.length} option(s). Continue?`);
+        if (!ok) { setSubColCtxMenu(null); return; }
+      }
+
+      const subs = (schemaRes?.sub_columns || []).map((c) => {
+        if (c.name !== col) return c;
+        const updated = { ...c, type: newType };
+        if (SELECT_LIKE.has(oldType) && !SELECT_LIKE.has(newType)) {
+          delete updated.options;
+        }
+        if (!SELECT_LIKE.has(oldType) && SELECT_LIKE.has(newType)) {
+          updated.options = updated.options || [];
+        }
+        return updated;
+      });
+      await updateSubColumnSchema(pageConfig.id, subs);
+      if (onRefresh) onRefresh();
+    } catch (err) { console.error("Change sub-column type failed:", err); }
+    setSubColCtxMenu(null);
+  }, [isD1Table, pageConfig?.id, onRefresh]);
+
   // ── Search Notion Databases (for relation column) ──
   const searchRelationDbs = useCallback(async (q) => {
     if (!isNotionTable) return;
@@ -284,7 +327,15 @@ export default function useColumnManagement({
         }
       } else {
         const schemaRes = await getTableSchema(pageConfig.id);
-        const cols = [...(schemaRes?.columns || []), { id: `col_${Date.now()}`, name: addColName.trim(), type: addColType }];
+        const existingCols = schemaRes?.columns || [];
+        let colName = addColName.trim();
+        const existingNames = new Set(existingCols.map((c) => c.name));
+        if (existingNames.has(colName)) {
+          let suffix = 2;
+          while (existingNames.has(`${colName} ${suffix}`)) suffix++;
+          colName = `${colName} ${suffix}`;
+        }
+        const cols = [...existingCols, { id: `col_${Date.now()}`, name: colName, type: addColType }];
         await updateTableSchema(pageConfig.id, cols);
       }
       setAddColOpen(false);
@@ -311,9 +362,17 @@ export default function useColumnManagement({
         updatedExisting = existingSub.map((c, i) => i === 0 ? { ...c, type: "title" } : c);
       }
       const isFirstCol = existingSub.length === 0;
+      // Prevent duplicate names — auto-suffix if needed
+      let colName = addSubColName.trim();
+      const existingNames = new Set(existingSub.map((c) => c.name));
+      if (existingNames.has(colName)) {
+        let suffix = 2;
+        while (existingNames.has(`${colName} ${suffix}`)) suffix++;
+        colName = `${colName} ${suffix}`;
+      }
       const newCol = {
         id: `subcol_${Date.now()}`,
-        name: addSubColName.trim(),
+        name: colName,
         type: isFirstCol ? "title" : addSubColType,
       };
       const newSub = [...updatedExisting, newCol];
@@ -404,7 +463,7 @@ export default function useColumnManagement({
     renamingSubCol, setRenamingSubCol, renameSubValue, setRenameSubValue,
     handleRenameSubCol, handleDeleteSubCol,
     // Delete & type change
-    handleDeleteCol, handleChangeColType, handleHideCol,
+    handleDeleteCol, handleChangeColType, handleChangeSubColType, handleHideCol,
     // Add column dialog
     addColOpen, setAddColOpen, addColName, setAddColName, addColType, setAddColType,
     addColRelationDb, setAddColRelationDb, addColSynced, setAddColSynced,

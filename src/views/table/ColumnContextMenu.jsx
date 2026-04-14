@@ -93,8 +93,9 @@ export function ParentColumnContextMenu({
 /**
  * Sub-item column context menu — rename, delete.
  */
-export function SubColumnContextMenu({ menu, onRename, onDelete, onClose }) {
+export function SubColumnContextMenu({ menu, subSchema, onRename, onManageOptions, onChangeType, onDelete, onClose }) {
   if (!menu) return null;
+  const colType = subSchema ? getFieldType(subSchema, menu.col) : null;
   return createPortal(
     <>
       <div style={{ position: "fixed", inset: 0, zIndex: 299 }} onClick={onClose} />
@@ -108,6 +109,41 @@ export function SubColumnContextMenu({ menu, onRename, onDelete, onClose }) {
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div style={ctxItem} onClick={() => { onRename(menu.col); onClose(); }} {...hoverBg()}>✏️ Rename</div>
+        {/* Manage Options (select/multi_select/status) */}
+        {SELECT_TYPES.has(colType) && (
+          <div style={ctxItem} onClick={() => { onManageOptions?.(menu.col); onClose(); }} {...hoverBg()}>⚙️ Manage Options</div>
+        )}
+        {/* Change Type */}
+        <div style={{ borderTop: `1px solid ${C.edgeLine}`, margin: "2px 0" }} />
+        <div style={{ padding: "4px 10px", fontSize: 10, color: C.darkMuted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          Change Type
+        </div>
+        {COLUMN_TYPES.map((t) => {
+          const currentType = colType;
+          const isCurrentType = currentType === t.value || currentType === mapD1TypeForUI(t.value);
+          return (
+            <div
+              key={t.value}
+              style={{
+                ...ctxItem,
+                display: "flex", alignItems: "center", gap: 8,
+                color: isCurrentType ? C.accent : C.darkText,
+                background: isCurrentType ? `${C.accent}10` : "transparent",
+                fontWeight: isCurrentType ? 600 : 400,
+              }}
+              onClick={() => onChangeType(menu.col, t.value)}
+              onMouseEnter={(e) => { e.currentTarget.style.background = isCurrentType ? `${C.accent}18` : C.darkSurf2; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = isCurrentType ? `${C.accent}10` : "transparent"; }}
+            >
+              <span style={{ width: 20, textAlign: "center", fontSize: 13, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {t.Icon ? <t.Icon size={14} color={isCurrentType ? C.accent : C.darkMuted} /> : <span style={{ fontWeight: 600, color: isCurrentType ? C.accent : C.darkMuted }}>{t.text}</span>}
+              </span>
+              <span style={{ flex: 1 }}>{t.label}</span>
+              {isCurrentType && <span style={{ fontSize: 11, opacity: 0.7 }}>✓</span>}
+            </div>
+          );
+        })}
+        {/* Delete */}
         <div style={{ borderTop: `1px solid ${C.edgeLine}`, margin: "2px 0" }} />
         <div style={{ ...ctxItem, color: C.warning }} onClick={() => { if (confirm(`Delete sub-item column "${menu.col}"?`)) onDelete(menu.col); }} {...hoverBg(C.warningDim)}>🗑 Delete Column</div>
       </div>

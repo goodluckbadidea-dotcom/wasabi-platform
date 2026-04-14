@@ -20,7 +20,7 @@ import NewRecordModal from "./NewRecordModal.jsx";
 import { useLinks } from "../context/LinksContext.jsx";
 import LinkPicker from "../core/LinkPicker.jsx";
 // isNeuronsMode, dispatchNeuronSelect, NeuronBadge now imported by table/TableRow.jsx
-import { listUserDirectory, updateRowOwner, notionProxy, getRecordBadgeCounts, deleteRow, getTableSchema, updateTableSchema } from "../lib/api.js";
+import { listUserDirectory, updateRowOwner, notionProxy, getRecordBadgeCounts, deleteRow, getTableSchema, updateTableSchema, updateSubColumnSchema } from "../lib/api.js";
 import { useTreeData } from "../lib/useTreeData.js";
 import { getPinToken } from "../components/PinLockOverlay.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
@@ -315,7 +315,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     renamingCol, setRenamingCol, renameValue, setRenameValue, handleRenameCol,
     subColCtxMenu, setSubColCtxMenu,
     renamingSubCol, setRenamingSubCol, renameSubValue, setRenameSubValue,
-    handleRenameSubCol, handleDeleteSubCol, handleDeleteCol, handleChangeColType,
+    handleRenameSubCol, handleDeleteSubCol, handleDeleteCol, handleChangeColType, handleChangeSubColType,
     addColOpen, setAddColOpen, addColName, setAddColName, addColType, setAddColType,
     addColRelationDb, setAddColRelationDb, addColSynced, setAddColSynced,
     addColSyncedName, setAddColSyncedName,
@@ -347,6 +347,29 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     }
     setOptionsModalCol(null);
   }, [optionsModalCol, pageConfig, onRefresh]);
+
+  // ── Sub-Column Options Manager ──
+  const [subOptionsModalCol, setSubOptionsModalCol] = useState(null);
+
+  const handleManageSubOptions = useCallback((colName) => {
+    const field = subSchema?.allFields?.find((f) => f.name === colName);
+    if (field) setSubOptionsModalCol({ name: colName, options: field.options || [], type: field.type });
+  }, [subSchema]);
+
+  const handleSaveSubOptions = useCallback(async (newOptions) => {
+    if (!subOptionsModalCol || !pageConfig?.id) return;
+    try {
+      const schemaRes = await getTableSchema(pageConfig.id);
+      const subs = (schemaRes?.sub_columns || []).map((c) =>
+        c.name === subOptionsModalCol.name ? { ...c, options: newOptions } : c
+      );
+      await updateSubColumnSchema(pageConfig.id, subs);
+      onRefresh?.();
+    } catch (err) {
+      console.error("Save sub-column options failed:", err);
+    }
+    setSubOptionsModalCol(null);
+  }, [subOptionsModalCol, pageConfig, onRefresh]);
 
   // ── Data Pipeline Hook ──
   const { filterableFields, processedData, treeSortFn } = useTableData({
@@ -1148,10 +1171,21 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
       {/* Sub-item column context menu */}
       <SubColumnContextMenu
         menu={subColCtxMenu}
+        subSchema={subSchema}
         onRename={(col) => { setRenamingSubCol(col); setRenameSubValue(col); }}
+        onManageOptions={handleManageSubOptions}
+        onChangeType={handleChangeSubColType}
         onDelete={handleDeleteSubCol}
         onClose={() => setSubColCtxMenu(null)}
       />
+
+      {subOptionsModalCol && (
+        <OptionsManagerModal
+          column={subOptionsModalCol}
+          onSave={handleSaveSubOptions}
+          onClose={() => setSubOptionsModalCol(null)}
+        />
+      )}
 
       {linkPickerCell && (
         <LinkPicker
