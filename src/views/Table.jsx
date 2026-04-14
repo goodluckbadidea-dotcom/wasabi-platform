@@ -348,28 +348,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     setOptionsModalCol(null);
   }, [optionsModalCol, pageConfig, onRefresh]);
 
-  // ── Sub-Column Options Manager ──
+  // ── Sub-Column Options Manager (handlers defined after subSchema, below) ──
   const [subOptionsModalCol, setSubOptionsModalCol] = useState(null);
-
-  const handleManageSubOptions = useCallback((colName) => {
-    const field = subSchema?.allFields?.find((f) => f.name === colName);
-    if (field) setSubOptionsModalCol({ name: colName, options: field.options || [], type: field.type });
-  }, [subSchema]);
-
-  const handleSaveSubOptions = useCallback(async (newOptions) => {
-    if (!subOptionsModalCol || !pageConfig?.id) return;
-    try {
-      const schemaRes = await getTableSchema(pageConfig.id);
-      const subs = (schemaRes?.sub_columns || []).map((c) =>
-        c.name === subOptionsModalCol.name ? { ...c, options: newOptions } : c
-      );
-      await updateSubColumnSchema(pageConfig.id, subs);
-      onRefresh?.();
-    } catch (err) {
-      console.error("Save sub-column options failed:", err);
-    }
-    setSubOptionsModalCol(null);
-  }, [subOptionsModalCol, pageConfig, onRefresh]);
 
   // ── Data Pipeline Hook ──
   const { filterableFields, processedData, treeSortFn } = useTableData({
@@ -395,6 +375,28 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   // ── Sub-Item Independent Schema ──
   const subColumns = useMemo(() => schema?._subColumns || [], [schema]);
   const subSchema = useMemo(() => schema?._subSchema || null, [schema]);
+
+  // ── Sub-Column Options Manager (must be after subSchema) ──
+  const handleManageSubOptions = useCallback((colName) => {
+    const field = subSchema?.allFields?.find((f) => f.name === colName);
+    if (field) setSubOptionsModalCol({ name: colName, options: field.options || [], type: field.type });
+  }, [subSchema]);
+
+  const handleSaveSubOptions = useCallback(async (newOptions) => {
+    if (!subOptionsModalCol || !pageConfig?.id) return;
+    try {
+      const schemaRes = await getTableSchema(pageConfig.id);
+      const subs = (schemaRes?.sub_columns || []).map((c) =>
+        c.name === subOptionsModalCol.name ? { ...c, options: newOptions } : c
+      );
+      await updateSubColumnSchema(pageConfig.id, subs);
+      onRefresh?.();
+    } catch (err) {
+      console.error("Save sub-column options failed:", err);
+    }
+    setSubOptionsModalCol(null);
+  }, [subOptionsModalCol, pageConfig, onRefresh]);
+
   const subTitleField = useMemo(() => {
     if (subColumns.length === 0) return schema?.title?.name || null;
     const titleCol = subColumns.find(c => c.type === "title");
