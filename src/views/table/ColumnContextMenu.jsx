@@ -2,7 +2,7 @@
 // Right-click context menus for parent columns and sub-item columns.
 // Rendered via createPortal to escape overflow:hidden ancestors.
 
-import React from "react";
+import React, { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { C, FONT, RADIUS, SHADOW } from "../../design/tokens.js";
 import { hoverBg } from "../../design/interactions.js";
@@ -15,19 +15,50 @@ import { COLUMN_TYPES, mapD1TypeForUI } from "./tableHelpers.js";
  */
 const SELECT_TYPES = new Set(["select", "multi_select", "status"]);
 
+/**
+ * Clamp menu {x,y} so the rendered box stays inside the viewport.
+ * Measures the menu element after first paint and adjusts left/top if
+ * it would overflow the right or bottom edge. Floors at 8px so small
+ * viewports can't push it negative.
+ */
+function useClampedMenuPosition(menu) {
+  const ref = useRef(null);
+  const [pos, setPos] = useState(menu ? { left: menu.x, top: menu.y } : null);
+
+  useLayoutEffect(() => {
+    if (!menu) { setPos(null); return; }
+    // Start at requested coords, then measure and clamp.
+    setPos({ left: menu.x, top: menu.y });
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const left = Math.max(8, Math.min(menu.x, vw - rect.width - 8));
+    const top = Math.max(8, Math.min(menu.y, vh - rect.height - 8));
+    if (left !== menu.x || top !== menu.y) {
+      setPos({ left, top });
+    }
+  }, [menu]);
+
+  return { ref, pos };
+}
+
 export function ParentColumnContextMenu({
   menu, schema, isD1Table, canEditSchema,
   onSort, onHide, onRename, onChangeType, onManageOptions, onDelete, onClose,
 }) {
-  if (!menu) return null;
+  const { ref, pos } = useClampedMenuPosition(menu);
+  if (!menu || !pos) return null;
   return createPortal(
     <>
       <div style={{ position: "fixed", inset: 0, zIndex: 299 }} onMouseDown={onClose} />
       <div
+        ref={ref}
         style={{
-          position: "fixed", left: menu.x, top: menu.y, zIndex: 300,
+          position: "fixed", left: pos.left, top: pos.top, zIndex: 300,
           background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
           borderRadius: RADIUS.lg, padding: 4, minWidth: 160,
+          maxHeight: "calc(100vh - 24px)", overflowY: "auto",
           boxShadow: SHADOW.dropdown, fontFamily: FONT,
         }}
         onMouseDown={(e) => e.stopPropagation()}
@@ -94,16 +125,19 @@ export function ParentColumnContextMenu({
  * Sub-item column context menu — rename, delete.
  */
 export function SubColumnContextMenu({ menu, subSchema, onRename, onManageOptions, onChangeType, onDelete, onClose }) {
-  if (!menu) return null;
+  const { ref, pos } = useClampedMenuPosition(menu);
+  if (!menu || !pos) return null;
   const colType = subSchema ? getFieldType(subSchema, menu.col) : null;
   return createPortal(
     <>
       <div style={{ position: "fixed", inset: 0, zIndex: 299 }} onClick={onClose} />
       <div
+        ref={ref}
         style={{
-          position: "fixed", left: menu.x, top: menu.y, zIndex: 300,
+          position: "fixed", left: pos.left, top: pos.top, zIndex: 300,
           background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
           borderRadius: RADIUS.lg, padding: 4, minWidth: 160,
+          maxHeight: "calc(100vh - 24px)", overflowY: "auto",
           boxShadow: SHADOW.dropdown, fontFamily: FONT,
         }}
         onMouseDown={(e) => e.stopPropagation()}

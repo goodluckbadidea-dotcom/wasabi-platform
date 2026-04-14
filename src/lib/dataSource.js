@@ -49,6 +49,38 @@ export function resolveSourceType(pageConfig) {
   return "none";
 }
 
+// ─── Column-name dedupe ───
+// Multiple columns sharing the same `name` silently collide in the
+// `page.properties` map built by d1RowToPage (keyed by col.name), which
+// makes RecordDetail and Table cells show only one of them. Duplicate
+// *prevention* lives in useColumnManagement (add/rename), but this repairs
+// any collision that's already persisted so the app-facing schema is
+// unambiguous. D1 storage is untouched — column IDs are preserved.
+function dedupeColumnNames(cols) {
+  const seen = new Map(); // base name -> next suffix to try
+  const out = [];
+  for (const col of cols) {
+    const base = col?.name ?? "";
+    if (!seen.has(base)) {
+      seen.set(base, 2);
+      out.push(col);
+      continue;
+    }
+    // Find the next "{base} (N)" that isn't already taken by either an
+    // earlier deduped entry or another real column in this list.
+    let n = seen.get(base);
+    const existingNames = new Set(out.map((c) => c?.name));
+    let candidate = `${base} (${n})`;
+    while (existingNames.has(candidate)) {
+      n += 1;
+      candidate = `${base} (${n})`;
+    }
+    seen.set(base, n + 1);
+    out.push({ ...col, name: candidate });
+  }
+  return out;
+}
+
 // ─── D1 Standalone Table ───
 
 async function fetchD1Table(pageConfig) {
@@ -65,8 +97,8 @@ async function fetchD1Table(pageConfig) {
     rowsRes = { rows: [] };
   }
 
-  const columns = schemaRes.columns || [];
-  const subColumns = schemaRes.sub_columns || [];
+  const columns = dedupeColumnNames(schemaRes.columns || []);
+  const subColumns = dedupeColumnNames(schemaRes.sub_columns || []);
   const rows = rowsRes.rows || [];
 
   const schema = d1SchemaToClassified(tableId, pageConfig.title || pageConfig.name, columns);
