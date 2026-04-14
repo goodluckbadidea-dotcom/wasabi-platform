@@ -58,7 +58,7 @@ async function fetchD1Table(pageConfig) {
   try {
     [schemaRes, rowsRes] = await Promise.all([
       getTableSchema(tableId).catch(() => ({ columns: [] })),
-      listRows(tableId).catch(() => ({ rows: [] })),
+      listRows(tableId, { limit: 1000 }).catch(() => ({ rows: [] })),
     ]);
   } catch {
     schemaRes = { columns: [] };
@@ -74,7 +74,15 @@ async function fetchD1Table(pageConfig) {
   if (subColumns.length > 0) {
     schema._subSchema = d1SchemaToClassified(tableId, pageConfig.title || pageConfig.name, subColumns);
   }
-  const data = rows.map((row) => d1RowToPage(row, columns, subColumns));
+  // Build parent cell lookup so sub-item rows can inherit parent fields
+  const parentCellMap = {};
+  for (const row of rows) {
+    if (!row.parent_row_id) {
+      parentCellMap[row.id] = row.cells;
+    }
+  }
+
+  const data = rows.map((row) => d1RowToPage(row, columns, subColumns, parentCellMap));
 
   return { data, schema, schemas: { [tableId]: schema } };
 }
@@ -384,46 +392,69 @@ function d1SchemaToClassified(tableId, title, columns) {
 }
 
 /**
+ * Extract key parent fields for sub-item inheritance.
+ * Returns a flat object with priority, status, and dates from the parent row's cells.
+ */
+function buildParentFields(parentCells, columns) {
+  if (!parentCells) return null;
+  const result = { priority: null, status: null, dates: {} };
+  for (const col of columns) {
+    const value = parentCells[col.id];
+    if (value === undefined || value === null) continue;
+    const name = col.name.toLowerCase();
+    if (col.type === "select" && name.includes("priority")) {
+      result.priority = value;
+    } else if (col.type === "select" && name.includes("status")) {
+      result.status = value;
+    } else if (col.type === "date") {
+      result.dates[col.name] = value;
+    }
+  }
+  return result;
+}
+
+/**
  * Convert a D1 table row → Notion-compatible page object.
  */
-function d1RowToPage(row, columns, subColumns = []) {
+function d1RowToPage(row, columns, subColumns = [], parentCellMap = {}) {
   const properties = {};
+  const isSubItem = !!row.parent_row_id;
 
-  columns.forEach((col, idx) => {
-    const value = row.cells[col.id];
-    if (idx === 0) {
-      properties[col.name] = {
-        type: "title",
-        title: [{
-          type: "text",
-          plain_text: value != null ? String(value) : "",
-          text: { content: value != null ? String(value) : "" },
-        }],
-      };
-    } else {
-      properties[col.name] = wrapAsNotionProp(value, col.type);
-    }
-  });
-
-  // Map sub-column cells so sub-item rows have their values in properties
-  // d1SchemaToClassified treats col.type === "title" OR idx === 0 as the title field,
-  // so we must use the same logic here to wrap the value in matching format.
-  let subHasTitle = false;
-  subColumns.forEach((col, idx) => {
-    const value = row.cells[col.id];
-    const isTitle = col.type === "title" || (idx === 0 && !subHasTitle);
-    if (isTitle) {
-      // Always wrap title (even if null) so cell renderer finds prop.title — matches parent col[0] behavior
-      const str = value != null ? String(value) : "";
-      properties[col.name] = {
-        type: "title",
-        title: [{ type: "text", plain_text: str, text: { content: str } }],
-      };
-      subHasTitle = true;
-    } else if (value !== undefined && value !== null) {
-      properties[col.name] = wrapAsNotionProp(value, col.type);
-    }
-  });
+  if (isSubItem) {
+    // Sub-item rows: map ONLY sub-columns into properties
+    let subHasTitle = false;
+    subColumns.forEach((col, idx) => {
+      const value = row.cells[col.id];
+      const isTitle = col.type === "title" || (idx === 0 && !subHasTitle);
+      if (isTitle) {
+        const str = value != null ? String(value) : "";
+        properties[col.name] = {
+          type: "title",
+          title: [{ type: "text", plain_text: str, text: { content: str } }],
+        };
+        subHasTitle = true;
+      } else if (value !== undefined && value !== null) {
+        properties[col.name] = wrapAsNotionProp(value, col.type);
+      }
+    });
+  } else {
+    // Parent rows: map ONLY parent columns into properties
+    columns.forEach((col, idx) => {
+      const value = row.cells[col.id];
+      if (idx === 0) {
+        properties[col.name] = {
+          type: "title",
+          title: [{
+            type: "text",
+            plain_text: value != null ? String(value) : "",
+            text: { content: value != null ? String(value) : "" },
+          }],
+        };
+      } else {
+        properties[col.name] = wrapAsNotionProp(value, col.type);
+      }
+    });
+  }
 
   // Inject system timestamp properties so readField() can find them
   properties["Last Updated"] = {
@@ -452,6 +483,7 @@ function d1RowToPage(row, columns, subColumns = []) {
     _sortOrder: row.sort_order,
     _ownerUserIds: ownerUserIds,
     _parentRowId: row.parent_row_id || null,
+    _parentFields: isSubItem ? buildParentFields(parentCellMap[row.parent_row_id], columns) : null,
   };
 }
 

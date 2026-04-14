@@ -141,7 +141,7 @@ export function scoreTerminalStatuses(statusOptions) {
  * Normalize a D1 row into a uniform task object.
  * D1 rows come as { id, cells: { col_id: value, ... }, created_at, updated_at }
  */
-export function normalizeD1Task(row, columns) {
+export function normalizeD1Task(row, columns, parentCellMap = {}) {
   const cells = row.cells || {};
   // Map column IDs to names for lookup
   const colMap = {};
@@ -265,12 +265,34 @@ export function normalizeD1Task(row, columns) {
     done = TERMINAL_WORDS.some((w) => statusLower.includes(w));
   }
 
+  // Inherit parent priority/dates for sub-items
+  let inheritedPriority = null;
+  let inheritedDate = null;
+  if (row.parent_row_id && parentCellMap[row.parent_row_id]) {
+    const parentCells = parentCellMap[row.parent_row_id];
+    for (const col of (columns || [])) {
+      const val = parentCells[col.id];
+      if (val == null) continue;
+      const name = (col.name || "").toLowerCase();
+      if (!inheritedPriority && col.type === "select" && name.includes("priority")) {
+        inheritedPriority = val;
+      }
+      if (!inheritedDate && (col.type === "date" || name.includes("date") || name.includes("deadline"))) {
+        if (typeof val === "string") inheritedDate = val;
+        else if (val && val.start) inheritedDate = val.end || val.start;
+      }
+    }
+  }
+
+  const ownPriority = findCell(["priority"]) || null;
+  const ownDue = nearestDate || findCell(["due", "date"]) || null;
+
   return {
     id: row.id,
     title: findCell(["task", "title", "name"]) || "Untitled",
     done,
-    priority: findCell(["priority"]) || null,
-    due: nearestDate || findCell(["due", "date"]) || null,
+    priority: ownPriority || inheritedPriority,
+    due: ownDue || inheritedDate,
     nearestDate,
     nearestDateField,
     allDates,

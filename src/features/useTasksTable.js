@@ -130,7 +130,11 @@ export default function useTasksTable() {
       setLoading(true);
       const result = await listRows(tableId);
       const rows = result.rows || [];
-      setTasks(rows.map((r) => normalizeD1Task(r, TASK_COLUMNS)));
+      const parentCellMap = {};
+      for (const r of rows) {
+        if (!r.parent_row_id) parentCellMap[r.id] = r.cells;
+      }
+      setTasks(rows.map((r) => normalizeD1Task(r, TASK_COLUMNS, parentCellMap)));
     } catch (err) {
       console.error("[UserTasks] Failed to fetch:", err);
     } finally {

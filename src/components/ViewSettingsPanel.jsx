@@ -879,6 +879,11 @@ export default function ViewSettingsPanel({
                         checked={config.defaultExpanded === true}
                         onChange={(checked) => onConfigChange?.({ defaultExpanded: checked })}
                       />
+                      <FieldToggle
+                        label="Enable sub-item owner column"
+                        checked={config.showSubItemOwnerColumn === true}
+                        onChange={(checked) => onConfigChange?.({ showSubItemOwnerColumn: checked })}
+                      />
                     </>
                   )}
                 </>

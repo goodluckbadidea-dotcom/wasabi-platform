@@ -142,14 +142,15 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
 
   // ── Owner Column ──
   const showOwnerColumn = !!(config.showOwnerColumn || pageConfig?.config?.showOwnerColumn);
+  const showSubItemOwnerColumn = !!(config.showSubItemOwnerColumn || pageConfig?.config?.showSubItemOwnerColumn);
   const [teamUsers, setTeamUsers] = useState([]);
   const [ownerPickerRow, setOwnerPickerRow] = useState(null); // pageId of row being edited
   useEffect(() => {
-    if (!showOwnerColumn) return;
+    if (!showOwnerColumn && !showSubItemOwnerColumn) return;
     listUserDirectory().then((res) => {
       setTeamUsers(res.users || []);
     }).catch(err => console.warn("[Table] listUserDirectory:", err.message || err));
-  }, [showOwnerColumn]);
+  }, [showOwnerColumn, showSubItemOwnerColumn]);
 
   // ── Ghost Row (via useGhostRow hook) ──
   // Hook is called after targetDatabaseId is defined (below)
@@ -942,8 +943,12 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
             const totalTableWidth = 52 + columns.reduce((sum, col) => sum + (colWidths[col] || (col === OWNER_COL_NAME ? OWNER_COL_WIDTH : 120)), 0) + 40 + (canEditSchema ? 44 : 0);
             // Sub-item grid: checkbox + indent + sub-columns + badge + neuron + optional add-col
             const subColsList = subVisibleColumns.length > 0 ? subVisibleColumns : (subTitleField ? [subTitleField] : []);
+            if (showSubItemOwnerColumn && subColsList.length > 0 && !subColsList.includes(OWNER_COL_NAME)) {
+              const idx = Math.min(1, subColsList.length);
+              subColsList.splice(idx, 0, OWNER_COL_NAME);
+            }
             const subGtc = subColsList.length > 0
-              ? `52px ${subColsList.map((col) => `${subColWidths[col] || 150}px`).join(" ")} 56px 40px${canEditSchema ? " 44px" : ""}`
+              ? `52px ${subColsList.map((col) => `${subColWidths[col] || (col === OWNER_COL_NAME ? OWNER_COL_WIDTH : 150)}px`).join(" ")} 56px 40px${canEditSchema ? " 44px" : ""}`
               : gtc;
 
             return (
@@ -1007,6 +1012,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                               isHovered={hoveredRow === entry.row.id}
                               isSelected={selectedRows.has(entry.row.id)}
                               showOwnerColumn={showOwnerColumn}
+                              showSubItemOwnerColumn={showSubItemOwnerColumn}
                               canEditSchema={canEditSchema}
                               setHoveredRow={setHoveredRow}
                               setDetailPage={setDetailPage}

@@ -552,9 +552,14 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
             () => listRows(db.tableId, { limit: MAX_ITEMS_PER_DB }),
             `D1 rows for "${db.pageName}"`
           );
+          const rows = result.rows || [];
+          const parentCellMap = {};
+          for (const r of rows) {
+            if (!r.parent_row_id) parentCellMap[r.id] = r.cells;
+          }
           const tasks = [];
-          for (const row of (result.rows || [])) {
-            const task = normalizeD1Task(row, db.columns);
+          for (const row of rows) {
+            const task = normalizeD1Task(row, db.columns, parentCellMap);
             task.sourceName = db.pageName;
             task.source = `d1:${db.tableId}`;
             if (!task.done) tasks.push(task);

@@ -22,7 +22,7 @@ export default function TableRow({
   gtc, subGtc, columns, subColsList, subColumns,
   schema, subSchema,
   // Flags
-  subItemsEnabled, isHovered, isSelected, showOwnerColumn, canEditSchema,
+  subItemsEnabled, isHovered, isSelected, showOwnerColumn, showSubItemOwnerColumn, canEditSchema,
   // Callbacks
   setHoveredRow, setDetailPage, toggleRow, toggleExpand,
   handleCreateSubItem, onCreate,
@@ -221,7 +221,7 @@ export default function TableRow({
         </div>
         {/* Data cells */}
         {activeCols.map((col, colIdx) => {
-          if (col === OWNER_COL_NAME && showOwnerColumn) {
+          if (col === OWNER_COL_NAME && (showOwnerColumn || (isSubItem && showSubItemOwnerColumn))) {
             const ownerIds = page._ownerUserIds || [];
             return (
               <div
