@@ -427,10 +427,15 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   }, [pageConfig, onRefresh]);
 
   const subTitleField = useMemo(() => {
-    if (subColumns.length === 0) return schema?.title?.name || null;
+    // When sub_columns is empty, return null — do NOT fall back to the
+    // parent title column name. The ghost row would otherwise key
+    // subItemGhostValues by the parent title name, and createRecord
+    // (which looks only at sub_columns when parentRowId is set) would
+    // fail to find that key, silently creating an empty sub-item.
+    if (subColumns.length === 0) return null;
     const titleCol = subColumns.find(c => c.type === "title");
     return titleCol?.name || subColumns[0]?.name || null;
-  }, [subColumns, schema]);
+  }, [subColumns]);
   const subVisibleColumns = useMemo(() => {
     if (subColumns.length === 0) return [];
     return subColumns.map(c => c.name);

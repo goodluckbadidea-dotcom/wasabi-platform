@@ -432,13 +432,17 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
       // Phase 2b: seed a default "Name" title sub-column so sub-item
       // creation works out of the box. Without this, sub-items render
       // with no editable fields (empty sub_columns) and the title can
-      // never be set. Fire-and-forget — if this fails the user can
-      // still add a sub-column manually via the column header menu.
-      updateSubColumnSchema(pageId, [
-        { id: `subcol_${Date.now()}`, name: "Name", type: "title" },
-      ]).catch((err) => {
+      // never be set. MUST await — the first fetchD1Table call after
+      // navigation would otherwise race the seed write and see empty
+      // sub_columns, making subTitleField fall back to the parent
+      // title column name and silently breaking sub-item creation.
+      try {
+        await updateSubColumnSchema(pageId, [
+          { id: `subcol_${Date.now()}`, name: "Name", type: "title" },
+        ]);
+      } catch (err) {
         console.warn("[VisualPageBuilder] default sub-column seed failed:", err?.message || err);
-      });
+      }
 
       addPage({ ...config, id: pageId });
       setSuccess(true);
