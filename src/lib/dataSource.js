@@ -240,8 +240,14 @@ export async function updateRecord(pageConfig, recordId, fieldName, propPayload,
   if (type === "d1") {
     const tableId = pageConfig.id;
     const schemaRes = await getTableSchema(tableId);
-    const parentCols = schemaRes.columns || [];
-    const subCols = schemaRes.sub_columns || [];
+    // Apply the same in-memory name-dedupe that fetchD1Table uses, so the
+    // names we search for here match the names the caller supplies (the
+    // caller built propertyName from page.properties, which is keyed by
+    // deduped names via d1RowToPage). Without this, a sub-column that
+    // shares a name with another sub-column in raw D1 storage would be
+    // unreachable from updateRecord as "Name (2)".
+    const parentCols = dedupeColumnNames(schemaRes.columns || []);
+    const subCols = dedupeColumnNames(schemaRes.sub_columns || []);
 
     // Sub-item rows must resolve against the sub-column schema. Before
     // Phase 2a this function only consulted parent columns, so sub-item
@@ -286,8 +292,14 @@ export async function createRecord(pageConfig, properties, user, { pinToken, par
   if (type === "d1") {
     const tableId = pageConfig.id;
     const schemaRes = await getTableSchema(tableId);
-    const parentCols = schemaRes.columns || [];
-    const subCols = schemaRes.sub_columns || [];
+    // Apply the same in-memory name-dedupe that fetchD1Table uses. The
+    // caller built `properties` using deduped names (keyed off
+    // page.properties from d1RowToPage), so the raw schema from the
+    // worker — which may contain literal duplicates like two columns
+    // both named "Status" — would cause the loop below to resolve both
+    // to the same properties[name] and silently drop one write.
+    const parentCols = dedupeColumnNames(schemaRes.columns || []);
+    const subCols = dedupeColumnNames(schemaRes.sub_columns || []);
 
     // Strict schema selection: sub-item creates MUST use sub_columns
     // only. Before Phase 2a this merged parent + sub columns, which
