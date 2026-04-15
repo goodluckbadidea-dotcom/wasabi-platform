@@ -4,6 +4,10 @@
 
 import React, { useRef } from "react";
 import { C, FONT, RADIUS, getStatusColor } from "../../design/tokens.js";
+
+// Track which tables we've already warned about missing subSchema so the
+// console doesn't fill with duplicate messages on every row render.
+const _subSchemaWarned = new Set();
 import { ANIM } from "../../design/animations.js";
 import { IconPlus, IconChevronDown } from "../../design/icons.jsx";
 import { getPageTitle } from "../../notion/properties.js";
@@ -51,6 +55,19 @@ export default function TableRow({
   const isFirstChild = isSubItem && (!prevEntry || prevEntry.depth === 0);
   const activeGtc = isSubItem ? subGtc : gtc;
   const activeCols = isSubItem ? subColsList : columns;
+  // Sub-item rows authoritatively read from subSchema. If subSchema is
+  // missing (Phase 2a safety net — should only happen on legacy tables
+  // whose sub_columns were never seeded), fall back to parent schema so
+  // nothing crashes, but log once per table so the mismatch is visible.
+  // Phase 2b will seed sub_columns on new tables so this branch stays cold.
+  const subSchemaMissing = isSubItem && !subSchema;
+  if (subSchemaMissing) {
+    const tableKey = schema?.tableId || schema?.title || "unknown";
+    if (!_subSchemaWarned.has(tableKey)) {
+      _subSchemaWarned.add(tableKey);
+      console.warn(`[TableRow] Sub-items rendering with parent schema for table "${tableKey}" — no sub_columns defined. Add a sub-column via the column header menu to fix.`);
+    }
+  }
   const activeSchema = isSubItem && subSchema ? subSchema : schema;
 
   const childBgTint = rowDepth > 0 ? "rgba(255,255,255,0.015)" : "transparent";

@@ -234,14 +234,35 @@ async function fetchMondayBoard(pageConfig, user) {
 
 // ─── Update a record in any source ───
 
-export async function updateRecord(pageConfig, recordId, fieldName, propPayload, user, cellVersions, { pinToken } = {}) {
+export async function updateRecord(pageConfig, recordId, fieldName, propPayload, user, cellVersions, { pinToken, isSubItem } = {}) {
   const type = resolveSourceType(pageConfig);
 
   if (type === "d1") {
     const tableId = pageConfig.id;
     const schemaRes = await getTableSchema(tableId);
-    const col = schemaRes.columns.find((c) => c.name === fieldName);
-    if (!col) throw new Error(`Column "${fieldName}" not found`);
+    const parentCols = schemaRes.columns || [];
+    const subCols = schemaRes.sub_columns || [];
+
+    // Sub-item rows must resolve against the sub-column schema. Before
+    // Phase 2a this function only consulted parent columns, so sub-item
+    // cell edits on columns that didn't exist in the parent schema
+    // silently wrote to the wrong col.id (or no-op'd). When caller knows
+    // it's a sub-item (isSubItem === true), look up in sub_columns only.
+    // When caller knows it's a parent (isSubItem === false), look up in
+    // parent columns only. When caller didn't say (legacy undefined),
+    // try parent then sub as a last-resort fallback.
+    let col = null;
+    if (isSubItem === true) {
+      col = subCols.find((c) => c.name === fieldName);
+    } else if (isSubItem === false) {
+      col = parentCols.find((c) => c.name === fieldName);
+    } else {
+      col = parentCols.find((c) => c.name === fieldName) || subCols.find((c) => c.name === fieldName);
+    }
+    if (!col) {
+      const scope = isSubItem === true ? "sub-item columns" : isSubItem === false ? "parent columns" : "parent or sub-item columns";
+      throw new Error(`Column "${fieldName}" not found in ${scope} for table "${tableId}"`);
+    }
 
     // Extract raw value from Notion-format property payload
     const rawValue = extractRawValue(propPayload, col.type);
@@ -265,38 +286,31 @@ export async function createRecord(pageConfig, properties, user, { pinToken, par
   if (type === "d1") {
     const tableId = pageConfig.id;
     const schemaRes = await getTableSchema(tableId);
-    const columns = schemaRes.columns || [];
-    const subColumns = schemaRes.sub_columns || [];
+    const parentCols = schemaRes.columns || [];
+    const subCols = schemaRes.sub_columns || [];
 
-    // Convert Notion-style properties to D1 cells
-    // Check both parent columns and sub-item columns for matching field names
-    const allColumns = parentRowId ? [...columns, ...subColumns] : columns;
-    // Determine effective type for extraction — d1SchemaToClassified treats
-    // col.type === "title" OR first column (parent or sub) as title, so
-    // buildProp produces title-format props even when raw col.type is "text".
-    const subHasExplicitTitle = subColumns.some(c => c.type === "title");
+    // Strict schema selection: sub-item creates MUST use sub_columns
+    // only. Before Phase 2a this merged parent + sub columns, which
+    // caused name collisions (e.g. "Status" present in both) to route
+    // the sub-item's value to the parent column. The title-detection
+    // index was also computed against the merged array, breaking title
+    // resolution for sub-items.
+    const activeCols = parentRowId ? subCols : parentCols;
+    const hasExplicitTitle = activeCols.some((c) => c.type === "title");
+
     const cells = {};
-    for (const col of allColumns) {
-      if (properties[col.name] !== undefined) {
-        // d1SchemaToClassified treats col.type === "title" OR idx === 0 as title,
-        // so buildProp produces title-format props. Match that logic here so
-        // extractRawValue reads the correct property key for all records.
-        let effectiveType = col.type;
-        const isParentCol = columns.includes(col);
-        if (isParentCol) {
-          const parentHasExplicitTitle = columns.some(c => c.type === "title");
-          const parentIdx = columns.indexOf(col);
-          if (col.type === "title" || (parentIdx === 0 && !parentHasExplicitTitle)) {
-            effectiveType = "title";
-          }
-        } else {
-          const subIdx = subColumns.indexOf(col);
-          if (subIdx >= 0 && (col.type === "title" || (subIdx === 0 && !subHasExplicitTitle))) {
-            effectiveType = "title";
-          }
-        }
-        cells[col.id] = extractRawValue(properties[col.name], effectiveType);
+    for (let i = 0; i < activeCols.length; i++) {
+      const col = activeCols[i];
+      if (properties[col.name] === undefined) continue;
+      // d1SchemaToClassified treats col.type === "title" OR idx === 0 as
+      // title, so buildProp produces title-format props. Match that
+      // logic here (using the index within activeCols alone) so
+      // extractRawValue reads the correct property key.
+      let effectiveType = col.type;
+      if (col.type === "title" || (i === 0 && !hasExplicitTitle)) {
+        effectiveType = "title";
       }
+      cells[col.id] = extractRawValue(properties[col.name], effectiveType);
     }
 
     const result = await createRows(tableId, { cells, parent_row_id: parentRowId || null }, { pinToken });

@@ -180,8 +180,9 @@ export default function PageShell({
           const record = data.find((r) => r.id === pageId);
           const cellVersions = cellVersionsRef.current[pageId] || record?.cell_versions || null;
           const pinToken = getPinToken(pageConfig?.id);
+          const isSubItem = !!record?._parentRowId;
 
-          const result = await updateRecord(pageConfig, pageId, propertyName, propPayload, user, cellVersions, { pinToken });
+          const result = await updateRecord(pageConfig, pageId, propertyName, propPayload, user, cellVersions, { pinToken, isSubItem });
 
           // Check for conflicts in the response
           if (result?.conflicts) {
@@ -544,7 +545,9 @@ export default function PageShell({
               const conflict = pendingConflicts.find((c) => c.field === field);
               if (conflict) {
                 try {
-                  const result = await updateRecord(pageConfig, conflict.recordId, field, chosenValue, user);
+                  const conflictRecord = data.find((r) => r.id === conflict.recordId);
+                  const isSubItem = !!conflictRecord?._parentRowId;
+                  const result = await updateRecord(pageConfig, conflict.recordId, field, chosenValue, user, null, { isSubItem });
                   if (result?.cell_versions) {
                     cellVersionsRef.current[conflict.recordId] = result.cell_versions;
                   }
