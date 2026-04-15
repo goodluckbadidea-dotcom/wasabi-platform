@@ -8,6 +8,7 @@ import { S } from "../design/styles.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { savePageConfig, createDocumentPageConfig, createFolderConfig, createWorkspaceConfig, createTableConfig, createLinkedNotionConfig, createStandaloneDocConfig, createLinkedMondayConfig } from "../config/pageConfig.js";
+import { updateSubColumnSchema } from "../lib/api.js";
 import { autoDetectViews } from "../notion/schema.js";
 import { createSubpage, ensurePageActive } from "../notion/client.js";
 import DatabaseBrowser from "./DatabaseBrowser.jsx";
@@ -427,6 +428,18 @@ export default function VisualPageBuilder({ onCancel, parentFolderId, parentPage
       };
 
       const pageId = await savePageConfig(config);
+
+      // Phase 2b: seed a default "Name" title sub-column so sub-item
+      // creation works out of the box. Without this, sub-items render
+      // with no editable fields (empty sub_columns) and the title can
+      // never be set. Fire-and-forget — if this fails the user can
+      // still add a sub-column manually via the column header menu.
+      updateSubColumnSchema(pageId, [
+        { id: `subcol_${Date.now()}`, name: "Name", type: "title" },
+      ]).catch((err) => {
+        console.warn("[VisualPageBuilder] default sub-column seed failed:", err?.message || err);
+      });
+
       addPage({ ...config, id: pageId });
       setSuccess(true);
     } catch (err) {
