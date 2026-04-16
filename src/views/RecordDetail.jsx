@@ -15,7 +15,7 @@ import RecordFiles from "../components/RecordFiles.jsx";
 import { useCollaboration } from "../context/CollaborationContext.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import PresenceAvatars from "../components/PresenceAvatars.jsx";
-import { listUserDirectory, updateRowOwner, listChildRows } from "../lib/api.js";
+import { listUserDirectory, updateRowOwner, listChildRows, createRows } from "../lib/api.js";
 import { IconPlus, IconChevronDown } from "../design/icons.jsx";
 
 // ── Property type labels ──
@@ -854,10 +854,14 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
         {/* Sub-Items Tab */}
         {activeTab === "subitems" && (
           <RecordSubItems
+            parentPage={page}
             parentId={page.id}
             tableId={page._tableId || pageConfigId}
             schema={schema}
             onRefresh={onRefresh}
+            onUpdate={onUpdate}
+            onDelete={onDelete}
+            pageConfigId={pageConfigId}
           />
         )}
 
@@ -872,9 +876,25 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
 }
 
 // ── Sub-Items Tab Component ──
-function RecordSubItems({ parentId, tableId, schema, onRefresh }) {
+function RecordSubItems({ parentPage, parentId, tableId, schema, onRefresh, onUpdate, onDelete, pageConfigId }) {
   const [children, setChildren] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [openChild, setOpenChild] = useState(null); // page object for nested RecordDetail
+  const [newTitle, setNewTitle] = useState("");
+  const [creating, setCreating] = useState(false);
+  const newInputRef = useRef(null);
+
+  const subCols = useMemo(() => schema?._subColumns || [], [schema]);
+  const subSchema = useMemo(() => schema?._subSchema || null, [schema]);
+
+  // Resolve key sub-column IDs
+  const titleColId = useMemo(() => {
+    if (subCols.length === 0) return null;
+    return (subCols.find((c) => c.type === "title") || subCols[0])?.id;
+  }, [subCols]);
+
+  const statusCol = useMemo(() => subCols.find((c) => c.type === "status"), [subCols]);
+  const dateCol = useMemo(() => subCols.find((c) => c.type === "date"), [subCols]);
 
   useEffect(() => {
     if (!tableId || !parentId) return;
@@ -883,25 +903,100 @@ function RecordSubItems({ parentId, tableId, schema, onRefresh }) {
       .then((res) => {
         const kids = (res?.rows || [])
           .filter((r) => !r.archived)
-          .map((r) => ({
-            id: r.id,
-            title: (() => {
-              const cells = typeof r.cells === "string" ? JSON.parse(r.cells) : (r.cells || {});
-              // Cells are keyed by col.id. Resolve the sub-schema title column ID.
-              const subCols = schema?._subColumns || [];
-              const titleColId = subCols.length > 0
-                ? (subCols.find(c => c.type === "title") || subCols[0])?.id
-                : schema?.title?.id;
-              const val = titleColId ? cells[titleColId] : null;
-              return val ? String(val) : r.id.slice(0, 8);
-            })(),
-            cells: typeof r.cells === "string" ? JSON.parse(r.cells) : (r.cells || {}),
-          }));
+          .map((r) => {
+            const cells = typeof r.cells === "string" ? JSON.parse(r.cells) : (r.cells || {});
+            const title = titleColId ? (cells[titleColId] ? String(cells[titleColId]) : r.id.slice(0, 8)) : r.id.slice(0, 8);
+            const statusVal = statusCol ? cells[statusCol.id] || null : null;
+            const dateVal = dateCol ? cells[dateCol.id] || null : null;
+
+            // Resolve status category
+            let statusCategory = null;
+            if (statusVal && statusCol?.options) {
+              const opt = statusCol.options.find((o) => o.name === statusVal);
+              statusCategory = opt?.category || "not_started";
+            }
+
+            // Build a lightweight page object so RecordDetail can open it
+            const page = { id: r.id, _parentRowId: parentId, _tableId: tableId, _source: "d1", properties: {} };
+            for (const col of subCols) {
+              const val = cells[col.id];
+              if (val === undefined || val === null) continue;
+              // Wrap in Notion-compatible format
+              if (col.type === "title") {
+                page.properties[col.name] = { type: "title", title: [{ plain_text: String(val) }] };
+              } else if (col.type === "status") {
+                page.properties[col.name] = { type: "status", status: { name: String(val) } };
+              } else if (col.type === "select") {
+                page.properties[col.name] = { type: "select", select: { name: String(val) } };
+              } else if (col.type === "date") {
+                const dateObj = typeof val === "object" ? val : { start: String(val) };
+                page.properties[col.name] = { type: "date", date: dateObj };
+              } else if (col.type === "number") {
+                page.properties[col.name] = { type: "number", number: Number(val) };
+              } else if (col.type === "checkbox") {
+                page.properties[col.name] = { type: "checkbox", checkbox: !!val };
+              } else {
+                page.properties[col.name] = { type: "rich_text", rich_text: [{ plain_text: String(val) }] };
+              }
+            }
+
+            return { id: r.id, title, statusVal, statusCategory, dateVal, page };
+          });
         setChildren(kids);
       })
       .catch((err) => console.warn("[RecordSubItems] fetch:", err.message || err))
       .finally(() => setLoading(false));
-  }, [parentId, tableId, schema]);
+  }, [parentId, tableId, schema, subCols, titleColId, statusCol, dateCol]);
+
+  const rollup = parentPage?._rollup;
+
+  // Inline creation
+  const handleCreate = useCallback(async () => {
+    const trimmed = newTitle.trim();
+    if (!trimmed || !tableId || creating) return;
+    setCreating(true);
+    try {
+      const cells = {};
+      if (titleColId) cells[titleColId] = trimmed;
+      await createRows(tableId, [{ cells, parent_row_id: parentId }]);
+      setNewTitle("");
+      onRefresh?.();
+      // Re-fetch children
+      const res = await listChildRows(tableId, parentId, { limit: 200 });
+      const kids = (res?.rows || []).filter((r) => !r.archived).map((r) => {
+        const c = typeof r.cells === "string" ? JSON.parse(r.cells) : (r.cells || {});
+        return { id: r.id, title: titleColId ? (c[titleColId] ? String(c[titleColId]) : r.id.slice(0, 8)) : r.id.slice(0, 8), statusVal: null, statusCategory: null, dateVal: null, page: { id: r.id, _parentRowId: parentId, _tableId: tableId, _source: "d1", properties: {} } };
+      });
+      setChildren(kids);
+    } catch (err) {
+      console.error("[RecordSubItems] create:", err);
+    } finally {
+      setCreating(false);
+      requestAnimationFrame(() => newInputRef.current?.focus());
+    }
+  }, [newTitle, tableId, parentId, titleColId, creating, onRefresh]);
+
+  // Format date for display
+  const fmtDate = (val) => {
+    if (!val) return null;
+    const s = typeof val === "object" ? val.start : String(val);
+    if (!s) return null;
+    try {
+      const d = new Date(s);
+      return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    } catch { return null; }
+  };
+
+  // Status category icon
+  const categoryIcon = (cat) => {
+    switch (cat) {
+      case "complete": return { icon: "✓", color: "#22c55e" };
+      case "in_progress": return { icon: "◐", color: "#3b82f6" };
+      case "on_hold": return { icon: "❚❚", color: "#eab308" };
+      case "cancelled": return { icon: "✕", color: "#ef4444" };
+      default: return { icon: "○", color: C.darkMuted };
+    }
+  };
 
   if (loading) {
     return (
@@ -913,34 +1008,178 @@ function RecordSubItems({ parentId, tableId, schema, onRefresh }) {
 
   return (
     <div style={{ padding: "12px 16px" }}>
+      {/* Roll-up Summary */}
+      {rollup && children.length > 0 && (
+        <RollupSummary rollup={rollup} />
+      )}
+
       {children.length === 0 ? (
         <div style={{ color: C.darkMuted, fontSize: 13, fontFamily: FONT, padding: "12px 0" }}>
-          No sub-items yet.
+          No sub-items yet. Add one below.
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {children.map((child) => (
-            <div
-              key={child.id}
-              style={{
-                display: "flex", alignItems: "center", gap: 8,
-                padding: "8px 12px", borderRadius: RADIUS.sm,
-                background: C.darkSurf2, cursor: "default",
-                fontSize: 13, fontFamily: FONT, color: C.darkText,
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2 + "cc"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-            >
-              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {child.title}
-              </span>
-            </div>
-          ))}
+          {children.map((child) => {
+            const cat = categoryIcon(child.statusCategory);
+            const dateStr = fmtDate(child.dateVal);
+            return (
+              <div
+                key={child.id}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "8px 12px", borderRadius: RADIUS.sm,
+                  background: C.darkSurf2, cursor: "pointer",
+                  fontSize: 13, fontFamily: FONT, color: C.darkText,
+                  transition: "background 0.1s",
+                }}
+                onClick={() => setOpenChild(child.page)}
+                onMouseEnter={(e) => { e.currentTarget.style.background = C.darkBorder; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+              >
+                {/* Status category indicator */}
+                {statusCol && (
+                  <span style={{ fontSize: 11, color: cat.color, flexShrink: 0, width: 14, textAlign: "center" }}>
+                    {cat.icon}
+                  </span>
+                )}
+
+                {/* Title */}
+                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {child.title}
+                </span>
+
+                {/* Status pill */}
+                {child.statusVal && (
+                  <span style={{
+                    fontSize: 10, fontWeight: 600,
+                    color: cat.color, background: cat.color + "18",
+                    borderRadius: RADIUS.pill, padding: "1px 6px",
+                    whiteSpace: "nowrap", flexShrink: 0,
+                  }}>
+                    {child.statusVal}
+                  </span>
+                )}
+
+                {/* Date */}
+                {dateStr && (
+                  <span style={{ fontSize: 10, color: C.darkMuted, flexShrink: 0 }}>
+                    {dateStr}
+                  </span>
+                )}
+
+                {/* Open indicator */}
+                <span style={{ fontSize: 10, color: C.darkMuted, opacity: 0.5, flexShrink: 0 }}>&#x2197;</span>
+              </div>
+            );
+          })}
         </div>
       )}
-      <div style={{ marginTop: 8, fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>
+
+      {/* Inline creation */}
+      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+        <input
+          ref={newInputRef}
+          value={newTitle}
+          onChange={(e) => setNewTitle(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
+          placeholder="+ Add sub-item..."
+          style={{
+            flex: 1, padding: "6px 10px", fontSize: 12,
+            background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
+            borderRadius: RADIUS.sm, color: C.darkText, outline: "none",
+            fontFamily: FONT, boxSizing: "border-box",
+          }}
+        />
+        {newTitle.trim() && (
+          <button
+            onClick={handleCreate}
+            disabled={creating}
+            style={{
+              background: C.accent, border: "none", borderRadius: RADIUS.sm,
+              padding: "6px 12px", fontSize: 11, fontFamily: FONT,
+              color: "#fff", cursor: creating ? "default" : "pointer",
+              fontWeight: 600, opacity: creating ? 0.5 : 1, flexShrink: 0,
+            }}
+          >
+            {creating ? "..." : "Add"}
+          </button>
+        )}
+      </div>
+
+      <div style={{ marginTop: 6, fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>
         {children.length} sub-item{children.length !== 1 ? "s" : ""}
       </div>
+
+      {/* Nested RecordDetail for clicked sub-item */}
+      {openChild && subSchema && (
+        <RecordDetail
+          page={openChild}
+          schema={subSchema}
+          onClose={() => setOpenChild(null)}
+          onUpdate={onUpdate}
+          onDelete={onDelete}
+          pageConfigId={pageConfigId}
+          onRefresh={() => { onRefresh?.(); }}
+          parentTitle={parentPage?._rollup ? undefined : undefined}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Roll-Up Summary Bar ──
+function RollupSummary({ rollup }) {
+  const { progress, computedStart, computedEnd, hasConflict, conflictDetails } = rollup;
+  const pct = progress.percent;
+
+  const fmtDate = (d) => {
+    if (!d) return "—";
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  };
+
+  return (
+    <div style={{ marginBottom: 12, fontFamily: FONT }}>
+      {/* Progress bar */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+        <div style={{
+          flex: 1, height: 6, borderRadius: 3,
+          background: C.darkSurf2, overflow: "hidden",
+        }}>
+          <div style={{
+            width: `${pct}%`, height: "100%", borderRadius: 3,
+            background: pct === 100 ? "#22c55e" : "#3b82f6",
+            transition: "width 0.3s ease",
+          }} />
+        </div>
+        <span style={{ fontSize: 11, color: C.darkMuted, flexShrink: 0, minWidth: 70, textAlign: "right" }}>
+          {progress.complete} of {progress.total} done
+        </span>
+      </div>
+
+      {/* Date range */}
+      {(computedStart || computedEnd) && (
+        <div style={{ fontSize: 11, color: C.darkMuted, marginBottom: hasConflict ? 6 : 0 }}>
+          Sub-item range: {fmtDate(computedStart)} — {fmtDate(computedEnd)}
+        </div>
+      )}
+
+      {/* Conflict warning */}
+      {hasConflict && conflictDetails && (
+        <div style={{
+          display: "flex", alignItems: "flex-start", gap: 6,
+          padding: "6px 10px", borderRadius: RADIUS.sm,
+          background: "#eab30815", border: "1px solid #eab30833",
+          fontSize: 11, color: "#eab308", lineHeight: 1.4,
+        }}>
+          <span style={{ flexShrink: 0, fontSize: 13, lineHeight: 1 }}>&#9888;</span>
+          <span>
+            Sub-item dates exceed parent timeline
+            {conflictDetails.parentEnd && (
+              <> (parent ends {fmtDate(conflictDetails.parentEnd)}, sub-items end {fmtDate(conflictDetails.childrenEnd)})</>
+            )}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

@@ -174,36 +174,42 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
   const colorField = resolveField(schema, config.colorField, ["statuses", "selects"]);
   const colorOptionNames = colorField ? getOptionNames(schema, colorField) : [];
 
-  // ─── Process data into timeline rows ───
+  // ─── Sub-item date fields from sub-schema ───
+  const subSchema = schema?._subSchema || null;
+  const subDateFields = useMemo(() => {
+    if (!subSchema) return [];
+    return (subSchema.dates || []).map((f) => f.name);
+  }, [subSchema]);
 
-  const rows = useMemo(() => {
-    if (!schema || dateFields.length === 0) return [];
+  // ─── Expand/collapse state for parent rows ───
+  const [expandedParents, setExpandedParents] = useState({});
+  const toggleParentExpand = useCallback((pageId) => {
+    setExpandedParents((prev) => ({ ...prev, [pageId]: !prev[pageId] }));
+  }, []);
 
-    const result = [];
-    for (const page of data) {
-      const label = labelField ? readField(page, labelField) : "Untitled";
+  // ─── Process data into timeline rows (with hierarchy) ───
+
+  const { rows, parentRowMap } = useMemo(() => {
+    if (!schema || dateFields.length === 0) return { rows: [], parentRowMap: {} };
+
+    const colorMode = config.colorMode || "dateField";
+
+    // Helper: build bars for a page using a given set of date fields and schema
+    const buildBars = (page, fields, schemaForColor) => {
+      const bars = [];
       const colorVal = colorField ? readField(page, colorField) : null;
 
-      // Search filter
-      if (search) {
-        const q = search.toLowerCase();
-        if (!(label || "").toLowerCase().includes(q)) continue;
-      }
-
-      // Extract date bars (one per dateField, or start/end pair from first field)
-      const bars = [];
-      const colorMode = config.colorMode || "dateField";
-
-      // Pre-resolve property color for the row (used when colorMode === "property")
       let propertyColor = null;
       if (colorMode === "property" && colorVal && colorField) {
-        const schemaField = (schema.statuses || []).concat(schema.selects || [], schema.multiSelects || []).find((f) => f.name === colorField);
-        const resolved = resolveViewColor(colorVal, config.colorMapping, schemaField?.options);
-        propertyColor = resolved.hex;
+        const schemaField = (schemaForColor.statuses || []).concat(schemaForColor.selects || [], schemaForColor.multiSelects || []).find((f) => f.name === colorField);
+        if (schemaField) {
+          const resolved = resolveViewColor(colorVal, config.colorMapping, schemaField?.options);
+          propertyColor = resolved.hex;
+        }
       }
 
-      for (let fi = 0; fi < dateFields.length; fi++) {
-        const fieldName = dateFields[fi];
+      for (let fi = 0; fi < fields.length; fi++) {
+        const fieldName = fields[fi];
         const raw = readField(page, fieldName);
         if (!raw) continue;
 
@@ -223,21 +229,61 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
           });
         }
       }
+      return bars;
+    };
 
-      if (bars.length === 0) continue;
-
-      // Resolve pill color using Wasabi solid palette
+    // Helper: resolve pill color for a row
+    const resolvePill = (page, schemaForColor) => {
+      const colorVal = colorField ? readField(page, colorField) : null;
       let pillFill = C.darkMuted;
       let pillText = "#fff";
       if (colorVal && colorField) {
-        const schemaField = (schema.statuses || []).concat(schema.selects || []).find((f) => f.name === colorField);
+        const schemaField = (schemaForColor.statuses || []).concat(schemaForColor.selects || []).find((f) => f.name === colorField);
         const schemaOpts = schemaField?.options || [];
         const resolved = getSolidPillColor(colorVal, colorOptionNames, schemaOpts, config.colorMapping);
         pillFill = resolved.fill;
         pillText = resolved.text;
       }
+      return { pillFill, pillText, colorVal };
+    };
 
-      result.push({
+    // ── Separate parents and children ──
+    const parents = [];
+    const childrenByParent = {};
+    for (const page of data) {
+      if (page._parentRowId) {
+        (childrenByParent[page._parentRowId] ||= []).push(page);
+      } else {
+        parents.push(page);
+      }
+    }
+
+    // ── Build parent rows ──
+    const parentRows = [];
+    const pMap = {}; // pageId → parent row (for conflict indicator data)
+
+    for (const page of parents) {
+      const label = labelField ? readField(page, labelField) : "Untitled";
+
+      // Search filter: match parent name OR any child name
+      if (search) {
+        const q = search.toLowerCase();
+        const parentMatch = (label || "").toLowerCase().includes(q);
+        const childMatch = (childrenByParent[page.id] || []).some((child) => {
+          const subLabel = subSchema
+            ? readField(child, resolveField(subSchema, null, ["title"])) || ""
+            : "";
+          return subLabel.toLowerCase().includes(q);
+        });
+        if (!parentMatch && !childMatch) continue;
+      }
+
+      const bars = buildBars(page, dateFields, schema);
+      const { pillFill, pillText, colorVal } = resolvePill(page, schema);
+      const hasChildren = (childrenByParent[page.id] || []).length > 0;
+      const rollup = page._rollup || null;
+
+      const parentRow = {
         pageId: page.id,
         page,
         label: label || "Untitled",
@@ -245,13 +291,25 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
         statusColor: pillFill,
         pillText,
         bars,
-      });
+        isParent: true,
+        isSubItem: false,
+        hasChildren,
+        childCount: (childrenByParent[page.id] || []).length,
+        rollup,
+        depth: 0,
+      };
+
+      // Even if parent has no bars, include it if it has children with bars
+      if (bars.length === 0 && !hasChildren) continue;
+
+      parentRows.push(parentRow);
+      pMap[page.id] = parentRow;
     }
 
-    // Sort by config.sortField if set, otherwise by earliest bar start
+    // Sort parents
     if (config.sortField) {
       const dir = config.sortDir === "desc" ? -1 : 1;
-      result.sort((a, b) => {
+      parentRows.sort((a, b) => {
         const va = readField(a.page, config.sortField);
         const vb = readField(b.page, config.sortField);
         if (va == null && vb == null) return 0;
@@ -262,15 +320,50 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
         return 0;
       });
     } else {
-      result.sort((a, b) => {
-        const aMin = Math.min(...a.bars.map((b) => b.start.getTime()));
-        const bMin = Math.min(...b.bars.map((b) => b.start.getTime()));
+      parentRows.sort((a, b) => {
+        const aMin = a.bars.length > 0 ? Math.min(...a.bars.map((b) => b.start.getTime())) : Infinity;
+        const bMin = b.bars.length > 0 ? Math.min(...b.bars.map((b) => b.start.getTime())) : Infinity;
         return aMin - bMin;
       });
     }
 
-    return result;
-  }, [data, schema, dateFields, labelField, colorField, colorOptionNames, search, config.colorMode, config.colorMapping, config.sortField, config.sortDir]);
+    // ── Flatten: interleave expanded children ──
+    const result = [];
+    for (const parentRow of parentRows) {
+      result.push(parentRow);
+
+      if (parentRow.hasChildren && expandedParents[parentRow.pageId]) {
+        const kids = childrenByParent[parentRow.pageId] || [];
+        const subLabelField = subSchema ? resolveField(subSchema, null, ["title"]) : null;
+
+        for (const child of kids) {
+          const label = subLabelField ? readField(child, subLabelField) : "Untitled";
+          const bars = subDateFields.length > 0
+            ? buildBars(child, subDateFields, subSchema)
+            : [];
+          const { pillFill, pillText, colorVal } = subSchema
+            ? resolvePill(child, subSchema)
+            : { pillFill: C.darkMuted, pillText: "#fff", colorVal: null };
+
+          result.push({
+            pageId: child.id,
+            page: child,
+            label: label || "Untitled",
+            colorVal,
+            statusColor: pillFill,
+            pillText,
+            bars,
+            isParent: false,
+            isSubItem: true,
+            parentId: parentRow.pageId,
+            depth: 1,
+          });
+        }
+      }
+    }
+
+    return { rows: result, parentRowMap: pMap };
+  }, [data, schema, subSchema, dateFields, subDateFields, labelField, colorField, colorOptionNames, search, config.colorMode, config.colorMapping, config.sortField, config.sortDir, expandedParents]);
 
   // ─── Compute timeline origin + bounds ───
 
@@ -286,6 +379,15 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
       for (const bar of row.bars) {
         if (bar.start.getTime() < minDate) minDate = bar.start.getTime();
         if (bar.end.getTime() > maxDate) maxDate = bar.end.getTime();
+      }
+      // Include computed range from rollup (children may extend beyond parent bars)
+      if (row.rollup?.computedStart) {
+        const t = row.rollup.computedStart.getTime();
+        if (t < minDate) minDate = t;
+      }
+      if (row.rollup?.computedEnd) {
+        const t = row.rollup.computedEnd.getTime();
+        if (t > maxDate) maxDate = t;
       }
     }
 
@@ -458,6 +560,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
     setDragState({
       pageId: row.pageId,
       fieldName: bar.fieldName,
+      isSubItem: !!row.isSubItem,
       mode,
       originalStart: bar.start,
       originalEnd: bar.end,
@@ -493,7 +596,8 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
 
     const handleMouseUp = () => {
       if (onUpdate && dragState.fieldName) {
-        const fieldType = getFieldType(schema, dragState.fieldName);
+        const lookupSchema = dragState.isSubItem ? subSchema : schema;
+        const fieldType = getFieldType(lookupSchema, dragState.fieldName);
         if (fieldType === "date") {
           const startStr = formatDateISO(dragState.currentStart);
           const endStr = formatDateISO(dragState.currentEnd);
@@ -515,7 +619,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [dragState, onUpdate, schema, zoom.pxPerDay]);
+  }, [dragState, onUpdate, schema, subSchema, zoom.pxPerDay]);
 
   // ─── Get bar position (accounting for drag) ───
 
@@ -749,7 +853,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                   height: dynamicRowHeight,
                   display: "flex",
                   alignItems: "center",
-                  padding: "0 12px",
+                  padding: `0 12px 0 ${12 + (row.depth || 0) * 20}px`,
                   gap: 8,
                   borderBottom: `1px solid ${C.edgeLine}`,
                   overflow: "hidden",
@@ -759,6 +863,29 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                   flexWrap: "wrap",
                 }}
               >
+                {/* Expand/collapse chevron for parents with children */}
+                {row.isParent && row.hasChildren ? (
+                  <span
+                    onClick={(e) => { e.stopPropagation(); toggleParentExpand(row.pageId); }}
+                    style={{
+                      width: 14, height: 14, flexShrink: 0,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 10, color: C.darkMuted, cursor: "pointer",
+                      transform: expandedParents[row.pageId] ? "rotate(90deg)" : "rotate(0deg)",
+                      transition: "transform 0.15s",
+                    }}
+                    title={expandedParents[row.pageId] ? "Collapse" : `Expand (${row.childCount})`}
+                  >
+                    ▶
+                  </span>
+                ) : row.isSubItem ? (
+                  // Sub-item indent spacer (no chevron)
+                  <span style={{ width: 14, flexShrink: 0 }} />
+                ) : (
+                  // Parent with no children — no chevron, just spacer
+                  <span style={{ width: 14, flexShrink: 0 }} />
+                )}
+
                 {/* Status dot */}
                 <span style={{
                   width: 6,
@@ -770,8 +897,9 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
 
                 {/* Label */}
                 <span style={{
-                  fontSize: 12,
-                  color: C.darkText,
+                  fontSize: row.isSubItem ? 11 : 12,
+                  color: row.isSubItem ? C.darkMuted : C.darkText,
+                  fontWeight: row.isParent && row.hasChildren ? 600 : 400,
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
@@ -781,11 +909,25 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                   {row.label}
                 </span>
 
+                {/* Progress badge for parents with children */}
+                {row.isParent && row.hasChildren && row.rollup && (
+                  <span style={{
+                    fontSize: 9, fontWeight: 600,
+                    color: row.rollup.progress.percent === 100 ? "#22c55e" : C.darkMuted,
+                    background: row.rollup.progress.percent === 100 ? "#22c55e18" : C.darkSurf2,
+                    borderRadius: RADIUS.pill, padding: "1px 5px",
+                    whiteSpace: "nowrap", flexShrink: 0,
+                  }}>
+                    {row.rollup.progress.complete}/{row.rollup.progress.total}
+                  </span>
+                )}
+
                 {/* Sidebar badges from config.sidebarFields */}
                 {(config.sidebarFields || []).map((fieldName) => {
+                  const rowSchema = row.isSubItem ? subSchema : schema;
                   const val = readField(row.page, fieldName);
                   if (!val) return null;
-                  const schemaField = (schema.statuses || []).concat(schema.selects || [], schema.multiSelects || []).find((f) => f.name === fieldName);
+                  const schemaField = (rowSchema?.statuses || []).concat(rowSchema?.selects || [], rowSchema?.multiSelects || []).find((f) => f.name === fieldName);
                   const resolved = resolveViewColor(String(val), config.colorMapping, schemaField?.options);
                   return (
                     <span key={fieldName} style={{
@@ -950,10 +1092,57 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                   </g>
                 )}
 
+                {/* ─── Computed range bars for parents (rendered behind actual bars) ─── */}
+                {rows.map((row, rowIdx) => {
+                  if (!row.isParent || !row.hasChildren || !row.rollup) return null;
+                  const { computedStart, computedEnd, hasConflict } = row.rollup;
+                  if (!computedStart || !computedEnd) return null;
+
+                  const y = rowIdx * dynamicRowHeight + (dynamicRowHeight - barHeight) / 2;
+                  const rx = diffDays(origin, startOfDay(computedStart)) * zoom.pxPerDay;
+                  const rw = Math.max(MIN_BAR_PX, diffDays(startOfDay(computedStart), startOfDay(computedEnd)) * zoom.pxPerDay);
+
+                  return (
+                    <g key={`range-${row.pageId}`}>
+                      {/* Translucent range bar spanning all children */}
+                      <rect
+                        x={rx}
+                        y={y + 2}
+                        width={rw}
+                        height={barHeight - 4}
+                        rx={(barHeight - 4) / 2}
+                        ry={(barHeight - 4) / 2}
+                        fill={row.statusColor}
+                        opacity={0.15}
+                        style={{ pointerEvents: "none" }}
+                      />
+                      {/* Conflict indicator: amber triangle at end of computed range */}
+                      {hasConflict && zoom.pxPerDay >= 5 && (
+                        <g transform={`translate(${rx + rw + 4}, ${y + barHeight / 2})`}>
+                          <polygon
+                            points="-5,4 5,4 0,-5"
+                            fill="#eab308"
+                            opacity={0.9}
+                          />
+                          <text
+                            x={8}
+                            y={4}
+                            fontSize={9}
+                            fill="#eab308"
+                            fontFamily={FONT}
+                            style={{ pointerEvents: "none" }}
+                          >!</text>
+                        </g>
+                      )}
+                    </g>
+                  );
+                })}
+
                 {/* ─── Bars ─── */}
                 {rows.map((row, rowIdx) => {
                   const y = rowIdx * dynamicRowHeight + (dynamicRowHeight - barHeight) / 2;
                   const pillRadius = barHeight / 2;
+                  const isChild = row.isSubItem;
 
                   return row.bars.map((bar, barIdx) => {
                     const { x, w } = getBarRect(row, bar);
@@ -964,13 +1153,13 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                         {/* Bar background — pill shape */}
                         <rect
                           x={x}
-                          y={y}
+                          y={isChild ? y + 2 : y}
                           width={w}
-                          height={barHeight}
-                          rx={pillRadius}
-                          ry={pillRadius}
+                          height={isChild ? barHeight - 4 : barHeight}
+                          rx={isChild ? (barHeight - 4) / 2 : pillRadius}
+                          ry={isChild ? (barHeight - 4) / 2 : pillRadius}
                           fill={bar.color}
-                          opacity={isDragging ? 0.95 : 1}
+                          opacity={isDragging ? 0.95 : isChild ? 0.75 : 1}
                           style={{
                             cursor: onUpdate ? (isDragging ? "grabbing" : "grab") : "default",
                             filter: isDragging ? "drop-shadow(0 2px 6px rgba(0,0,0,0.3))" : "none",
@@ -1003,9 +1192,9 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                           <>
                             <rect
                               x={x}
-                              y={y}
+                              y={isChild ? y + 2 : y}
                               width={6}
-                              height={barHeight}
+                              height={isChild ? barHeight - 4 : barHeight}
                               fill="transparent"
                               style={{ cursor: "ew-resize" }}
                               onMouseDown={(e) => {
@@ -1016,9 +1205,9 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                             />
                             <rect
                               x={x + w - 6}
-                              y={y}
+                              y={isChild ? y + 2 : y}
                               width={6}
-                              height={barHeight}
+                              height={isChild ? barHeight - 4 : barHeight}
                               fill="transparent"
                               style={{ cursor: "ew-resize" }}
                               onMouseDown={(e) => {
@@ -1147,7 +1336,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
       {detailPage && (
         <RecordDetail
           page={detailPage}
-          schema={schema}
+          schema={detailPage._parentRowId && subSchema ? subSchema : schema}
           onClose={() => setDetailPage(null)}
           onUpdate={onUpdate}
           onDelete={onDelete ? (ids) => { onDelete(ids); setDetailPage(null); } : undefined}

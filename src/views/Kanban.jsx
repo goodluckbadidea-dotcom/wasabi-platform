@@ -95,10 +95,13 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
     onViewConfigChange?.({ savedViews: updated, activeSavedViewId: newActiveId });
   }, [config.savedViews, activeSavedViewId, onViewConfigChange]);
 
+  // Filter out sub-items — they are only accessible via parent record detail
+  const parentData = useMemo(() => data.filter((p) => !p._parentRowId), [data]);
+
   // Apply chip filters before grouping
   const filteredData = useMemo(
-    () => applyChipFilters(data, chipFilters, schema),
-    [data, chipFilters, schema]
+    () => applyChipFilters(parentData, chipFilters, schema),
+    [parentData, chipFilters, schema]
   );
 
   // Resolve fields
@@ -559,6 +562,17 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
                         gap: 6,
                       }}>
                         <span style={{ flex: 1 }}>{title || "Untitled"}</span>
+                        {page._rollup && page._rollup.progress.total > 0 && (
+                          <span style={{
+                            fontSize: 9, fontWeight: 600,
+                            color: page._rollup.progress.percent === 100 ? "#22c55e" : C.darkMuted,
+                            background: page._rollup.progress.percent === 100 ? "#22c55e18" : C.darkSurf,
+                            borderRadius: RADIUS.pill, padding: "1px 5px",
+                            whiteSpace: "nowrap", flexShrink: 0,
+                          }}>
+                            {page._rollup.progress.complete}/{page._rollup.progress.total}
+                          </span>
+                        )}
                         <NeuronBadge nodeId={page.id} />
                       </div>
 

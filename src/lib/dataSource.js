@@ -11,6 +11,7 @@ import { detectSchema } from "../notion/schema.js";
 import { listRows, createRows, updateRow, deleteRow, queryTable, getTableSchema, getConnection, updateTableSchema, updateSubColumnSchema } from "./api.js";
 import { fetchBoardItems, fetchBoardColumns } from "../monday/client.js";
 import { mondayColumnsToSchema, mondayItemToPage } from "../monday/schema.js";
+import { computeSubItemRollup } from "./subItemRollup.js";
 
 // ─── Main entry: fetch data + schema from any source ───
 
@@ -135,6 +136,22 @@ async function fetchD1Table(pageConfig) {
   }
 
   const data = rows.map((row) => d1RowToPage(row, columns, subColumns, parentCellMap));
+
+  // ── Sub-item roll-up: attach _rollup to parent pages ──
+  const subSchema = schema._subSchema || null;
+  if (subSchema) {
+    const childrenByParent = {};
+    for (const page of data) {
+      if (page._parentRowId) {
+        (childrenByParent[page._parentRowId] ||= []).push(page);
+      }
+    }
+    for (const page of data) {
+      if (!page._parentRowId && childrenByParent[page.id]) {
+        page._rollup = computeSubItemRollup(page, childrenByParent[page.id], schema, subSchema);
+      }
+    }
+  }
 
   return { data, schema, schemas: { [tableId]: schema } };
 }
@@ -697,12 +714,31 @@ function mapD1Type(d1Type) {
   return map[d1Type] || "rich_text";
 }
 
+// Valid status option categories for semantic roll-up.
+// "not_started" is the default for backward compatibility.
+export const STATUS_CATEGORIES = [
+  "not_started",
+  "in_progress",
+  "complete",
+  "on_hold",
+  "cancelled",
+];
+
 function normalizeOptions(options) {
   if (!options) return [];
-  return options.map((o) => ({
-    name: typeof o === "string" ? o : (o.name || o.label),
-    color: typeof o === "string" ? "default" : (o.color || "default"),
-  }));
+  return options.map((o) => {
+    const opt = {
+      name: typeof o === "string" ? o : (o.name || o.label),
+      color: typeof o === "string" ? "default" : (o.color || "default"),
+    };
+    // Preserve category for status options (default: "not_started")
+    if (typeof o === "object" && o.category) {
+      opt.category = STATUS_CATEGORIES.includes(o.category)
+        ? o.category
+        : "not_started";
+    }
+    return opt;
+  });
 }
 
 // ─── Option color auto-assignment ───

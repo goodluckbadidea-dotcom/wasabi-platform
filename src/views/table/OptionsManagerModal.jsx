@@ -5,15 +5,26 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { C, FONT, RADIUS, SHADOW, VIEW_PALETTE, Z } from "../../design/tokens.js";
-import { assignOptionColor } from "../../lib/dataSource.js";
+import { assignOptionColor, STATUS_CATEGORIES } from "../../lib/dataSource.js";
+
+// ─── Status category definitions ───
+const CATEGORY_META = {
+  not_started: { label: "Not Started", icon: "○", color: C.darkMuted },
+  in_progress: { label: "In Progress", icon: "◐", color: "#3b82f6" },
+  complete:    { label: "Complete",     icon: "✓", color: "#22c55e" },
+  on_hold:     { label: "On Hold",      icon: "❚❚", color: "#eab308" },
+  cancelled:   { label: "Cancelled",    icon: "✕", color: "#ef4444" },
+};
 
 const PALETTE_KEYS = ["default", "gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red", "orchid"];
 const PALETTE_LABELS = ["Default", "Gray", "Brown", "Orange", "Yellow", "Green", "Blue", "Purple", "Pink", "Red", "Orchid"];
 
-/** Normalize option to {name, color} object */
+/** Normalize option to {name, color, category?} object */
 function normalizeOption(opt) {
   if (typeof opt === "string") return { name: opt, color: null };
-  return { name: opt.name || opt.label || "", color: opt.color || null };
+  const o = { name: opt.name || opt.label || "", color: opt.color || null };
+  if (opt.category) o.category = opt.category;
+  return o;
 }
 
 export default function OptionsManagerModal({ column, onSave, onClose }) {
@@ -40,14 +51,20 @@ export default function OptionsManagerModal({ column, onSave, onClose }) {
     return () => document.removeEventListener("mousedown", handler);
   }, [colorPickerIdx]);
 
+  const isStatusCol = column.type === "status";
+
   const handleAdd = useCallback(() => {
     const trimmed = newName.trim();
     if (!trimmed) return;
     if (options.some((o) => o.name.toLowerCase() === trimmed.toLowerCase())) return;
-    setOptions((prev) => [...prev, { name: trimmed, color: assignOptionColor(prev.length) }]);
+    setOptions((prev) => {
+      const newOpt = { name: trimmed, color: assignOptionColor(prev.length) };
+      if (isStatusCol) newOpt.category = "not_started";
+      return [...prev, newOpt];
+    });
     setNewName("");
     requestAnimationFrame(() => newInputRef.current?.focus());
-  }, [newName, options]);
+  }, [newName, options, isStatusCol]);
 
   const handleDelete = useCallback((idx) => {
     setOptions((prev) => prev.filter((_, i) => i !== idx));
@@ -93,11 +110,16 @@ export default function OptionsManagerModal({ column, onSave, onClose }) {
     setDragIdx(-1);
   }, []);
 
+  const handleSetCategory = useCallback((idx, category) => {
+    setOptions((prev) => prev.map((o, i) => i === idx ? { ...o, category } : o));
+  }, []);
+
   const handleSave = useCallback(() => {
     // Convert back to schema format
     const schemaOptions = options.map((o) => ({
       name: o.name,
       ...(o.color ? { color: o.color } : {}),
+      ...(o.category ? { category: o.category } : {}),
     }));
     onSave(schemaOptions);
   }, [options, onSave]);
@@ -259,6 +281,28 @@ export default function OptionsManagerModal({ column, onSave, onClose }) {
                 >
                   {opt.name}
                 </span>
+              )}
+
+              {/* Category selector (status columns only) */}
+              {isStatusCol && (
+                <select
+                  value={opt.category || "not_started"}
+                  onChange={(e) => handleSetCategory(idx, e.target.value)}
+                  style={{
+                    background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
+                    borderRadius: RADIUS.sm, color: CATEGORY_META[opt.category || "not_started"]?.color || C.darkMuted,
+                    fontSize: 11, fontFamily: FONT, padding: "2px 4px",
+                    cursor: "pointer", outline: "none", flexShrink: 0,
+                    maxWidth: 110,
+                  }}
+                  title="Status category for roll-up"
+                >
+                  {STATUS_CATEGORIES.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {CATEGORY_META[cat]?.icon} {CATEGORY_META[cat]?.label}
+                    </option>
+                  ))}
+                </select>
               )}
 
               {/* Delete button */}

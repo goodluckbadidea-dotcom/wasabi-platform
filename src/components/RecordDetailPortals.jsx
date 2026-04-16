@@ -32,7 +32,7 @@ export default function RecordDetailPortals({
       {detailPage && (
         <RecordDetail
           page={detailPage}
-          schema={schema}
+          schema={detailPage._parentRowId && schema?._subSchema ? schema._subSchema : schema}
           onClose={closeDetail}
           onUpdate={onUpdate}
           onDelete={onDelete ? (ids) => { onDelete(ids); closeDetail(); } : undefined}

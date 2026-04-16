@@ -413,7 +413,9 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
         if (c.name !== colName) return c;
         const existing = Array.isArray(c.options) ? c.options : [];
         if (existing.some((o) => o.name === trimmed)) return c;
-        return { ...c, options: [...existing, { name: trimmed, color: assignOptionColor(existing.length) }] };
+        const newOpt = { name: trimmed, color: assignOptionColor(existing.length) };
+        if (c.type === "status") newOpt.category = "not_started";
+        return { ...c, options: [...existing, newOpt] };
       });
       if (isSubItem) {
         await updateSubColumnSchema(pageConfig.id, updated);

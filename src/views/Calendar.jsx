@@ -244,12 +244,25 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
   const colorField = resolveColorField(schema);
 
   // Build event map: { "YYYY-MM-DD": [{ title, color, page }] }
-  const eventMap = useMemo(() => {
-    if (!dateField) return {};
+  // Sub-items are excluded from the main grid and shown in popover on parent expand.
+  const [expandedPopoverParent, setExpandedPopoverParent] = useState(null);
+
+  const { eventMap, childEventsMap } = useMemo(() => {
+    if (!dateField) return { eventMap: {}, childEventsMap: {} };
     const map = {};
+    const childMap = {}; // parentId → [{ title, color, page, dateKey }]
 
     for (const page of data) {
-      const dateProp = page.properties?.[dateField];
+      const isSubItem = !!page._parentRowId;
+
+      // Sub-items: use sub-schema date fields if available, otherwise skip
+      const subSchema = schema?._subSchema;
+      const subDateField = subSchema?.dates?.[0]?.name;
+
+      const fieldToUse = isSubItem ? subDateField : dateField;
+      if (!fieldToUse) continue;
+
+      const dateProp = page.properties?.[fieldToUse];
       if (!dateProp) continue;
 
       const raw = readProp(dateProp);
@@ -268,8 +281,14 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
       const start = parseDateStr(startStr);
       if (!start) continue;
 
-      // Get title
-      const title = titleField ? readProp(page.properties?.[titleField]) || "Untitled" : "Untitled";
+      // Get title — sub-items use sub-schema title field
+      let title = "Untitled";
+      if (isSubItem && subSchema) {
+        const subTitleField = subSchema.title?.name;
+        if (subTitleField) title = readProp(page.properties?.[subTitleField]) || "Untitled";
+      } else {
+        title = titleField ? readProp(page.properties?.[titleField]) || "Untitled" : "Untitled";
+      }
 
       // Get color
       let eventColor = C.accent;
@@ -282,20 +301,39 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
         }
       }
 
-      // Place event on all days it spans
-      const end = endStr ? parseDateStr(endStr) : null;
-      const lastDay = end || start;
-      const cur = new Date(start);
+      if (isSubItem) {
+        // Store sub-item events grouped by parent
+        const parentId = page._parentRowId;
+        if (!childMap[parentId]) childMap[parentId] = [];
+        childMap[parentId].push({ title, color: eventColor, page, isSubItem: true });
+      } else {
+        // Place parent event on all days it spans
+        const end = endStr ? parseDateStr(endStr) : null;
+        const lastDay = end || start;
+        const cur = new Date(start);
 
-      while (cur <= lastDay) {
-        const key = cur.toISOString().slice(0, 10);
-        if (!map[key]) map[key] = [];
-        map[key].push({ title, color: eventColor, page, isStart: cur.getTime() === start.getTime() });
-        cur.setDate(cur.getDate() + 1);
+        while (cur <= lastDay) {
+          const key = cur.toISOString().slice(0, 10);
+          if (!map[key]) map[key] = [];
+          map[key].push({
+            title, color: eventColor, page,
+            isStart: cur.getTime() === start.getTime(),
+            hasChildren: !!(childMap[page.id]?.length),
+          });
+          cur.setDate(cur.getDate() + 1);
+        }
       }
     }
-    return map;
-  }, [data, dateField, titleField, colorField]);
+
+    // Second pass: mark parent events that have children (child data may arrive after parent)
+    for (const key of Object.keys(map)) {
+      for (const ev of map[key]) {
+        if (childMap[ev.page.id]?.length) ev.hasChildren = true;
+      }
+    }
+
+    return { eventMap: map, childEventsMap: childMap };
+  }, [data, dateField, titleField, colorField, schema]);
 
   const weeks = useMemo(() => getMonthGrid(year, month), [year, month]);
 
@@ -346,7 +384,7 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
   }, [year, month, eventMap, onCreate, targetDatabaseId]);
 
   // Close popover on outside click
-  const handleBackdropClick = useCallback(() => setPopover(null), []);
+  const handleBackdropClick = useCallback(() => { setPopover(null); setExpandedPopoverParent(null); }, []);
 
   if (!dateField) {
     return (
@@ -493,28 +531,68 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
                 day: "numeric",
               })}
             </div>
-            {popover.events.map((ev, i) => (
-              <div
-                key={i}
-                style={{ ...cal.popItem, cursor: "pointer", borderRadius: RADIUS.md, padding: "6px 4px" }}
-                onClick={(e) => {
-                  if ((e.metaKey || e.ctrlKey) && isNeuronsMode()) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    dispatchNeuronSelect({ node_type: "row", node_id: ev.page?.id, node_label: ev.title || "Untitled" });
-                    return;
-                  }
-                  record.openDetail(ev.page); setPopover(null);
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-              >
-                <span style={cal.popDot(ev.color)} />
-                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {ev.title}
-                </span>
-              </div>
-            ))}
+            {popover.events.map((ev, i) => {
+              const childEvents = childEventsMap[ev.page?.id] || [];
+              const isExpanded = expandedPopoverParent === ev.page?.id;
+              return (
+                <React.Fragment key={i}>
+                  <div
+                    style={{ ...cal.popItem, cursor: "pointer", borderRadius: RADIUS.md, padding: "6px 4px" }}
+                    onClick={(e) => {
+                      if ((e.metaKey || e.ctrlKey) && isNeuronsMode()) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        dispatchNeuronSelect({ node_type: "row", node_id: ev.page?.id, node_label: ev.title || "Untitled" });
+                        return;
+                      }
+                      record.openDetail(ev.page); setPopover(null);
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                  >
+                    {/* Expand chevron for parents with sub-items */}
+                    {childEvents.length > 0 && (
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedPopoverParent(isExpanded ? null : ev.page.id);
+                        }}
+                        style={{
+                          fontSize: 8, color: C.darkMuted, cursor: "pointer",
+                          padding: "0 4px 0 0", flexShrink: 0,
+                          transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)",
+                          transition: "transform 0.15s", display: "inline-block",
+                        }}
+                      >▶</span>
+                    )}
+                    <span style={cal.popDot(ev.color)} />
+                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {ev.title}
+                    </span>
+                    {childEvents.length > 0 && (
+                      <span style={{ fontSize: 9, color: C.darkMuted, flexShrink: 0 }}>
+                        {childEvents.length}
+                      </span>
+                    )}
+                  </div>
+                  {/* Expanded sub-items */}
+                  {isExpanded && childEvents.map((child, ci) => (
+                    <div
+                      key={`child-${ci}`}
+                      style={{ ...cal.popItem, cursor: "pointer", borderRadius: RADIUS.md, padding: "4px 4px 4px 24px" }}
+                      onClick={() => { record.openDetail(child.page); setPopover(null); }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    >
+                      <span style={{ ...cal.popDot(child.color), width: 5, height: 5 }} />
+                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, color: C.darkMuted }}>
+                        {child.title}
+                      </span>
+                    </div>
+                  ))}
+                </React.Fragment>
+              );
+            })}
           </div>
         </>
       )}
