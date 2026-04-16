@@ -18,7 +18,7 @@ export default function TableToolbar({
   // Column visibility
   allColumns, hiddenColumns, toggleColumn, colMenuOpen, setColMenuOpen, colMenuRef,
   // Sub-item expand/collapse
-  subItemsEnabled, childMap, expandAll, collapseAll,
+  subItemsEnabled, childMap, expandedRows, expandAll, collapseAll,
   // Saved views
   savedViews, activeSavedViewId,
   onSelectView, onSaveView, onUpdateView, onRenameView, onDeleteView,
@@ -67,26 +67,21 @@ export default function TableToolbar({
         )}
       </div>
 
-      {subItemsEnabled && Object.keys(childMap).length > 0 && (
-        <div style={{ display: "flex", gap: 2 }}>
+      {subItemsEnabled && Object.keys(childMap).length > 0 && (() => {
+        const anyExpanded = expandedRows && expandedRows.size > 0;
+        return (
           <button
-            onClick={expandAll}
-            title="Expand all"
+            onClick={anyExpanded ? collapseAll : expandAll}
+            title={anyExpanded ? "Collapse sub-items" : "Expand sub-items"}
             style={styles.refreshBtn}
           >
-            <IconChevronDown size={10} color={C.darkMuted} style={{ transform: "rotate(-90deg)" }} />
-            <span style={{ fontSize: 11, color: C.darkMuted, marginLeft: 2 }}>All</span>
+            <IconChevronDown size={10} color={C.darkMuted} style={{ transform: anyExpanded ? undefined : "rotate(-90deg)" }} />
+            <span style={{ fontSize: 11, color: C.darkMuted, marginLeft: 2 }}>
+              {anyExpanded ? "Collapse" : "Expand"} Sub-Items
+            </span>
           </button>
-          <button
-            onClick={collapseAll}
-            title="Collapse all"
-            style={styles.refreshBtn}
-          >
-            <IconChevronDown size={10} color={C.darkMuted} />
-            <span style={{ fontSize: 11, color: C.darkMuted, marginLeft: 2 }}>All</span>
-          </button>
-        </div>
-      )}
+        );
+      })()}
 
       {filterableFields.map((field) => (
         <select

@@ -947,6 +947,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
         colMenuRef={colMenuRef}
         subItemsEnabled={subItemsEnabled}
         childMap={childMap}
+        expandedRows={expandedRows}
         expandAll={expandAll}
         collapseAll={collapseAll}
         savedViews={config.savedViews || []}
