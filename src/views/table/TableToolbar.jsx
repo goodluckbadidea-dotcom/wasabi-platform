@@ -73,12 +73,28 @@ export default function TableToolbar({
           <button
             onClick={anyExpanded ? collapseAll : expandAll}
             title={anyExpanded ? "Collapse sub-items" : "Expand sub-items"}
-            style={styles.refreshBtn}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+              height: 34,
+              padding: "0 12px",
+              borderRadius: RADIUS.pill,
+              border: `1px solid ${C.darkBorder}`,
+              background: C.darkSurf2,
+              cursor: "pointer",
+              fontSize: 11,
+              fontFamily: FONT,
+              color: C.darkMuted,
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+              transition: "background 0.15s, color 0.15s",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = C.dark; e.currentTarget.style.color = C.darkText; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = C.darkSurf2; e.currentTarget.style.color = C.darkMuted; }}
           >
-            <IconChevronDown size={10} color={C.darkMuted} style={{ transform: anyExpanded ? undefined : "rotate(-90deg)" }} />
-            <span style={{ fontSize: 11, color: C.darkMuted, marginLeft: 2 }}>
-              {anyExpanded ? "Collapse" : "Expand"} Sub-Items
-            </span>
+            <IconChevronDown size={10} color="currentColor" style={{ transform: anyExpanded ? undefined : "rotate(-90deg)", transition: "transform 0.15s" }} />
+            {anyExpanded ? "Collapse Sub-Items" : "Expand Sub-Items"}
           </button>
         );
       })()}
