@@ -176,6 +176,28 @@ Date fields support optional end dates. A single `date` column type handles both
 
 ---
 
+## Option Colors (Table View)
+
+Select, multi_select, and status column options in the Table view render as colored pills in row cells, column-header filter chips, and the RecordDetail drawer. Colors come from one source of truth: `col.options[i].color` on the schema, resolved through the existing `WASABI_COLORS` → `VIEW_PALETTE` pipeline in `src/design/tokens.js`.
+
+### Architecture (2026-04-15)
+
+- **One source of truth.** Per-option color lives on the schema (`col.options[i].color`) as a Notion-style color name key (`"red"`, `"orange"`, `"yellow"`, `"green"`, `"blue"`, `"purple"`, `"pink"`, `"brown"`, `"gray"`). The same keys are understood by `getSolidPillColor` for all three render surfaces.
+- **Auto-assign at creation time.** Every option-creation path injects a color via `assignOptionColor(optionIndex)` from `dataSource.js`, which round-robins over the palette keys deterministically by index. Sites covered:
+  - `OptionsManagerModal.handleAdd` — new option added via the "Manage Options" modal
+  - `Table.handleCreateSchemaOption` — inline "+ Create new option" from `SelectEditor` in RecordDetail (routes parent/sub via `page._parentRowId`)
+  - `useTableCellEdit.handleCreateOption` — in-cell `SelectPicker` "allow create" path
+- **Load-time repair.** `fetchD1Table` in `dataSource.js` runs `repairOptionColors(cols)` on both `columns` and `sub_columns` after `dedupeColumnNames`. Any option with `color === "default"` or missing gets backfilled. User-picked colors (anything else) are preserved. Changes are fire-and-forget written back via `updateTableSchema` / `updateSubColumnSchema` so first paint isn't blocked. Deterministic so concurrent opens converge. Self-heals legacy native D1 tables created before the auto-assign rule.
+- **No separate view-level color system for Table.** The `ViewSettingsPanel.jsx` COLOR SOURCE section (`ColorMappingSection`) is hidden for Table views via `!isTable && <ColorMappingSection .../>`. `colorMapping` prop drilling is removed from `TableRow.jsx` → `CellDisplay.jsx`. Select renderers call `getSolidPillColor(value, options, schemaOptions)` — the 3-arg form without override.
+- **Other views still use `colorMapping`.** Kanban, Gantt, and CardGrid continue to render `ColorMappingSection` in View Settings and consume `viewConfig.colorMapping` through `_CellComponents.jsx`. They were deliberately not touched in the 2026-04-15 unification — only the Table view was migrated. TaskList uses its own `ColorMappingContext` + `resolveUnifiedColor` path and is out of scope entirely.
+
+### Editing option colors
+
+- **Manage Options modal** (`OptionsManagerModal.jsx`) is the only editor. Right-click a column header → Manage Options → pick colors per option. User-picked colors are preserved across the repair pass.
+- Inline cell editing of option colors (Notion-style) was considered and rejected for this pass — modal-only, one-click-to-edit was the simpler target.
+
+---
+
 ## Sub-Items (Table View)
 
 Sub-items are hierarchical child records within a D1 table. They share the same `table_rows` D1 table as parent records, distinguished by `parent_row_id`.
@@ -185,11 +207,12 @@ Sub-items are hierarchical child records within a D1 table. They share the same 
 - **Storage:** Same `table_rows` table. Sub-item rows have `parent_row_id` set to the parent record's ID.
 - **Schema:** Sub-item columns are stored separately in the page config as `sub_columns` (not in the parent `columns` array). Each sub-column has a `subcol_*` prefixed ID.
 - **Title column:** The first sub-column always gets `type: "title"`. If a sub-column was created before this rule existed, `d1SchemaToClassified` and `d1RowToPage` both treat `idx === 0` as title regardless of stored type.
+- **Default seed (2026-04-15):** `VisualPageBuilder.jsx` awaits `updateSubColumnSchema(pageId, [{id, name: "Name", type: "title"}])` after `savePageConfig` before calling `addPage`. New native D1 tables ship with a single default "Name" title sub-column so sub-item creation works from day one. Navigation happens AFTER the seed lands so there's no race.
 
 ### Data Flow
 
-1. **Write path:** `createRecord()` in `dataSource.js` merges `sub_columns` into the column lookup when `parentRowId` is present, so sub-column cell values are correctly mapped by `subcol_*` IDs. The `effectiveType` correction mirrors `d1SchemaToClassified` logic (explicit `type: "title"` or idx===0) for both parent and sub-column schemas, ensuring `extractRawValue` reads the correct property key regardless of raw column type.
-2. **Read path:** `d1RowToPage()` iterates both parent columns and `subColumns`. Sub-column title values are wrapped in Notion-compatible `{type: "title", title: [...]}` format (not `rich_text`) so the cell renderer displays them correctly.
+1. **Write path (2026-04-15):** `createRecord()` in `dataSource.js` uses `sub_columns` alone when `parentRowId` is set — no more parent+sub merge, which previously caused name-collision values (e.g. "Status" in both schemas) to route to the parent column. Title-detection index is computed within the sub-column array alone. The `effectiveType` correction mirrors `d1SchemaToClassified` logic (explicit `type: "title"` or idx===0) so `extractRawValue` reads the correct property key regardless of raw column type. `updateRecord()` takes an `isSubItem` option in its bag and routes column lookups strictly: `true` → `sub_columns` only; `false` → `columns` only; undefined → legacy parent-then-sub fallback. Throws loud scoped errors on miss instead of silently resolving to the wrong `col.id`. Both functions apply `dedupeColumnNames` to the fresh worker schema before lookup so the UI-side deduped name (e.g. `"Status (2)"`) matches. `PageShell.handleUpdate` threads `isSubItem: !!record?._parentRowId`.
+2. **Read path:** `d1RowToPage()` iterates both parent columns and `subColumns`. Sub-column title values are wrapped in Notion-compatible `{type: "title", title: [...]}` format (not `rich_text`) so the cell renderer displays them correctly. Sub-item rows map sub-columns only; parent rows map parent columns only (unconditional split).
 3. **Schema classification:** `d1SchemaToClassified()` is called separately for sub-columns to produce `schema._subSchema`. The table view uses `subSchema` for sub-item rows and parent `schema` for regular rows.
 
 ### Table View Integration (Table.jsx + src/views/table/)
@@ -202,7 +225,7 @@ The table view's sub-item logic is spread across the orchestrator and extracted 
 - **Sub-column menu contents:** `SubColumnContextMenu` (`ColumnContextMenu.jsx`) offers Rename, Manage Options (for select/multi_select/status types), Change Type (full D1 type submenu mirroring parent), and Delete — full parity with `ParentColumnContextMenu`.
 - **Column management:** `useColumnManagement` hook (`table/hooks/useColumnManagement.js`) handles `handleAddSubCol`, `handleRenameSubCol`, `handleDeleteSubCol`, and `handleChangeSubColType` via `updateSubColumnSchema`. Add/rename paths auto-suffix duplicate names (`"Status"` → `"Status 2"`) on both parent and sub-column operations to prevent the Notion-compatible `properties` object (keyed by name) from silently overwriting fields.
 - **Add column dialog:** `AddSubColumnDialog` (`AddColumnDialog.jsx`) for creating new sub-columns.
-- **Display columns:** `subColsList` = visible sub-columns, or falls back to `[subTitleField]` if no sub-columns exist. Computed in the Table.jsx orchestrator.
+- **Display columns:** `subColsList` = visible sub-columns (from `schema._subColumns`). When `subColumns` is empty, `subTitleField` returns `null` (no fallback to the parent title column name — that fallback silently broke sub-item creation by keying the ghost row to a field `createRecord` couldn't find in sub_columns). New D1 tables always have sub_columns populated (default "Name" seeded at create) so this empty path stays cold.
 - **Tree data:** `useTreeData` hook (`src/lib/useTreeData.js`) handles expand/collapse state, `displayList` flattening, and parent-child relationships.
 - **Filter pipeline:** `useTableData` separates sub-items from parent rows before applying chip filters, dropdown filters, and search. After filtering, sub-items whose parent survived are re-attached. This prevents sub-items (which lack parent column values) from being incorrectly excluded by filters.
 

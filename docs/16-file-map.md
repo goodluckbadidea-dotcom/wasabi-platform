@@ -85,14 +85,14 @@ App shell, navigation, settings. Loaded eagerly.
 | `NodeEditor.jsx` | Visual node editor for automation flows |
 | `Onboarding.jsx` | First-time user onboarding flow |
 | `PageBuilder.jsx` | Page layout builder |
-| `PageShell.jsx` | Orchestrator: loads page config, fetches data, renders active view |
+| `PageShell.jsx` | Orchestrator: loads page config, fetches data, renders active view. `handleUpdate` passes `isSubItem: !!record?._parentRowId` to `updateRecord` so sub-item cell edits route to `sub_columns` instead of silently resolving against parent columns (2026-04-15). Conflict resolver does the same lookup. |
 | `PluginWidget.jsx` | Sandboxed iframe plugin renderer |
 | `SetupWizard.jsx` | First-run setup: worker URL, secret, admin creation |
 | `SheetUrlDialog.jsx` | Google Sheets URL input dialog |
 | `SubPageNav.jsx` | Sub-page navigation tabs |
 | `TopHeader.jsx` | Top bar: theme toggle, command palette (Cmd+K), user menu |
 | `ViewTypePicker.jsx` | View type selection dropdown |
-| `VisualPageBuilder.jsx` | Drag-and-drop page layout builder |
+| `VisualPageBuilder.jsx` | Drag-and-drop page layout builder. On new D1 table creation, awaits `updateSubColumnSchema(pageId, [{id, name: "Name", type: "title"}])` after `savePageConfig` before calling `addPage` (2026-04-15) — guarantees default sub-column seed lands before navigation triggers the first fetch, so sub-item creation works out of the box. |
 | `WasabiFlame.jsx` | Animated flame logo component |
 | `WasabiOrb.jsx` | Animated orb logo component |
 | `WasabiPanel.jsx` | Full Wasabi agent chat panel. Pre-warms hydrated neuron cache, uses relevance-filtered neuron context. |
@@ -146,7 +146,7 @@ Database view components. Lazy-loaded by PageShell.
 | `NotificationFeed.jsx` | Notification inbox with filtering, sticky recently-read items in Unread tab |
 | `RecordDetail.jsx` | Record detail drawer: Properties, Sub-Items (parent records only), Comments, Files tabs. Accepts `parentTitle` prop for sub-items. `SelectEditor` supports inline option creation via the `onCreateOption` prop (used for both parent and sub-item records, routed through `handleCreateSchemaOption` in Table.jsx which calls `updateTableSchema` or `updateSubColumnSchema` based on `page._parentRowId`). |
 | `SummaryTiles.jsx` | Summary tiles/metrics view |
-| `Table.jsx` | Primary table/grid view — **orchestrator** (~1,205 lines). Wires hooks from `table/hooks/`, composes components from `table/`, manages virtual scrolling, keyboard navigation, and saved views. See `src/views/table/` below for extracted sub-modules. |
+| `Table.jsx` | Primary table/grid view — **orchestrator** (~1,205 lines). Wires hooks from `table/hooks/`, composes components from `table/`, manages virtual scrolling, keyboard navigation, and saved views. `handleCreateSchemaOption` (inline option creation from RecordDetail's `SelectEditor`) injects a color via `assignOptionColor` when adding a new option (2026-04-15). `subTitleField` returns `null` when `subColumns` is empty — no fallback to the parent title column name, which previously silently broke sub-item creation. See `src/views/table/` below for extracted sub-modules. |
 | `ViewRenderer.jsx` | View type router/dispatcher |
 | `WorkspaceSettings.jsx` | Workspace settings view |
 | `_CellComponents.jsx` | Shared cell renderer components |
@@ -166,14 +166,14 @@ Extracted sub-modules for the Table view. Refactored from a 3,600-line monolith 
 | `OwnerCell.jsx` | `OwnerCellDisplay` + `OwnerPicker` for the owner column (192 lines) |
 | `GhostRow.jsx` | `GhostCell` component for new row creation ghost input (68 lines) |
 | `CellEditor.jsx` | Inline cell editor with type-specific inputs (text, number, date, select, multi-select, checkbox, URL, email, phone) (215 lines) |
-| `CellDisplay.jsx` | Cell renderer with `CELL_RENDERERS` registry for read-only display (63 lines) |
-| `ColumnContextMenu.jsx` | Column context menus: `ParentColumnContextMenu` (sort, hide, rename, manage options, type change, delete) + `SubColumnContextMenu` (rename, manage options, change type, delete — full parity with parent as of 2026-04-14). Both open on single-click header tap, double-click to rename, right-click for cursor-anchored menu. |
+| `CellDisplay.jsx` | Cell renderer with `CELL_RENDERERS` registry for read-only display (~63 lines). Select/multi_select/status renderers read option color from `schemaOptions` via `getSolidPillColor(value, options, schemaOptions)` — 3-arg form, no `colorMapping` override (2026-04-15 unification). `_CellComponents.jsx` used by Kanban/CardGrid is unchanged and still takes `colorMapping`. |
+| `ColumnContextMenu.jsx` | Column context menus: `ParentColumnContextMenu` (sort, hide, rename, manage options, type change, delete) + `SubColumnContextMenu` (rename, manage options, change type, delete — full parity with parent as of 2026-04-14). Both open on single-click header tap, double-click to rename, right-click for cursor-anchored menu. Shared `useClampedMenuPosition` hook (2026-04-15) measures the menu via ref after first paint and clamps `left`/`top` inside the viewport (floored at 8px); both menus get `maxHeight: calc(100vh - 24px)` + `overflowY: auto` so items near the viewport edge are reachable and scrollable. |
 | `AddColumnDialog.jsx` | Add column dialogs: `AddColumnDialog` + `AddSubColumnDialog` with type picker, name input, options (250 lines) |
-| `OptionsManagerModal.jsx` | Modal for managing select/multi_select/status column options: CRUD, drag-reorder, color picker (VIEW_PALETTE swatches) |
+| `OptionsManagerModal.jsx` | Modal for managing select/multi_select/status column options: CRUD, drag-reorder, color picker (VIEW_PALETTE swatches). `handleAdd` (2026-04-15) injects a color via `assignOptionColor(prev.length)` so new options get a color at add time instead of `null`. User-picked colors override. |
 | `CascadeDeleteDialog.jsx` | Confirmation dialog for deleting parent rows with sub-items (52 lines) |
 | `TableToolbar.jsx` | Toolbar: search, new record, export, saved views dropdown, bulk actions, presence avatars (221 lines) |
 | `TableHeader.jsx` | Column headers with sort indicators, drag-to-resize, double-click rename, column visibility toggle (168 lines) |
-| `TableRow.jsx` | Row rendering: parent rows, sub-item rows, expand/collapse, sub-item mini-headers (with chevron affordance, single-click opens `SubColumnContextMenu`, double-click inline rename, 250ms disambiguation timer), neuron badges |
+| `TableRow.jsx` | Row rendering: parent rows, sub-item rows, expand/collapse, sub-item mini-headers (with chevron affordance, single-click opens `SubColumnContextMenu`, double-click inline rename, 250ms disambiguation timer), neuron badges. `colorMapping` prop drilling removed from `CellDisplay` sites and from hover-wash `getStatusColor` call (2026-04-15) — hover wash reads from schema options. Warns once per table when a sub-item row renders without `subSchema` (legacy fallback still renders parent schema so nothing crashes). |
 | `TableFooter.jsx` | Row count display footer (41 lines) |
 
 #### src/views/table/hooks/ (5 files)
@@ -182,7 +182,7 @@ Extracted sub-modules for the Table view. Refactored from a 3,600-line monolith 
 |------|---------|
 | `useColumnManagement.js` | Column CRUD, reorder, resize, rename, add/delete/rename sub-columns, `handleChangeSubColType` (sub-item type change with options warning), schema persistence. Type-change warns and clears options when leaving select-like types. Add/rename paths auto-suffix duplicate column names (parent and sub) to prevent Notion-properties-by-name collisions. |
 | `useTableData.js` | Data pipeline: text search, field filters, chip filters, sorting, debounced search. Sub-items separated before filtering and re-attached after (126 lines) |
-| `useTableCellEdit.js` | Inline cell edit state: active cell tracking, value commit to API, blur handling (107 lines) |
+| `useTableCellEdit.js` | Inline cell edit state: active cell tracking, value commit to API, blur handling (~107 lines). `handleCreateOption` injects a color via `assignOptionColor(existing.length)` when creating new select/status options through the in-cell `SelectPicker` "allow create" path (2026-04-15). |
 | `useGhostRow.js` | Parent ghost row state: cell values, saving flag, commit-and-create logic (74 lines) |
 | `useSubItemGhost.js` | Sub-item ghost row state: parent tracking, cell values, commit-and-create logic (81 lines) |
 
@@ -260,7 +260,7 @@ Shared UI components used across views.
 | `Spinner.jsx` | Loading spinner component |
 | `StateIndicators.jsx` | Loading/error/empty state indicators (new) |
 | `SyncPanel.jsx` | Notion sync status and controls panel |
-| `ViewSettingsPanel.jsx` | View settings/configuration panel |
+| `ViewSettingsPanel.jsx` | View settings/configuration panel. `ColorMappingSection` (COLOR SOURCE dropdown + swatch grid) is hidden for Table views via `!isTable` gate (2026-04-15) — Table option colors live on the schema and are edited via Manage Options. Kanban/Gantt/CardGrid still render the section and consume `viewConfig.colorMapping`. |
 | `ViewToolbar.jsx` | View-level toolbar (filters, sorts, group by) |
 | `WidgetGrid.jsx` | Dashboard widget grid layout |
 
@@ -341,7 +341,7 @@ Utility functions, API client, WebSocket helpers.
 | File | Purpose |
 |------|---------|
 | `api.js` | Fetch wrapper: auth headers, auto-refresh, error handling |
-| `dataSource.js` | Data source abstraction layer (D1, Notion, Monday normalization). Key functions: `createRecord()` (single write path for all records including sub-items), `fetchD1Table()` (loads up to 1000 rows, builds `parentCellMap` for sub-item parent lookup), `d1RowToPage()` (converts D1 rows to Notion-compatible page objects — parent rows map parent columns only, sub-item rows map sub-columns only, each unconditionally regardless of null value, so RecordDetail shows every configured field), `buildParentFields()` (extracts parent priority/status/date range into `_parentFields` for sub-item inheritance), `d1SchemaToClassified()` (converts D1 column arrays to classified schema — called separately for `columns` and `sub_columns` to produce `schema` and `schema._subSchema`). |
+| `dataSource.js` | Data source abstraction layer (D1, Notion, Monday normalization). Key functions: `fetchD1Table()` (loads up to 1000 rows, runs `dedupeColumnNames` + `repairOptionColors` with fire-and-forget writeback, builds `parentCellMap` for sub-item parent lookup), `updateRecord()` (takes `isSubItem` option — routes column lookup strictly to `sub_columns` when true, parent `columns` when false, legacy parent-then-sub fallback when undefined; applies `dedupeColumnNames` before `.find()`; throws loud scoped errors on miss), `createRecord()` (when `parentRowId` is set, uses `sub_columns` alone — no parent+sub merge — and computes title index within sub array; applies `dedupeColumnNames` before iteration), `d1RowToPage()` (converts D1 rows to Notion-compatible page objects — parent rows map parent columns only, sub-item rows map sub-columns only, each unconditionally regardless of null value), `buildParentFields()` (builds `_parentFields` scaffolding — no live consumers as of 2026-04-15, not wired to any UI), `d1SchemaToClassified()` (converts D1 column arrays to classified schema — called separately for `columns` and `sub_columns`). Helpers (2026-04-15): `assignOptionColor(idx)` (round-robin over Notion-style color palette), `repairOptionColors(cols)` (backfills missing/`"default"` option colors, preserves user-picked), `dedupeColumnNames(cols)` (in-memory disambiguation of literal duplicate column names for UI-side key addressability — col IDs untouched). |
 | `iframeHelpers.js` | Iframe sandbox helpers, escapeHtml, auto-execute code |
 | `roles.js` | Role constants and permission utilities |
 | `tableSocket.js` | WebSocket client for table collaboration (TableRoom), double-connect guard |

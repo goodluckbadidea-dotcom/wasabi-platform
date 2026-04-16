@@ -139,9 +139,15 @@ type ColumnType =
 
 interface SelectOption {
   name: string;
-  color?: string | number;        // Color hex or color index
+  color?: string;                 // Notion-style color name key: "red", "orange", "yellow",
+                                  // "green", "blue", "purple", "pink", "brown", "gray".
+                                  // Resolved through WASABI_COLORS → VIEW_PALETTE in design/tokens.js.
+                                  // "default" or missing = backfilled by repairOptionColors()
+                                  // on next fetchD1Table via assignOptionColor(idx) round-robin.
 }
 ```
+
+**Option color storage (2026-04-15):** Native D1 tables and linked-Notion tables share one color storage model — `col.options[i].color` on the schema itself. Every option-creation path in the frontend injects a color via `assignOptionColor(idx)` at add time, and `fetchD1Table` runs `repairOptionColors()` on load to backfill any option with missing or `"default"` color. User-picked colors (anything else) are preserved. The previous per-view `colorMapping` system is retained for Kanban/Gantt/CardGrid but the Table view reads color from schema options exclusively.
 
 ---
 
