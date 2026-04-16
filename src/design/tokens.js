@@ -55,7 +55,7 @@ const _RAW_THEMES = [
     border: "#AEA898",
     textPrimary: "#1A1714", textSecondary: "#524C44", textMuted: "#6D6558",
     accentSoft: "#EDD8D0",
-    bgGradient: "radial-gradient(ellipse at 50% -10%, #FFFFFF 0%, #F8F6F1 60%)",
+    bgGradient: "radial-gradient(ellipse at 50% -10%, #EDD8D0 0%, #F8F6F1 60%)",
   },
   {
     id: "obsidian",
