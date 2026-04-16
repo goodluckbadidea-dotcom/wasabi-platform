@@ -144,7 +144,17 @@ interface SelectOption {
                                   // Resolved through WASABI_COLORS → VIEW_PALETTE in design/tokens.js.
                                   // "default" or missing = backfilled by repairOptionColors()
                                   // on next fetchD1Table via assignOptionColor(idx) round-robin.
+  category?: StatusCategory;      // (2026-04-15) Semantic category for status options only.
+                                  // Enables progress roll-up. Stored in the options JSON blob.
+                                  // Defaults to "not_started" when absent.
 }
+
+type StatusCategory =
+  | "not_started"                 // Gray — default
+  | "in_progress"                 // Blue
+  | "complete"                    // Green
+  | "on_hold"                     // Yellow
+  | "cancelled";                  // Red
 ```
 
 **Option color storage (2026-04-15):** Native D1 tables and linked-Notion tables share one color storage model — `col.options[i].color` on the schema itself. Every option-creation path in the frontend injects a color via `assignOptionColor(idx)` at add time, and `fetchD1Table` runs `repairOptionColors()` on load to backfill any option with missing or `"default"` color. User-picked colors (anything else) are preserved. The previous per-view `colorMapping` system is retained for Kanban/Gantt/CardGrid but the Table view reads color from schema options exclusively.
@@ -180,6 +190,31 @@ interface TableRow {
 ```
 
 The `cell_versions` field is central to conflict detection. When User A saves a field, the server checks whether User A's `base_version` for that field matches the current `cell_versions` value. If it does not, another user has edited the field since User A loaded it, and a conflict is raised.
+
+### Sub-Item Roll-Up (2026-04-15)
+
+Parent page objects in the `data` array from `fetchD1Table` gain a `_rollup` property when they have sub-items:
+
+```typescript
+interface SubItemRollup {
+  computedStart: Date | null;       // Earliest sub-item start date (across all date fields)
+  computedEnd: Date | null;         // Latest sub-item end date
+  progress: {
+    total: number;                  // Total sub-items
+    complete: number;               // Sub-items with status category "complete" or "cancelled"
+    percent: number;                // Math.round(complete/total * 100)
+  };
+  hasConflict: boolean;             // Children's date range exceeds parent's manually-set range
+  conflictDetails: {                // Only present when hasConflict is true
+    parentStart: Date;
+    parentEnd: Date;
+    childrenStart: Date;
+    childrenEnd: Date;
+  } | null;
+}
+```
+
+Computed by `computeSubItemRollup()` in `src/lib/subItemRollup.js`. Attached in `fetchD1Table` after page objects are built, before returning `{ data, schema }`. Only computed when `subSchema` exists (table has sub-columns). Available to all views — Table, Gantt, Kanban, Calendar, RecordDetail.
 
 ---
 

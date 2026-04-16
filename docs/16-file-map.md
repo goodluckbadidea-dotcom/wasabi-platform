@@ -125,7 +125,7 @@ Database view components. Lazy-loaded by PageShell.
 | File | Purpose |
 |------|---------|
 | `ActivityFeed.jsx` | Activity/changelog feed view |
-| `Calendar.jsx` | Calendar view of date-based records |
+| `Calendar.jsx` | Calendar view of date-based records. Sub-items excluded from main grid; shown in day popover on parent expand (2026-04-15). |
 | `CardGrid.jsx` | Card grid gallery view |
 | `Charts.jsx` | Chart visualization view |
 | `ChatPanel.jsx` | Chat panel integrated with views |
@@ -135,8 +135,8 @@ Database view components. Lazy-loaded by PageShell.
 | `DocumentEditor.jsx` | Rich text document editor with blocks |
 | `FilterChips.jsx` | Filter chip bar for view filtering |
 | `Form.jsx` | Public/private form for data collection |
-| `Gantt.jsx` | Timeline bar chart for date-range records |
-| `Kanban.jsx` | Card-based board grouped by status/select columns |
+| `Gantt.jsx` | Timeline bar chart for date-range records. Collapsible parent/child hierarchy, computed range bars, conflict indicators, sub-item drag-to-reschedule, progress badges (2026-04-15). |
+| `Kanban.jsx` | Card-based board grouped by status/select columns. Sub-items filtered out; parent cards show roll-up progress badge (2026-04-15). |
 | `LinkedSheet.jsx` | Linked Google Sheets viewer |
 | `NetworkGraph.jsx` | Visual graph of record relationships |
 | `NewRecordModal.jsx` | Modal for creating new records |
@@ -144,7 +144,7 @@ Database view components. Lazy-loaded by PageShell.
 | `NodeConfigPanel.jsx` | Configuration panel for flow nodes |
 | `NodeRenderer.jsx` | Individual node renderer for flow editor |
 | `NotificationFeed.jsx` | Notification inbox with filtering, sticky recently-read items in Unread tab |
-| `RecordDetail.jsx` | Record detail drawer: Properties, Sub-Items (parent records only), Comments, Files tabs. Accepts `parentTitle` prop for sub-items. `SelectEditor` supports inline option creation via the `onCreateOption` prop (used for both parent and sub-item records, routed through `handleCreateSchemaOption` in Table.jsx which calls `updateTableSchema` or `updateSubColumnSchema` based on `page._parentRowId`). |
+| `RecordDetail.jsx` | Record detail drawer: Properties, Sub-Items (parent records only), Comments, Files tabs. Accepts `parentTitle` prop for sub-items. `SelectEditor` supports inline option creation via the `onCreateOption` prop. Sub-Items tab (2026-04-15): `RecordSubItems` upgraded with status pills, date display, click-to-open nested RecordDetail, inline creation via `createRows`. `RollupSummary` component shows progress bar, date range, and conflict warning. |
 | `SummaryTiles.jsx` | Summary tiles/metrics view |
 | `Table.jsx` | Primary table/grid view — **orchestrator** (~1,205 lines). Wires hooks from `table/hooks/`, composes components from `table/`, manages virtual scrolling, keyboard navigation, and saved views. `handleCreateSchemaOption` (inline option creation from RecordDetail's `SelectEditor`) injects a color via `assignOptionColor` when adding a new option (2026-04-15). `subTitleField` returns `null` when `subColumns` is empty — no fallback to the parent title column name, which previously silently broke sub-item creation. See `src/views/table/` below for extracted sub-modules. |
 | `ViewRenderer.jsx` | View type router/dispatcher |
@@ -169,7 +169,7 @@ Extracted sub-modules for the Table view. Refactored from a 3,600-line monolith 
 | `CellDisplay.jsx` | Cell renderer with `CELL_RENDERERS` registry for read-only display (~63 lines). Select/multi_select/status renderers read option color from `schemaOptions` via `getSolidPillColor(value, options, schemaOptions)` — 3-arg form, no `colorMapping` override (2026-04-15 unification). `_CellComponents.jsx` used by Kanban/CardGrid is unchanged and still takes `colorMapping`. |
 | `ColumnContextMenu.jsx` | Column context menus: `ParentColumnContextMenu` (sort, hide, rename, manage options, type change, delete) + `SubColumnContextMenu` (rename, manage options, change type, delete — full parity with parent as of 2026-04-14). Both open on single-click header tap, double-click to rename, right-click for cursor-anchored menu. Shared `useClampedMenuPosition` hook (2026-04-15) measures the menu via ref after first paint and clamps `left`/`top` inside the viewport (floored at 8px); both menus get `maxHeight: calc(100vh - 24px)` + `overflowY: auto` so items near the viewport edge are reachable and scrollable. |
 | `AddColumnDialog.jsx` | Add column dialogs: `AddColumnDialog` + `AddSubColumnDialog` with type picker, name input, options (250 lines) |
-| `OptionsManagerModal.jsx` | Modal for managing select/multi_select/status column options: CRUD, drag-reorder, color picker (VIEW_PALETTE swatches). `handleAdd` (2026-04-15) injects a color via `assignOptionColor(prev.length)` so new options get a color at add time instead of `null`. User-picked colors override. |
+| `OptionsManagerModal.jsx` | Modal for managing select/multi_select/status column options: CRUD, drag-reorder, color picker (VIEW_PALETTE swatches). `handleAdd` injects a color via `assignOptionColor(prev.length)`. Status columns (2026-04-15): category dropdown per option (not_started/in_progress/complete/on_hold/cancelled) for semantic roll-up. `handleSetCategory` callback. Category preserved through save. |
 | `CascadeDeleteDialog.jsx` | Confirmation dialog for deleting parent rows with sub-items (52 lines) |
 | `TableToolbar.jsx` | Toolbar: search, new record, export, saved views dropdown, bulk actions, presence avatars (221 lines) |
 | `TableHeader.jsx` | Column headers with sort indicators, drag-to-resize, double-click rename, column visibility toggle (168 lines) |
@@ -253,7 +253,7 @@ Shared UI components used across views.
 | `PinLockOverlay.jsx` | PIN lock overlay for secure pages |
 | `PresenceAvatars.jsx` | Active user avatar display (design tokens, title attributes for accessibility) |
 | `RecordComments.jsx` | Record-level comment thread |
-| `RecordDetailPortals.jsx` | Portal components for record detail overlays |
+| `RecordDetailPortals.jsx` | Portal components for record detail overlays. Schema switch (2026-04-15): passes `_subSchema` when `detailPage._parentRowId` is set, so sub-items opened from Calendar/other views get correct schema. |
 | `RecordFiles.jsx` | File attachment management for records |
 | `SavedViewsDropdown.jsx` | Saved views selector dropdown |
 | `SelectPicker.jsx` | Single-select picker |
@@ -341,7 +341,8 @@ Utility functions, API client, WebSocket helpers.
 | File | Purpose |
 |------|---------|
 | `api.js` | Fetch wrapper: auth headers, auto-refresh, error handling |
-| `dataSource.js` | Data source abstraction layer (D1, Notion, Monday normalization). Key functions: `fetchD1Table()` (loads up to 1000 rows, runs `dedupeColumnNames` + `repairOptionColors` with fire-and-forget writeback, builds `parentCellMap` for sub-item parent lookup), `updateRecord()` (takes `isSubItem` option — routes column lookup strictly to `sub_columns` when true, parent `columns` when false, legacy parent-then-sub fallback when undefined; applies `dedupeColumnNames` before `.find()`; throws loud scoped errors on miss), `createRecord()` (when `parentRowId` is set, uses `sub_columns` alone — no parent+sub merge — and computes title index within sub array; applies `dedupeColumnNames` before iteration), `d1RowToPage()` (converts D1 rows to Notion-compatible page objects — parent rows map parent columns only, sub-item rows map sub-columns only, each unconditionally regardless of null value), `buildParentFields()` (builds `_parentFields` scaffolding — no live consumers as of 2026-04-15, not wired to any UI), `d1SchemaToClassified()` (converts D1 column arrays to classified schema — called separately for `columns` and `sub_columns`). Helpers (2026-04-15): `assignOptionColor(idx)` (round-robin over Notion-style color palette), `repairOptionColors(cols)` (backfills missing/`"default"` option colors, preserves user-picked), `dedupeColumnNames(cols)` (in-memory disambiguation of literal duplicate column names for UI-side key addressability — col IDs untouched). |
+| `dataSource.js` | Data source abstraction layer (D1, Notion, Monday normalization). Key functions: `fetchD1Table()` (loads up to 1000 rows, runs `dedupeColumnNames` + `repairOptionColors` with fire-and-forget writeback, builds `parentCellMap` for sub-item parent lookup, computes and attaches `page._rollup` to parent pages via `computeSubItemRollup` — 2026-04-15), `updateRecord()` (takes `isSubItem` option — routes column lookup strictly), `createRecord()` (uses `sub_columns` alone when `parentRowId` set), `d1RowToPage()` (converts D1 rows to Notion-compatible page objects), `d1SchemaToClassified()` (converts D1 column arrays to classified schema). Helpers: `assignOptionColor(idx)`, `repairOptionColors(cols)`, `dedupeColumnNames(cols)`, `normalizeOptions()` (preserves `category` field on status options — 2026-04-15). Exports: `STATUS_CATEGORIES` (2026-04-15). |
+| `subItemRollup.js` | **(2026-04-15)** Pure utility: `computeSubItemRollup(parentPage, childPages, parentSchema, subSchema)`. Computes timeline range (earliest/latest child dates), progress (status category roll-up: complete + cancelled = resolved), and conflict detection (children exceed parent dates). Returns `{ computedStart, computedEnd, progress, hasConflict, conflictDetails }`. |
 | `iframeHelpers.js` | Iframe sandbox helpers, escapeHtml, auto-execute code |
 | `roles.js` | Role constants and permission utilities |
 | `tableSocket.js` | WebSocket client for table collaboration (TableRoom), double-connect guard |

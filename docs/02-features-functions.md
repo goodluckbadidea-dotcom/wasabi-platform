@@ -194,6 +194,7 @@ Select, multi_select, and status column options in the Table view render as colo
 ### Editing option colors
 
 - **Manage Options modal** (`OptionsManagerModal.jsx`) is the only editor. Right-click a column header → Manage Options → pick colors per option. User-picked colors are preserved across the repair pass.
+- **Status category selector (2026-04-15):** For `type: "status"` columns only, the Manage Options modal also shows a category dropdown next to each option (not_started / in_progress / complete / on_hold / cancelled). Categories are stored on `option.category` inside the existing JSON blob. See "Status Categories" section under Sub-Items.
 - Inline cell editing of option colors (Notion-style) was considered and rejected for this pass — modal-only, one-click-to-edit was the simpler target.
 
 ---
@@ -229,18 +230,52 @@ The table view's sub-item logic is spread across the orchestrator and extracted 
 - **Tree data:** `useTreeData` hook (`src/lib/useTreeData.js`) handles expand/collapse state, `displayList` flattening, and parent-child relationships.
 - **Filter pipeline:** `useTableData` separates sub-items from parent rows before applying chip filters, dropdown filters, and search. After filtering, sub-items whose parent survived are re-attached. This prevents sub-items (which lack parent column values) from being incorrectly excluded by filters.
 
+### Status Categories (2026-04-15)
+
+Status options now carry a semantic `category` field: `"not_started"`, `"in_progress"`, `"complete"`, `"on_hold"`, `"cancelled"`. This enables meaningful progress roll-up.
+
+- **Schema:** `normalizeOptions()` in `dataSource.js` preserves `category` on option objects. `STATUS_CATEGORIES` is exported for UI consumers. Options without a `category` default to `"not_started"` for backward compatibility.
+- **UI:** `OptionsManagerModal.jsx` shows a category dropdown next to each option row — only for `type: "status"` columns (not select/multi_select). Dropdown shows icon + label for each category, colored to match semantics (gray/blue/green/yellow/red).
+- **Auto-assign:** New status options get `category: "not_started"` by default, both from the Manage Options modal (`handleAdd`) and from inline creation (`handleCreateSchemaOption` in Table.jsx).
+- **Storage:** Categories live inside the existing `options` JSON blob on each column. No D1 migration needed.
+
+### Sub-Item Roll-Up (2026-04-15)
+
+Parent records with sub-items now have computed roll-up data attached as `page._rollup`:
+
+- **Utility:** `src/lib/subItemRollup.js` exports `computeSubItemRollup(parentPage, childPages, parentSchema, subSchema)`. Pure function, no side effects.
+- **Progress:** Reads the first status field on sub-schema, resolves each child's status option category. `complete` + `cancelled` = resolved. Returns `{ total, complete, percent }`.
+- **Timeline range:** Scans all date fields on sub-schema across all children. Returns `computedStart` (earliest) and `computedEnd` (latest).
+- **Conflict detection:** When parent has manually set dates AND children's computed range exceeds them, `hasConflict: true` with `conflictDetails` showing both ranges (Option B — visual warning, no auto-expand).
+- **Data layer:** `fetchD1Table` in `dataSource.js` groups children by `_parentRowId`, computes roll-up, and attaches to each parent page. Available to all views without per-view recomputation.
+
+### View-Level Sub-Item Support (2026-04-15)
+
+| View | Sub-item behavior |
+|------|-------------------|
+| **Table** | Full support: tree expand/collapse, inline creation, independent sub-schema, filter pipeline separation |
+| **Gantt** | Collapsible hierarchy. Parents show expand chevron; sub-items render indented with 75% opacity bars. Computed range bar (translucent) behind parent spans `_rollup.computedStart` → `computedEnd`. Conflict indicator (amber triangle) when children exceed parent range. Sub-item drag-to-reschedule with correct schema routing. Progress badge in sidebar. |
+| **Kanban** | Sub-items hidden (filtered out before grouping). Parent cards show progress badge from `_rollup` (e.g. "2/4"). |
+| **Calendar** | Sub-items excluded from main grid. Day popover shows expand chevron on parent events; clicking reveals indented sub-item list. |
+| **RecordDetail** | Schema switch for all views via `RecordDetailPortals.jsx`. Sub-items opened from any view get `_subSchema`. |
+
 ### RecordDetail Integration (RecordDetail.jsx)
 
 - Sub-item records do NOT show the "Sub-Items" tab (sub-items cannot have sub-items).
 - Sub-item records show a "Parent" field linking to the parent record. The parent record's title is displayed (passed as `parentTitle` prop from Table.jsx), not the raw row ID.
-- **Schema switch:** When `detailPage._parentRowId` is set, RecordDetail is passed `subSchema` instead of the parent `schema` so select/status dropdowns read the correct option lists and field types.
+- **Schema switch:** When `detailPage._parentRowId` is set, RecordDetail is passed `subSchema` instead of the parent `schema` so select/status dropdowns read the correct option lists and field types. This now also applies in `RecordDetailPortals.jsx` (used by Calendar and other views).
 - **Inline option creation:** The `SelectEditor` component inside RecordDetail renders a "+ Create new option" input at the bottom of the dropdown whenever `onCreateOption` is provided. Typing a name and pressing Enter (or clicking Add) calls `handleCreateSchemaOption` in Table.jsx, which:
   1. Detects parent vs. sub-item routing via `page._parentRowId`.
   2. Fetches the current schema via `getTableSchema`.
-  3. Appends the new option (dedup by name) to the target column.
+  3. Appends the new option (dedup by name) to the target column. Status columns get `category: "not_started"`.
   4. Calls `updateTableSchema` (parent) or `updateSubColumnSchema` (sub-item).
   5. Refreshes, then auto-selects the newly created option.
   This removes the prior requirement of opening Manage Options first to pre-populate options before a select/status field was usable — applies to both parent and sub-item records.
+- **Sub-Items tab (2026-04-15):** `RecordSubItems` component upgraded from read-only title list to interactive panel:
+  - Each sub-item row shows: status category icon, title (clickable → opens nested RecordDetail), status pill, date, and open indicator.
+  - `RollupSummary` component above the list shows: progress bar with "X of Y done", computed date range, and conflict warning (amber banner when sub-items exceed parent timeline).
+  - Inline creation: text input at bottom creates sub-items via `createRows` with `parent_row_id`.
+  - Clicking a sub-item opens a nested `RecordDetail` with `subSchema`.
 
 ---
 

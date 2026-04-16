@@ -230,6 +230,24 @@ Phases 1, 2a, 2b, 2c of the table unification project — seven commits over one
 
 10. **`_parentFields` audit (no fix)** — The 2026-04-14 session added `_parentFields` (priority/status/date inheritance from parent row) to sub-item page objects in `d1RowToPage`. Audit confirmed **zero consumers** read it anywhere in the codebase. Scaffolding is intentionally left in place (no deletes). If inheritance display is ever wanted in RecordDetail or table cells, that's a separate feature — this session's scope was bugfix, not new features.
 
+### Sub-Item Enhancement: Status Categories, Roll-Up, View Parity (2026-04-15)
+
+Major sub-item upgrade across 10 files (1,175 lines added). Not bug fixes — new features:
+
+1. **Status categories** — Status options gain semantic `category` field (`not_started`, `in_progress`, `complete`, `on_hold`, `cancelled`). `normalizeOptions()` in `dataSource.js` preserves category. `OptionsManagerModal.jsx` shows category dropdown for status columns. `handleCreateSchemaOption` in Table.jsx assigns `category: "not_started"` to new status options. No D1 migration — categories stored in existing options JSON blob.
+
+2. **Sub-item roll-up** — New `src/lib/subItemRollup.js` utility computes timeline range, progress, and conflict detection from child pages. `fetchD1Table` in `dataSource.js` attaches `page._rollup` to parent pages with children. Available to all views.
+
+3. **RecordSubItems upgrade** — `RecordDetail.jsx`: Sub-Items tab upgraded from read-only title list to interactive panel with status category icons, status pills, date display, click-to-open nested RecordDetail, inline creation via `createRows`, and `RollupSummary` component (progress bar, date range, conflict warning).
+
+4. **Gantt hierarchy** — `Gantt.jsx`: Collapsible parent/child rows, sub-item bars from `subSchema` date fields, computed range bar (translucent) behind parent, conflict indicator (amber triangle), sub-item drag-to-reschedule with correct schema routing, progress badge in sidebar, schema switch for RecordDetail.
+
+5. **Kanban sub-item filtering** — `Kanban.jsx`: Sub-items filtered out before grouping. Parent cards show progress badge from `_rollup`.
+
+6. **Calendar sub-item handling** — `Calendar.jsx`: Sub-items excluded from main event grid. Day popover shows expand chevron on parent events; clicking reveals indented sub-item list.
+
+7. **RecordDetailPortals schema switch** — `RecordDetailPortals.jsx`: Passes `_subSchema` when `detailPage._parentRowId` is set, so sub-items opened from Calendar/other views get correct schema.
+
 ### NewRecordModal Rich Text Textarea Clipping (Resolved 2026-04-07)
 
 The `rich_text` textarea in `NewRecordModal.jsx` inherited `borderRadius: RADIUS.pill` (999px) from the shared `ms.input` style. When the textarea grew with multiline content, the extreme pill radius clipped text at the corners, making content unreadable. Fixed by overriding `borderRadius` to `RADIUS.md` (10px) on the rich_text textarea only. Single-line inputs retain the pill shape.
