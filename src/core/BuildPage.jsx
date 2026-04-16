@@ -652,12 +652,12 @@ function EmptyState({ type, onCreate }) {
       </p>
       <button onClick={onCreate} style={{
         marginTop: 8, display: "flex", alignItems: "center", gap: 6,
-        background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
-        borderRadius: RADIUS.lg, color: "#fff", fontFamily: FONT,
+        background: "transparent", border: `1px solid ${C.darkBorder}`,
+        borderRadius: RADIUS.lg, color: C.accent, fontFamily: FONT,
         fontSize: 13, fontWeight: 500, padding: "8px 20px",
         cursor: "pointer", outline: "none",
       }}>
-        <IconPlus size={14} color={color} />
+        <IconPlus size={14} color={C.accent} />
         Create your first {isView ? "view" : "plugin"}
       </button>
     </div>
