@@ -18,12 +18,13 @@ import { timeAgo } from "../utils/helpers.js";
 // C.accent is resolved at render-time (e.g. Obsidian → #5CC63A)
 
 // ── Shared field styles ──
-const fieldStyle = {
+// Returned from function so theme switches pick up fresh C values.
+function getFieldStyle() { return {
   width: "100%", background: C.darkSurf2,
   border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.sm,
   padding: "10px 12px", color: "#fff", fontFamily: FONT,
   fontSize: 12, outline: "none", boxSizing: "border-box",
-};
+}; }
 
 // ─────────────────────────────────────
 //  VIEW BUILDER (card-strip pattern)
@@ -47,6 +48,7 @@ function defaultWidget() {
 }
 
 function ViewBuilder({ onSubmit, onBack }) {
+  const fieldStyle = getFieldStyle();
   const { pages } = usePlatform();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -179,6 +181,7 @@ function ViewBuilder({ onSubmit, onBack }) {
 }
 
 function WidgetCard({ widget, onUpdate, onRemove, dbPages, index }) {
+  const fieldStyle = getFieldStyle();
   const w = widget;
   return (
     <div style={{
@@ -313,6 +316,7 @@ const ALL_CAPABILITIES = [
 ];
 
 function PluginBuilder({ onSubmit, onBack }) {
+  const fieldStyle = getFieldStyle();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [capabilities, setCapabilities] = useState(["read_data", "compute"]);

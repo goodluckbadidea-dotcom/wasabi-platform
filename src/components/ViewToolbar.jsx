@@ -8,7 +8,8 @@ import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 // ── Shared Styles ──
 const TOOLBAR_HEIGHT = 34;
 
-const tb = {
+// Returned from function so theme switches pick up fresh C values.
+function getTb() { return {
   wrapper: {
     display: "flex",
     alignItems: "center",
@@ -105,7 +106,7 @@ const tb = {
     padding: "3px 10px",
     letterSpacing: "0.02em",
   },
-};
+}; }
 
 /**
  * Shared toolbar for all data views.
@@ -134,6 +135,7 @@ export default function ViewToolbar({
   trailing,
   children,
 }) {
+  const tb = getTb();
   const [searchFocused, setSearchFocused] = useState(false);
 
   return (
@@ -228,4 +230,4 @@ export default function ViewToolbar({
 }
 
 // Export shared styles for views that need to render custom toolbar buttons
-export { tb as toolbarStyles, TOOLBAR_HEIGHT };
+export { getTb as getToolbarStyles, TOOLBAR_HEIGHT };

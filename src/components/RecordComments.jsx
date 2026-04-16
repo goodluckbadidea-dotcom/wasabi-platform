@@ -34,6 +34,7 @@ export default function RecordComments({
   userName,
   userRole,
 }) {
+  const s = getS();
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newComment, setNewComment] = useState("");
@@ -165,7 +166,8 @@ export default function RecordComments({
   );
 }
 
-const s = {
+// Returned from function so theme switches pick up fresh C values.
+function getS() { return {
   notice: {
     fontSize: 10, fontFamily: FONT, color: C.darkMuted, opacity: 0.7,
     padding: "4px 0 8px", textAlign: "center",
@@ -220,4 +222,4 @@ const s = {
     cursor: "pointer", outline: "none", transition: "opacity 0.15s",
     flexShrink: 0,
   },
-};
+}; }

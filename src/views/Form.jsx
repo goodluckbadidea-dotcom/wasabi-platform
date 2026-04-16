@@ -6,7 +6,7 @@ import { C, FONT, RADIUS, getSolidPillColor } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { getFieldType, getFieldOptions, resolveField } from "./_viewHelpers.js";
 import { buildProp } from "../notion/properties.js";
-import { cellStyles } from "./_CellComponents.jsx";
+import { getCellStyles } from "./_CellComponents.jsx";
 import { getTableSchema, updateTableSchema } from "../lib/api.js";
 import SelectPicker from "../components/SelectPicker.jsx";
 import MultiSelectPicker from "../components/MultiSelectPicker.jsx";
@@ -22,6 +22,7 @@ const NON_FORM_TYPES = new Set([
 ]);
 
 export default function Form({ data = [], schema, config = {}, onCreate, pageConfig }) {
+  const cellStyles = getCellStyles();
   const [values, setValues] = useState({});
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);

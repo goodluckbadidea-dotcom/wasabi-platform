@@ -34,26 +34,27 @@ const PRIORITY_COLORS = {
 const PRIORITIES = ["High", "Medium", "Normal", "Low"];
 
 // ── Shared input styling ──
-const inputStyle = {
+// Returned from functions so theme switches pick up fresh C values.
+function getInputStyle() { return {
   width: "100%", boxSizing: "border-box",
   background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
   borderRadius: RADIUS.md, padding: "8px 12px",
   color: C.darkText, fontFamily: FONT, fontSize: 13,
   outline: "none", transition: "border-color 0.15s",
-};
+}; }
 
-const labelStyle = {
+function getLabelStyle() { return {
   fontSize: 10, fontWeight: 600, fontFamily: FONT,
   color: C.darkMuted, letterSpacing: "0.06em",
   textTransform: "uppercase", marginBottom: 6, display: "block",
-};
+}; }
 
 const fieldGroup = { marginBottom: 16 };
 
-const tabBarStyle = {
+function getTabBarStyle() { return {
   display: "flex", gap: 2, marginBottom: 16,
   background: C.darkSurf2, borderRadius: RADIUS.pill, padding: 2,
-};
+}; }
 const tabStyle = (active) => ({
   flex: 1, padding: "8px 0", border: "none",
   background: active ? C.dark : "transparent",
@@ -102,6 +103,9 @@ function toDateInput(isoStr) {
 // TaskEditor
 // ════════════════════════════════════════════
 function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction, onSnooze }) {
+  const inputStyle = getInputStyle();
+  const labelStyle = getLabelStyle();
+  const tabBarStyle = getTabBarStyle();
   const { user, pages, setActivePage, navigateToRecord, identity } = usePlatform();
   const { notifySaved, notifyDeleted } = useRecordDrawer();
   const isNotion = task.source && task.source.startsWith("notion:");
@@ -733,6 +737,8 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction, on
 // EventEditor
 // ════════════════════════════════════════════
 function EventEditor({ event, onSaved, onDeleted, onClose }) {
+  const inputStyle = getInputStyle();
+  const labelStyle = getLabelStyle();
   const { notifySaved, notifyDeleted } = useRecordDrawer();
   const [summary, setSummary] = useState(event.summary || "");
   const [startDT, setStartDT] = useState(toLocalInput(event.start?.dateTime || event.start?.date));
@@ -945,6 +951,8 @@ function EventEditor({ event, onSaved, onDeleted, onClose }) {
 // WorkspaceSettingsEditor
 // ════════════════════════════════════════════
 function WorkspaceSettingsEditor({ workspace, onClose }) {
+  const inputStyle = getInputStyle();
+  const labelStyle = getLabelStyle();
   const { pages, updatePageConfig } = usePlatform();
 
   // Find the pageConfig for this workspace

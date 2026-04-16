@@ -14,6 +14,7 @@ import { useViewport } from "../context/ViewportContext.jsx";
 import { focusRing } from "../design/interactions.js";
 
 export default function TopHeader() {
+  const dropdownItemStyle = getDropdownItemStyle();
   const { themeName, toggleMode } = useTheme();
   const { overlayActive, toggleOverlay, selection } = useNeurons();
   const { saveStatus } = usePages();
@@ -371,7 +372,8 @@ export default function TopHeader() {
   );
 }
 
-const dropdownItemStyle = {
+// Returned from function so theme switches pick up fresh C values.
+function getDropdownItemStyle() { return {
   display: "block",
   width: "100%",
   padding: "8px 14px",
@@ -385,4 +387,4 @@ const dropdownItemStyle = {
   cursor: "pointer",
   transition: "background 0.1s",
   outline: "none",
-};
+}; }

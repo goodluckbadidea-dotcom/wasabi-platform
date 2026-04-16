@@ -5,7 +5,7 @@ import React, { useMemo } from "react";
 import { C, FONT, RADIUS, getStatusColor } from "../design/tokens.js";
 import { readField, getFieldType, getOptionNames, displayValue, resolveField } from "./_viewHelpers.js";
 import { formatDate, timeAgo } from "../utils/helpers.js";
-import { cellStyles } from "./_CellComponents.jsx";
+import { getCellStyles } from "./_CellComponents.jsx";
 
 /**
  * Group items by date bucket.
@@ -27,6 +27,7 @@ function dateBucket(dateStr) {
 }
 
 export default function ActivityFeed({ data = [], schema, config = {} }) {
+  const cellStyles = getCellStyles();
   const titleField = resolveField(schema, config.titleField, ["title"]);
   const showFields = config.showFields || [];
 

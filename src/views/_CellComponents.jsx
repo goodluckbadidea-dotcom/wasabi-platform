@@ -8,8 +8,9 @@ import { formatDate, truncate } from "../utils/helpers.js";
 import { getOptionNames } from "./_viewHelpers.js";
 
 // ─── Shared Styles ───
+// Returned from function so theme switches pick up fresh C values.
 
-export const cellStyles = {
+export function getCellStyles() { return {
   cellInput: {
     width: "100%",
     border: `1px solid ${C.accent}`,
@@ -77,12 +78,13 @@ export const cellStyles = {
     flexWrap: "wrap",
     gap: 4,
   },
-};
+}; }
 
 
 // ─── Cell Editor Component ───
 
 export function CellEditor({ value, type, options, onCommit, onCancel }) {
+  const cellStyles = getCellStyles();
   const inputRef = useRef(null);
   const [draft, setDraft] = useState(() => {
     if (type === "date" && value && typeof value === "object") return value.start || "";
@@ -222,6 +224,7 @@ export function CellDisplay({ value, type, fieldName, schema, onClick, linkInfo,
 }
 
 function CellDisplayInner({ value, type, fieldName, schema, onClick, colorMapping }) {
+  const cellStyles = getCellStyles();
   if (value === null || value === undefined || value === "") {
     return (
       <span

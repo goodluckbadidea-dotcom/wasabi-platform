@@ -61,15 +61,17 @@ export function useToast() {
 // ─── Toast Container (renders all active toasts) ───
 import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
 
-const TYPE_CONFIG = {
+// Returned from function so theme switches pick up fresh C values.
+function getTypeConfig() { return {
   success: { bg: "#1a2e1a", border: "#2A6B38", icon: "\u2713", color: C.success },
   error:   { bg: "#2e1a1a", border: C.error, icon: "\u2717", color: C.error },
   warning: { bg: "#2e261a", border: C.warning, icon: "\u26A0", color: C.warning },
   info:    { bg: "#1a1a2e", border: C.accent, icon: "\u2139", color: C.accent },
-};
+}; }
 
 function ToastContainer({ toasts, onDismiss }) {
   if (toasts.length === 0) return null;
+  const TYPE_CONFIG = getTypeConfig();
   return (
     <div style={{
       position: "fixed", bottom: 24, right: 24, zIndex: Z.toast,

@@ -16,6 +16,10 @@ const FOLDERS = [
 
 // ── Compose / Reply Modal ──
 function ComposeModal({ onClose, onSent, replyTo }) {
+  const labelStyle = getLabelStyle();
+  const fieldStyle = getFieldStyle();
+  const cancelBtnStyle = getCancelBtnStyle();
+  const sendBtnStyle = getSendBtnStyle();
   const [to, setTo] = useState(replyTo?.from || "");
   const [subject, setSubject] = useState(replyTo ? `Re: ${replyTo.subject?.replace(/^Re:\s*/i, "") || ""}` : "");
   const [body, setBody] = useState("");
@@ -473,18 +477,20 @@ export default function OutlookView() {
 }
 
 // ── Shared styles ──
-const labelStyle = {
+// Returned from functions so theme switches pick up fresh C values.
+function getLabelStyle() { return {
   fontSize: 10, fontWeight: 600, fontFamily: FONT,
   color: C.darkMuted, letterSpacing: "0.06em",
   textTransform: "uppercase", marginBottom: 4, display: "block",
-};
-const fieldStyle = {
+}; }
+function getFieldStyle() { return {
   width: "100%", boxSizing: "border-box",
   background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
   borderRadius: RADIUS.md, padding: "8px 12px",
   color: C.darkText, fontFamily: FONT, fontSize: 13,
   outline: "none", transition: "border-color 0.15s",
-};
+}; }
+// iconBtnStyle has no C refs — safe as a const.
 const iconBtnStyle = {
   background: "none", border: "none", cursor: "pointer",
   padding: 8, display: "flex", outline: "none",
@@ -492,13 +498,13 @@ const iconBtnStyle = {
   alignItems: "center", justifyContent: "center",
   transition: "opacity 0.12s",
 };
-const cancelBtnStyle = {
+function getCancelBtnStyle() { return {
   background: "none", border: `1px solid ${C.darkBorder}`,
   color: C.darkMuted, padding: "7px 16px", borderRadius: RADIUS.md,
   cursor: "pointer", fontFamily: FONT, fontSize: 12, fontWeight: 500, outline: "none",
-};
-const sendBtnStyle = {
+}; }
+function getSendBtnStyle() { return {
   background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
   border: "none", color: "#fff", padding: "7px 20px",
   borderRadius: RADIUS.pill, fontFamily: FONT, fontSize: 12, fontWeight: 600, outline: "none",
-};
+}; }

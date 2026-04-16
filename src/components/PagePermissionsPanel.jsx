@@ -9,14 +9,16 @@ import { getPagePermissions, setPagePermission, removePagePermission } from "../
 import { listUserDirectory } from "../lib/api.js";
 
 const PERM_ORDER = ["owner", "editor", "viewer", "none"];
-const PERM_COLORS = {
+// Returned from function so theme switches pick up fresh C values.
+function getPermColors() { return {
   owner: "#FF9800",
   editor: C.accent,
   viewer: "#8BC34A",
   none: C.darkMuted,
-};
+}; }
 
 export default function PagePermissionsPanel({ pageId }) {
+  const PERM_COLORS = getPermColors();
   const [permissions, setPermissions] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);

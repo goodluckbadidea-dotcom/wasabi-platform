@@ -50,7 +50,8 @@ const EDITABLE_TYPES = new Set([
 ]);
 
 // ── Styles ──
-const ds = {
+// Returned from function so theme switches pick up fresh C values.
+function getDs() { return {
   overlay: {
     position: "fixed",
     inset: 0,
@@ -319,7 +320,7 @@ const ds = {
     background: primary ? C.accent : C.darkSurf2,
     color: primary ? "#fff" : C.darkText,
   }),
-};
+}; }
 
 // Inject slide-in animation
 if (typeof document !== "undefined") {
@@ -418,6 +419,7 @@ const OwnerPickerDropdown = React.forwardRef(function OwnerPickerDropdown({ owne
 
 // ── Main Component ──
 export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete, pageConfigId, resolvedLinks, onLinkField, onUnlinkField, onRefresh, onCreateOption, parentTitle }) {
+  const ds = getDs();
   const { isTablet } = useViewport();
   const { identity } = usePlatform();
   const [editingField, setEditingField] = useState(null);
@@ -1186,6 +1188,7 @@ function RollupSummary({ rollup }) {
 
 // ── Display a property value (read mode) ──
 function DisplayValue({ prop, fieldName, schema, pendingValue, linkedValue }) {
+  const ds = getDs();
   const value = linkedValue !== undefined ? linkedValue : (pendingValue !== undefined ? pendingValue : readProp(prop));
 
   if (value === null || value === undefined || value === "") {
@@ -1357,6 +1360,7 @@ function AutoResizeTextarea({ inputRef, defaultValue, style, onKeyDown, onBlur, 
 
 // ── Edit Field (inline editor) ──
 function EditField({ fieldName, type, value, schemaField, onCommit, onCancel, onCreateOption }) {
+  const ds = getDs();
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -1464,6 +1468,7 @@ function EditField({ fieldName, type, value, schemaField, onCommit, onCancel, on
 
 // ── Date Editor ──
 function DateEditor({ value, onCommit, onCancel }) {
+  const ds = getDs();
   const startVal = typeof value === "object" ? value?.start : value || "";
   const endVal = typeof value === "object" ? value?.end : "";
   const [start, setStart] = useState(startVal?.slice(0, 10) || "");
@@ -1541,6 +1546,7 @@ function CheckboxEditor({ value, onCommit }) {
 
 // ── Select / Multi-Select Editor ──
 function SelectEditor({ value, options, onCommit, onCancel, multi, onCreateOption }) {
+  const ds = getDs();
   const [selected, setSelected] = useState(
     multi ? (Array.isArray(value) ? value : []) : value
   );

@@ -8,13 +8,14 @@ import { C, FONT, RADIUS, SHADOW, VIEW_PALETTE, Z } from "../../design/tokens.js
 import { assignOptionColor, STATUS_CATEGORIES } from "../../lib/dataSource.js";
 
 // ─── Status category definitions ───
-const CATEGORY_META = {
+// Returned from function so theme switches pick up fresh C.darkMuted.
+function getCategoryMeta() { return {
   not_started: { label: "Not Started", icon: "○", color: C.darkMuted },
   in_progress: { label: "In Progress", icon: "◐", color: "#3b82f6" },
   complete:    { label: "Complete",     icon: "✓", color: "#22c55e" },
   on_hold:     { label: "On Hold",      icon: "❚❚", color: "#eab308" },
   cancelled:   { label: "Cancelled",    icon: "✕", color: "#ef4444" },
-};
+}; }
 
 const PALETTE_KEYS = ["default", "gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red", "orchid"];
 const PALETTE_LABELS = ["Default", "Gray", "Brown", "Orange", "Yellow", "Green", "Blue", "Purple", "Pink", "Red", "Orchid"];
@@ -28,6 +29,7 @@ function normalizeOption(opt) {
 }
 
 export default function OptionsManagerModal({ column, onSave, onClose }) {
+  const CATEGORY_META = getCategoryMeta();
   const [options, setOptions] = useState(() =>
     (column.options || []).map(normalizeOption)
   );

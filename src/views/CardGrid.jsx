@@ -4,7 +4,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { C, FONT, RADIUS, getStatusColor } from "../design/tokens.js";
 import { readField, getFieldType, getFieldOptions, getOptionNames, displayValue, searchableText, resolveField } from "./_viewHelpers.js";
-import { cellStyles, CellDisplay } from "./_CellComponents.jsx";
+import { getCellStyles, CellDisplay } from "./_CellComponents.jsx";
 import { buildProp } from "../notion/properties.js";
 import { useRecordDetail } from "../hooks/useRecordDetail.js";
 import RecordDetailPortals from "../components/RecordDetailPortals.jsx";
@@ -14,6 +14,7 @@ import OwnerAvatars from "../components/OwnerAvatars.jsx";
 import { listUserDirectory } from "../lib/api.js";
 
 export default function CardGrid({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, onViewConfigChange, pageConfig }) {
+  const cellStyles = getCellStyles();
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState(config.activeFilters || {});
   const record = useRecordDetail();

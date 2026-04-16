@@ -57,7 +57,8 @@ const ICON_MAP = {
 const ICONS = Object.keys(ICON_MAP);
 
 // ── Styles ──
-const vs = {
+// Returned from function so theme switches pick up fresh C values.
+function getVs() { return {
   container: {
     display: "flex",
     flexDirection: "column",
@@ -211,10 +212,11 @@ const vs = {
     cursor: "pointer",
     transition: "background 0.15s",
   },
-};
+}; }
 
 // ── Main Component ──
 export default function VisualPageBuilder({ onCancel, parentFolderId, parentPageId }) {
+  const vs = getVs();
   const { user, platformIds, addPage, activeFolder } = usePlatform();
 
   // Resolve effective parent IDs (props override context)

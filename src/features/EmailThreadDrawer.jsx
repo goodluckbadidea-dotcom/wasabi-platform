@@ -25,27 +25,28 @@ function extractEmail(fromStr) {
 }
 
 // ── Shared Styles ──
+// Returned from functions so theme switches pick up fresh C values.
 
-const labelStyle = {
+function getLabelStyle() { return {
   fontSize: 10, fontWeight: 600, fontFamily: FONT,
   color: C.darkMuted, letterSpacing: "0.06em",
   textTransform: "uppercase", marginBottom: 4, display: "block",
-};
+}; }
 
-const fieldStyle = {
+function getFieldStyle() { return {
   width: "100%", boxSizing: "border-box",
   background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
   borderRadius: RADIUS.md, padding: "8px 12px",
   color: C.darkText, fontFamily: FONT, fontSize: 13,
   outline: "none", transition: "border-color 0.15s",
-};
+}; }
 
-const actionBtnStyle = {
+function getActionBtnStyle() { return {
   background: "none", border: `1px solid ${C.darkBorder}`,
   color: C.darkText, padding: "6px 14px", borderRadius: RADIUS.md,
   cursor: "pointer", fontFamily: FONT, fontSize: 11, fontWeight: 500,
   outline: "none", transition: "all 0.12s",
-};
+}; }
 
 // ── Message Card ──
 
@@ -142,6 +143,9 @@ function MessageCard({ msg, isExpanded, onToggle, isHighlighted, innerRef }) {
 // ── Composer ──
 
 function Composer({ mode, replyMsg, threadId, onSent, onDiscard, onDraftStatusChange }) {
+  const labelStyle = getLabelStyle();
+  const fieldStyle = getFieldStyle();
+  const actionBtnStyle = getActionBtnStyle();
   const isForward = mode === "forward";
   const isReplyAll = mode === "reply-all";
 
@@ -374,6 +378,9 @@ function Composer({ mode, replyMsg, threadId, onSent, onDiscard, onDraftStatusCh
 // ── Main Export ──
 
 export default function EmailThreadDrawer({ email, onClose }) {
+  const labelStyle = getLabelStyle();
+  const fieldStyle = getFieldStyle();
+  const actionBtnStyle = getActionBtnStyle();
   const isCompose = !!email?.compose;
 
   // Thread state

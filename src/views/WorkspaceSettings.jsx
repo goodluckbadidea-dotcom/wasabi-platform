@@ -9,7 +9,8 @@ import { IconGear } from "../design/icons.jsx";
 import WasabiOrb from "../core/WasabiOrb.jsx";
 
 // ── Styles ──
-const ws = {
+// Returned from function so theme switches pick up fresh C values.
+function getWs() { return {
   container: {
     flex: 1,
     display: "flex",
@@ -168,10 +169,11 @@ const ws = {
     padding: "2px 6px",
     borderRadius: 999,
   },
-};
+}; }
 
 // ── Toggle Switch ──
 function Toggle({ value, onChange, label, description }) {
+  const ws = getWs();
   return (
     <div style={ws.toggle}>
       <div>
@@ -189,6 +191,7 @@ function Toggle({ value, onChange, label, description }) {
 }
 
 export default function WorkspaceSettings({ pageConfig, onUpdate }) {
+  const ws = getWs();
   const { pages } = usePlatform();
 
   // Get current settings (from pageConfig or config sub-object)
