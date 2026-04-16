@@ -10,6 +10,8 @@ import RecordDetail from "./RecordDetail.jsx";
 import { DAY_NAMES, MONTH_NAMES } from "../utils/helpers.js";
 import NewRecordModal from "./NewRecordModal.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
+import OwnerAvatars from "../components/OwnerAvatars.jsx";
+import { listUserDirectory } from "../lib/api.js";
 
 // ─── Constants ───
 
@@ -147,6 +149,12 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
   const lastRowClickRef = useRef({ id: null, time: 0 });
   const [isZooming, setIsZooming] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const showOwner = !!config.showOwner;
+  const [teamUsers, setTeamUsers] = useState([]);
+  useEffect(() => {
+    if (!showOwner) return;
+    listUserDirectory().then((res) => setTeamUsers(res.users || [])).catch(() => {});
+  }, [showOwner]);
   const [addTitle, setAddTitle] = useState("");
   const [addSaving, setAddSaving] = useState(false);
   const [showNewModal, setShowNewModal] = useState(false);
@@ -921,6 +929,9 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
                     {row.rollup.progress.complete}/{row.rollup.progress.total}
                   </span>
                 )}
+
+                {/* Owner avatars */}
+                {showOwner && <OwnerAvatars ownerIds={row.page?._ownerUserIds} users={teamUsers} size={16} />}
 
                 {/* Sidebar badges from config.sidebarFields */}
                 {(config.sidebarFields || []).map((fieldName) => {

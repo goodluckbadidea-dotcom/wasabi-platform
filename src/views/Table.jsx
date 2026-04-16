@@ -354,7 +354,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
 
   // ── Data Pipeline Hook ──
   const { filterableFields, processedData, treeSortFn } = useTableData({
-    data, schema, columns, chipFilters, filters, search, sortField, sortDir,
+    data, schema, columns, chipFilters, filters, search, sortField, sortDir, teamUsers,
   });
 
   // Chip filter change handler (persists via onViewConfigChange)
@@ -364,6 +364,20 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     if (onSaveFilters) onSaveFilters(newFilters);
     if (onViewConfigChange) onViewConfigChange({ activeFilters: newFilters, activeSavedViewId: null });
   }, [onSaveFilters, onViewConfigChange]);
+
+  // Build synthetic owner filter field when owner column is enabled
+  const ownerExtraFields = useMemo(() => {
+    if (!showOwnerColumn || teamUsers.length === 0) return undefined;
+    const names = new Set();
+    for (const page of data) {
+      for (const uid of (page._ownerUserIds || [])) {
+        const u = teamUsers.find((tu) => tu.id === uid);
+        if (u) names.add(u.display_name);
+      }
+    }
+    if (names.size === 0) return undefined;
+    return [{ name: "__owner__", label: "Owner", type: "people", options: [...names].map((n) => ({ name: n, color: "blue" })) }];
+  }, [showOwnerColumn, teamUsers, data]);
 
   // ── Sub-Items Tree ──
   const subItemsEnabled = isD1Table;
@@ -880,6 +894,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
         data={data}
         activeFilters={chipFilters}
         onFilterChange={handleChipFilterChange}
+        extraFields={ownerExtraFields}
       />
 
       {/* Bulk actions bar */}

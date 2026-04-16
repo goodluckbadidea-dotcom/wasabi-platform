@@ -1,7 +1,7 @@
 // ─── Card Grid View ───
 // Schema-agnostic card layout with search, filtering, and badge pills.
 
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { C, FONT, RADIUS, getStatusColor } from "../design/tokens.js";
 import { readField, getFieldType, getFieldOptions, getOptionNames, displayValue, searchableText, resolveField } from "./_viewHelpers.js";
 import { cellStyles, CellDisplay } from "./_CellComponents.jsx";
@@ -10,11 +10,19 @@ import { useRecordDetail } from "../hooks/useRecordDetail.js";
 import RecordDetailPortals from "../components/RecordDetailPortals.jsx";
 import ViewToolbar from "../components/ViewToolbar.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
+import OwnerAvatars from "../components/OwnerAvatars.jsx";
+import { listUserDirectory } from "../lib/api.js";
 
 export default function CardGrid({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, onViewConfigChange, pageConfig }) {
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState(config.activeFilters || {});
   const record = useRecordDetail();
+  const showOwner = !!config.showOwner;
+  const [teamUsers, setTeamUsers] = useState([]);
+  useEffect(() => {
+    if (!showOwner) return;
+    listUserDirectory().then((res) => setTeamUsers(res.users || [])).catch(() => {});
+  }, [showOwner]);
   const [addOpen, setAddOpen] = useState(false);
   const [addTitle, setAddTitle] = useState("");
   const [addSaving, setAddSaving] = useState(false);
@@ -195,6 +203,13 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
                     }}>
                       {title || "Untitled"}
                     </div>
+
+                    {/* Owner avatars */}
+                    {showOwner && page._ownerUserIds?.length > 0 && (
+                      <div style={{ marginBottom: 8 }}>
+                        <OwnerAvatars ownerIds={page._ownerUserIds} users={teamUsers} size={18} />
+                      </div>
+                    )}
 
                     {/* Body fields */}
                     {bodyFields.map((fieldName) => {

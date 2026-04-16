@@ -7,7 +7,7 @@ import { applyChipFilters } from "../../FilterChips.jsx";
 import { getFieldType, readField, searchableText } from "../../_viewHelpers.js";
 
 export default function useTableData({
-  data, schema, columns, chipFilters, filters, search, sortField, sortDir,
+  data, schema, columns, chipFilters, filters, search, sortField, sortDir, teamUsers,
 }) {
   // Identify filterable fields (select / status)
   const filterableFields = useMemo(() => {
@@ -35,7 +35,7 @@ export default function useTableData({
     let rows = data.filter(r => !r._parentRowId);
 
     // Apply chip filters (multi-select OR within field, AND across fields)
-    rows = applyChipFilters(rows, chipFilters, schema);
+    rows = applyChipFilters(rows, chipFilters, schema, { teamUsers });
 
     // Apply dropdown filters (legacy, still used for column-header selects)
     for (const [field, filterVal] of Object.entries(filters)) {
@@ -97,7 +97,7 @@ export default function useTableData({
     const keptSubs = subItems.filter(r => survivingIds.has(r._parentRowId));
 
     return [...rows, ...keptSubs];
-  }, [data, filters, chipFilters, debouncedSearch, sortField, sortDir, columns, schema]);
+  }, [data, filters, chipFilters, debouncedSearch, sortField, sortDir, columns, schema, teamUsers]);
 
   // Tree sort function (used by useTreeData)
   const treeSortFn = useMemo(() => {

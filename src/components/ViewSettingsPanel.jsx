@@ -321,6 +321,7 @@ export default function ViewSettingsPanel({
   const isCardGrid = viewType === "cardGrid";
   const isKanban = viewType === "kanban";
   const isTable = viewType === "table";
+  const isCalendar = viewType === "calendar";
   const showVisibleProps = (isCardGrid || isKanban || isTable) && !isUnifiedMode;
   const showViewSettings = !isUnifiedMode;
 
@@ -838,6 +839,21 @@ export default function ViewSettingsPanel({
                 </>
               )}
 
+              {/* Show Owner toggle (non-table views) */}
+              {(isKanban || isGantt || isCardGrid || isCalendar) && (
+                <>
+                  <SectionLabel>Owner</SectionLabel>
+                  <FieldToggle
+                    label="Show Owner"
+                    checked={!!config.showOwner}
+                    onChange={(checked) => onConfigChange?.({ showOwner: checked })}
+                  />
+                  <p style={{ fontSize: 10, color: C.darkMuted, margin: "2px 0 0" }}>
+                    Show owner avatars on items.
+                  </p>
+                </>
+              )}
+
               {/* Visible Properties */}
               {showVisibleProps && allFields.length > 0 && (
                 <>
@@ -931,6 +947,7 @@ export default function ViewSettingsPanel({
                     {colorableFields.map((f) => (
                       <option key={f.name} value={f.name}>{f.name}</option>
                     ))}
+                    {config.showOwner && <option value="__owner__">Owner</option>}
                   </StyledSelect>
                 </>
               )}

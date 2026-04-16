@@ -76,8 +76,8 @@ function buildFilterStyles() { return {
 }; }
 
 // ── Extract chip-eligible fields from schema ──
-function getChipFields(schema, data) {
-  if (!schema) return [];
+function getChipFields(schema, data, extraFields) {
+  if (!schema) return extraFields || [];
   const fields = [];
 
   // Statuses
@@ -134,6 +134,13 @@ function getChipFields(schema, data) {
     }
   }
 
+  // Append any extra synthetic fields (e.g. Owner)
+  if (extraFields) {
+    for (const ef of extraFields) {
+      if (ef.options?.length > 0) fields.push(ef);
+    }
+  }
+
   return fields;
 }
 
@@ -143,9 +150,10 @@ export default function FilterChips({
   data = [],
   activeFilters = {},     // { fieldName: ["value1", "value2"] }
   onFilterChange,         // (newFilters) => void
+  extraFields,            // optional synthetic fields (e.g. owner)
 }) {
   const cs = buildFilterStyles();
-  const chipFields = useMemo(() => getChipFields(schema, data), [schema, data]);
+  const chipFields = useMemo(() => getChipFields(schema, data, extraFields), [schema, data, extraFields]);
 
   const hasActiveFilters = useMemo(
     () => Object.values(activeFilters).some((arr) => arr && arr.length > 0),
@@ -189,7 +197,7 @@ export default function FilterChips({
 
         return (
           <div key={field.name} style={cs.row}>
-            <span style={cs.fieldLabel}>{field.name}</span>
+            <span style={cs.fieldLabel}>{field.label || field.name}</span>
             {field.options.map((opt) => {
               const isActive = activeValues.includes(opt.name);
               const { fill, text } = getSolidPillColor(
@@ -244,13 +252,28 @@ export default function FilterChips({
 /**
  * Apply chip filters to a data array.
  * OR within a field, AND across fields.
+ * opts.teamUsers — user array for resolving __owner__ filter
  */
-export function applyChipFilters(data, activeFilters, schema) {
+export function applyChipFilters(data, activeFilters, schema, opts) {
   if (!activeFilters || Object.keys(activeFilters).length === 0) return data;
+
+  const teamUsers = opts?.teamUsers;
 
   return data.filter((page) => {
     for (const [fieldName, values] of Object.entries(activeFilters)) {
       if (!values || values.length === 0) continue;
+
+      // Synthetic owner filter
+      if (fieldName === "__owner__") {
+        const ownerIds = page._ownerUserIds || [];
+        if (ownerIds.length === 0) return false;
+        const ownerNames = ownerIds.map((uid) => {
+          const u = (teamUsers || []).find((tu) => tu.id === uid);
+          return u?.display_name || uid.slice(0, 8);
+        });
+        if (!values.some((v) => ownerNames.includes(v))) return false;
+        continue;
+      }
 
       const prop = page.properties?.[fieldName];
       if (!prop) return false;

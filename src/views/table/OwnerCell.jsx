@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../../design/tokens.js";
+import OwnerAvatars from "../../components/OwnerAvatars.jsx";
 
 /** Display owner user pills for a row */
 export function OwnerCellDisplay({ ownerIds, users, onClick }) {
@@ -17,47 +18,7 @@ export function OwnerCellDisplay({ ownerIds, users, onClick }) {
     );
   }
 
-  const userMap = {};
-  (users || []).forEach((u) => { userMap[u.id] = u; });
-
-  return (
-    <div onClick={onClick} style={{ display: "flex", gap: 4, flexWrap: "wrap", cursor: onClick ? "pointer" : "default", alignItems: "center" }}>
-      {ownerIds.map((uid) => {
-        const u = userMap[uid];
-        const name = u?.display_name || uid.slice(0, 8);
-        const initial = name.charAt(0).toUpperCase();
-        return (
-          <span
-            key={uid}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              background: C.accent + "18",
-              border: `1px solid ${C.accent}33`,
-              borderRadius: RADIUS.pill,
-              padding: "1px 8px 1px 3px",
-              fontSize: 11,
-              fontWeight: 500,
-              color: C.darkText,
-              lineHeight: "20px",
-              whiteSpace: "nowrap",
-            }}
-          >
-            <span style={{
-              width: 16, height: 16, borderRadius: "50%",
-              background: `linear-gradient(135deg, ${C.accent}, ${C.accent}88)`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 9, fontWeight: 700, color: "#fff", flexShrink: 0,
-            }}>
-              {initial}
-            </span>
-            {name}
-          </span>
-        );
-      })}
-    </div>
-  );
+  return <OwnerAvatars ownerIds={ownerIds} users={users} size={20} onClick={onClick} />;
 }
 
 /** Multi-select dropdown to pick owners */

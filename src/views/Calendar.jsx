@@ -2,7 +2,7 @@
 // Month grid calendar view. Events placed on date cells as colored pills.
 // Click a day for a popover list. Navigation: prev/next month, today.
 
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { C, FONT, RADIUS, SHADOW, getSolidPillColor } from "../design/tokens.js";
 import { readProp } from "../notion/properties.js";
 import { IconChevronLeft, IconChevronRight } from "../design/icons.jsx";
@@ -10,6 +10,8 @@ import { useRecordDetail } from "../hooks/useRecordDetail.js";
 import RecordDetailPortals from "../components/RecordDetailPortals.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 import { DAY_NAMES, MONTH_NAMES_FULL } from "../utils/helpers.js";
+import OwnerAvatars from "../components/OwnerAvatars.jsx";
+import { listUserDirectory } from "../lib/api.js";
 
 // ── Helpers ──
 
@@ -238,6 +240,12 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
   const [month, setMonth] = useState(today.getMonth());
   const [popover, setPopover] = useState(null); // { x, y, date, events }
   const record = useRecordDetail();
+  const showOwner = !!config.showOwner;
+  const [teamUsers, setTeamUsers] = useState([]);
+  useEffect(() => {
+    if (!showOwner) return;
+    listUserDirectory().then((res) => setTeamUsers(res.users || [])).catch(() => {});
+  }, [showOwner]);
 
   const dateField = resolveDateField(schema, config);
   const titleField = resolveTitleField(schema);
@@ -569,6 +577,7 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
                     <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {ev.title}
                     </span>
+                    {showOwner && <OwnerAvatars ownerIds={ev.page?._ownerUserIds} users={teamUsers} size={16} />}
                     {childEvents.length > 0 && (
                       <span style={{ fontSize: 9, color: C.darkMuted, flexShrink: 0 }}>
                         {childEvents.length}

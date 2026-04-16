@@ -15,6 +15,8 @@ import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.j
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
 import { useCollaboration } from "../context/CollaborationContext.jsx";
 import PresenceAvatars from "../components/PresenceAvatars.jsx";
+import OwnerAvatars from "../components/OwnerAvatars.jsx";
+import { listUserDirectory } from "../lib/api.js";
 
 export default function Kanban({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, onViewConfigChange, pageConfig, initialDetailRecordId, onInitialDetailConsumed }) {
   const collab = useCollaboration();
@@ -23,6 +25,12 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
   const [colDrag, setColDrag] = useState(null); // { colName, startX } — column reorder drag
   const [colDropTarget, setColDropTarget] = useState(null); // target column name for reorder
   const record = useRecordDetail();
+  const showOwner = !!config.showOwner;
+  const [teamUsers, setTeamUsers] = useState([]);
+  useEffect(() => {
+    if (!showOwner) return;
+    listUserDirectory().then((res) => setTeamUsers(res.users || [])).catch(() => {});
+  }, [showOwner]);
 
   // Open record from notification click-through
   useEffect(() => {
@@ -98,14 +106,29 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
   // Filter out sub-items — they are only accessible via parent record detail
   const parentData = useMemo(() => data.filter((p) => !p._parentRowId), [data]);
 
+  // Build synthetic owner filter field
+  const ownerExtraFields = useMemo(() => {
+    if (!showOwner || teamUsers.length === 0) return undefined;
+    const names = new Set();
+    for (const page of data) {
+      for (const uid of (page._ownerUserIds || [])) {
+        const u = teamUsers.find((tu) => tu.id === uid);
+        if (u) names.add(u.display_name);
+      }
+    }
+    if (names.size === 0) return undefined;
+    return [{ name: "__owner__", label: "Owner", type: "people", options: [...names].map((n) => ({ name: n, color: "blue" })) }];
+  }, [showOwner, teamUsers, data]);
+
   // Apply chip filters before grouping
   const filteredData = useMemo(
-    () => applyChipFilters(parentData, chipFilters, schema),
-    [parentData, chipFilters, schema]
+    () => applyChipFilters(parentData, chipFilters, schema, { teamUsers }),
+    [parentData, chipFilters, schema, teamUsers]
   );
 
   // Resolve fields
-  const columnField = resolveField(schema, config.columnField, ["statuses", "selects"]);
+  const isOwnerGroupBy = config.columnField === "__owner__";
+  const columnField = isOwnerGroupBy ? null : resolveField(schema, config.columnField, ["statuses", "selects"]);
   const titleField = resolveField(schema, config.titleField, ["title"]);
   const previewFields = (config.visibleFields && config.visibleFields.length > 0)
     ? config.visibleFields
@@ -119,15 +142,59 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
 
   // Get column options
   const columnOptions = useMemo(() => {
+    if (isOwnerGroupBy) return [];
     if (!columnField || !schema) return [];
     return getFieldOptions(schema, columnField);
-  }, [columnField, schema]);
+  }, [columnField, schema, isOwnerGroupBy]);
 
   const columnType = columnField ? getFieldType(schema, columnField) : null;
   const optionNames = columnOptions.map((o) => o.name);
 
+  // Build user map for owner group-by
+  const userMap = useMemo(() => {
+    const m = {};
+    (teamUsers || []).forEach((u) => { m[u.id] = u.display_name; });
+    return m;
+  }, [teamUsers]);
+
   // Group data into columns
   const columns = useMemo(() => {
+    // ── Owner group-by mode ──
+    if (isOwnerGroupBy) {
+      const grouped = {};
+      grouped["Unassigned"] = [];
+
+      for (const page of filteredData) {
+        const ownerIds = page._ownerUserIds || [];
+        if (ownerIds.length === 0) {
+          grouped["Unassigned"].push(page);
+        } else {
+          // Place in first owner's column
+          const firstName = userMap[ownerIds[0]] || ownerIds[0].slice(0, 8);
+          if (!grouped[firstName]) grouped[firstName] = [];
+          grouped[firstName].push(page);
+        }
+      }
+
+      const cols = Object.entries(grouped)
+        .filter(([, pages]) => pages.length > 0)
+        .map(([name, pages]) => ({
+          name,
+          color: name === "Unassigned" ? C.darkMuted : C.accent,
+          pages,
+        }));
+
+      // Move Unassigned to end
+      cols.sort((a, b) => {
+        if (a.name === "Unassigned") return 1;
+        if (b.name === "Unassigned") return -1;
+        return a.name.localeCompare(b.name);
+      });
+
+      return cols;
+    }
+
+    // ── Standard field group-by ──
     const grouped = {};
     // Initialize all option columns
     for (const opt of columnOptions) {
@@ -377,6 +444,7 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
         data={data}
         activeFilters={chipFilters}
         onFilterChange={handleChipFilterChange}
+        extraFields={ownerExtraFields}
       />
 
       <ViewToolbar
@@ -574,6 +642,7 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
                           </span>
                         )}
                         <NeuronBadge nodeId={page.id} />
+                        {showOwner && <OwnerAvatars ownerIds={page._ownerUserIds} users={teamUsers} size={18} />}
                       </div>
 
                       {/* Preview fields with separator + inset zone */}
