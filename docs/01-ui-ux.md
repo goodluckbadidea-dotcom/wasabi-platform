@@ -32,6 +32,26 @@ Each theme is locked to its designed mode (dark or light). Users select a differ
 | **Kori** | light | `#2C72CC` | Glacier ice cool light |
 | **Sumi** | dark | `#C86040` | Ink wash neutral dark |
 
+### Background Gradient (2026-04-16)
+
+Each theme defines a `bgGradient` — a radial gradient applied to the app root container (`App.jsx`). All views are transparent, so the gradient shows through everywhere.
+
+All 5 themes use a standardized position and spread:
+- **Position:** `ellipse at 50% -10%` (top center)
+- **Spread:** `60%`
+
+Burst colors are theme-specific:
+
+| Theme | Burst Color | Effect |
+|-------|-------------|--------|
+| **Shoji** | `#EDD8D0` | Warm peach-orange glow |
+| **Obsidian** | `#22223A` | Cool purple-black glow |
+| **Hinoki** | `#281E0A` | Warm brown glow |
+| **Kori** | `#D4E4F6` | Cool ice-blue glow |
+| **Sumi** | `#2A2E3C` | Neutral blue-grey glow |
+
+The sidebar (`Navigation.jsx`) has a separate vertical linear gradient (accent stripe) independent of the app gradient.
+
 ### Theme Data Structure
 
 Each entry in the `THEMES` object contains:
@@ -58,6 +78,8 @@ All 5 themes were tuned so that `textMuted` achieves 4.5:1+ contrast against bot
 6. Updates CSS custom properties for scrollbar theming
 7. Persists to `localStorage: wasabi-theme-name`
 8. Components render with new values instantly (no re-import needed)
+
+**Caveat:** Module-level style objects that capture `C.*` values in template literals at import time will hold stale strings after a theme switch. Style objects must be returned from **functions** called at render time, not defined as module-level constants. `tableStyles.js` was converted from `export const styles = {...}` to `export function getStyles() { return {...} }` in 2026-04-16 to fix this. Any new style files must follow the same pattern.
 
 ---
 

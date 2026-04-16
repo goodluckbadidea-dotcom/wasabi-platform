@@ -125,18 +125,18 @@ Database view components. Lazy-loaded by PageShell.
 | File | Purpose |
 |------|---------|
 | `ActivityFeed.jsx` | Activity/changelog feed view |
-| `Calendar.jsx` | Calendar view of date-based records. Sub-items excluded from main grid; shown in day popover on parent expand (2026-04-15). |
-| `CardGrid.jsx` | Card grid gallery view |
+| `Calendar.jsx` | Calendar view of date-based records. Sub-items excluded from main grid; shown in day popover on parent expand (2026-04-15). Owner display in popover via `showOwner` config (2026-04-16). |
+| `CardGrid.jsx` | Card grid gallery view. Owner display via `showOwner` config (2026-04-16). |
 | `Charts.jsx` | Chart visualization view |
 | `ChatPanel.jsx` | Chat panel integrated with views |
 | `ConnectionRenderer.jsx` | Renders connection/relation visualizations |
 | `CustomView.jsx` | User-authored HTML/JS custom views |
 | `Document.jsx` | Document page component |
 | `DocumentEditor.jsx` | Rich text document editor with blocks |
-| `FilterChips.jsx` | Filter chip bar for view filtering |
+| `FilterChips.jsx` | Filter chip bar for view filtering. Supports synthetic `extraFields` for non-schema fields like owner (2026-04-16). |
 | `Form.jsx` | Public/private form for data collection |
-| `Gantt.jsx` | Timeline bar chart for date-range records. Collapsible parent/child hierarchy, computed range bars, conflict indicators, sub-item drag-to-reschedule, progress badges (2026-04-15). |
-| `Kanban.jsx` | Card-based board grouped by status/select columns. Sub-items filtered out; parent cards show roll-up progress badge (2026-04-15). |
+| `Gantt.jsx` | Timeline bar chart for date-range records. Collapsible parent/child hierarchy, computed range bars, conflict indicators, sub-item drag-to-reschedule, progress badges (2026-04-15). Owner display in sidebar via `showOwner` config (2026-04-16). |
+| `Kanban.jsx` | Card-based board grouped by status/select columns. Sub-items filtered out; parent cards show roll-up progress badge (2026-04-15). Owner display, filtering, and group-by via `showOwner` config + `__owner__` synthetic field (2026-04-16). |
 | `LinkedSheet.jsx` | Linked Google Sheets viewer |
 | `NetworkGraph.jsx` | Visual graph of record relationships |
 | `NewRecordModal.jsx` | Modal for creating new records |
@@ -161,9 +161,9 @@ Extracted sub-modules for the Table view. Refactored from a 3,600-line monolith 
 | File | Purpose |
 |------|---------|
 | `index.js` | Barrel export — re-exports Table from `../Table.jsx` |
-| `tableStyles.js` | All table style objects (299 lines) |
+| `tableStyles.js` | Table style getter functions: `getStyles()`, `getCtxItem()`, `getInputFieldStyle()`, `getGhostInputStyle()`. Converted from module-level objects to functions (2026-04-16) so theme switches pick up fresh `C` values. Also exports standalone `pillStyle`, `toggleStyle`, `multiPillWrap` for CellDisplay's module-level renderers. |
 | `tableHelpers.js` | Constants (`ROW_HEIGHT`, `VIRT_BUFFER`, `COLUMN_TYPES`), `resolveColumns()`, type maps (133 lines) |
-| `OwnerCell.jsx` | `OwnerCellDisplay` + `OwnerPicker` for the owner column (192 lines) |
+| `OwnerCell.jsx` | `OwnerCellDisplay` (delegates to `OwnerAvatars` for icon-only rendering, 2026-04-16) + `OwnerPicker` for the owner column |
 | `GhostRow.jsx` | `GhostCell` component for new row creation ghost input (68 lines) |
 | `CellEditor.jsx` | Inline cell editor with type-specific inputs (text, number, date, select, multi-select, checkbox, URL, email, phone) (215 lines) |
 | `CellDisplay.jsx` | Cell renderer with `CELL_RENDERERS` registry for read-only display (~63 lines). Select/multi_select/status renderers read option color from `schemaOptions` via `getSolidPillColor(value, options, schemaOptions)` — 3-arg form, no `colorMapping` override (2026-04-15 unification). `_CellComponents.jsx` used by Kanban/CardGrid is unchanged and still takes `colorMapping`. |
@@ -236,7 +236,7 @@ Personal productivity surface. User-scoped data. Lazy-loaded.
 
 ---
 
-## src/components/ (24 files)
+## src/components/ (25 files)
 
 Shared UI components used across views.
 
@@ -249,6 +249,7 @@ Shared UI components used across views.
 | `InlineChart.jsx` | Inline sparkline/mini chart component |
 | `MentionInput.jsx` | @-mention input with user autocomplete (used in RecordComments and RecordNotes) |
 | `MultiSelectPicker.jsx` | Multi-select tag picker |
+| `OwnerAvatars.jsx` | Shared icon-only owner avatar circles (initial letter, gradient, tooltip). Used by Table, Kanban, Calendar, Gantt, CardGrid. |
 | `PagePermissionsPanel.jsx` | Page-level permission management |
 | `PinLockOverlay.jsx` | PIN lock overlay for secure pages |
 | `PresenceAvatars.jsx` | Active user avatar display (design tokens, title attributes for accessibility) |

@@ -262,6 +262,22 @@ Fixed by adding a D1 data-loading branch using `getTableSchema()` + `listRows()`
 
 The table toolbar showed two unlabeled buttons both labeled "All" with chevron icons for expanding/collapsing sub-items. They used `styles.refreshBtn` (fixed 34px square), which clipped the text. Replaced with a single auto-sizing pill button that toggles between "Expand Sub-Items" and "Collapse Sub-Items" based on `expandedRows.size > 0`. Uses inline pill style with `whiteSpace: nowrap`, horizontal padding, and hover state. Files: `src/views/table/TableToolbar.jsx`, `src/views/Table.jsx`.
 
+### Table View Theme Switching Stale Colors (Resolved 2026-04-16)
+
+`tableStyles.js` exported style objects at module level, capturing `C.*` token values as frozen strings in template literals at import time. When `applyTheme()` mutated `C`, these ~60 color references stayed stale — toolbar, grid headers, rows, cells, footer, and context menus all showed old theme colors until page refresh.
+
+Fixed by converting all 4 exports to getter functions (`getStyles()`, `getCtxItem()`, `getInputFieldStyle()`, `getGhostInputStyle()`) called inside component render. Added standalone `pillStyle`, `toggleStyle`, `multiPillWrap` exports for `CellDisplay.jsx`'s module-level `CELL_RENDERERS` (these were already safe — they're functions that evaluate `C` at call time). Updated 10 importer files.
+
+### Background Gradient Burst Inconsistency (Resolved 2026-04-16)
+
+Each theme's `bgGradient` used a different radial-gradient position (top center, left middle, top right, bottom center) and spread. Light themes (Shoji, Kori) had invisible bursts because the gradient start color was `#FFFFFF` — nearly identical to the background.
+
+Fixed by standardizing all 5 themes to `ellipse at 50% -10%` (top center) with `60%` spread. Shoji burst changed from `#FFFFFF` to `#EDD8D0` (warm orange). Kori burst changed from `#FFFFFF` to `#D4E4F6` (cool blue). Dark theme burst colors were already distinct and unchanged.
+
+### BuildPage Empty State Hardcoded Colors (Resolved 2026-04-16)
+
+`BuildPage.jsx` `EmptyState` component had `color: "#fff"` (hardcoded white) on the "Create your first view" button with `background: C.darkSurf`. On light themes, white text on a light surface was invisible. Fixed to use `background: "transparent"` with `color: C.accent`.
+
 ### Console and Error Hygiene
 
 All `console.log` debug statements have been removed from production code. Error handling uses the ToastContext system for user-visible errors and silent catch for non-critical failures (localStorage, optional features).

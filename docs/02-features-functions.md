@@ -199,6 +199,41 @@ Select, multi_select, and status column options in the Table view render as colo
 
 ---
 
+## Owner Display (2026-04-16)
+
+Owner is a system field (`table_rows.owner_user_id`, JSON array of user IDs) displayed across all database views. The display uses a shared `OwnerAvatars` component (`src/components/OwnerAvatars.jsx`) that renders icon-only circles (initial letter, gradient background, tooltip on hover).
+
+### Table View
+
+- **Display:** Icon-only avatar circles in the Owner column (previously showed pill + name text). Size 20px. Multiple owners rendered side by side.
+- **Toggle:** Existing `showOwnerColumn` config key in ViewSettingsPanel (unchanged).
+- **Picker:** `OwnerPicker` in `OwnerCell.jsx` — multi-select dropdown for assigning owners. Unchanged.
+- **Filtering:** Owner appears as a filter chip row ("OWNER") when the column is enabled. Uses synthetic `__owner__` field name in FilterChips. Resolves owner IDs to display names via `teamUsers`.
+
+### Kanban, Calendar, Gantt, CardGrid
+
+- **Toggle:** `showOwner` config key in ViewSettingsPanel (new, distinct from table's `showOwnerColumn`).
+- **User fetch:** Each view calls `listUserDirectory()` on mount when `showOwner` is enabled.
+- **Display locations:**
+  - **Kanban:** After NeuronBadge in card title row (size 18)
+  - **Calendar:** In day popover item, after event title (size 16)
+  - **Gantt:** In sidebar row, after progress badge, before sidebarFields (size 16)
+  - **CardGrid:** Below title in card body (size 18)
+- **Display-only:** Non-table views show owner but do not provide a picker for editing.
+
+### Owner Filtering
+
+Owner filtering uses a synthetic `__owner__` field injected into the FilterChips pipeline via the `extraFields` prop. This keeps owner (a system field) separate from schema-based `people` columns.
+
+- **FilterChips.jsx:** `getChipFields()` accepts optional `extraFields` array. `applyChipFilters()` accepts `opts.teamUsers` for resolving `__owner__` filter values. Component displays `field.label` (falling back to `field.name`).
+- **Callers:** Table (via `useTableData`) and Kanban build `ownerExtraFields` from unique owner names in the data.
+
+### Owner Group-By (Kanban)
+
+Kanban supports grouping by owner. When `config.columnField === "__owner__"`, columns are built from unique owner display names + "Unassigned". Multi-owner pages appear in the first owner's column. Drag-and-drop between owner columns is a no-op (no automatic owner reassignment). The "Owner" option appears in the ViewSettingsPanel Group By dropdown when `showOwner` is enabled.
+
+---
+
 ## Sub-Items (Table View)
 
 Sub-items are hierarchical child records within a D1 table. They share the same `table_rows` D1 table as parent records, distinguished by `parent_row_id`.
@@ -652,9 +687,10 @@ The sidebar notification badge updates instantly via WebSocket, not just polling
 
 ---
 
-## Shared Components (`src/components/` — 24 files)
+## Shared Components (`src/components/` — 25 files)
 
 Reusable UI components used across multiple views:
+- `OwnerAvatars.jsx` — Icon-only owner avatar circles (shared by Table, Kanban, Calendar, Gantt, CardGrid)
 - `StateIndicators.jsx` — SkeletonLoader, EmptyState, ErrorState
 - `ColumnBuilder.jsx` — Column type configuration
 - `MultiSelectPicker.jsx` — Multi-select dropdown
