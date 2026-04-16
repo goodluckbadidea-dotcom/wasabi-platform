@@ -268,6 +268,37 @@ The table toolbar showed two unlabeled buttons both labeled "All" with chevron i
 
 Fixed by converting all 4 exports to getter functions (`getStyles()`, `getCtxItem()`, `getInputFieldStyle()`, `getGhostInputStyle()`) called inside component render. Added standalone `pillStyle`, `toggleStyle`, `multiPillWrap` exports for `CellDisplay.jsx`'s module-level `CELL_RENDERERS` (these were already safe — they're functions that evaluate `C` at call time). Updated 10 importer files.
 
+### Theme Switching Stale Colors — Full Sweep (Resolved 2026-04-16)
+
+Same root cause as the `tableStyles.js` fix above, but discovered via user report of stuck dark header/footer bars in `VisualPageBuilder` after switching from a dark theme to Shoji. A full codebase audit found **19 additional files** with module-level style objects that froze `C.*` values in template literals at import time.
+
+All fixed via the same pattern: `export const x = { ...C... }` → `export function getX() { return { ...C... } }`, with each importer calling `getX()` inside render so tokens evaluate per-render.
+
+**CRITICAL files:**
+- `RecordDetail.jsx` — `ds` object, 20+ C refs, used in 5 components (RecordDetail, DisplayValue, EditField, DateEditor, SelectEditor)
+- `WorkspaceSettings.jsx` — `ws` object, 10+ refs, used in WorkspaceSettings + Toggle
+- `ViewToolbar.jsx` — `tb` object, 10+ refs; also renamed exported alias `toolbarStyles` → `getToolbarStyles`
+- `_CellComponents.jsx` — `cellStyles` object, 8+ refs; updated 4 external importers (ActivityFeed, Form, CardGrid, Kanban — Kanban's import was unused and removed)
+
+**HIGH files:**
+- `VisualPageBuilder.jsx` — `vs` object (was the originally reported symptom)
+- `BuildPage.jsx` — `fieldStyle` used in ViewBuilder + WidgetCard + PluginBuilder
+- `TopHeader.jsx` — `dropdownItemStyle` (user menu)
+- `RecordDrawer.jsx` — `inputStyle`, `labelStyle`, `tabBarStyle` used in TaskEditor + EventEditor + WorkspaceSettingsEditor
+- `GmailView.jsx` — `labelStyle`, `fieldStyle`, `cancelBtnStyle`, `sendBtnStyle` used in ComposeModal
+- `OutlookView.jsx` — same set as Gmail; `iconBtnStyle` kept as const (no C refs)
+- `EmailThreadDrawer.jsx` — `labelStyle`, `fieldStyle`, `actionBtnStyle` used in Composer + EmailThreadDrawer
+
+**MEDIUM files:**
+- `ToastContext.jsx` — `TYPE_CONFIG` used by ToastContainer
+- `OptionsManagerModal.jsx` — `CATEGORY_META` (status category dropdown)
+- `PagePermissionsPanel.jsx` — `PERM_COLORS`
+- `RecordComments.jsx` — `s` object
+
+**Exception:** `src/design/styles.js` exports the shared `S` object via `buildStyles()`, but `ThemeContext.applyTheme()` calls `rebuildStyles()` which mutates `S` in place using `delete`/`Object.assign`. This is a different (working) pattern and was not changed.
+
+**Guardrail for future work:** Any new file that imports `C` and defines `const styles = {...}` at module scope with template literal interpolation will reintroduce this bug. See `docs/01-ui-ux.md` Theme Change Flow for the required pattern.
+
 ### Background Gradient Burst Inconsistency (Resolved 2026-04-16)
 
 Each theme's `bgGradient` used a different radial-gradient position (top center, left middle, top right, bottom center) and spread. Light themes (Shoji, Kori) had invisible bursts because the gradient start color was `#FFFFFF` — nearly identical to the background.

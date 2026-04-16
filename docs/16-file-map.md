@@ -1,8 +1,26 @@
 # File Map
 
-**Last Updated:** 2026-04-07
+**Last Updated:** 2026-04-16
 
 Complete source file listing for the Wasabi platform. Excludes `node_modules/`, `dist/`, and `.git/`.
+
+**Theme-safe style files (2026-04-16):** The following files had module-level style objects converted to getter functions so theme switches pick up fresh `C` values. New files with theme-dependent styles must follow the same pattern — see `docs/01-ui-ux.md` Theme Change Flow.
+
+- `src/views/table/tableStyles.js` — `getStyles`, `getCtxItem`, `getInputFieldStyle`, `getGhostInputStyle`
+- `src/views/RecordDetail.jsx` — `getDs`
+- `src/views/WorkspaceSettings.jsx` — `getWs`
+- `src/components/ViewToolbar.jsx` — `getTb` (exported as `getToolbarStyles`)
+- `src/views/_CellComponents.jsx` — `getCellStyles`
+- `src/core/VisualPageBuilder.jsx` — `getVs`
+- `src/core/BuildPage.jsx` — `getFieldStyle`
+- `src/core/TopHeader.jsx` — `getDropdownItemStyle`
+- `src/features/RecordDrawer.jsx` — `getInputStyle`, `getLabelStyle`, `getTabBarStyle`
+- `src/features/GmailView.jsx`, `OutlookView.jsx` — `getLabelStyle`, `getFieldStyle`, `getCancelBtnStyle`, `getSendBtnStyle`
+- `src/features/EmailThreadDrawer.jsx` — `getLabelStyle`, `getFieldStyle`, `getActionBtnStyle`
+- `src/context/ToastContext.jsx` — `getTypeConfig`
+- `src/views/table/OptionsManagerModal.jsx` — `getCategoryMeta`
+- `src/components/PagePermissionsPanel.jsx` — `getPermColors`
+- `src/components/RecordComments.jsx` — `getS`
 
 ---
 

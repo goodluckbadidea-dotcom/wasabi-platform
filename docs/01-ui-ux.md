@@ -79,7 +79,35 @@ All 5 themes were tuned so that `textMuted` achieves 4.5:1+ contrast against bot
 7. Persists to `localStorage: wasabi-theme-name`
 8. Components render with new values instantly (no re-import needed)
 
-**Caveat:** Module-level style objects that capture `C.*` values in template literals at import time will hold stale strings after a theme switch. Style objects must be returned from **functions** called at render time, not defined as module-level constants. `tableStyles.js` was converted from `export const styles = {...}` to `export function getStyles() { return {...} }` in 2026-04-16 to fix this. Any new style files must follow the same pattern.
+**Caveat (REQUIRED PATTERN):** Module-level style objects that capture `C.*` values in template literals at import time will hold stale strings after a theme switch. Style objects must be returned from **functions** called at render time, not defined as module-level constants.
+
+**BUGGY pattern:**
+```javascript
+// ❌ C.darkSurf captured as a frozen string at module import
+export const styles = {
+  header: { background: C.darkSurf, border: `1px solid ${C.darkBorder}` },
+};
+```
+
+**CORRECT pattern:**
+```javascript
+// ✅ Evaluated on every render, picks up fresh C values
+export function getStyles() { return {
+  header: { background: C.darkSurf, border: `1px solid ${C.darkBorder}` },
+}; }
+
+// Caller:
+function MyComponent() {
+  const styles = getStyles();
+  return <div style={styles.header}>...</div>;
+}
+```
+
+**Also safe:** Functions that take args and evaluate `C` at call time (e.g. `toggleStyle(checked)`, `pillStyle(fill)`) — these were always fine because they weren't frozen at module load.
+
+**Also safe:** `src/design/styles.js` — the `S` object is exported as `const S = buildStyles()` but `rebuildStyles()` (called by `ThemeContext.applyTheme()`) mutates `S` in place via `delete`/`Object.assign`, so all importers see fresh values.
+
+A full codebase sweep in 2026-04-16 converted 20 files from the buggy pattern to the correct pattern. The initial fix (`tableStyles.js`) addressed the Table view. The follow-up sweep addressed `VisualPageBuilder`, `RecordDetail`, `WorkspaceSettings`, `ViewToolbar`, `_CellComponents`, `BuildPage`, `TopHeader`, `RecordDrawer`, `GmailView`, `OutlookView`, `EmailThreadDrawer`, `ToastContext`, `OptionsManagerModal`, `PagePermissionsPanel`, and `RecordComments`. See `docs/15-security-and-known-issues.md` for the full list.
 
 ---
 
