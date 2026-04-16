@@ -138,8 +138,21 @@ export function invalidateLinksCache() {
  * @param {Object} sheetDataMap - { sheetUrl → { columns, rows } }
  * @returns {*} The resolved value, or undefined if not found
  */
-export function resolveRef(ref, notionData = [], sheetDataMap = {}) {
+export function resolveRef(ref, notionData = [], sheetDataMap = {}, d1Data = null) {
   if (!ref || !ref.type) return undefined;
+
+  if (ref.type === "d1") {
+    if (!d1Data) return undefined;
+    const row = d1Data.rows.find((r) => r.id === ref.record_id);
+    if (!row) return undefined;
+    const col = d1Data.columns.find((c) => c.name === ref.column_name);
+    if (!col) return undefined;
+    const val = row.cells?.[col.id];
+    if (val == null) return "";
+    if (typeof val === "object" && val.start) return val.end ? `${val.start} – ${val.end}` : val.start;
+    if (Array.isArray(val)) return val.map((v) => typeof v === "object" ? (v.name || v.id || "") : v).join(", ");
+    return String(val);
+  }
 
   if (ref.type === "notion") {
     const page = notionData.find((p) => p.id === ref.pageId);

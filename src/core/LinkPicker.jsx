@@ -11,6 +11,8 @@ import { queryAll } from "../notion/pagination.js";
 import { detectSchema } from "../notion/schema.js";
 import { fetchSheetData } from "../sheets/sheetClient.js";
 import { readProp } from "../notion/properties.js";
+import { resolveSourceType } from "../lib/dataSource.js";
+import { getTableSchema, listRows } from "../lib/api.js";
 import {
   IconClose, IconSearch, IconTable, IconTimeline, IconCalendar,
   IconKanban, IconChart, IconFolder, IconDatabase, IconBolt, IconSheet, IconConnect,
@@ -43,24 +45,9 @@ function LinkPickerGrid({ viewData, targetFieldType, selectedCell, setSelectedCe
   const colTypeMap = useMemo(() => {
     const map = {};
     if (viewData.schema) {
-      const allFields = [
-        ...(viewData.schema.titles || []),
-        ...(viewData.schema.texts || []),
-        ...(viewData.schema.numbers || []),
-        ...(viewData.schema.selects || []),
-        ...(viewData.schema.multiSelects || []),
-        ...(viewData.schema.statuses || []),
-        ...(viewData.schema.dates || []),
-        ...(viewData.schema.checkboxes || []),
-        ...(viewData.schema.urls || []),
-        ...(viewData.schema.emails || []),
-        ...(viewData.schema.phones || []),
-        ...(viewData.schema.formulas || []),
-        ...(viewData.schema.rollups || []),
-        ...(viewData.schema.relations || []),
-        ...(viewData.schema.people || []),
-      ];
-      for (const f of allFields) map[f.name] = f.type;
+      // title field is stored separately from allFields
+      if (viewData.schema.title) map[viewData.schema.title.name] = viewData.schema.title.type;
+      for (const f of (viewData.schema.allFields || [])) map[f.name] = f.type;
     }
     return map;
   }, [viewData.schema]);
@@ -168,16 +155,59 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
             });
           }
         } else {
-          // Notion-backed view — requires Notion key
-          if (!user?.notionKey) return;
-          const dbId = selectedView.config?.databaseId || selectedPage?.databaseIds?.[0];
-          if (!dbId) return;
-          const [schema, results] = await Promise.all([
-            detectSchema(dbId),
-            queryAll(dbId),
-          ]);
-          if (!cancelled) {
-            // Build column list from schema — title field always first
+          // Determine source type — D1 tables are the primary path
+          const sourceType = resolveSourceType(selectedPage);
+
+          if (sourceType === "d1") {
+            // ── D1-backed table ──
+            const tableId = selectedPage.id;
+            const [schemaRes, rowsRes] = await Promise.all([
+              getTableSchema(tableId).catch(() => ({ columns: [] })),
+              listRows(tableId, { limit: 200 }).catch(() => ({ rows: [] })),
+            ]);
+            if (cancelled) return;
+
+            const cols = schemaRes.columns || [];
+            if (cols.length === 0) return;
+
+            // Build classified schema for type compatibility checks
+            const titleField = cols[0]; // first column is always title
+            const schema = {
+              title: { name: titleField.name, id: titleField.id, type: "title" },
+              allFields: cols.slice(1).map((c) => ({
+                name: c.name,
+                id: c.id,
+                type: c.type === "title" ? "rich_text" : c.type,
+              })),
+            };
+
+            const columns = cols.map((c) => c.name);
+            const parentRows = (rowsRes.rows || []).filter((r) => !r.parent_row_id);
+            const rows = parentRows.slice(0, 100).map((row) => ({
+              pageId: row.id,
+              cells: cols.map((col) => {
+                const val = row.cells?.[col.id];
+                if (val == null) return "";
+                // Handle date range objects
+                if (typeof val === "object" && val.start) return val.end ? `${val.start} – ${val.end}` : val.start;
+                // Handle arrays (multi_select, people)
+                if (Array.isArray(val)) return val.map((v) => typeof v === "object" ? (v.name || v.id || "") : v).join(", ");
+                return String(val);
+              }),
+            }));
+
+            setViewData({ type: "d1", columns, rows, schema, dbId: tableId });
+          } else {
+            // ── Notion-backed view (legacy) — requires Notion key ──
+            if (!user?.notionKey) return;
+            const dbId = selectedView.config?.databaseId || selectedPage?.databaseIds?.[0];
+            if (!dbId) return;
+            const [schema, results] = await Promise.all([
+              detectSchema(dbId),
+              queryAll(dbId),
+            ]);
+            if (cancelled) return;
+
             const titleField = schema.allFields.find((f) => f.type === "title");
             const otherFields = schema.allFields.filter((f) => f.type !== "title");
             const ordered = titleField ? [titleField, ...otherFields] : schema.allFields;
@@ -216,6 +246,12 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
         rowIndex: rowIdx,
         column,
       };
+    } else if (viewData.type === "d1") {
+      sourceRef = {
+        type: "d1",
+        record_id: viewData.rows[rowIdx].pageId,
+        column_name: column,
+      };
     } else {
       sourceRef = {
         type: "notion",
@@ -229,25 +265,10 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
     if (viewData.type === "sheet") {
       sourceFieldType = "rich_text"; // sheets are text
     } else if (viewData.schema) {
-      // Look up property type from schema
-      const allFields = [
-        ...(viewData.schema.titles || []),
-        ...(viewData.schema.texts || []),
-        ...(viewData.schema.numbers || []),
-        ...(viewData.schema.selects || []),
-        ...(viewData.schema.multiSelects || []),
-        ...(viewData.schema.statuses || []),
-        ...(viewData.schema.dates || []),
-        ...(viewData.schema.checkboxes || []),
-        ...(viewData.schema.urls || []),
-        ...(viewData.schema.emails || []),
-        ...(viewData.schema.phones || []),
-        ...(viewData.schema.formulas || []),
-        ...(viewData.schema.rollups || []),
-        ...(viewData.schema.relations || []),
-        ...(viewData.schema.people || []),
-      ];
-      const match = allFields.find((f) => f.name === column);
+      // Look up property type from schema — check title field + allFields
+      const allFields = viewData.schema.allFields || [];
+      let match = allFields.find((f) => f.name === column);
+      if (!match && viewData.schema.title?.name === column) match = viewData.schema.title;
       sourceFieldType = match?.type || "";
     }
 

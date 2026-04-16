@@ -8,6 +8,8 @@ import { usePlatform } from "./PlatformContext.jsx";
 import { loadLinks, loadCachedLinks, saveLink, deleteLink, resolveRef, invalidateLinksCache } from "../config/linkStorage.js";
 import { queryAll } from "../notion/pagination.js";
 import { fetchSheetData } from "../sheets/sheetClient.js";
+import { listRows, getTableSchema } from "../lib/api.js";
+import { resolveSourceType } from "../lib/dataSource.js";
 
 const LinksContext = createContext({
   links: [],
@@ -81,6 +83,27 @@ export function LinksProvider({ children }) {
       return { notionData: [], sheetDataMap: {} };
     }
 
+    if (sourceRef.type === "d1") {
+      const pageConfig = pages.find((p) => p.id === sourcePageConfigId);
+      if (!pageConfig) return { notionData: [], sheetDataMap: {}, d1Data: null };
+      const tableId = pageConfig.id;
+      const cacheKey = `d1:${tableId}`;
+      const cached = dataCacheRef.current[cacheKey];
+      if (cached && Date.now() - cached.fetchedAt < CACHE_TTL) {
+        return { notionData: [], sheetDataMap: {}, d1Data: cached.data };
+      }
+      try {
+        const [schemaRes, rowsRes] = await Promise.all([
+          getTableSchema(tableId),
+          listRows(tableId, { limit: 500 }),
+        ]);
+        const d1Data = { columns: schemaRes.columns || [], rows: rowsRes.rows || [] };
+        dataCacheRef.current[cacheKey] = { data: d1Data, fetchedAt: Date.now() };
+        return { notionData: [], sheetDataMap: {}, d1Data };
+      } catch (err) { console.warn("[LinksContext] D1 fetch:", err.message || err); }
+      return { notionData: [], sheetDataMap: {}, d1Data: null };
+    }
+
     if (sourceRef.type === "sheet") {
       const cacheKey = `sheet:${sourceRef.sheetUrl}`;
       const cached = dataCacheRef.current[cacheKey];
@@ -108,14 +131,16 @@ export function LinksProvider({ children }) {
 
     const resolved = new Map();
     for (const link of viewLinks) {
-      const { notionData, sheetDataMap } = await fetchSourceData(link.sourceRef, link.sourcePage);
-      const value = resolveRef(link.sourceRef, notionData, sheetDataMap);
+      const { notionData, sheetDataMap, d1Data } = await fetchSourceData(link.sourceRef, link.sourcePage);
+      const value = resolveRef(link.sourceRef, notionData, sheetDataMap, d1Data);
 
       // Build a key for the target cell
       const ref = link.targetRef;
-      const key = ref.type === "notion"
-        ? `${ref.pageId}:${ref.field}`
-        : `${ref.rowIndex}:${ref.column}`;
+      const key = ref.type === "d1"
+        ? `${ref.record_id}:${ref.column_name}`
+        : ref.type === "notion"
+          ? `${ref.pageId}:${ref.field}`
+          : `${ref.rowIndex}:${ref.column}`;
 
       resolved.set(key, {
         value,
