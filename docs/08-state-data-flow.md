@@ -247,11 +247,12 @@ Manages per-column color assignments for select and status fields in table views
 Manages cell_links between tables — cross-page references that connect records or fields across different pages.
 
 **Key methods:**
-- Link/unlink records across tables
-- Query and resolve link targets
-- Fetch links for a specific page
+- `createLink(source, target)` — create a cross-page cell link
+- `removeLink(linkId)` — delete a link
+- `fetchSourceData(sourceRef, sourcePageConfigId)` — fetch data for a source ref with TTL caching. Supports three source types: D1 (via `getTableSchema` + `listRows`), Notion (via `queryAll`), and sheets (via `fetchSheetData`).
+- `resolveLinksForView(targetPageConfigId, targetViewIdx)` — resolve all linked values for a target view. Returns a Map of cell keys to resolved values.
 
-Links are stored in the `cell_links` D1 table and cached locally.
+Links are stored in the `cell_links` D1 table and cached locally. Value resolution is delegated to `resolveRef()` in `src/config/linkStorage.js`, which handles D1 (`record_id` + `column_name`), Notion (`pageId` + `field`), and sheet (`rowIndex` + `column`) ref types.
 
 ---
 

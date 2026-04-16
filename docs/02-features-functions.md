@@ -228,6 +228,7 @@ The table view's sub-item logic is spread across the orchestrator and extracted 
 - **Add column dialog:** `AddSubColumnDialog` (`AddColumnDialog.jsx`) for creating new sub-columns.
 - **Display columns:** `subColsList` = visible sub-columns (from `schema._subColumns`). When `subColumns` is empty, `subTitleField` returns `null` (no fallback to the parent title column name — that fallback silently broke sub-item creation by keying the ghost row to a field `createRecord` couldn't find in sub_columns). New D1 tables always have sub_columns populated (default "Name" seeded at create) so this empty path stays cold.
 - **Tree data:** `useTreeData` hook (`src/lib/useTreeData.js`) handles expand/collapse state, `displayList` flattening, and parent-child relationships.
+- **Sub-item toggle (2026-04-15):** `TableToolbar.jsx` shows a single pill-shaped "Expand Sub-Items" / "Collapse Sub-Items" toggle button when the table has sub-item rows. Auto-sizes to fit label text. Derives state from `expandedRows.size > 0`. Replaces the previous dual "All" buttons which were confusing and clipped by the fixed-width button style.
 - **Filter pipeline:** `useTableData` separates sub-items from parent rows before applying chip filters, dropdown filters, and search. After filtering, sub-items whose parent survived are re-attached. This prevents sub-items (which lack parent column values) from being incorrectly excluded by filters.
 
 ### Status Categories (2026-04-15)
@@ -377,7 +378,7 @@ Refactored from a single file into a folder with 9 files:
 | ErrorBoundary | `ErrorBoundary.jsx` | React error boundary wrapper |
 | FolderDropdown | `FolderDropdown.jsx` | Folder picker dropdown |
 | InlineEdit | `InlineEdit.jsx` | Inline text editing component |
-| LinkPicker | `LinkPicker.jsx` | Link/URL picker |
+| LinkPicker | `LinkPicker.jsx` | Three-panel drill-down picker for cross-page cell links (Pages → Views → Data Grid). Supports D1, Notion, and linked sheet sources (2026-04-15). |
 | MiniView | `MiniView.jsx` | Compact view preview |
 | Onboarding | `Onboarding.jsx` | New user onboarding flow |
 | PluginWidget | `PluginWidget.jsx` | Sandboxed plugin iframe |
@@ -690,3 +691,26 @@ React context providers wrapping the app in `App.jsx`:
 | Monday.com | Proxy — GraphQL forwarded through worker | Read-only, no write support |
 | Figma | Proxy — REST API forwarded through worker | Browse projects/files, import as Design Assets records |
 | R2 | File storage — documents, attachments, exports | Worker serves presigned URLs |
+
+---
+
+## Cross-Page Cell Links
+
+Cell links connect individual cell values across different pages/views. A user picks a source cell from one page and links it to a target cell on another, creating a one-way live reference.
+
+### Architecture (2026-04-15)
+
+- **LinkPicker** (`src/core/LinkPicker.jsx`) — Three-panel drill-down UI: Pages → Views → Data Grid. Supports three source types:
+  - **D1 tables** (primary): fetches schema via `getTableSchema()` and rows via `listRows()`. Filters out sub-items. Builds lightweight schema with `allFields` for type compatibility checks.
+  - **Notion databases** (legacy): uses `detectSchema()` + `queryAll()` through the Notion proxy. Requires `notionKey`.
+  - **Linked Sheets**: fetches via `fetchSheetData()`. All cells treated as `rich_text`.
+- **LinksContext** (`src/context/LinksContext.jsx`) — Global state for link CRUD and resolution. `fetchSourceData()` handles D1, Notion, and sheet sources with per-type caching (TTL-based). `resolveLinksForView()` resolves all links for a target page/view.
+- **linkStorage** (`src/config/linkStorage.js`) — Persistence (D1 `cell_links` table) and value resolution. `resolveRef()` extracts cell values from D1 rows (by `record_id` + `column_name`), Notion pages (by `pageId` + `field`), or sheet rows (by `rowIndex` + `column`).
+
+### Source Ref Types
+
+| Type | Shape | Used for |
+|------|-------|----------|
+| `d1` | `{ type: "d1", record_id, column_name }` | Native D1 tables |
+| `notion` | `{ type: "notion", pageId, field }` | Notion-linked databases |
+| `sheet` | `{ type: "sheet", sheetUrl, rowIndex, column }` | Linked Google Sheets |

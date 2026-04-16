@@ -78,7 +78,7 @@ App shell, navigation, settings. Loaded eagerly.
 | `FunctionsPanel.jsx` | Functions management panel |
 | `InlineEdit.jsx` | Inline text editing component |
 | `KnowledgeBase.jsx` | Knowledge base management UI |
-| `LinkPicker.jsx` | Link/relation picker for connecting records |
+| `LinkPicker.jsx` | Three-panel cross-page cell link picker (Pages → Views → Data Grid). D1 tables (primary), Notion, and linked sheet sources. Uses `resolveSourceType` to branch data loading. Schema type map uses `allFields` for compatibility checks (2026-04-15). |
 | `LoginScreen.jsx` | Multi-user login with password + Microsoft SSO (popup OAuth flow, login mode only) |
 | `MiniView.jsx` | Compact/minimal view renderer |
 | `Navigation.jsx` | Left sidebar: page list, search, system nav |
@@ -171,7 +171,7 @@ Extracted sub-modules for the Table view. Refactored from a 3,600-line monolith 
 | `AddColumnDialog.jsx` | Add column dialogs: `AddColumnDialog` + `AddSubColumnDialog` with type picker, name input, options (250 lines) |
 | `OptionsManagerModal.jsx` | Modal for managing select/multi_select/status column options: CRUD, drag-reorder, color picker (VIEW_PALETTE swatches). `handleAdd` injects a color via `assignOptionColor(prev.length)`. Status columns (2026-04-15): category dropdown per option (not_started/in_progress/complete/on_hold/cancelled) for semantic roll-up. `handleSetCategory` callback. Category preserved through save. |
 | `CascadeDeleteDialog.jsx` | Confirmation dialog for deleting parent rows with sub-items (52 lines) |
-| `TableToolbar.jsx` | Toolbar: search, new record, export, saved views dropdown, bulk actions, presence avatars (221 lines) |
+| `TableToolbar.jsx` | Toolbar: search, new record, export, saved views dropdown, bulk actions, presence avatars, sub-item expand/collapse toggle (auto-sizing pill button, 2026-04-15) |
 | `TableHeader.jsx` | Column headers with sort indicators, drag-to-resize, double-click rename, column visibility toggle (168 lines) |
 | `TableRow.jsx` | Row rendering: parent rows, sub-item rows, expand/collapse, sub-item mini-headers (with chevron affordance, single-click opens `SubColumnContextMenu`, double-click inline rename, 250ms disambiguation timer), neuron badges. `colorMapping` prop drilling removed from `CellDisplay` sites and from hover-wash `getStatusColor` call (2026-04-15) — hover wash reads from schema options. Warns once per table when a sub-item row renders without `subSchema` (legacy fallback still renders parent schema so nothing crashes). |
 | `TableFooter.jsx` | Row count display footer (41 lines) |
@@ -275,7 +275,7 @@ React context providers. Wrap the app in App.jsx.
 | `AuthContext.jsx` | Authentication state, login/logout, token management |
 | `CollaborationContext.jsx` | Real-time collaboration: reactive presence Map, typing with 8s TTL, conflict detection with timestamps, reconnect state restore |
 | `ColorMappingContext.jsx` | Deterministic color assignment for users/categories |
-| `LinksContext.jsx` | Link/relation management between records |
+| `LinksContext.jsx` | Cross-page cell link state, CRUD, and resolution. `fetchSourceData` handles D1 (via `getTableSchema` + `listRows`), Notion, and sheet sources with TTL caching (2026-04-15). |
 | `NavigationContext.jsx` | Page navigation state and history |
 | `PagesContext.jsx` | Page configs, CRUD operations, page list |
 | `PlatformContext.jsx` | Platform settings, worker URL, feature flags |
@@ -392,7 +392,7 @@ Configuration and storage utilities.
 | File | Purpose |
 |------|---------|
 | `flowStorage.js` | Flow/automation persistence helpers |
-| `linkStorage.js` | Link/relation storage utilities |
+| `linkStorage.js` | Link persistence (D1 `cell_links` table), caching, and value resolution. `resolveRef` handles D1 (`record_id` + `column_name`), Notion, and sheet ref types (2026-04-15). |
 | `linkTypeCompat.js` | Link type compatibility layer |
 | `pageConfig.js` | Page configuration schema and defaults |
 | `setup.js` | Initial setup configuration |

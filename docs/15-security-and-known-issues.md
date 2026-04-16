@@ -252,6 +252,16 @@ Major sub-item upgrade across 10 files (1,175 lines added). Not bug fixes — ne
 
 The `rich_text` textarea in `NewRecordModal.jsx` inherited `borderRadius: RADIUS.pill` (999px) from the shared `ms.input` style. When the textarea grew with multiline content, the extreme pill radius clipped text at the corners, making content unreadable. Fixed by overriding `borderRadius` to `RADIUS.md` (10px) on the rich_text textarea only. Single-line inputs retain the pill shape.
 
+### LinkPicker Broken for D1 Tables (Resolved 2026-04-15)
+
+The LinkPicker (cross-page cell linking UI) only supported Notion-backed databases. The data-loading effect checked `user?.notionKey` and called `detectSchema()` / `queryAll()` — for D1 tables this either returned silently (no Notion key) or made invalid Notion API calls producing 500 errors and `jsonResponse is not a function`. Additionally, the `colTypeMap` builder referenced `schema.texts` (does not exist — the field is `richTexts`), so text column types were never included in compatibility checks.
+
+Fixed by adding a D1 data-loading branch using `getTableSchema()` + `listRows()` from `api.js`, keyed by `resolveSourceType()`. The schema type map now uses `schema.allFields` (which both D1 and Notion schemas populate). `LinksContext.fetchSourceData()` and `linkStorage.resolveRef()` also gained D1 support (`type: "d1"` refs with `record_id` + `column_name`) so created links resolve correctly end-to-end. Files: `src/core/LinkPicker.jsx`, `src/context/LinksContext.jsx`, `src/config/linkStorage.js`.
+
+### Sub-Item Expand/Collapse Buttons Confusing (Resolved 2026-04-15)
+
+The table toolbar showed two unlabeled buttons both labeled "All" with chevron icons for expanding/collapsing sub-items. They used `styles.refreshBtn` (fixed 34px square), which clipped the text. Replaced with a single auto-sizing pill button that toggles between "Expand Sub-Items" and "Collapse Sub-Items" based on `expandedRows.size > 0`. Uses inline pill style with `whiteSpace: nowrap`, horizontal padding, and hover state. Files: `src/views/table/TableToolbar.jsx`, `src/views/Table.jsx`.
+
 ### Console and Error Hygiene
 
 All `console.log` debug statements have been removed from production code. Error handling uses the ToastContext system for user-visible errors and silent catch for non-critical failures (localStorage, optional features).
