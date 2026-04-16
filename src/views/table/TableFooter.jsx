@@ -4,9 +4,10 @@
 import React from "react";
 import { C } from "../../design/tokens.js";
 import { getFieldType, readField } from "../_viewHelpers.js";
-import { styles } from "./tableStyles.js";
+import { getStyles } from "./tableStyles.js";
 
 export default function TableFooter({ gtc, columns, schema, processedData }) {
+  const styles = getStyles();
   return (
     <div style={{ ...styles.gridFooter, gridTemplateColumns: gtc }}>
       <div style={{ padding: "4px 8px" }} />

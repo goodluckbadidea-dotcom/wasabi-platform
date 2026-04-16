@@ -5,7 +5,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { C, FONT, RADIUS, SHADOW } from "../../design/tokens.js";
-import { inputFieldStyle } from "./tableStyles.js";
+import { getInputFieldStyle } from "./tableStyles.js";
 import { COLUMN_TYPES } from "./tableHelpers.js";
 
 /**
@@ -18,6 +18,7 @@ export function AddColumnDialog({
   relationDb, synced, syncedName, dbSearchQuery, dbSearchResults, dbSearching,
   onRelationDbSelect, onSyncedChange, onSyncedNameChange, onDbSearchQueryChange, onSearchDbs,
 }) {
+  const inputFieldStyle = getInputFieldStyle();
   if (!open) return null;
 
   const canAdd = name.trim() && !(type === "relation" && (!relationDb || (synced && !syncedName.trim())));

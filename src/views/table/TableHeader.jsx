@@ -4,7 +4,7 @@
 import React from "react";
 import { C, FONT, RADIUS } from "../../design/tokens.js";
 import { IconPlus } from "../../design/icons.jsx";
-import { styles } from "./tableStyles.js";
+import { getStyles } from "./tableStyles.js";
 import { OWNER_COL_NAME, getTypeIcon } from "./tableHelpers.js";
 import { getFieldType } from "../_viewHelpers.js";
 
@@ -22,6 +22,7 @@ export default function TableHeader({
   // Add column
   addColOpen, setAddColOpen,
 }) {
+  const styles = getStyles();
   return (
     <div style={{ ...styles.gridHeader, gridTemplateColumns: gtc }}>
       {/* Select-all checkbox */}

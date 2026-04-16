@@ -5,7 +5,7 @@
 import React from "react";
 import { C } from "../../design/tokens.js";
 import { getFieldOptions } from "../_viewHelpers.js";
-import { ghostInputStyle } from "./tableStyles.js";
+import { getGhostInputStyle } from "./tableStyles.js";
 
 /**
  * Renders a single ghost row input cell based on field type.
@@ -21,6 +21,7 @@ import { ghostInputStyle } from "./tableStyles.js";
  * @param {boolean} [props.autoFocus] - Whether to auto-focus this cell
  */
 export function GhostCell({ col, type, value, schema, onSetValue, onKeyDown, placeholder, autoFocus }) {
+  const ghostInputStyle = getGhostInputStyle();
   if (type === "checkbox") {
     return (
       <label style={{ display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", height: "100%" }}>

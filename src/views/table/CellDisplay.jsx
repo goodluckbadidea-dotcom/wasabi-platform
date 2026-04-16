@@ -6,7 +6,7 @@ import React from "react";
 import { C, RADIUS, getSolidPillColor } from "../../design/tokens.js";
 import { getFieldOptions, getOptionNames } from "../_viewHelpers.js";
 import { formatDate, truncate } from "../../utils/helpers.js";
-import { styles } from "./tableStyles.js";
+import { pillStyle, toggleStyle, multiPillWrap } from "./tableStyles.js";
 
 // Cell type renderers — keyed by Notion property type.
 // Each receives { value, fieldName, schema, onClick, relationTitles }.
@@ -15,7 +15,7 @@ import { styles } from "./tableStyles.js";
 export const CELL_RENDERERS = {
   select: ({ value, fieldName, schema, onClick }) => {
     const { fill, text } = getSolidPillColor(value, getOptionNames(schema, fieldName), getFieldOptions(schema, fieldName));
-    return <span style={styles.pill(fill, text)} onClick={onClick}>{value}</span>;
+    return <span style={pillStyle(fill, text)} onClick={onClick}>{value}</span>;
   },
   status: (...args) => CELL_RENDERERS.select(...args),
   multi_select: ({ value, fieldName, schema }) => {
@@ -23,12 +23,12 @@ export const CELL_RENDERERS = {
     const optNames = getOptionNames(schema, fieldName);
     const schemaOpts = getFieldOptions(schema, fieldName);
     return (
-      <span style={styles.multiPillWrap}>
-        {value.map((v, i) => { const { fill, text } = getSolidPillColor(v, optNames, schemaOpts); return <span key={i} style={styles.pill(fill, text)}>{v}</span>; })}
+      <span style={multiPillWrap}>
+        {value.map((v, i) => { const { fill, text } = getSolidPillColor(v, optNames, schemaOpts); return <span key={i} style={pillStyle(fill, text)}>{v}</span>; })}
       </span>
     );
   },
-  checkbox: ({ value, onClick }) => <span style={styles.toggle(!!value)} onClick={onClick}>{value ? "\u2713" : ""}</span>,
+  checkbox: ({ value, onClick }) => <span style={toggleStyle(!!value)} onClick={onClick}>{value ? "\u2713" : ""}</span>,
   date: ({ value, onClick }) => {
     const dateStr = typeof value === "object" ? value.start : value;
     const endStr = typeof value === "object" ? value.end : null;

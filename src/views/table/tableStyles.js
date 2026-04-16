@@ -1,10 +1,11 @@
 // ─── Table View Styles ───
 // All style objects for the Table view, extracted from Table.jsx.
 // Uses design tokens exclusively — no hardcoded colors.
+// Returned from functions so theme switches pick up fresh C values.
 
 import { C, FONT, RADIUS, SHADOW } from "../../design/tokens.js";
 
-export const styles = {
+export function getStyles() { return {
   wrapper: {
     display: "flex",
     flexDirection: "column",
@@ -257,10 +258,50 @@ export const styles = {
     fontSize: 10,
     opacity: 0.7,
   },
+}; }
+
+// Standalone style functions — safe at module level because they
+// evaluate C at call time (via args or inside their body), not at import time.
+export const pillStyle = (fillColor, textColor = "#fff") => ({
+  display: "inline-block",
+  color: textColor,
+  background: fillColor,
+  border: "none",
+  borderRadius: RADIUS.pill,
+  padding: "3px 10px",
+  fontSize: 10,
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+  lineHeight: 1.6,
+  whiteSpace: "nowrap",
+});
+
+export const toggleStyle = (checked) => ({
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: 18,
+  height: 18,
+  borderRadius: RADIUS.sm,
+  border: `2px solid ${checked ? C.accent : C.darkBorder}`,
+  background: checked ? C.accent : "transparent",
+  cursor: "pointer",
+  transition: "all 0.15s",
+  flexShrink: 0,
+  fontSize: 11,
+  color: "#fff",
+  fontWeight: 700,
+});
+
+export const multiPillWrap = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 4,
 };
 
 // Context menu item style
-export const ctxItem = {
+export function getCtxItem() { return {
   padding: "6px 10px",
   fontSize: 12,
   color: C.darkText,
@@ -268,10 +309,10 @@ export const ctxItem = {
   borderRadius: RADIUS.sm,
   transition: "background 0.1s",
   fontFamily: FONT,
-};
+}; }
 
 // Shared input field style (used in add-column dialogs, rename inputs)
-export const inputFieldStyle = {
+export function getInputFieldStyle() { return {
   border: `1px solid ${C.darkBorder}`,
   borderRadius: RADIUS.sm,
   background: C.darkSurf2,
@@ -282,10 +323,10 @@ export const inputFieldStyle = {
   outline: "none",
   width: "100%",
   boxSizing: "border-box",
-};
+}; }
 
 // Ghost row input style (transparent, minimal)
-export const ghostInputStyle = {
+export function getGhostInputStyle() { return {
   width: "100%",
   border: "none",
   borderRadius: RADIUS.sm,
@@ -296,4 +337,4 @@ export const ghostInputStyle = {
   padding: "4px 6px",
   outline: "none",
   boxSizing: "border-box",
-};
+}; }

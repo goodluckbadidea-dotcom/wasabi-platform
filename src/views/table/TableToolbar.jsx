@@ -8,7 +8,7 @@ import { hoverBg } from "../../design/interactions.js";
 import { IconEyeOff, IconPlus, IconExport, IconChevronDown } from "../../design/icons.jsx";
 import SavedViewsDropdown from "../../components/SavedViewsDropdown.jsx";
 import PresenceAvatars from "../../components/PresenceAvatars.jsx";
-import { styles } from "./tableStyles.js";
+import { getStyles } from "./tableStyles.js";
 
 export default function TableToolbar({
   // Search
@@ -30,6 +30,7 @@ export default function TableToolbar({
   // Collaboration
   collab,
 }) {
+  const styles = getStyles();
   return (
     <div style={styles.toolbar}>
       <SavedViewsDropdown

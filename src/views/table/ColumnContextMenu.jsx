@@ -7,7 +7,7 @@ import { createPortal } from "react-dom";
 import { C, FONT, RADIUS, SHADOW } from "../../design/tokens.js";
 import { hoverBg } from "../../design/interactions.js";
 import { getFieldType } from "../_viewHelpers.js";
-import { ctxItem } from "./tableStyles.js";
+import { getCtxItem } from "./tableStyles.js";
 import { COLUMN_TYPES, mapD1TypeForUI } from "./tableHelpers.js";
 
 /**
@@ -47,6 +47,7 @@ export function ParentColumnContextMenu({
   menu, schema, isD1Table, canEditSchema,
   onSort, onHide, onRename, onChangeType, onManageOptions, onDelete, onClose,
 }) {
+  const ctxItem = getCtxItem();
   const { ref, pos } = useClampedMenuPosition(menu);
   if (!menu || !pos) return null;
   return createPortal(
@@ -125,6 +126,7 @@ export function ParentColumnContextMenu({
  * Sub-item column context menu — rename, delete.
  */
 export function SubColumnContextMenu({ menu, subSchema, onRename, onManageOptions, onChangeType, onDelete, onClose }) {
+  const ctxItem = getCtxItem();
   const { ref, pos } = useClampedMenuPosition(menu);
   if (!menu || !pos) return null;
   const colType = subSchema ? getFieldType(subSchema, menu.col) : null;

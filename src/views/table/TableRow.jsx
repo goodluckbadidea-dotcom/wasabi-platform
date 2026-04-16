@@ -15,7 +15,7 @@ import { isNeuronsMode, dispatchNeuronSelect } from "../../neurons/NeuronsContex
 import NeuronBadge from "../../neurons/NeuronBadge.jsx";
 import { getFieldType, readField, getFieldOptions, getOptionNames } from "../_viewHelpers.js";
 import { OWNER_COL_NAME, ROW_HEIGHT, EDITABLE_TYPES } from "./tableHelpers.js";
-import { styles } from "./tableStyles.js";
+import { getStyles } from "./tableStyles.js";
 import { OwnerCellDisplay } from "./OwnerCell.jsx";
 import CellDisplay from "./CellDisplay.jsx";
 import { GhostCell } from "./GhostRow.jsx";
@@ -47,6 +47,7 @@ export default function TableRow({
   // Tree
   getChildren,
 }) {
+  const styles = getStyles();
   const subHeaderClickTimer = useRef(null);
   const page = entry.row;
   const { depth: rowDepth, hasChildren, isExpanded } = entry;

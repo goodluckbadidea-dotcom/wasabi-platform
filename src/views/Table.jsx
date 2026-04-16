@@ -37,7 +37,7 @@ import {
   resolveColumns,
 } from "./table/tableHelpers.js";
 
-import { styles, ghostInputStyle } from "./table/tableStyles.js";
+import { getStyles, getGhostInputStyle } from "./table/tableStyles.js";
 import { OwnerPicker } from "./table/OwnerCell.jsx";
 // OwnerCellDisplay now imported by table/TableRow.jsx
 import { GhostCell } from "./table/GhostRow.jsx";
@@ -73,6 +73,8 @@ import useTableData from "./table/hooks/useTableData.js";
 // ─── Main Table Component ───
 
 export default function Table({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onSaveFilters, onViewConfigChange, initialDetailRecordId, onInitialDetailConsumed }) {
+  const styles = getStyles();
+  const ghostInputStyle = getGhostInputStyle();
   const { user } = usePlatform();
   const collab = useCollaboration();
   const [search, setSearch] = useState("");

@@ -8,9 +8,10 @@ import { C, FONT, RADIUS } from "../../design/tokens.js";
 import { S } from "../../design/styles.js";
 import SelectPicker from "../../components/SelectPicker.jsx";
 import MultiSelectPicker from "../../components/MultiSelectPicker.jsx";
-import { styles } from "./tableStyles.js";
+import { getStyles } from "./tableStyles.js";
 
 export default function CellEditor({ value, type, options, schemaOptions, onCommit, onCancel, initialChar, isD1Table, onCreateOption, cellRef, canEditSchema }) {
+  const styles = getStyles();
   const inputRef = useRef(null);
   const [draft, setDraft] = useState(() => {
     if (initialChar && (type === "title" || type === "rich_text" || type === "url" || type === "email" || type === "phone_number")) {
