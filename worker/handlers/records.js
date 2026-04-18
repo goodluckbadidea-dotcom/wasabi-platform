@@ -40,10 +40,10 @@ export async function handleCreateComment(env, user, recordId, body, jsonRespons
         recordTitle = await resolveRecordTitle(env, rowData.table_id || "", c);
       }
       if (rowData?.table_id) {
-        const pc = await env.DB.prepare("SELECT name FROM page_configs WHERE id = ?").bind(rowData.table_id).first();
-        pageName = pc?.name || "";
+        const pc = await env.DB.prepare("SELECT title FROM page_configs WHERE id = ?").bind(rowData.table_id).first();
+        pageName = pc?.title || "";
       }
-    } catch (_) {}
+    } catch (err) { console.error("[handleCreateComment] resolve title/page failed:", err?.message || err); }
 
     // 1. Notify record owner(s) if commenter != owner
     try {
@@ -67,7 +67,7 @@ export async function handleCreateComment(env, user, recordId, body, jsonRespons
           }
         }
       }
-    } catch (_) {}
+    } catch (err) { console.error("[handleCreateComment] owner notification failed:", err?.message || err); }
 
     // 2. Notify @mentioned users
     try {
@@ -79,14 +79,8 @@ export async function handleCreateComment(env, user, recordId, body, jsonRespons
           const mentionLower = mentionName.toLowerCase();
           const matched = userList.find((u) => u.display_name.toLowerCase() === mentionLower);
           if (matched) {
-            // Dedup: skip if same mention notification exists within last 5 minutes
-            const existing = await env.DB.prepare(
-              `SELECT id FROM notifications
-               WHERE type = 'mention' AND record_id = ? AND target_user_id = ? AND actor_name = ?
-               AND created_at > datetime('now', '-5 minutes')`
-            ).bind(recordId, matched.id, commenterName).first();
-            if (existing) continue;
-
+            // Each comment is a distinct user action — every @mention creates its notification.
+            // Previous 5-min dedup guard silently dropped legitimate multi-mention + rapid-fire cases.
             await createNotificationInternal(env, {
               message: `${commenterName} mentioned you on "${recordTitle || "a record"}": "${preview}"`,
               type: "mention",
@@ -101,7 +95,7 @@ export async function handleCreateComment(env, user, recordId, body, jsonRespons
           }
         }
       }
-    } catch (_) {}
+    } catch (err) { console.error("[handleCreateComment] mention notifications failed:", err?.message || err); }
 
     return jsonResponse({ id, ok: true });
   } catch (err) {

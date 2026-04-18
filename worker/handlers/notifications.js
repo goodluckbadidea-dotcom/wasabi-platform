@@ -16,7 +16,7 @@ export async function createNotificationInternal(env, {
           const prefs = JSON.parse(prefRow.value);
           if (prefs.muted_types?.includes(type)) return; // User muted this type
         }
-      } catch (_) {} // Proceed if prefs lookup fails
+      } catch (err) { console.error("[createNotification] prefs lookup failed:", err?.message || err); } // Proceed if prefs lookup fails
     }
 
     const id = crypto.randomUUID();
@@ -34,9 +34,9 @@ export async function createNotificationInternal(env, {
           method: "POST",
           body: JSON.stringify({ type: "notification_new", notificationId: id }),
         }));
-      } catch (_) {} // Don't fail notification creation if WS push fails
+      } catch (err) { console.error("[createNotification] WebSocket push failed:", err?.message || err); } // Don't fail notification creation if WS push fails
     }
-  } catch (_) {}
+  } catch (err) { console.error("[createNotification] failed:", err?.message || err, { type, target_user_id, record_id }); }
 }
 
 // ─── Extract @mentions from text ───
