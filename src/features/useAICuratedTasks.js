@@ -7,8 +7,9 @@ import { usePlatform } from "../context/PlatformContext.jsx";
 import { useUserSync } from "../context/UserSyncContext.jsx";
 import {
   listRows, claudeProxy, getTableSchema, listTaskActivity, upsertTaskActivity,
-  getRecordViews, listRecordComments, listTaskInteractions, logTaskInteraction,
+  getRecordViews, listTaskInteractions, logTaskInteraction,
   getActiveSnoozes, snoozeTask as snoozeTaskApi, unsnoozeTask as unsnoozeTaskApi,
+  listNotifications,
 } from "../lib/api.js";
 import { loadCachedNeuronGraph } from "../neurons/neuronStorage.js";
 import {
@@ -633,22 +634,32 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
         ).catch(err => console.warn("[useAICuratedTasks] upsertTaskActivity:", err.message || err));
       }
 
-      // Build interaction type map from new task_interactions table (if available)
-      const interactionTypeMap = new Map(); // taskId → lastInteractionType
+      // Fetch all task interactions once — reused for staleness signals (below)
+      // and interaction-history enrichment later. Replaces the previous double-fetch.
+      const interactionTypeMap = new Map(); // taskId → lastInteractionType (string)
+      const interactionMap = new Map(); // taskId → all interactions[] for enrichment
       if (identity?.id) {
         try {
           const intPromises = Object.keys(tasksBySource).map(async (source) => {
             try {
               const result = await listTaskInteractions(source, identity.id);
-              for (const i of (result?.interactions || [])) {
-                // Only store the first (most recent) per task
-                if (!interactionTypeMap.has(i.task_id)) {
-                  interactionTypeMap.set(i.task_id, i.interaction_type);
-                }
-              }
-            } catch (err) { console.warn("[useAICuratedTasks] listTaskInteractions:", err.message || err); }
+              return result?.interactions || [];
+            } catch (err) {
+              console.warn("[useAICuratedTasks] listTaskInteractions:", err.message || err);
+              return [];
+            }
           });
-          await Promise.allSettled(intPromises);
+          const results = await Promise.allSettled(intPromises);
+          for (const r of results) {
+            if (r.status !== "fulfilled") continue;
+            for (const i of r.value) {
+              if (!interactionMap.has(i.task_id)) interactionMap.set(i.task_id, []);
+              interactionMap.get(i.task_id).push(i);
+              if (!interactionTypeMap.has(i.task_id)) {
+                interactionTypeMap.set(i.task_id, i.interaction_type);
+              }
+            }
+          }
         } catch (err) { console.warn("[useAICuratedTasks] interaction fetch:", err.message || err); }
       }
 
@@ -662,96 +673,61 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
         task._isStale = shouldIncludeTask(nearest, lastActivity, lastInteractionType);
       }
 
-      // Step 2.7: Enrich tasks with per-user signals + comment fetching
+      // Step 2.7a: Fetch user's @mention notifications once — replaces per-task
+      // comment fan-out (N+1 → 1). Notifications are the authoritative source for
+      // mentions; write path hardened in Stage 0.
+      const mentionedRecordIds = new Set();
+      const mentionMetaMap = new Map(); // record_id → most-recent mention created_at
       if (identity?.id) {
         try {
-          // Fetch record views for "last viewed" / "unread" detection
-          const viewsResult = await getRecordViews().catch(() => ({ views: [] }));
-          const viewMap = new Map();
-          for (const v of (viewsResult.views || [])) {
-            viewMap.set(v.record_id, v.last_viewed_at);
-          }
-
-          // Fetch comments for all D1 tasks (batched by source table)
-          // This populates task._comments so @mention detection works
-          try {
-            const commentPromises = [];
-            for (const task of allTasks) {
-              if (!task.source) continue;
-              const [sourceType, sourceId] = task.source.split(":");
-              if (sourceType === "d1" && sourceId) {
-                commentPromises.push(
-                  listRecordComments(task.id, sourceId)
-                    .then((res) => ({ taskId: task.id, comments: res.comments || [] }))
-                    .catch(() => ({ taskId: task.id, comments: [] }))
-                );
-              }
-            }
-            if (commentPromises.length > 0) {
-              const commentResults = await Promise.allSettled(commentPromises);
-              for (const r of commentResults) {
-                if (r.status !== "fulfilled" || !r.value.comments.length) continue;
-                const task = allTasks.find((t) => t.id === r.value.taskId);
-                if (task) task._comments = r.value.comments;
-              }
-            }
-          } catch (err) {
-            console.warn("[AICurated] Comment fetching failed:", err.message);
-          }
-
-          const userName = identity.display_name?.toLowerCase() || "";
-          const userId = identity.id;
-          const now = Date.now();
-
-          for (const task of allTasks) {
-            // Ownership: owner_user_id includes current user
-            if (task._ownerUserIds && Array.isArray(task._ownerUserIds)) {
-              task._isOwned = task._ownerUserIds.includes(userId);
-            }
-
-            // Assignment: task assignee field matches user display name
-            const assignee = (task.assignee || task.owner || task.assigned || "").toLowerCase();
-            if (assignee && assignee.includes(userName)) {
-              task._isAssigned = true;
-            }
-            // Also match people-column user IDs (array of {name, id} objects)
-            if (!task._isAssigned && task._fieldMap) {
-              const assigneeKey = task._fieldMap.assignee;
-              const rawAssignee = assigneeKey && task._raw?.cells?.[assigneeKey];
-              if (Array.isArray(rawAssignee) && rawAssignee.some(p => p.id === userId)) {
-                task._isAssigned = true;
-              }
-            }
-
-            // Last viewed: days since user viewed this record
-            const lastViewed = viewMap.get(task.id);
-            if (lastViewed) {
-              task._lastViewedDaysAgo = Math.floor((now - new Date(lastViewed).getTime()) / 86400000);
-            }
-
-            // @mention detection: check if user was mentioned in task comments
-            if (task._comments) {
-              for (const c of task._comments) {
-                const body = (c.content || c.body || "").toLowerCase();
-                if (body.includes(`@${userName}`)) {
-                  task._isMentioned = true;
-                  // Unread if mentioned after last view
-                  if (!lastViewed || new Date(c.created_at) > new Date(lastViewed)) {
-                    task._hasUnreadComments = true;
-                  }
-                  break;
-                }
+          const notifResult = await listNotifications({ limit: 500 });
+          for (const n of (notifResult?.notifications || [])) {
+            if (n.type === "mention" && n.record_id) {
+              mentionedRecordIds.add(n.record_id);
+              const prev = mentionMetaMap.get(n.record_id);
+              if (!prev || new Date(n.created_at) > new Date(prev)) {
+                mentionMetaMap.set(n.record_id, n.created_at);
               }
             }
           }
         } catch (err) {
-          console.warn("[AICurated] Per-user signal enrichment failed:", err.message);
+          console.warn("[AICurated] Mention notifications fetch failed:", err.message);
         }
       }
 
-      // Step 2.75: Role-based task filtering
-      // Non-admins: ONLY see tasks they own or are mentioned in
-      // Admins: see all tasks (ownership influences AI scoring weight)
+      // Step 2.7b: Cheap per-user flags (ownership, assignment, mention).
+      // These must be set BEFORE the role filter so it can decide what survives.
+      if (identity?.id) {
+        const userName = identity.display_name?.toLowerCase() || "";
+        const userId = identity.id;
+        for (const task of allTasks) {
+          // Ownership: owner_user_id array includes current user
+          if (task._ownerUserIds && Array.isArray(task._ownerUserIds)) {
+            task._isOwned = task._ownerUserIds.includes(userId);
+          }
+          // Assignment: display-name substring match in assignee/owner text field
+          const assignee = (task.assignee || task.owner || task.assigned || "").toLowerCase();
+          if (assignee && assignee.includes(userName)) {
+            task._isAssigned = true;
+          }
+          // Assignment via people-column user ID match (array of {name, id})
+          if (!task._isAssigned && task._fieldMap) {
+            const assigneeKey = task._fieldMap.assignee;
+            const rawAssignee = assigneeKey && task._raw?.cells?.[assigneeKey];
+            if (Array.isArray(rawAssignee) && rawAssignee.some(p => p.id === userId)) {
+              task._isAssigned = true;
+            }
+          }
+          // Mention: record_id appears in user's mention notifications
+          if (mentionedRecordIds.has(task.id)) {
+            task._isMentioned = true;
+          }
+        }
+      }
+
+      // Step 2.75: Role-based task filtering — runs BEFORE expensive enrichment
+      // so non-admins don't waste cycles enriching tasks they can't see.
+      // Non-admins: only owned/mentioned/unowned survive. Admins see everything.
       const isAdmin = identity?.role === "admin";
       let filteredTasks = applyRoleFilter(allTasks, identity);
 
@@ -775,210 +751,170 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
         console.warn("[AICurated] Snooze fetch failed:", err.message);
       }
 
-      // Step 2.8: Dependency awareness (Phase 1 — implicit keyword scanning)
-      try {
-        const DEP_KEYWORDS = [
-          "blocked", "blocking", "waiting on", "depends on", "prerequisite",
-          "before we can", "blocked by", "waiting for", "can't start until",
-        ];
-        const titleIndex = new Map(); // lowercase title → task
-        for (const task of filteredTasks) {
-          titleIndex.set(task.title.toLowerCase(), task);
-        }
+      // Expensive enrichment below feeds Claude's ranking prompt. Viewers can't
+      // call /claude (editor+ only) so they fall through to date-sort — no need
+      // to spend cycles enriching their list.
+      const skipExpensiveEnrichment = identity?.role === "viewer";
+      let neuronClusterSummary = ""; // populated in 2.9, consumed by Claude prompt
 
-        // Build dependency map by scanning task text content for keywords + title references
-        const blockingMap = new Map(); // taskId → Set of taskIds it blocks
-        const blockedByMap = new Map(); // taskId → Set of taskIds blocking it
-
-        for (const task of filteredTasks) {
-          // Combine all text content for scanning
-          const textContent = [
-            task.notes || "",
-            task.description || "",
-            ...(task._comments || []).map((c) => c.content || ""),
-          ].join(" ").toLowerCase();
-
-          if (!textContent) continue;
-
-          // Check for dependency keywords
-          const hasDep = DEP_KEYWORDS.some((kw) => textContent.includes(kw));
-          if (!hasDep) continue;
-
-          // Look for references to other task titles in the text
-          for (const [otherTitle, otherTask] of titleIndex) {
-            if (otherTask.id === task.id) continue;
-            if (otherTitle.length < 4) continue; // Skip very short titles to avoid false matches
-            if (textContent.includes(otherTitle)) {
-              // This task references another task in a dependency context
-              // "blocked by X" → this task is blocked, X is blocking
-              const isBlockedPattern = /block(ed|ing)\s*(by|on)|waiting\s*(on|for)|depends\s*on|can't start until/i;
-              if (isBlockedPattern.test(textContent)) {
-                // This task is blocked BY the other
-                if (!blockedByMap.has(task.id)) blockedByMap.set(task.id, new Set());
-                blockedByMap.get(task.id).add(otherTask.id);
-                if (!blockingMap.has(otherTask.id)) blockingMap.set(otherTask.id, new Set());
-                blockingMap.get(otherTask.id).add(task.id);
-              }
-            }
-          }
-        }
-
-        // Annotate tasks with blocking/blocked signals
-        for (const task of filteredTasks) {
-          const blocking = blockingMap.get(task.id);
-          if (blocking && blocking.size > 0) {
-            task._blockingCount = blocking.size;
-          }
-          const blockedBy = blockedByMap.get(task.id);
-          if (blockedBy && blockedBy.size > 0) {
-            task._blockedByOthers = true;
-          }
-        }
-      } catch (err) {
-        console.warn("[AICurated] Dependency scan failed:", err.message);
-      }
-
-      // Step 2.9: Neuron sibling enrichment (zero API calls — uses cached graph)
-      let neuronClusterSummary = "";
-      try {
-        const neuronGraph = loadCachedNeuronGraph();
-        if (neuronGraph && neuronGraph.length > 0) {
-          // Build nodeId → task lookup
-          const taskById = new Map();
-          for (const task of filteredTasks) {
-            taskById.set(task.id, task);
-          }
-
-          // Build nodeId → neuron lookup and annotate tasks
-          for (const neuron of neuronGraph) {
-            const nodeIds = (neuron.nodes || []).map((nd) => nd.node_id);
-            // Find which filtered tasks are in this neuron
-            const tasksInNeuron = nodeIds
-              .map((nid) => taskById.get(nid))
-              .filter(Boolean);
-
-            if (tasksInNeuron.length === 0) continue;
-
-            // Check if any sibling in this neuron is urgent (overdue/high priority)
-            const hasUrgentSibling = tasksInNeuron.some((t) =>
-              t._isOverdue || t.priority === "High" || t.priority === "Urgent"
-            );
-
-            // Annotate each task with its neuron membership
-            for (const task of tasksInNeuron) {
-              if (!task._neuronNames) task._neuronNames = [];
-              task._neuronNames.push(neuron.name || "(unnamed)");
-              if (hasUrgentSibling) task._neuronSiblingUrgent = true;
-            }
-          }
-
-          // Build cluster health summary for the insight prompt
-          const clusterStats = [];
-          for (const neuron of neuronGraph) {
-            const nodeIds = (neuron.nodes || []).map((nd) => nd.node_id);
-            const tasksInNeuron = nodeIds.map((nid) => taskById.get(nid)).filter(Boolean);
-            if (tasksInNeuron.length === 0) continue;
-
-            const overdueCount = tasksInNeuron.filter((t) => t._isOverdue).length;
-            const staleCount = tasksInNeuron.filter((t) => t._isStale).length;
-            const totalInCluster = (neuron.nodes || []).length;
-
-            if (overdueCount > 0 || staleCount > 0) {
-              clusterStats.push(
-                `- "${neuron.name || "(unnamed)"}" (${totalInCluster} items): ${overdueCount} overdue, ${staleCount} stale`
-              );
-            }
-          }
-          if (clusterStats.length > 0) {
-            neuronClusterSummary = "\n\nNeuron cluster health:\n" + clusterStats.join("\n");
-          }
-        }
-      } catch (err) {
-        console.warn("[AICurated] Neuron enrichment failed:", err.message);
-      }
-
-      // Step 2.95: Interaction history enrichment (per-user, typed)
-      try {
-        const userId = identity?.id;
-        if (userId) {
-          const interactionPromises = Object.keys(tasksBySource).map(async (source) => {
-            try {
-              const result = await listTaskInteractions(source, userId);
-              return result?.interactions || [];
-            } catch { return []; }
-          });
-          const interactionResults = await Promise.allSettled(interactionPromises);
-          // Build per-task interaction map: taskId → { myLast, otherActions }
-          const interactionMap = new Map(); // taskId → interactions[]
-          for (const r of interactionResults) {
-            if (r.status !== "fulfilled") continue;
-            for (const interaction of r.value) {
-              if (!interactionMap.has(interaction.task_id)) interactionMap.set(interaction.task_id, []);
-              interactionMap.get(interaction.task_id).push(interaction);
-            }
+      // Step 2.7c: Record views + unread mention detection (post-filter, non-viewer)
+      if (!skipExpensiveEnrichment && identity?.id) {
+        try {
+          const viewsResult = await getRecordViews().catch(() => ({ views: [] }));
+          const viewMap = new Map();
+          for (const v of (viewsResult.views || [])) {
+            viewMap.set(v.record_id, v.last_viewed_at);
           }
           const now = Date.now();
           for (const task of filteredTasks) {
-            const interactions = interactionMap.get(task.id);
-            if (!interactions?.length) continue;
-            // Find my most recent interaction
-            const myInteractions = interactions.filter((i) => i.user_id === userId);
-            const otherInteractions = interactions.filter((i) => i.user_id !== userId && i.user_id !== "default");
-            if (myInteractions.length > 0) {
-              const latest = myInteractions[0]; // already sorted DESC by created_at
-              task._lastInteractionType = latest.interaction_type;
-              const ago = now - new Date(latest.created_at).getTime();
-              if (ago < 3600000) task._lastInteractionAgo = `${Math.round(ago / 60000)}m ago`;
-              else if (ago < 86400000) task._lastInteractionAgo = `${Math.round(ago / 3600000)}h ago`;
-              else task._lastInteractionAgo = `${Math.round(ago / 86400000)}d ago`;
-              // Detect interaction gap: commented but didn't update status
-              if (latest.interaction_type === "comment") {
-                const hasStatusChange = myInteractions.find((i) => i.interaction_type === "status_change" && i.created_at >= latest.created_at);
-                if (!hasStatusChange) {
-                  task._interactionGap = "commented but status unchanged";
-                }
+            const lastViewed = viewMap.get(task.id);
+            if (lastViewed) {
+              task._lastViewedDaysAgo = Math.floor((now - new Date(lastViewed).getTime()) / 86400000);
+            }
+            // Unread mention: user was @mentioned AND mention postdates last view
+            if (task._isMentioned) {
+              const mentionTime = mentionMetaMap.get(task.id);
+              if (mentionTime && (!lastViewed || new Date(mentionTime) > new Date(lastViewed))) {
+                task._hasUnreadComments = true;
               }
             }
-            // Other user signals (shared signals)
-            if (otherInteractions.length > 0) {
-              task._otherUserActions = otherInteractions.slice(0, 3).map((i) => ({
-                user: i.display_name || "A team member",
-                type: i.interaction_type,
-                detail: i.detail,
-              }));
+          }
+        } catch (err) {
+          console.warn("[AICurated] Per-user signal enrichment failed:", err.message);
+        }
+      }
+
+      // Step 2.9: Neuron sibling enrichment (zero API calls — uses cached graph)
+      if (!skipExpensiveEnrichment) {
+        try {
+          const neuronGraph = loadCachedNeuronGraph();
+          if (neuronGraph && neuronGraph.length > 0) {
+            // Build nodeId → task lookup
+            const taskById = new Map();
+            for (const task of filteredTasks) {
+              taskById.set(task.id, task);
+            }
+
+            // Build nodeId → neuron lookup and annotate tasks
+            for (const neuron of neuronGraph) {
+              const nodeIds = (neuron.nodes || []).map((nd) => nd.node_id);
+              // Find which filtered tasks are in this neuron
+              const tasksInNeuron = nodeIds
+                .map((nid) => taskById.get(nid))
+                .filter(Boolean);
+
+              if (tasksInNeuron.length === 0) continue;
+
+              // Check if any sibling in this neuron is urgent (overdue/high priority)
+              const hasUrgentSibling = tasksInNeuron.some((t) =>
+                t._isOverdue || t.priority === "High" || t.priority === "Urgent"
+              );
+
+              // Annotate each task with its neuron membership
+              for (const task of tasksInNeuron) {
+                if (!task._neuronNames) task._neuronNames = [];
+                task._neuronNames.push(neuron.name || "(unnamed)");
+                if (hasUrgentSibling) task._neuronSiblingUrgent = true;
+              }
+            }
+
+            // Build cluster health summary for the insight prompt
+            const clusterStats = [];
+            for (const neuron of neuronGraph) {
+              const nodeIds = (neuron.nodes || []).map((nd) => nd.node_id);
+              const tasksInNeuron = nodeIds.map((nid) => taskById.get(nid)).filter(Boolean);
+              if (tasksInNeuron.length === 0) continue;
+
+              const overdueCount = tasksInNeuron.filter((t) => t._isOverdue).length;
+              const staleCount = tasksInNeuron.filter((t) => t._isStale).length;
+              const totalInCluster = (neuron.nodes || []).length;
+
+              if (overdueCount > 0 || staleCount > 0) {
+                clusterStats.push(
+                  `- "${neuron.name || "(unnamed)"}" (${totalInCluster} items): ${overdueCount} overdue, ${staleCount} stale`
+                );
+              }
+            }
+            if (clusterStats.length > 0) {
+              neuronClusterSummary = "\n\nNeuron cluster health:\n" + clusterStats.join("\n");
             }
           }
+        } catch (err) {
+          console.warn("[AICurated] Neuron enrichment failed:", err.message);
         }
-      } catch (err) {
-        console.warn("[AICurated] Interaction enrichment failed:", err.message);
+      }
+
+      // Step 2.95: Interaction history enrichment — reuses interactionMap from the
+      // earlier combined fetch (no second API round-trip).
+      if (!skipExpensiveEnrichment) {
+        try {
+          const userId = identity?.id;
+          if (userId) {
+            const now = Date.now();
+            for (const task of filteredTasks) {
+              const interactions = interactionMap.get(task.id);
+              if (!interactions?.length) continue;
+              // Find my most recent interaction
+              const myInteractions = interactions.filter((i) => i.user_id === userId);
+              const otherInteractions = interactions.filter((i) => i.user_id !== userId && i.user_id !== "default");
+              if (myInteractions.length > 0) {
+                const latest = myInteractions[0]; // already sorted DESC by created_at
+                task._lastInteractionType = latest.interaction_type;
+                const ago = now - new Date(latest.created_at).getTime();
+                if (ago < 3600000) task._lastInteractionAgo = `${Math.round(ago / 60000)}m ago`;
+                else if (ago < 86400000) task._lastInteractionAgo = `${Math.round(ago / 3600000)}h ago`;
+                else task._lastInteractionAgo = `${Math.round(ago / 86400000)}d ago`;
+                // Detect interaction gap: commented but didn't update status
+                if (latest.interaction_type === "comment") {
+                  const hasStatusChange = myInteractions.find((i) => i.interaction_type === "status_change" && i.created_at >= latest.created_at);
+                  if (!hasStatusChange) {
+                    task._interactionGap = "commented but status unchanged";
+                  }
+                }
+              }
+              // Other user signals (shared signals)
+              if (otherInteractions.length > 0) {
+                task._otherUserActions = otherInteractions.slice(0, 3).map((i) => ({
+                  user: i.display_name || "A team member",
+                  type: i.interaction_type,
+                  detail: i.detail,
+                }));
+              }
+            }
+          }
+        } catch (err) {
+          console.warn("[AICurated] Interaction enrichment failed:", err.message);
+        }
       }
 
       // Step 2.96: Enrich with interaction breakdown from localStorage ledger
       // This adds _interactionBreakdown (e.g., "3 views, 2 edits today") to each task
       // so compressTask() can include it and the formula suggestion in the Claude prompt.
-      try {
-        const ledger = loadInteractionLedger(identity?.id);
-        const now = Date.now();
-        for (const task of filteredTasks) {
-          const entry = ledger[task.id];
-          if (!entry?.interactions?.length) continue;
-          const todayInteractions = entry.interactions.filter(i => (now - i.ts) < 86400000);
-          if (todayInteractions.length > 0) {
-            const counts = {};
-            for (const i of todayInteractions) counts[i.type] = (counts[i.type] || 0) + 1;
-            task._interactionBreakdown = Object.entries(counts)
-              .map(([type, count]) => `${count} ${type}${count > 1 ? "s" : ""}`)
-              .join(", ") + " today";
+      if (!skipExpensiveEnrichment) {
+        try {
+          const ledger = loadInteractionLedger(identity?.id);
+          const now = Date.now();
+          for (const task of filteredTasks) {
+            const entry = ledger[task.id];
+            if (!entry?.interactions?.length) continue;
+            const todayInteractions = entry.interactions.filter(i => (now - i.ts) < 86400000);
+            if (todayInteractions.length > 0) {
+              const counts = {};
+              for (const i of todayInteractions) counts[i.type] = (counts[i.type] || 0) + 1;
+              task._interactionBreakdown = Object.entries(counts)
+                .map(([type, count]) => `${count} ${type}${count > 1 ? "s" : ""}`)
+                .join(", ") + " today";
+            }
+            // Carry over interaction adjustment data from mergeInteractionAdjustments
+            // (which may not have run yet on filteredTasks — it runs on results after Claude)
+            if (entry.totalAdjustment !== undefined) {
+              task._interactionAdjustment = entry.totalAdjustment;
+              task._interactionCount = entry.interactions.length;
+            }
           }
-          // Carry over interaction adjustment data from mergeInteractionAdjustments
-          // (which may not have run yet on filteredTasks — it runs on results after Claude)
-          if (entry.totalAdjustment !== undefined) {
-            task._interactionAdjustment = entry.totalAdjustment;
-            task._interactionCount = entry.interactions.length;
-          }
+        } catch (err) {
+          console.warn("[AICurated] Interaction breakdown enrichment failed:", err.message);
         }
-      } catch (err) {
-        console.warn("[AICurated] Interaction breakdown enrichment failed:", err.message);
       }
 
       // Step 3: Call Haiku for prioritization (on filtered tasks)
