@@ -18,11 +18,11 @@ import {
   persistInteraction, mergeInteractionAdjustments, loadInteractionLedger,
 } from "./taskHelpers.js";
 
-const CACHE_KEY_PREFIX = "wasabi_ai_tasks_v10"; // v10: D1-only scan, no Notion API dependency
+const CACHE_KEY_PREFIX = "wasabi_ai_tasks_v11"; // v11: raised limits, sub-items excluded, updated_at sort
 const INSIGHT_CACHE_KEY = "wasabi_insight";
 const CACHE_TTL = 30 * 60 * 1000; // 30 minutes — stale-while-revalidate shows cached data instantly
-const MAX_DATABASES = 5;
-const MAX_ITEMS_PER_DB = 30;
+const MAX_DATABASES = 25;
+const MAX_ITEMS_PER_DB = 1000;
 
 // Per-user cache key — prevents cross-user cache contamination
 function cacheKeyForUser(userId) {
@@ -550,14 +550,25 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
       const fetchPromises = taskDbs.map(async (db) => {
         try {
           const result = await withRetry(
-            () => listRows(db.tableId, { limit: MAX_ITEMS_PER_DB }),
+            // topLevelOnly: sub-items handled separately elsewhere; they'd
+            // consume slots against MAX_ITEMS_PER_DB and render as "Untitled"
+            // noise because parent-table columns don't match sub-column cells.
+            () => listRows(db.tableId, { limit: MAX_ITEMS_PER_DB, topLevelOnly: true }),
             `D1 rows for "${db.pageName}"`
           );
           const rows = result.rows || [];
+          // Sort newest-activity first so when we hit MAX_ITEMS_PER_DB the cut
+          // falls on stale rows, not fresh ones. Worker's SQL sort is
+          // created_at ASC which would hide new assignments behind old imports.
+          rows.sort((a, b) => {
+            const ta = new Date(a.updated_at || a.created_at || 0).getTime();
+            const tb = new Date(b.updated_at || b.created_at || 0).getTime();
+            return tb - ta;
+          });
+          // parentCellMap still built for normalizeD1Task's inherited-field
+          // lookup; topLevelOnly filter means it's now always empty, but the
+          // param is kept for API compatibility.
           const parentCellMap = {};
-          for (const r of rows) {
-            if (!r.parent_row_id) parentCellMap[r.id] = r.cells;
-          }
           const tasks = [];
           for (const row of rows) {
             const task = normalizeD1Task(row, db.columns, parentCellMap);

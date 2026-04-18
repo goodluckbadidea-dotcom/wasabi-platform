@@ -284,11 +284,14 @@ export async function updateSubColumnSchema(id, sub_columns) {
 
 // ─── Table Rows ───
 
-export async function listRows(tableId, { limit, offset, archived } = {}) {
+export async function listRows(tableId, { limit, offset, archived, topLevelOnly } = {}) {
   const params = new URLSearchParams();
   if (limit) params.set("limit", limit);
   if (offset) params.set("offset", offset);
   if (archived) params.set("archived", "true");
+  // topLevelOnly: exclude sub-items (rows with parent_row_id set).
+  // Worker interprets ?parent_row_id=null as "WHERE parent_row_id IS NULL".
+  if (topLevelOnly) params.set("parent_row_id", "null");
   const qs = params.toString();
   return apiFetch(`/tables/${tableId}/rows${qs ? `?${qs}` : ""}`, { method: "GET" });
 }
