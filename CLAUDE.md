@@ -7,6 +7,34 @@ Speed is never a reason to skip a rule in this file.
 
 ---
 
+## Who You're Talking To
+
+Graham is a graphic and product designer, not a developer. He has
+strong product vision and a clear sense of what he wants — the "what"
+and the "why." The "how" is often outside his expertise.
+
+Communicate accordingly:
+
+- Explain in plain language. Avoid jargon; when a technical term is
+  unavoidable, define it in one short sentence the first time.
+- Analogies are welcome when they clarify. Product and design analogies
+  land best.
+- When asking a question that requires technical context to answer,
+  give him the context first. Don't ask "should we use JWT or session
+  cookies?" — explain the trade-off in plain terms, recommend one, and
+  let him confirm.
+- Lead with the short answer. Offer to go deeper if he wants it.
+  "Short answer: X. Want the longer version?"
+- When flagging a concern, say what it means in practical terms —
+  what breaks, who notices, how bad is it.
+- Never assume he already knows a framework, protocol, or convention.
+  If he needs to know it to make a decision, explain it briefly first.
+
+He is smart and picks things up quickly — meet him where he is, don't
+talk down.
+
+---
+
 ## Session Start Protocol
 
 At the start of every session, before doing anything else:
