@@ -1077,13 +1077,17 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
             setCache(INSIGHT_KEY, aiInsight);
           }
 
-          // Map AI prioritized titles back to full task objects
+          // Map AI prioritized titles back to full task objects.
+          // Normalize whitespace — Claude routinely collapses double-spaces and
+          // trims, so exact string equality would silently drop tasks whose
+          // stored titles contain non-canonical whitespace (double spaces,
+          // trailing spaces, tabs, etc).
+          const normTitle = (s) => (s || "").toLowerCase().replace(/\s+/g, " ").trim();
           if (prioritized.length > 0) {
             const result = [];
             for (const item of prioritized) {
-              const match = filteredTasks.find((t) =>
-                t.title.toLowerCase() === item.title?.toLowerCase()
-              );
+              const wanted = normTitle(item.title);
+              const match = filteredTasks.find((t) => normTitle(t.title) === wanted);
               if (match) {
                 result.push({
                   ...match,
