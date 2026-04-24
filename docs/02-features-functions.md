@@ -46,7 +46,7 @@ Personal productivity surface. User-scoped data. All components lazy-loaded.
 | `TaskList.jsx` | Task rows, quick-add input, section grouping |
 | `taskHelpers.js` | Task utility functions, cache helpers (`getCached`, `setCache`, `getStaleCache`), interaction tracking (`persistInteraction`, `mergeInteractionAdjustments`, `loadInteractionLedger`) |
 | `useTasksTable.js` | Hook for D1 task CRUD. Auto-provisions per-user "User Tasks" table on first use. Gates on `pagesLoaded` to avoid running against stale localStorage cache. Trusts saved `zen_tasks_table_id` from D1 user_state. |
-| `useAICuratedTasks.js` | Hook for AI-curated tasks: scans D1 databases, enriches with signals, calls Claude Haiku for prioritization. Features: stale-while-revalidate caching (2hr TTL), event-driven invalidation via dirty flags, interaction-based deprioritization with time decay (user-scoped), D1-backed snooze, interaction-aware Claude prompt with formula suggestions, pipeline-aware date reasoning, people column matching, cross-user cache invalidation |
+| `useAICuratedTasks.js` | Hook for AI-curated tasks: scans D1 databases, enriches with signals, calls Claude Haiku for prioritization. Features: stale-while-revalidate caching (2hr TTL, cache key v11), event-driven invalidation via dirty flags, interaction-based deprioritization with time decay (user-scoped), D1-backed snooze, interaction-aware Claude prompt with formula suggestions, pipeline-aware date reasoning, people column matching, cross-user cache invalidation. **Scan pipeline (2026-04-17):** single `listNotifications` query for @mention detection (replaces per-task comment fan-out), role pre-filter before expensive enrichment, viewers skip enrichment entirely, consolidated single `listTaskInteractions` fetch per source, whitespace-normalized title matching for Claude response. Sub-items excluded from scan via `listRows({ topLevelOnly: true })`. Limits: MAX_DATABASES=25, MAX_ITEMS_PER_DB=1000. Client-side sort by `updated_at DESC` so newer activity surfaces first. |
 | `useDismissedTasks.js` | Hook for dismissed task tracking (session-scoped, sessionStorage) |
 | `useInsight.js` | Hook for AI-generated insights (sidebar insight, 7-day cache, user-scoped via userId param) |
 | `calendar/` | Calendar sub-components (DayColumn, WeekListView, MonthGrid) |
@@ -59,30 +59,36 @@ Personal productivity surface. User-scoped data. All components lazy-loaded.
 
 ## AI-Curated Task System
 
-**Source:** `src/features/useAICuratedTasks.js` (~1,200 lines), `src/features/taskHelpers.js`
+**Source:** `src/features/useAICuratedTasks.js` (~1,100 lines), `src/features/taskHelpers.js`
 
 The AI task curation system scans all D1 databases for task-like records, enriches them with per-user signals, calls Claude Haiku for intelligent prioritization, and presents a ranked task list in TasksView.
 
-### Architecture
+### Architecture (2026-04-17)
 
 ```
 Mount → Show cached data instantly (stale-while-revalidate)
-  → If cache stale (>2hrs) or dirty flag set → background rescan:
-    1. Scan page configs for task-like databases (scoring heuristic)
-    2. Fetch rows from each (max 5 DBs, 30 items each)
-    3. Fetch activity data, interaction history, record views, comments
-    4. Enrich: ownership, @mentions, staleness, dependencies, neurons
-    5. Fetch active snoozes from D1 → filter snoozed tasks out
-    6. Merge interaction adjustments from localStorage ledger
-    7. Build interaction breakdown for Claude prompt
-    8. Call Claude Haiku with enriched data + formula suggestions
-    9. Merge interaction adjustments into results → cache → display
+  → If cache stale (>30min) or dirty flag set → background rescan:
+    1. Scan page configs for task-like databases (scoring heuristic, max 25)
+    2. Fetch top-level rows only from each (max 1000 per DB, sub-items excluded)
+       → Sort client-side by updated_at DESC (newer activity first)
+    3. Fetch per source: activity, interactions (single combined call)
+    4. Single listNotifications query → mentionedRecordIds Set
+    5. Set cheap per-user flags on all tasks (ownership, assignment, mention)
+    6. ROLE PRE-FILTER → drop tasks the user can't see BEFORE expensive work
+    7. Fetch active snoozes from D1 → filter snoozed tasks out
+    8. [Non-viewers only] record views, neuron enrichment, interaction history,
+       interaction breakdown (viewers skip — they fall through to date-sort)
+    9. Call Claude Haiku with enriched data + formula suggestions
+    10. Whitespace-normalize titles when matching Claude response back
+    11. Merge interaction adjustments → cache → display
 ```
+
+**Scan API calls: ~16 regardless of task count.** (Was ~90 at 30 tasks, would have been ~3000 at 1000 tasks without the refactor.) Per-task comment fan-out was replaced by a single notifications query, since the `notifications` table with `type='mention'` is the authoritative source for @mentions.
 
 ### Caching Strategy (Stale-While-Revalidate)
 
-- **Cache key:** `wasabi_ai_tasks_v10_{userId}` in localStorage
-- **Cache TTL:** 2 hours (background rescan trigger, not hard expiry)
+- **Cache key:** `wasabi_ai_tasks_v11_{userId}` in localStorage (v11: raised limits, sub-items excluded, updated_at sort)
+- **Cache TTL:** 30 minutes (background rescan trigger, not hard expiry)
 - **On mount:** `getStaleCache()` returns data regardless of age → instant display
 - **Background refresh:** `refreshing` state shows subtle indicator, not loading spinner
 - **Event-driven invalidation:** `cacheDirty` flag triggers rescan on next effect cycle

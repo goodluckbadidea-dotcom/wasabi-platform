@@ -405,16 +405,27 @@ Device A: user navigates to page
 
 ```
 TasksView mounts
-  → useAICuratedTasks hook initializes
+  → useAICuratedTasks hook initializes (cache key v11)
   → Mount effect: getStaleCache() → show data instantly (any age)
-  → Auto-scan effect: getCached(key, 2hr TTL) OR cacheDirty flag
+  → Auto-scan effect: getCached(key, 30min TTL) OR cacheDirty flag
     → If fresh + not dirty: skip scan
     → If stale or dirty: background scan (refreshing indicator, not spinner)
-      → Scan: find DBs → fetch rows → enrich signals → fetch snoozes
-      → Filter snoozed tasks → merge interaction adjustments
-      → Claude Haiku ranks with interaction-aware prompt
+      → Find DBs (max 25) → fetch top-level rows (max 1000/DB, sub-items excluded)
+      → Sort client-side by updated_at DESC
+      → Single listNotifications → mentionedRecordIds Set
+      → Single listTaskInteractions per source (combined map)
+      → Set cheap flags (owner/assigned/mention) → apply role pre-filter
+      → Filter snoozed tasks
+      → [Non-viewers] record views, neuron, interaction-history enrichment
+      → Claude Haiku ranks (interaction-aware prompt)
+      → Whitespace-normalized title matching back to task objects
       → mergeInteractionAdjustments post-Claude → cache → display
 ```
+
+**Call budget: ~16 calls per scan regardless of task count.** Per-task comment
+fan-out replaced by single notifications query; duplicate interaction fetch
+consolidated; viewers skip all enrichment (can't call Claude, fall through to
+date-sort).
 
 ### AI Task Interaction Flow
 

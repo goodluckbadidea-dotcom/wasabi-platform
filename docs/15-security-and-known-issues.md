@@ -24,7 +24,6 @@ The following security features are implemented and active in production.
 | Role enforcement | getFreshRole() queries DB, not stale JWT claim | `worker.js` notification handlers |
 | Per-user data scoping | Ownership verification on user tasks, server-side comment user_id | `src/features/useTasksTable.js`, `worker.js` |
 | Notification scoping | All users (including admins) see only notifications targeted at them — no admin bypass | `worker.js` GET /notifications, `NotificationFeed.jsx` |
-| Mention dedup guard | Duplicate @mention notifications for same record/target/actor skipped within 5 minutes | `worker.js` handleCreateComment, handleSaveNote |
 | Input validation | Password policy (8+ chars, upper+lower+digit), invite expiration | `worker.js` registration handler |
 | Plugin validation | Blocklist: eval, import, require, window, document, etc. | `worker.js` validatePluginCodeServer |
 | Z-index isolation | Centralized Z scale prevents layer conflicts | `src/design/tokens.js` Z object |
@@ -309,6 +308,31 @@ Fixed by standardizing all 5 themes to `ellipse at 50% -10%` (top center) with `
 
 `BuildPage.jsx` `EmptyState` component had `color: "#fff"` (hardcoded white) on the "Create your first view" button with `background: C.darkSurf`. On light themes, white text on a light surface was invisible. Fixed to use `background: "transparent"` with `color: C.accent`.
 
+### Curated Task List Data Gap — Row-Limit Cap Silently Hiding Tasks (Resolved 2026-04-17)
+
+Non-admin users were missing assigned tasks from their curated task list. Specifically: Kat saw 5 tasks instead of 10, Abe saw 0 instead of 1.
+
+Root cause: `useAICuratedTasks.js` hardcoded `MAX_ITEMS_PER_DB = 30`, and the worker's `handleListRows` sorts by `sort_order, created_at ASC`. The Projects table has 41 rows, 29 of which were bulk-imported in the same second — those 29 filled the first 30 slots. Any record created *after* the initial import fell past the cap and was never fetched. Kat's 2 newest tasks and Abe's only task lived beyond position 30. `MAX_DATABASES = 5` was also an unconditional cap that would have hurt growing workspaces. Admin (Graham) didn't notice because most of his records were in the early batch.
+
+Fixed across three stages (see 2026-04-17 session memory):
+
+1. **Stage 0 — worker reliability prerequisites:** Fixed `handleCreateComment` querying `SELECT name FROM page_configs` (column is `title`); removed overly aggressive 5-minute mention dedup guard that silently dropped legitimate follow-up mentions; replaced silent `catch (_) {}` with tagged `console.error` across comment/mention/notification paths so future failures surface in `wrangler tail`.
+2. **Stage 1 — curated scan performance refactor:** Replaced per-task `listRecordComments` fan-out with single `listNotifications({ limit: 500 })` call — notifications table (with `type='mention'`) is authoritative source for mentions. Role pre-filter moved BEFORE expensive enrichment so non-admins don't enrich tasks they can't see. Viewers skip all enrichment (can't call `/claude` anyway). Duplicate `listTaskInteractions` fetch consolidated. Keyword-based dependency scan removed (required comment fan-out; marginal value). Net: scan API calls dropped from ~90 (current scale) / ~3000 (planned scale) to ~16 regardless of task count.
+3. **Stage 2 — actual data gap fix:** `MAX_ITEMS_PER_DB` 30→1000, `MAX_DATABASES` 5→25, `listRows` gained `topLevelOnly` option to exclude sub-items, rows sorted client-side by `updated_at DESC` so newer activity surfaces first, cache version bumped v10→v11 to invalidate stale caches.
+
+**Follow-up:** LLM whitespace title-matching edge case. Claude occasionally collapses double-spaces or trims titles when returning the prioritized list, and the match back to full task objects used strict string equality — one record ("EXPANSION MARKET TIN ORDER  (IL, MN, NJ)" with double space) was silently dropped. Fixed with whitespace-normalizing comparison (`str.replace(/\s+/g, " ").trim()`).
+
+Commits: `79bf598` (Stage 0), `55c7b49` (Stage 1), `8b50e86` (Stage 2), `890bf3b` (title match). Files: `worker/handlers/records.js`, `worker/handlers/notifications.js`, `src/features/useAICuratedTasks.js`, `src/lib/api.js`.
+
+### Mention Notifications Silently Dropped (Resolved 2026-04-17)
+
+Independent of the task-list bug above but surfaced by the same investigation: only ~half of post-March-24 @mentions in comments were creating notification rows. Two causes compounded:
+
+1. `SELECT name FROM page_configs` — column is `title`, so the page-name lookup threw on every comment. The surrounding `try { ... } catch (_) {}` swallowed the error silently, so notifications proceeded with empty `page_name` — cosmetic, but hid the deeper issue.
+2. The 5-minute dedup guard was scoped to (record_id, target_user_id, actor_name) — it silently dropped every legitimate follow-up mention within the window (multi-mentions in one comment, rapid-fire threads, self-mentions after cross-user mentions, etc.).
+
+Fixed in Stage 0 above. Verified in production: 5-of-5 expected mentions created across multi-mention + rapid-repeat + self-mention test pass.
+
 ### Console and Error Hygiene
 
-All `console.log` debug statements have been removed from production code. Error handling uses the ToastContext system for user-visible errors and silent catch for non-critical failures (localStorage, optional features).
+All `console.log` debug statements have been removed from production code. Error handling uses the ToastContext system for user-visible errors and silent catch for non-critical failures (localStorage, optional features). **Exception (2026-04-17):** notification and mention-creation code paths in `worker/handlers/records.js` and `worker/handlers/notifications.js` now use `console.error("[tag] message:", err)` instead of silent swallows — errors in these paths were previously invisible and masked real bugs (see "Mention Notifications Silently Dropped" above).
