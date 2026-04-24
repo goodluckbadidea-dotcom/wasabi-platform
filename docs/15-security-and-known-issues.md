@@ -35,6 +35,7 @@ The following security features are implemented and active in production.
 | Microsoft OAuth security | Popup postMessage payload XSS-hardened: `JSON.stringify(payload).replace(/</g, "\\u003c")`. OAuth state includes HMAC nonce encoded as btoa(JSON.stringify({ mode, userId, nonce })). Auth-exempt path uses `startsWith` not exact match to handle query strings. | `worker/handlers/microsoft.js` |
 | Figma API proxy | Figma API key stored encrypted in D1 (same AES-256-GCM pattern). All Figma API calls proxied through worker with `X-FIGMA-TOKEN` header — key never exposed to frontend. Team ID stored unencrypted (non-secret config). | `worker/handlers/figma.js`, `worker/handlers/connections.js` NON_SECRET_KEYS |
 | WCAG AA contrast | All 5 themes pass 4.5:1+ for muted text on all surfaces; surface/border/text token gaps widened | `src/design/tokens.js` |
+| Relationship edge ACL | `GET /relationships` filters every returned edge by caller's ACL on **both** `source_page_id` and `target_page_id`. Admin and shared-secret (MCP) callers bypass; non-admins exclude edges whose endpoint pages are restricted by an explicit `page_permissions.permission='none'` row. Documented invariant: missing this filter would leak edge existence even when the entity itself is hidden. | `worker/handlers/relationships.js` `buildPermissionFilter()` |
 
 ---
 

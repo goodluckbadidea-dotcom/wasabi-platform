@@ -157,6 +157,10 @@ export const ROUTE_PERMISSIONS = [
   { pattern: /^\/links/, method: "POST", minRole: "editor" },
   { pattern: /^\/links/, method: "PATCH", minRole: "editor" },
   { pattern: /^\/links/, method: "DELETE", minRole: "editor" },
+  // Relationships — editor for mutations (GET falls through to default, edge-level
+  // permission filter enforced inside handleListRelationships)
+  { pattern: /^\/relationships/, method: "POST", minRole: "editor" },
+  { pattern: /^\/relationships/, method: "DELETE", minRole: "editor" },
   // Sync — editor for all mutations
   { pattern: /^\/sync\//, method: "POST", minRole: "editor" },
   { pattern: /^\/sync\//, method: "DELETE", minRole: "editor" },

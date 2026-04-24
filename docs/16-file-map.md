@@ -52,6 +52,8 @@ Extracted from worker.js during the 2026-04-06 refactor. Each file is a named ES
 | `worker/handlers/pages.js` | Page config CRUD |
 | `worker/handlers/users.js` | User management: list, invite, roles, sessions |
 | `worker/handlers/files.js` | R2 file uploads and retrieval |
+| `worker/handlers/relationships.js` | Unified relationships subsystem: GET/POST/DELETE handlers (Phase 1, 2026-04-24). Permission filter scopes results by `source_page_id`/`target_page_id` ACL. POST restricts origin to `user_declared` or `ai_inferred` (projection origins are written by `relationshipProjections.js`, not the public endpoint). Dedupe: 409 on duplicate `(source_type, source_id, target_type, target_id, type)` for active edges. DELETE is soft via `deleted_at`. |
+| `worker/handlers/relationshipProjections.js` | Projection layer + rebuild script for relationships subsystem (Phase 1 stub, 2026-04-24). Five projector functions (`projectParentRows`, `projectCellLinks`, `projectRelationColumns`, `projectNeuronNodes`, `projectMentions`) + `rebuildProjections(env)` orchestrator. Phase 1 bodies are no-ops; Phase 2 fills them in. Rebuild contract: `DELETE FROM relationships WHERE origin LIKE 'projected_%'` followed by `rebuildProjections(env)` reproduces identical state. |
 | `worker/automation/engine.js` | Automation rule evaluation and execution. Lazy-decrypts Claude key if stored as plaintext. |
 | `index.html` | HTML shell for React SPA. Loads fonts (DM Sans, DM Mono, Outfit), mounts into `#root`. |
 | `package.json` | npm manifest. React 18, Vite 5, vitest, jsPDF. |

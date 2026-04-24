@@ -30,6 +30,7 @@ import { runAutomationTick, checkAutomationTriggers, runNeuronPruneTick } from '
 import { runSyncFlushTick, handleSyncConfigure, handleSyncPush, handleSyncPull, handleSyncStatus, handleSyncDelete, handleDisconnect, handleSyncBackup, handleSyncBootstrap, handleSyncFlush, getNotionKeyFromDB, invalidateSummaryCache } from './worker/handlers/notion-sync.js';
 import { handleListPages, handleCreatePage, handleGetSummaryCache, handleSetSummaryCache, handleGetPage, handleUpdatePage, handleReorderPages, handleDeletePage } from './worker/handlers/pages.js';
 import { handleGetSchema, handleUpdateSchema, handleListRows, handleCreateRows, handleUpdateRow, handleDeleteRow, handleQueryTable } from './worker/handlers/tables.js';
+import { handleListRelationships, handleCreateRelationship, handleDeleteRelationship } from './worker/handlers/relationships.js';
 import { handleHealth, handleInit, handleFactoryReset } from './worker/handlers/init.js';
 
 
@@ -1255,6 +1256,25 @@ export default {
           ).bind(nodeRowId, neuronId, node.node_type, node.node_id, node.node_label || "", node.page_config_id || "", JSON.stringify(node.meta || {})).run();
         }
         return jsonResponse({ id: neuronId, name: name || "", node_count: nodes.length }, 201);
+      }
+
+      // ─── Relationships Routes (Phase 1 — plumbing, no consumers yet) ───
+
+      // GET /relationships — list edges with permission filter
+      if (path === "/relationships" && request.method === "GET") {
+        return await handleListRelationships(env, url, user, jsonResponse);
+      }
+
+      // POST /relationships — create a native edge (user_declared or ai_inferred)
+      if (path === "/relationships" && request.method === "POST") {
+        const body = await request.json();
+        return await handleCreateRelationship(env, body, user, jsonResponse);
+      }
+
+      // DELETE /relationships/:id — soft-delete an edge
+      const relationshipDeleteMatch = path.match(/^\/relationships\/([^/]+)$/);
+      if (relationshipDeleteMatch && request.method === "DELETE") {
+        return await handleDeleteRelationship(env, relationshipDeleteMatch[1], user, jsonResponse);
       }
 
       // ─── Cell Links Routes ───

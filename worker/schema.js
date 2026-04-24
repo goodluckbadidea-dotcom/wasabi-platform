@@ -316,6 +316,35 @@ CREATE TABLE IF NOT EXISTS record_views (
   last_viewed_at TEXT NOT NULL,
   PRIMARY KEY (user_id, record_id)
 );
+
+CREATE TABLE IF NOT EXISTS relationships (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  source_type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  source_page_id TEXT,
+  target_type TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  target_page_id TEXT,
+  directed INTEGER NOT NULL DEFAULT 1,
+  origin TEXT NOT NULL,
+  confidence REAL,
+  meta TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_by TEXT,
+  updated_at TEXT,
+  deleted_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS relationship_types (
+  type TEXT PRIMARY KEY,
+  label TEXT NOT NULL,
+  inverse_label TEXT,
+  directed INTEGER NOT NULL,
+  cascade_hint TEXT NOT NULL,
+  deprecated_at TEXT,
+  description TEXT
+);
 `;
 
 // ─── D1 Indexes ───
@@ -350,4 +379,26 @@ CREATE TABLE IF NOT EXISTS task_snoozes (
   created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_task_snoozes_user ON task_snoozes(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_rel_source ON relationships(source_type, source_id);
+CREATE INDEX IF NOT EXISTS idx_rel_target ON relationships(target_type, target_id);
+CREATE INDEX IF NOT EXISTS idx_rel_type ON relationships(type);
+CREATE INDEX IF NOT EXISTS idx_rel_source_page ON relationships(source_page_id);
+CREATE INDEX IF NOT EXISTS idx_rel_target_page ON relationships(target_page_id);
 `;
+
+// ─── Relationship Type Seed Rows ───
+// Day-one taxonomy for the unified relationships subsystem. Idempotent via
+// INSERT OR IGNORE. Populated during /init; new types can be added later by
+// appending entries here and bumping the schema version.
+export const RELATIONSHIP_TYPE_SEEDS = [
+  `INSERT OR IGNORE INTO relationship_types (type, label, inverse_label, directed, cascade_hint, description) VALUES ('part_of', 'part of', 'has parts', 1, 'cascade', 'Child belongs to a parent entity. Sub-item hierarchy.')`,
+  `INSERT OR IGNORE INTO relationship_types (type, label, inverse_label, directed, cascade_hint, description) VALUES ('references', 'references', 'referenced by', 1, 'nullify', 'Source cell pulls its value from a target cell.')`,
+  `INSERT OR IGNORE INTO relationship_types (type, label, inverse_label, directed, cascade_hint, description) VALUES ('related_to', 'related to', NULL, 1, 'nullify', 'Relation-column edge. One edge per array element.')`,
+  `INSERT OR IGNORE INTO relationship_types (type, label, inverse_label, directed, cascade_hint, description) VALUES ('member_of_neuron', 'member of', 'has member', 1, 'nullify', 'Entity belongs to a named neuron cluster.')`,
+  `INSERT OR IGNORE INTO relationship_types (type, label, inverse_label, directed, cascade_hint, description) VALUES ('mentioned_in', 'mentioned in', 'mentions', 1, 'ignore', 'User was @-mentioned in a record comment.')`,
+  `INSERT OR IGNORE INTO relationship_types (type, label, inverse_label, directed, cascade_hint, description) VALUES ('depends_on', 'depends on', 'blocks', 1, 'prompt', 'Source task is blocked until target task completes.')`,
+  `INSERT OR IGNORE INTO relationship_types (type, label, inverse_label, directed, cascade_hint, description) VALUES ('blocks', 'blocks', 'depends on', 1, 'prompt', 'Inverse of depends_on; renderable either way.')`,
+  `INSERT OR IGNORE INTO relationship_types (type, label, inverse_label, directed, cascade_hint, description) VALUES ('similar_to', 'similar to', NULL, 0, 'ignore', 'Symmetric semantic similarity. Usually AI-inferred.')`,
+  `INSERT OR IGNORE INTO relationship_types (type, label, inverse_label, directed, cascade_hint, description) VALUES ('conflicts_with', 'conflicts with', NULL, 0, 'prompt', 'Symmetric conflict. Two entities in tension.')`,
+];

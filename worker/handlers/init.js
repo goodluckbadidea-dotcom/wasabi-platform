@@ -1,7 +1,7 @@
 // ─── Init / Health / Factory Reset Handlers ───
 // Extracted from worker.js — zero logic changes.
 
-import { D1_SCHEMA, D1_INDEXES } from '../schema.js';
+import { D1_SCHEMA, D1_INDEXES, RELATIONSHIP_TYPE_SEEDS } from '../schema.js';
 
 // ─── Route Handlers ───
 
@@ -44,7 +44,7 @@ async function handleInit(env, jsonResponse) {
   // ── Schema version fast path ──
   // Skip all DDL if the schema is already at the current version.
   // Reduces ~92 sequential D1 queries to 3 on returning page loads.
-  const CURRENT_SCHEMA_VERSION = "4";
+  const CURRENT_SCHEMA_VERSION = "5";
   try {
     const row = await env.DB.prepare(
       "SELECT value FROM connections WHERE key = 'schema_version'"
@@ -170,6 +170,11 @@ async function handleInit(env, jsonResponse) {
 
     // Create indexes (batched — single round-trip, after migrations so new columns exist)
     await env.DB.batch(indexStatements.map(sql => env.DB.prepare(sql)));
+
+    // Seed relationship_types taxonomy (idempotent via INSERT OR IGNORE)
+    try {
+      await env.DB.batch(RELATIONSHIP_TYPE_SEEDS.map(sql => env.DB.prepare(sql)));
+    } catch (_) {}
 
     // Bootstrap: if no users exist, create a default admin invite
     let adminBootstrap = null;

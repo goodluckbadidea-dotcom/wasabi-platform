@@ -534,6 +534,112 @@ Active snoozes are filtered by `snooze_until > datetime('now')` — expired snoo
 
 ---
 
+## Relationship (Phase 1, 2026-04-24)
+
+Unified semantic edge between two workspace entities. Replaces the read surface
+of six legacy systems (neurons, cell links, relation columns, parent/sub-item
+hierarchy, mentions, plus the new native `depends_on`). Stored in the
+`relationships` D1 table.
+
+```typescript
+interface Relationship {
+  id: string;                       // UUID primary key
+  type: string;                     // FK to relationship_types.type
+  source_type: EntityType;
+  source_id: string;
+  source_page_id: string | null;    // Denormalized for permission filtering
+  target_type: EntityType;
+  target_id: string;
+  target_page_id: string | null;
+  directed: 0 | 1;                  // 0 = symmetric (endpoints interchangeable)
+  origin: RelationshipOrigin;
+  confidence: number | null;        // 0.0-1.0 for ai_inferred; NULL otherwise
+  meta: Record<string, any> | null; // JSON; source-specific extras, evidence
+  created_at: string;               // ISO 8601
+  created_by: string | null;        // user_id for user_declared; 'system' for projected
+  updated_at: string | null;
+  deleted_at: string | null;        // Soft-delete; preserves audit history
+}
+
+type EntityType =
+  | "record"        // table_rows row
+  | "page"          // page_configs page
+  | "field"         // specific column on a record
+  | "user"          // workspace member
+  | "neuron"        // neuron cluster
+  | "comment";      // record comment
+
+type RelationshipOrigin =
+  | "user_declared"           // Native: user created via UI
+  | "ai_inferred"              // Native: AI proposed (requires confidence < 1.0)
+  | "projected_parent_row"     // Projected (Phase 2+): from table_rows.parent_row_id
+  | "projected_cell_link"      // Projected: from cell_links
+  | "projected_relation_col"   // Projected: from relation column array values
+  | "projected_neuron_node"    // Projected: from neuron_nodes
+  | "projected_mention";       // Projected: from notifications type='mention'
+```
+
+**Two invariants:**
+
+1. **Relationships connect entities, not other relationships.** No edge-on-edge
+   tags. The moment we allow "this relationship has a meta-relationship," the
+   model collapses.
+2. **Projections are idempotent and fully rebuildable from source.** At any
+   time, `DELETE FROM relationships WHERE origin LIKE 'projected_%'` followed
+   by `rebuildProjections(env)` must reproduce identical state.
+
+**Dedupe rule:** one active edge per `(source_type, source_id, target_type,
+target_id, type)` tuple. POST `/relationships` returns 409 on duplicate.
+
+**Phase 1 scope:** schema + endpoints only. No projections written yet (Phase
+2). No UI consumers (Phase 3+). Native writes restricted to
+`origin: 'user_declared' | 'ai_inferred'` — projection origins are written by
+projection code, not the public POST endpoint.
+
+---
+
+## RelationshipType
+
+Type registry for the relationships subsystem. Each registered type carries a
+display label, an inverse label (for the target side of a directed edge),
+directionality, and a cascade hint that drives delete-time UX. Stored in the
+`relationship_types` D1 table; seeded with the day-one taxonomy on `/init`.
+
+```typescript
+interface RelationshipType {
+  type: string;                     // PRIMARY KEY (e.g., "depends_on")
+  label: string;                    // Display label ("depends on")
+  inverse_label: string | null;     // Target-side label; NULL for symmetric types
+  directed: 0 | 1;
+  cascade_hint: CascadeHint;        // Delete-time behavior signal
+  deprecated_at: string | null;     // ISO 8601; set when retired (POST blocks new edges of deprecated types)
+  description: string | null;
+}
+
+type CascadeHint =
+  | "nullify"   // Delete endpoint → soft-delete the edge silently
+  | "cascade"   // Delete endpoint → soft-delete dependents
+  | "prompt"    // Delete endpoint → ask user (e.g., "task B depends on this — unblock / delete / cancel?")
+  | "ignore";   // Delete endpoint → leave dangling
+```
+
+**Day-one taxonomy** (seeded by `RELATIONSHIP_TYPE_SEEDS` in
+`worker/schema.js`):
+
+| Type | Directed | Cascade | Source of truth (Phase 2+) |
+|------|----------|---------|----------------------------|
+| `part_of` | yes | cascade | `projected_parent_row` |
+| `references` | yes | nullify | `projected_cell_link` |
+| `related_to` | yes | nullify | `projected_relation_col` |
+| `member_of_neuron` | yes | nullify | `projected_neuron_node` |
+| `mentioned_in` | yes | ignore | `projected_mention` |
+| `depends_on` | yes | prompt | native (Phase 3 UI) |
+| `blocks` | yes | prompt | native (inverse of `depends_on`) |
+| `similar_to` | no | ignore | native (AI-inferred) |
+| `conflicts_with` | no | prompt | native |
+
+---
+
 ## D1 Table Summary
 
 | Table | Primary Key | Purpose |
@@ -557,3 +663,5 @@ Active snoozes are filtered by `snooze_until > datetime('now')` — expired snoo
 | `sync_configs` | id (UUID) | Notion sync configuration |
 | `custom_functions` | id (UUID) | User-defined functions and plugins |
 | `task_snoozes` | id (task_id:user_id) | Per-user task snooze state (cross-device) |
+| `relationships` | id (UUID) | Unified relationship edges (Phase 1, 2026-04-24) |
+| `relationship_types` | type (string) | Type registry for relationships subsystem |

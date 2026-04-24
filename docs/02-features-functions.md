@@ -756,3 +756,97 @@ Cell links connect individual cell values across different pages/views. A user p
 | `d1` | `{ type: "d1", record_id, column_name }` | Native D1 tables |
 | `notion` | `{ type: "notion", pageId, field }` | Notion-linked databases |
 | `sheet` | `{ type: "sheet", sheetUrl, rowIndex, column }` | Linked Google Sheets |
+
+---
+
+## Unified Relationships Subsystem (Phase 1, 2026-04-24)
+
+Wasabi has six independent ways to "connect things to other things" — neurons,
+cell links, relation columns, parent/sub-item hierarchy, mentions, plus the
+upcoming `depends_on` task dependencies. The relationships subsystem is a
+unified read surface (and eventual write surface) that lets the AI agent —
+and eventually users — query "what's connected to this entity, and how?" with
+one call instead of six.
+
+### Phase 1 status
+
+**Worker plumbing only — no consumers, no UI.** Phase 1 ships the schema, the
+HTTP endpoints, and a stub rebuild script. Phase 2 wires the projections from
+the five legacy systems and the AI tool integration. Phase 3 introduces the
+native `depends_on` type with three UI surfaces (RecordDetail Dependencies
+section, Gantt arrows, Table "Depends on" column type). Phase 4 ships the
+first-class Relationships panel in RecordDetail.
+
+### Architecture
+
+| File | Purpose |
+|------|---------|
+| `worker/schema.js` | `relationships` + `relationship_types` table definitions, 5 indexes, `RELATIONSHIP_TYPE_SEEDS` constant for the day-one taxonomy |
+| `worker/handlers/init.js` | Schema version bumped 4 → 5 to land the new tables; seeds executed via `INSERT OR IGNORE` after the index batch |
+| `worker/handlers/relationships.js` | GET (with permission filter), POST (native writes only), DELETE (soft-delete via `deleted_at`) |
+| `worker/handlers/relationshipProjections.js` | Five projector stubs + `rebuildProjections(env)` orchestrator. Phase 1 bodies are no-ops; the `DELETE FROM relationships WHERE origin LIKE 'projected_%'` slate-clear is in place so the idempotency contract is preserved when Phase 2 fills in projector bodies |
+| `worker/auth.js` | `ROUTE_PERMISSIONS` entries: `/relationships` POST + DELETE require `editor`; GET falls through to default authenticated-user access (the edge-level filter inside the handler does the real scoping) |
+| `worker.js` | Imports the three handlers and dispatches GET/POST/DELETE alongside the neurons/links blocks |
+
+### Endpoints
+
+**GET /relationships** — list edges, permission-filtered by caller ACL on
+both `source_page_id` and `target_page_id`. Query params:
+
+| Param | Default | Notes |
+|-------|---------|-------|
+| `entity_type` + `entity_id` | (omit for all) | Must be supplied together. Restricts edges to those touching the entity. |
+| `direction` | `both` | `outgoing` (entity is source) / `incoming` (entity is target) / `both` |
+| `types` (or `type`) | (all) | Comma-separated list of relationship types to filter on |
+| `include_projected` | `true` | Set to `false` or `0` to exclude projected origins |
+| `min_confidence` | `0` | Floor for AI-inferred edges; user-declared edges (NULL confidence) always pass |
+| `include_deleted` | `false` | Set to `1` to include soft-deleted edges (cascade reasoning, audit) |
+
+Response shape: `{ edges: [...], summary: { by_type: {...}, counts: { total } } }`
+
+**POST /relationships** — create a native edge. Required body fields:
+`type`, `source_type`, `source_id`, `target_type`, `target_id`, `origin`.
+Optional: `source_page_id`, `target_page_id`, `confidence`, `meta`.
+
+- `origin` must be `user_declared` or `ai_inferred`. Projected origins are
+  rejected — those are written by `relationshipProjections.js` only.
+- `ai_inferred` requires `confidence` as a number in `[0, 1)`.
+- `type` must exist in `relationship_types` and not be deprecated.
+- `directed` is read from the type registry, not the request body.
+- Returns 409 on duplicate `(source_type, source_id, target_type, target_id, type)` for an active edge.
+
+**DELETE /relationships/:id** — soft-delete via `deleted_at = now`. Idempotent
+(returns `already_deleted: true` for already-deleted rows, 404 if the ID is
+unknown).
+
+### Permission filter
+
+The list handler calls `buildPermissionFilter(env, user)`:
+
+- **Admin and shared-secret (MCP) callers:** filter is bypassed.
+- **Non-admin authenticated users:** the WHERE clause excludes edges whose
+  `source_page_id` or `target_page_id` is restricted by an explicit
+  `page_permissions.permission='none'` row for this user. Pages without any
+  explicit permission row fall through to route-level role access — matching
+  the default-open semantics of `checkPagePermission()` in `worker/auth.js`.
+
+### Type taxonomy (day-one, seeded on /init)
+
+| Type | Directed | Cascade | Source of truth |
+|------|----------|---------|-----------------|
+| `part_of` | yes | cascade | Phase 2 projection from `table_rows.parent_row_id` |
+| `references` | yes | nullify | Phase 2 projection from `cell_links` |
+| `related_to` | yes | nullify | Phase 2 projection from relation column arrays |
+| `member_of_neuron` | yes | nullify | Phase 2 projection from `neuron_nodes` |
+| `mentioned_in` | yes | ignore | Phase 2 projection from `notifications` (mention) |
+| `depends_on` | yes | prompt | Phase 3 native (Gantt + Table column + RecordDetail) |
+| `blocks` | yes | prompt | Phase 3 native (inverse of `depends_on`) |
+| `similar_to` | no | ignore | AI-inferred (symmetric) |
+| `conflicts_with` | no | prompt | Native (symmetric) |
+
+### Idempotency contract
+
+`DELETE FROM relationships WHERE origin LIKE 'projected_%'` followed by
+`rebuildProjections(env)` must produce identical state. Native edges
+(`user_declared`, `ai_inferred`) are never touched by rebuild. This contract
+is documented at the top of `worker/handlers/relationshipProjections.js`.
