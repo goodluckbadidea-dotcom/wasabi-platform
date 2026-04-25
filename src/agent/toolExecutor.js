@@ -2092,58 +2092,58 @@ export function createToolExecutor({
 
       // ── Gmail Tools ──
       case "search_emails": {
-        const result = await api.searchEmails(input.query || "", input.max_results || 10, input.label);
+        const result = await api.searchEmails(toolInput.query || "", toolInput.max_results || 10, toolInput.label);
         return JSON.stringify(result);
       }
       case "get_email": {
-        const result = await api.getEmail(input.message_id);
+        const result = await api.getEmail(toolInput.message_id);
         return JSON.stringify(result);
       }
       case "send_email": {
         const result = await api.sendEmail({
-          to: input.to,
-          subject: input.subject,
-          bodyText: input.body,
-          threadId: input.thread_id,
+          to: toolInput.to,
+          subject: toolInput.subject,
+          bodyText: toolInput.body,
+          threadId: toolInput.thread_id,
         });
         return JSON.stringify(result);
       }
       case "modify_email": {
-        const result = await api.modifyEmail(input.message_id, input.action);
+        const result = await api.modifyEmail(toolInput.message_id, toolInput.action);
         return JSON.stringify(result);
       }
       case "create_draft": {
         const result = await api.createDraft({
-          to: input.to,
-          subject: input.subject,
-          bodyText: input.body,
+          to: toolInput.to,
+          subject: toolInput.subject,
+          bodyText: toolInput.body,
         });
         return JSON.stringify(result);
       }
 
       // ── Calendar Tools ──
       case "list_calendar_events": {
-        const result = await api.listCalendarEvents(input.start_date, input.end_date, input.max_results);
+        const result = await api.listCalendarEvents(toolInput.start_date, toolInput.end_date, toolInput.max_results);
         return JSON.stringify(result);
       }
       case "create_calendar_event": {
         const result = await api.createCalendarEvent({
-          summary: input.summary,
-          start: input.start,
-          end: input.end,
-          description: input.description,
-          location: input.location,
-          attendees: input.attendees,
+          summary: toolInput.summary,
+          start: toolInput.start,
+          end: toolInput.end,
+          description: toolInput.description,
+          location: toolInput.location,
+          attendees: toolInput.attendees,
         });
         return JSON.stringify(result);
       }
       case "update_calendar_event": {
-        const { event_id, ...updates } = input;
+        const { event_id, ...updates } = toolInput;
         const result = await api.updateCalendarEvent(event_id, updates);
         return JSON.stringify(result);
       }
       case "delete_calendar_event": {
-        const result = await api.deleteCalendarEvent(input.event_id);
+        const result = await api.deleteCalendarEvent(toolInput.event_id);
         return JSON.stringify(result);
       }
 
