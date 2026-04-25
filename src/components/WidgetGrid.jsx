@@ -311,6 +311,7 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
 // ── Inline Widget Picker ──
 function WidgetPickerInline({ onClose, onAddWidget }) {
   const { pages } = usePlatform();
+  const viewPrefs = useViewPrefs();
   const [pluginFunctions, setPluginFunctions] = useState([]);
   const [loadingPlugins, setLoadingPlugins] = useState(true);
 
