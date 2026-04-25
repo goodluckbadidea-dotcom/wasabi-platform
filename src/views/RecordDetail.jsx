@@ -15,8 +15,9 @@ import RecordFiles from "../components/RecordFiles.jsx";
 import { useCollaboration } from "../context/CollaborationContext.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import PresenceAvatars from "../components/PresenceAvatars.jsx";
-import { listUserDirectory, updateRowOwner, listChildRows, createRows } from "../lib/api.js";
+import { listUserDirectory, updateRowOwner, listChildRows, createRows, listRows } from "../lib/api.js";
 import { IconPlus, IconChevronDown } from "../design/icons.jsx";
+import { useRelationships } from "../context/RelationshipsContext.jsx";
 
 // ── Property type labels ──
 const TYPE_LABELS = {
@@ -598,6 +599,7 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
           {[
             { key: "properties", label: "Properties" },
             ...(page?._source === "d1" && !page?._parentRowId ? [{ key: "subitems", label: "Sub-Items" }] : []),
+            ...(page?._source === "d1" ? [{ key: "dependencies", label: "Dependencies" }] : []),
             { key: "comments", label: "Comments" },
             { key: "files", label: "Files" },
           ].map((t) => (
@@ -868,6 +870,19 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
         )}
 
         {/* Comments Tab */}
+        {/* Dependencies Tab */}
+        {activeTab === "dependencies" && (
+          <RecordDependencies
+            recordId={page.id}
+            tableId={page._tableId || pageConfigId}
+            pageConfigId={pageConfigId}
+            schema={schema}
+            onUpdate={onUpdate}
+            onDelete={onDelete}
+            onRefresh={onRefresh}
+          />
+        )}
+
         {activeTab === "comments" && <RecordComments recordId={page.id} pageConfigId={pageConfigId} userId={identity?.id} userName={identity?.display_name} userRole={identity?.role} />}
 
         {/* Files Tab */}
@@ -1123,6 +1138,315 @@ function RecordSubItems({ parentPage, parentId, tableId, schema, onRefresh, onUp
           pageConfigId={pageConfigId}
           onRefresh={() => { onRefresh?.(); }}
           parentTitle={parentPage?._rollup ? undefined : undefined}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Dependencies Tab Component ──
+// Renders depends_on edges in two sections: "Depends On" (upstream — this
+// record is the source) and "Blocks" (downstream — this record is the target).
+// Both sections write the same edge type ('depends_on'); the picker just
+// flips source/target so the resulting view is symmetric.
+function RecordDependencies({ recordId, tableId, pageConfigId, schema, onUpdate, onDelete, onRefresh }) {
+  const { loadForEntity, createEdge, deleteEdge } = useRelationships();
+  const [edges, setEdges] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [recordsById, setRecordsById] = useState({});
+  const [pickerMode, setPickerMode] = useState(null); // null | 'depends_on' | 'blocks'
+  const [pickerQuery, setPickerQuery] = useState("");
+  const [openChild, setOpenChild] = useState(null);
+  const [busyEdgeId, setBusyEdgeId] = useState(null);
+
+  const titleColId = schema?.title?.id || null;
+  const statusCol = useMemo(
+    () => (schema?._columns || []).find((c) => c.type === "status"),
+    [schema]
+  );
+
+  const refreshEdges = useCallback(async () => {
+    if (!recordId) return;
+    setLoading(true);
+    try {
+      const items = await loadForEntity("record", recordId, { types: ["depends_on"] });
+      setEdges(items);
+    } catch (err) {
+      console.warn("[RecordDependencies] load:", err.message || err);
+    } finally {
+      setLoading(false);
+    }
+  }, [recordId, loadForEntity]);
+
+  useEffect(() => { refreshEdges(); }, [refreshEdges]);
+
+  // Pull all rows in this table for picker results + title display
+  useEffect(() => {
+    if (!tableId) return;
+    listRows(tableId, { limit: 1000 })
+      .then((res) => {
+        const map = {};
+        for (const r of (res?.rows || [])) {
+          if (r.archived) continue;
+          const cells = typeof r.cells === "string" ? JSON.parse(r.cells || "{}") : (r.cells || {});
+          const title = titleColId && cells[titleColId]
+            ? String(cells[titleColId])
+            : r.id.slice(0, 8);
+          const statusVal = statusCol ? cells[statusCol.id] || null : null;
+          let statusCategory = null;
+          if (statusVal && statusCol?.options) {
+            const opt = statusCol.options.find((o) => o.name === statusVal);
+            statusCategory = opt?.category || "not_started";
+          }
+          map[r.id] = { id: r.id, title, statusVal, statusCategory };
+        }
+        setRecordsById(map);
+      })
+      .catch((err) => console.warn("[RecordDependencies] listRows:", err.message || err));
+  }, [tableId, titleColId, statusCol]);
+
+  const upstream = useMemo(() => edges.filter((e) => e.source_id === recordId), [edges, recordId]);
+  const downstream = useMemo(() => edges.filter((e) => e.target_id === recordId), [edges, recordId]);
+
+  const linkedIds = useMemo(() => {
+    const set = new Set();
+    for (const e of edges) {
+      if (e.source_id === recordId) set.add(e.target_id);
+      if (e.target_id === recordId) set.add(e.source_id);
+    }
+    return set;
+  }, [edges, recordId]);
+
+  const pickerResults = useMemo(() => {
+    if (!pickerMode) return [];
+    const q = pickerQuery.trim().toLowerCase();
+    return Object.values(recordsById)
+      .filter((r) => r.id !== recordId && !linkedIds.has(r.id))
+      .filter((r) => !q || r.title.toLowerCase().includes(q))
+      .slice(0, 10);
+  }, [pickerMode, pickerQuery, recordsById, recordId, linkedIds]);
+
+  const categoryIcon = (cat) => {
+    switch (cat) {
+      case "complete": return { icon: "\u2713", color: "#22c55e" };
+      case "in_progress": return { icon: "\u25D0", color: "#3b82f6" };
+      case "on_hold": return { icon: "\u275A\u275A", color: "#eab308" };
+      case "cancelled": return { icon: "\u2715", color: "#ef4444" };
+      default: return { icon: "\u25CB", color: C.darkMuted };
+    }
+  };
+
+  const handleAdd = async (otherId) => {
+    if (!otherId) return;
+    try {
+      // For both modes the underlying type is 'depends_on'. The picker simply
+      // flips which entity is source vs target so "Blocks" reads as the
+      // inverse of "Depends On".
+      const body = pickerMode === "depends_on"
+        ? {
+            type: "depends_on", origin: "user_declared",
+            source_type: "record", source_id: recordId, source_page_id: tableId,
+            target_type: "record", target_id: otherId, target_page_id: tableId,
+          }
+        : {
+            type: "depends_on", origin: "user_declared",
+            source_type: "record", source_id: otherId, source_page_id: tableId,
+            target_type: "record", target_id: recordId, target_page_id: tableId,
+          };
+      await createEdge(body);
+      setPickerMode(null);
+      setPickerQuery("");
+      await refreshEdges();
+    } catch (err) {
+      console.error("[RecordDependencies] add:", err);
+    }
+  };
+
+  const handleRemove = async (edge) => {
+    if (!edge?.id) return;
+    setBusyEdgeId(edge.id);
+    try {
+      await deleteEdge(edge.id);
+      await refreshEdges();
+    } catch (err) {
+      console.error("[RecordDependencies] remove:", err);
+    } finally {
+      setBusyEdgeId(null);
+    }
+  };
+
+  const buildOpenPage = (rid) => {
+    if (!rid) return null;
+    return { id: rid, _tableId: tableId, _source: "d1", properties: {} };
+  };
+
+  if (loading) {
+    return (
+      <div style={{ padding: "24px 16px", color: C.darkMuted, fontSize: 13, fontFamily: FONT }}>
+        Loading dependencies...
+      </div>
+    );
+  }
+
+  const renderSection = (titleText, subtitle, items, mode) => (
+    <div style={{ marginBottom: 18 }}>
+      <div style={{
+        fontSize: 11, fontWeight: 700, letterSpacing: 0.5,
+        color: C.darkMuted, marginBottom: 2, textTransform: "uppercase",
+        fontFamily: FONT,
+      }}>{titleText}</div>
+      <div style={{ fontSize: 11, color: C.darkMuted, marginBottom: 8, opacity: 0.7, fontFamily: FONT }}>
+        {subtitle}
+      </div>
+
+      {items.length === 0 ? (
+        <div style={{ color: C.darkMuted, fontSize: 12, fontStyle: "italic", padding: "4px 0 8px", fontFamily: FONT }}>
+          None yet. {pickerMode === mode ? "Pick one below." : "Add the first one below."}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 2, marginBottom: 8 }}>
+          {items.map((edge) => {
+            const otherId = mode === "depends_on" ? edge.target_id : edge.source_id;
+            const r = recordsById[otherId] || { id: otherId, title: otherId.slice(0, 8), statusVal: null, statusCategory: null };
+            const cat = categoryIcon(r.statusCategory);
+            return (
+              <div
+                key={edge.id}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "8px 12px", borderRadius: RADIUS.sm,
+                  background: C.darkSurf2, cursor: "pointer",
+                  fontSize: 13, fontFamily: FONT, color: C.darkText,
+                  transition: "background 0.1s",
+                  opacity: busyEdgeId === edge.id ? 0.5 : 1,
+                }}
+                onClick={() => setOpenChild(buildOpenPage(otherId))}
+                onMouseEnter={(e) => { e.currentTarget.style.background = C.darkBorder; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+              >
+                <span style={{ fontSize: 11, color: cat.color, flexShrink: 0, width: 14, textAlign: "center" }}>
+                  {cat.icon}
+                </span>
+                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {r.title}
+                </span>
+                {r.statusVal && (
+                  <span style={{
+                    fontSize: 10, fontWeight: 600, color: cat.color,
+                    background: cat.color + "18", borderRadius: RADIUS.pill,
+                    padding: "1px 6px", whiteSpace: "nowrap", flexShrink: 0,
+                  }}>{r.statusVal}</span>
+                )}
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleRemove(edge); }}
+                  title="Remove dependency"
+                  style={{
+                    background: "transparent", border: "none",
+                    color: C.darkMuted, cursor: "pointer", fontSize: 16,
+                    padding: "0 4px", flexShrink: 0, lineHeight: 1,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = "#ef4444"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = C.darkMuted; }}
+                >&times;</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {pickerMode === mode ? (
+        <div style={{
+          background: C.darkSurf2, borderRadius: RADIUS.sm,
+          border: `1px solid ${C.darkBorder}`, padding: 8,
+        }}>
+          <input
+            autoFocus
+            placeholder="Search for a task..."
+            value={pickerQuery}
+            onChange={(e) => setPickerQuery(e.target.value)}
+            style={{
+              width: "100%", padding: "6px 10px", fontSize: 12,
+              background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
+              borderRadius: RADIUS.sm, color: C.darkText, outline: "none",
+              fontFamily: FONT, boxSizing: "border-box", marginBottom: 6,
+            }}
+            onKeyDown={(e) => { if (e.key === "Escape") { setPickerMode(null); setPickerQuery(""); } }}
+          />
+          {pickerResults.length === 0 ? (
+            <div style={{ color: C.darkMuted, fontSize: 11, padding: "6px 0", fontStyle: "italic", fontFamily: FONT }}>
+              {pickerQuery ? "No matches in this database." : "Start typing to search\u2026"}
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 1, maxHeight: 200, overflowY: "auto" }}>
+              {pickerResults.map((r) => (
+                <div
+                  key={r.id}
+                  onClick={() => handleAdd(r.id)}
+                  style={{
+                    padding: "6px 8px", borderRadius: RADIUS.sm,
+                    cursor: "pointer", fontSize: 12, fontFamily: FONT,
+                    color: C.darkText,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = C.darkBorder; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  {r.title}
+                </div>
+              ))}
+            </div>
+          )}
+          <button
+            onClick={() => { setPickerMode(null); setPickerQuery(""); }}
+            style={{
+              background: "transparent", border: "none",
+              color: C.darkMuted, cursor: "pointer", fontSize: 11,
+              padding: "4px 0 0", fontFamily: FONT,
+            }}
+          >Cancel</button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setPickerMode(mode)}
+          style={{
+            background: "transparent", border: `1px dashed ${C.darkBorder}`,
+            color: C.darkMuted, cursor: "pointer", fontSize: 12,
+            padding: "6px 10px", borderRadius: RADIUS.sm, fontFamily: FONT,
+            width: "100%", textAlign: "left", boxSizing: "border-box",
+            transition: "color 0.1s",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = C.darkText; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = C.darkMuted; }}
+        >
+          + {mode === "depends_on" ? "Add upstream task" : "Add downstream task"}
+        </button>
+      )}
+    </div>
+  );
+
+  return (
+    <div style={{ padding: "12px 16px" }}>
+      {renderSection(
+        "Depends On",
+        "Things that must happen before this task",
+        upstream,
+        "depends_on"
+      )}
+      {renderSection(
+        "Blocks",
+        "Things that are waiting on this task",
+        downstream,
+        "blocks"
+      )}
+
+      {openChild && (
+        <RecordDetail
+          page={openChild}
+          schema={schema}
+          onClose={() => setOpenChild(null)}
+          onUpdate={onUpdate}
+          onDelete={onDelete}
+          pageConfigId={pageConfigId}
+          onRefresh={() => { onRefresh?.(); refreshEdges(); }}
         />
       )}
     </div>
