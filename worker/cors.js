@@ -15,7 +15,7 @@ export function getCorsHeaders(request, env) {
   return {
     "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Claude-Key, X-Wasabi-Key, X-Wasabi-Pin-Token",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Claude-Key, X-Wasabi-Key, X-Wasabi-Pin-Token, X-Cache-Hint",
     "Access-Control-Allow-Credentials": "true",
     ...(allowOrigin && allowOrigin !== "*" ? { "Vary": "Origin" } : {}),
   };
