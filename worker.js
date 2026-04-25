@@ -612,7 +612,7 @@ export default {
           if (!await checkPinProtection(env, user, request, tableId)) {
             return jsonResponse({ _error: "PIN verification required", pin_required: true }, 403);
           }
-          return await handleDeleteRow(env, tableId, rowId, url.searchParams.get("cascade"), jsonResponse);
+          return await handleDeleteRow(env, tableId, rowId, url.searchParams.get("cascade"), url.searchParams.get("confirm_dependents") === "1", jsonResponse);
         }
       }
 

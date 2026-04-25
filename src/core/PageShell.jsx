@@ -21,6 +21,7 @@ import SyncPanel from "../components/SyncPanel.jsx";
 import ViewSettingsPanel from "../components/ViewSettingsPanel.jsx";
 import ConflictToast from "../components/ConflictToast.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
+import DependencyDeleteDialog from "../views/table/DependencyDeleteDialog.jsx";
 import PinLockOverlay, { getPinToken } from "../components/PinLockOverlay.jsx";
 import { useColorMapping } from "../context/ColorMappingContext.jsx";
 import { CollaborationProvider, useCollaboration } from "../context/CollaborationContext.jsx";
@@ -69,6 +70,7 @@ export default function PageShell({
   const [error, setError] = useState(null);
   const [pendingConflicts, setPendingConflicts] = useState([]);
   const [pinRelockKey, setPinRelockKey] = useState(0);
+  const [dependencyDialog, setDependencyDialog] = useState(null); // { pageIds, cascade, dependentCount, dependentSample }
   const refreshTimer = useRef(null);
   const cellVersionsRef = useRef({}); // { recordId: { field: version, ... } } — tracks latest cell_versions across sequential saves
   const [showAddDb, setShowAddDb] = useState(false);
@@ -259,20 +261,30 @@ export default function PageShell({
   );
 
   const handleDelete = useCallback(
-    async (pageIds, { cascade } = {}) => {
+    async (pageIds, { cascade, confirmDependents } = {}) => {
       if (!pageIds?.length) return;
       try {
         const pinToken = getPinToken(pageConfig?.id);
-        const result = await deleteRecords(pageConfig, pageIds, user, { pinToken, cascade });
-        // Row has children — ask user how to handle
+        const result = await deleteRecords(pageConfig, pageIds, user, { pinToken, cascade, confirmDependents });
+        // Row has children — ask user how to handle (existing window.confirm flow)
         if (result?.hasChildren) {
           const choice = window.confirm(
             `This record has ${result.childCount} sub-item${result.childCount !== 1 ? "s" : ""}.\n\nOK = archive record and keep sub-items\nCancel = don't delete`
           );
           if (choice) {
-            return handleDelete(pageIds, { cascade: "orphan" });
+            return handleDelete(pageIds, { cascade: "orphan", confirmDependents });
           }
           return; // user cancelled
+        }
+        // Other records depend on this — open the proper dialog with the sample list
+        if (result?.hasDependents) {
+          setDependencyDialog({
+            pageIds,
+            cascade: cascade || "orphan",
+            dependentCount: result.dependentCount,
+            dependentSample: result.dependentSample || [],
+          });
+          return;
         }
         await fetchData();
         globalToast(`${pageIds.length} record${pageIds.length !== 1 ? "s" : ""} deleted`, "success");
@@ -287,6 +299,13 @@ export default function PageShell({
     },
     [pageConfig, user, fetchData]
   );
+
+  const handleConfirmDependentDelete = useCallback(async () => {
+    if (!dependencyDialog) return;
+    const { pageIds, cascade } = dependencyDialog;
+    setDependencyDialog(null);
+    return handleDelete(pageIds, { cascade, confirmDependents: true });
+  }, [dependencyDialog, handleDelete]);
 
   // ── View management ──
   // Note: updatePageConfig already handles both state + D1 persistence.
@@ -568,6 +587,13 @@ export default function PageShell({
             onCancel={() => setShowDismissConfirm(false)}
           />
         )}
+
+        {/* ── Dependencies: prompt before deleting a record other tasks depend on ── */}
+        <DependencyDeleteDialog
+          dialog={dependencyDialog}
+          onCancel={() => setDependencyDialog(null)}
+          onConfirm={handleConfirmDependentDelete}
+        />
 
         {/* Add Database slide-out */}
         {showAddDb && (

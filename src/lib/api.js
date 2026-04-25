@@ -320,9 +320,12 @@ export async function updateRowOwner(tableId, rowId, ownerUserIds) {
   });
 }
 
-export async function deleteRow(tableId, rowId, { pinToken, cascade } = {}) {
-  const qs = cascade ? `?cascade=${cascade}` : "";
-  return apiFetch(`/tables/${tableId}/rows/${rowId}${qs}`, { method: "DELETE", pinToken });
+export async function deleteRow(tableId, rowId, { pinToken, cascade, confirmDependents } = {}) {
+  const params = new URLSearchParams();
+  if (cascade) params.set("cascade", cascade);
+  if (confirmDependents) params.set("confirm_dependents", "1");
+  const qs = params.toString();
+  return apiFetch(`/tables/${tableId}/rows/${rowId}${qs ? `?${qs}` : ""}`, { method: "DELETE", pinToken });
 }
 
 export async function listChildRows(tableId, parentRowId, { limit = 200 } = {}) {

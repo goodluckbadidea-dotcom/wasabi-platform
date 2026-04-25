@@ -46,6 +46,7 @@ import CellDisplay, { CELL_RENDERERS } from "./table/CellDisplay.jsx";
 import { ParentColumnContextMenu, SubColumnContextMenu } from "./table/ColumnContextMenu.jsx";
 import { AddColumnDialog, AddSubColumnDialog } from "./table/AddColumnDialog.jsx";
 import CascadeDeleteDialog from "./table/CascadeDeleteDialog.jsx";
+import DependencyDeleteDialog from "./table/DependencyDeleteDialog.jsx";
 import OptionsManagerModal from "./table/OptionsManagerModal.jsx";
 import TableToolbar from "./table/TableToolbar.jsx";
 import TableHeader from "./table/TableHeader.jsx";
@@ -126,6 +127,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
 
   // Sub-item ghost state — from useSubItemGhost hook (called below)
   const [cascadeDialog, setCascadeDialog] = useState(null); // { rowIds, childCount }
+  const [dependencyDialog, setDependencyDialog] = useState(null); // { rowIds, dependentCount, dependentSample }
   const [optionsModalCol, setOptionsModalCol] = useState(null); // column object for OptionsManagerModal
 
   // Column management state — from useColumnManagement hook (called below)
@@ -643,7 +645,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     setSelectedRows(new Set());
   }, [onDelete, selectedRows]);
 
-  // ── Sub-Item: Delete with cascade awareness ──
+  // ── Sub-Item: Delete with cascade + dependency awareness ──
   const handleDeleteWithCascade = useCallback(async (rowIds) => {
     if (!onDelete || !rowIds?.length) return;
     try {
@@ -651,6 +653,14 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     } catch (err) {
       if (err?.status === 409 && err?.data?.hasChildren) {
         setCascadeDialog({ rowIds, childCount: err.data.childCount });
+        return;
+      }
+      if (err?.status === 409 && err?.data?.hasDependents) {
+        setDependencyDialog({
+          rowIds,
+          dependentCount: err.data.dependentCount,
+          dependentSample: err.data.dependentSample || [],
+        });
         return;
       }
       throw err;
@@ -665,7 +675,21 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     try {
       const pinToken = getPinToken(pageConfig?.id);
       for (const id of rowIds) {
-        await deleteRow(tableId, id, { pinToken, cascade });
+        try {
+          await deleteRow(tableId, id, { pinToken, cascade });
+        } catch (err) {
+          // Cascade resolved children; if dependents now block, surface that prompt
+          if (err?.status === 409 && err?.data?.hasDependents) {
+            setCascadeDialog(null);
+            setDependencyDialog({
+              rowIds: [id],
+              dependentCount: err.data.dependentCount,
+              dependentSample: err.data.dependentSample || [],
+            });
+            return;
+          }
+          throw err;
+        }
       }
       setCascadeDialog(null);
       setSelectedRows(new Set());
@@ -675,6 +699,28 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
       setCascadeDialog(null);
     }
   }, [cascadeDialog, pageConfig, onRefresh]);
+
+  const handleConfirmDependents = useCallback(async () => {
+    if (!dependencyDialog) return;
+    const { rowIds } = dependencyDialog;
+    const tableId = pageConfig?.id;
+    if (!tableId) return;
+    try {
+      const pinToken = getPinToken(pageConfig?.id);
+      for (const id of rowIds) {
+        // confirmDependents=true tells the worker to skip the dependent prompt
+        // and proceed. Children cascade should already be resolved at this
+        // point if the user came through the cascade dialog first.
+        await deleteRow(tableId, id, { pinToken, cascade: "orphan", confirmDependents: true });
+      }
+      setDependencyDialog(null);
+      setSelectedRows(new Set());
+      if (onRefresh) await onRefresh();
+    } catch (err) {
+      console.error("Dependency-confirmed delete failed:", err);
+      setDependencyDialog(null);
+    }
+  }, [dependencyDialog, pageConfig, onRefresh]);
 
   // handleCreateSubItem, handleSubItemGhostCommit, subGhostRef — from useSubItemGhost hook
 
@@ -1277,6 +1323,13 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
         dialog={cascadeDialog}
         onCancel={() => setCascadeDialog(null)}
         onCascade={handleCascadeDelete}
+      />
+
+      {/* ── Dependencies: Confirm-and-delete Dialog ── */}
+      <DependencyDeleteDialog
+        dialog={dependencyDialog}
+        onCancel={() => setDependencyDialog(null)}
+        onConfirm={handleConfirmDependents}
       />
 
       {/* ── Add Column Dialog ── */}

@@ -351,19 +351,19 @@ export async function createRecord(pageConfig, properties, user, { pinToken, par
 
 // ─── Delete records in any source ───
 
-export async function deleteRecords(pageConfig, recordIds, user, { pinToken, cascade } = {}) {
+export async function deleteRecords(pageConfig, recordIds, user, { pinToken, cascade, confirmDependents } = {}) {
   const type = resolveSourceType(pageConfig);
 
   if (type === "d1") {
     const tableId = pageConfig.id;
     for (const id of recordIds) {
       try {
-        const result = await deleteRow(tableId, id, { pinToken, cascade });
-        // If server returns 409 (has children, needs cascade decision), propagate it
-        if (result?.hasChildren) return result;
+        const result = await deleteRow(tableId, id, { pinToken, cascade, confirmDependents });
+        // If server returns 409 (has children OR has dependents), propagate it
+        if (result?.hasChildren || result?.hasDependents) return result;
       } catch (err) {
-        // 409 = has children, needs cascade decision — propagate instead of throwing
-        if (err.status === 409 && err.data?.hasChildren) return err.data;
+        // 409 = needs caller decision (children or dependents) — propagate instead of throwing
+        if (err.status === 409 && (err.data?.hasChildren || err.data?.hasDependents)) return err.data;
         throw err;
       }
     }

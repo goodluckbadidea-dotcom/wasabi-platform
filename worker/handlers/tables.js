@@ -531,7 +531,7 @@ async function handleUpdateRow(env, tableId, rowId, body, user, jsonResponse) {
   }
 }
 
-async function handleDeleteRow(env, tableId, rowId, cascade, jsonResponse) {
+async function handleDeleteRow(env, tableId, rowId, cascade, confirmDependents, jsonResponse) {
   try {
     // Check if row has a linked Notion page — archive it too
     const row = await env.DB.prepare(
@@ -548,6 +548,59 @@ async function handleDeleteRow(env, tableId, rowId, cascade, jsonResponse) {
     if (childCount > 0 && !cascade) {
       // Has children and no cascade specified — ask the client what to do
       return jsonResponse({ hasChildren: true, childCount }, 409);
+    }
+
+    // Check for downstream depends_on dependents — other records that have
+    // declared they depend on this one. Cascade hint for depends_on is
+    // 'prompt', so we ask the user before silently breaking those references.
+    if (!confirmDependents) {
+      try {
+        const depCount = await env.DB.prepare(
+          `SELECT COUNT(*) as cnt FROM relationships
+            WHERE type = 'depends_on'
+              AND origin IN ('user_declared','ai_inferred')
+              AND target_type = 'record' AND target_id = ?
+              AND deleted_at IS NULL`
+        ).bind(rowId).first();
+        const dependentCount = depCount?.cnt || 0;
+        if (dependentCount > 0) {
+          // Pull a sample of up to 5 dependent rows for the warning dialog
+          const { results: depRows } = await env.DB.prepare(
+            `SELECT r.source_id, r.source_page_id, tr.cells, tr.table_id
+               FROM relationships r
+               LEFT JOIN table_rows tr ON tr.id = r.source_id AND tr.archived = 0
+              WHERE r.type = 'depends_on'
+                AND r.origin IN ('user_declared','ai_inferred')
+                AND r.target_type = 'record' AND r.target_id = ?
+                AND r.deleted_at IS NULL
+              LIMIT 5`
+          ).bind(rowId).all();
+          const sample = [];
+          for (const dr of (depRows || [])) {
+            let title = "Untitled";
+            if (dr.cells && dr.table_id) {
+              try {
+                const cells = typeof dr.cells === "string" ? JSON.parse(dr.cells) : dr.cells;
+                title = await resolveRecordTitle(env, dr.table_id, cells) || "Untitled";
+              } catch (_) {}
+            }
+            sample.push({
+              id: dr.source_id,
+              title,
+              page_id: dr.source_page_id || dr.table_id || null,
+            });
+          }
+          return jsonResponse({
+            hasDependents: true,
+            dependentCount,
+            dependentSample: sample,
+          }, 409);
+        }
+      } catch (err) {
+        console.error("[handleDeleteRow] dependent check failed:", err.message || err);
+        // If the check itself errors out (e.g. relationships table missing in
+        // a partially-migrated environment), don't block the delete.
+      }
     }
 
     if (childCount > 0 && cascade === "orphan") {
