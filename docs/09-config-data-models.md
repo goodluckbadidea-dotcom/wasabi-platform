@@ -586,7 +586,13 @@ type RelationshipOrigin =
    model collapses.
 2. **Projections are idempotent and fully rebuildable from source.** At any
    time, `DELETE FROM relationships WHERE origin LIKE 'projected_%'` followed
-   by `rebuildProjections(env)` must reproduce identical state.
+   by `rebuildProjections(env)` must reproduce identical state. Enforced by a
+   partial UNIQUE INDEX added in Phase 2a (schema version 6, 2026-04-24):
+   `CREATE UNIQUE INDEX idx_rel_uniq_active ON relationships(source_type, source_id, target_type, target_id, type) WHERE deleted_at IS NULL`.
+   This lets users delete-then-recreate the same edge (soft-deleted rows
+   don't conflict) and makes `INSERT OR IGNORE` the correct dedupe primitive
+   — projection writes silently skip duplicates and respect existing native
+   edges with the same tuple ("user-declared always wins").
 
 **Dedupe rule:** one active edge per `(source_type, source_id, target_type,
 target_id, type)` tuple. POST `/relationships` returns 409 on duplicate.

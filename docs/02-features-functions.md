@@ -759,23 +759,27 @@ Cell links connect individual cell values across different pages/views. A user p
 
 ---
 
-## Unified Relationships Subsystem (Phase 1, 2026-04-24)
+## Unified Relationships Subsystem (Phases 1–3, 2026-04-24 → 2026-04-25)
 
 Wasabi has six independent ways to "connect things to other things" — neurons,
 cell links, relation columns, parent/sub-item hierarchy, mentions, plus the
-upcoming `depends_on` task dependencies. The relationships subsystem is a
-unified read surface (and eventual write surface) that lets the AI agent —
-and eventually users — query "what's connected to this entity, and how?" with
-one call instead of six.
+new `depends_on` task dependencies. The relationships subsystem is a unified
+read + write surface that lets the AI agent and users query "what's connected
+to this entity, and how?" with one call instead of six.
 
-### Phase 1 status
+### Status at a glance
 
-**Worker plumbing only — no consumers, no UI.** Phase 1 ships the schema, the
-HTTP endpoints, and a stub rebuild script. Phase 2 wires the projections from
-the five legacy systems and the AI tool integration. Phase 3 introduces the
-native `depends_on` type with three UI surfaces (RecordDetail Dependencies
-section, Gantt arrows, Table "Depends on" column type). Phase 4 ships the
-first-class Relationships panel in RecordDetail.
+| Phase | Scope | Status |
+|-------|-------|--------|
+| **1** (2026-04-24) | Schema + endpoints + stub | ✅ Shipped |
+| **2a** (2026-04-24) | Live mirroring of all five legacy systems | ✅ Shipped |
+| **2b** (2026-04-25) | AI tools (`get_relationships`, `write_relationship`) + frontend `RelationshipsContext` + client API wrappers | ✅ Shipped |
+| **3 Step A** (2026-04-25) | RecordDetail "Dependencies" tab | ✅ Shipped |
+| **3 Step D** (2026-04-25) | Delete-time prompt when other records depend on the row | ✅ Shipped |
+| **3 Step B** (2026-04-25) | Table "Depends on" column type | ✅ Shipped |
+| **3 Step C** | Gantt dependency arrows | Skipped (decorative; revisit if needed) |
+| **4** | First-class Relationships panel in RecordDetail with AI-inferred accept/reject | Pending |
+| **5** | Per-system sunset migrations (rolling, opportunistic) | Pending |
 
 ### Architecture
 
@@ -850,3 +854,83 @@ The list handler calls `buildPermissionFilter(env, user)`:
 `rebuildProjections(env)` must produce identical state. Native edges
 (`user_declared`, `ai_inferred`) are never touched by rebuild. This contract
 is documented at the top of `worker/handlers/relationshipProjections.js`.
+Enforced by partial UNIQUE INDEX `idx_rel_uniq_active` on (source_type,
+source_id, target_type, target_id, type) WHERE deleted_at IS NULL — added
+in Phase 2a, schema version bumped 5 → 6.
+
+### Phase 2a — live mirroring (2026-04-24)
+
+All five legacy connection systems now keep the relationships table in sync
+in real time as users mutate source data. Every write emits a projected edge
+(or removes one) via origin-filtered helpers in
+`worker/handlers/relationshipProjections.js`. Projection failures are caught
+and logged so they cannot break user-visible saves; drift recovers on the
+next `POST /relationships/rebuild`.
+
+| Source system | Triggered on | Edge type | Origin |
+|---|---|---|---|
+| Sub-items (`parent_row_id`) | row create / update / delete (incl. cascade) | `part_of` | `projected_parent_row` |
+| Cell links | POST/PATCH/DELETE `/links` | `references` | `projected_cell_link` |
+| Relation column cells | row create / update (diff added vs removed IDs) / delete | `related_to` | `projected_relation_col` |
+| Neurons | POST `/neurons`, POST/DELETE `/neurons/:id/nodes`, DELETE `/neurons/:id` | `member_of_neuron` | `projected_neuron_node` |
+| @mentions in comments | `handleCreateComment` after notification creation | `mentioned_in` | `projected_mention` |
+
+**Initial backfill** — automatic on first `/init` after the Phase 2a deploy
+via a one-shot guard in `handleInit` keyed on the `relationships_initial_rebuild`
+flag in the `connections` table. Self-disabling — re-runs go through
+`POST /relationships/rebuild` instead. After the production backfill: 17
+projected_cell_link + 12 projected_mention + 54 projected_parent_row edges.
+
+### Phase 2b — AI tools + frontend infrastructure (2026-04-25)
+
+**AI agent tools** (registered in `src/agent/tools.js` + executor in
+`src/agent/toolExecutor.js`):
+
+- `get_relationships({ entity_type, entity_id, types?, direction?, include_projected?, min_confidence? })` — read unified edges across all five sources + native edges. Permission filter applied server-side; AI cannot see edges in pages the user can't access. Available to the full agent and to all three assistant tiers (read-only).
+- `write_relationship({ type, source_type, source_id, source_page_id?, target_type, target_id, target_page_id?, confidence, meta? })` — propose new edges. Origin is hardcoded to `ai_inferred` in the executor (the worker independently rejects mismatched origins as defense-in-depth). Confidence required in [0, 1). 409 duplicates returned as `{ skipped: true }` so the AI doesn't retry-loop. Available to the full agent only.
+
+**Frontend infrastructure** (`src/context/RelationshipsContext.jsx` +
+`src/lib/api.js` wrappers):
+
+- `useRelationships()` hook exports `loadRelationships(filters, opts)`, `loadForEntity(entity_type, entity_id, opts)`, `createEdge(body)`, `deleteEdge(id)`, `invalidateAll()`, `cacheVersion`.
+- 1-minute per-entity in-memory cache + concurrent-request deduplication.
+- `cacheVersion` bumps after any write so consumers re-pull on the next render.
+- Provider mounts in `App.jsx` next to `NeuronsProvider`.
+
+### Phase 3 — first user-visible surfaces (2026-04-25)
+
+**Step A — RecordDetail Dependencies tab.** New "Dependencies" tab in the
+record drawer for D1-backed records (parent and sub-item rows). Two
+sections: "Depends On" (upstream — this record is the source of a
+`depends_on` edge) and "Blocks" (downstream — this record is the target).
+Both sections write the same edge type; the picker just flips
+source/target so the views are symmetric. Inline picker per section
+searches the same database, excludes self + already-linked. Status icons
++ pills mirror the Sub-Items styling. × removes the edge via `deleteEdge`.
+Click a name → opens that record nested.
+
+**Step D — delete-time prompt.** When a user tries to delete a record that
+other records have declared they depend on (active `depends_on` edges
+where this row is the target), the worker returns 409 with
+`hasDependents: true, dependentCount, dependentSample` (up to 5 dependent
+titles, server-side resolved). PageShell catches this and opens
+`DependencyDeleteDialog` listing the dependent task names. "Delete anyway"
+retries the delete with `?confirm_dependents=1`; the projection sweep
+auto-cleans the now-invalid edges. Origin filter (`depends_on` from
+`user_declared`/`ai_inferred` only) ensures projected edges like
+`part_of` from sub-items don't trigger this prompt — those still go
+through the existing children-cascade flow.
+
+**Step B — Table "Depends on" column type.** New column type in the
+COLUMN_TYPES picker. The cell stores nothing — its content is a live view
+of the relationships table. `DependsOnCell` loads outgoing `depends_on`
+edges via `useRelationships().loadForEntity(...)` and displays up to 3
+title pills with "+N" overflow. Title resolution uses a `recordTitlesById`
+map memoized in Table.jsx from already-loaded `data` (zero extra fetches
+for in-table titles; cross-database edges show UUID prefix until cross-db
+resolution lands). Re-pulls when `cacheVersion` bumps after any
+create/delete elsewhere in the app.
+
+**Skipped: Step C (Gantt dependency arrows).** Decorative more than
+useful for the current workflow. Revisit if a future user signal calls
+for it.
