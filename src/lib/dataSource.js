@@ -710,6 +710,7 @@ function mapD1Type(d1Type) {
     email: "email",
     phone: "phone_number",
     status: "status",
+    depends_on: "depends_on", // view-of-edges; cell stores nothing
   };
   return map[d1Type] || "rich_text";
 }

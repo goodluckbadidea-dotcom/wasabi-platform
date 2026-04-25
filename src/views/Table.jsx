@@ -199,6 +199,28 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   }, [pageConfig?.id, viewIdx, resolveLinksForView]);
   const targetDatabaseId = config.databaseId || pageConfig?.databaseIds?.[0] || pageConfig?.id;
 
+  // ── In-table title map (for depends_on column display) ──
+  // Maps each row's id → its title for fast cell lookup. Built from the
+  // already-loaded data; no extra fetch. The depends_on cell uses this to
+  // show upstream task names without per-cell network calls.
+  const recordTitlesById = useMemo(() => {
+    const map = {};
+    if (!data || !schema?.title) return map;
+    const titleName = schema.title.name;
+    for (const page of data) {
+      const prop = page?.properties?.[titleName];
+      if (!prop) continue;
+      let title = "";
+      if (Array.isArray(prop.title) && prop.title.length) {
+        title = prop.title.map((t) => t.plain_text || "").join("");
+      } else if (typeof prop === "string") {
+        title = prop;
+      }
+      if (title) map[page.id] = title;
+    }
+    return map;
+  }, [data, schema]);
+
   // ── Relation title resolution ──
   // Query each related database to get page titles for relation fields
   const [relationTitles, setRelationTitles] = useState({});
@@ -1149,6 +1171,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                               resolvedLinks={resolvedLinks}
                               config={config}
                               relationTitles={relationTitles}
+                              recordTitlesById={recordTitlesById}
                               badgeCounts={badgeCounts}
                               removeLink={removeLink}
                               collab={collab}

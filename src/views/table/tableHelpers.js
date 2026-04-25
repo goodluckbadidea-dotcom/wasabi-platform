@@ -33,6 +33,10 @@ export const COLUMN_TYPES = [
   { value: "status", label: "Status", text: null, Icon: IconStatusDot },
   { value: "people", label: "Person", text: null, Icon: IconUser },
   { value: "relation", label: "Relation", text: null, Icon: IconLink },
+  // depends_on is a "view of edges" column type — the cell stores nothing.
+  // Display reads from the relationships table; click opens RecordDetail's
+  // Dependencies tab where the picker lives.
+  { value: "depends_on", label: "Depends on", text: null, Icon: IconLink },
 ];
 
 // ─── Type Icon Lookup (returns { text, Icon } or null) ───

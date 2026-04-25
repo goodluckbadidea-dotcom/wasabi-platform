@@ -18,6 +18,7 @@ import { OWNER_COL_NAME, ROW_HEIGHT, EDITABLE_TYPES } from "./tableHelpers.js";
 import { getStyles } from "./tableStyles.js";
 import { OwnerCellDisplay } from "./OwnerCell.jsx";
 import CellDisplay from "./CellDisplay.jsx";
+import DependsOnCell from "./DependsOnCell.jsx";
 import { GhostCell } from "./GhostRow.jsx";
 
 export default function TableRow({
@@ -31,7 +32,7 @@ export default function TableRow({
   setHoveredRow, setDetailPage, toggleRow, toggleExpand,
   handleCreateSubItem, onCreate,
   // Data
-  teamUsers, resolvedLinks, config, relationTitles, badgeCounts,
+  teamUsers, resolvedLinks, config, relationTitles, recordTitlesById, badgeCounts,
   // Links
   removeLink,
   // Collaboration
@@ -335,6 +336,11 @@ export default function TableRow({
                     </span>
                   )}
                 </div>
+              ) : type === "depends_on" ? (
+                <DependsOnCell
+                  recordId={pageId}
+                  recordTitlesById={recordTitlesById}
+                />
               ) : (
                 <CellDisplay
                   value={value}
