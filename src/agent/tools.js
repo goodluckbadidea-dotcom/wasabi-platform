@@ -1119,6 +1119,210 @@ const INTERPRET_AUTOMATION_NODES = {
   },
 };
 
+// ─── EMAIL/CALENDAR PROVIDER STATUS ───
+
+const GET_EMAIL_PROVIDER_STATUS = {
+  name: "get_email_provider_status",
+  description: "Check which email/calendar provider the current user has connected. Returns { google: { connected, email }, microsoft: { connected, email } }. ALWAYS call this first when the user asks about email or calendar — pick Outlook tools (search_outlook_messages, list_outlook_events, etc.) if Microsoft is connected, Gmail tools (search_emails, list_calendar_events, etc.) if only Google is connected. Never assume Gmail.",
+  input_schema: { type: "object", properties: {}, required: [] },
+};
+
+// ─── OUTLOOK / MICROSOFT 365 TOOLS ───
+
+const SEARCH_OUTLOOK_MESSAGES = {
+  name: "search_outlook_messages",
+  description: "Search the user's Outlook (Microsoft 365) inbox. Use this for users connected via Microsoft, NOT Gmail users. Returns matching messages with subject, from, date, and snippet. Use simple keywords for the query — Microsoft Graph $search treats spaces as AND.",
+  input_schema: {
+    type: "object",
+    properties: {
+      query: { type: "string", description: "Search query. Examples: 'Mark Premier Press', 'invoice', 'shipment'. Plain keywords work best." },
+      max_results: { type: "number", description: "Maximum messages to return (default 20)." },
+      folder: { type: "string", description: "Folder to search. Default 'inbox'. Other options: 'sentitems', 'drafts', 'archive'." },
+    },
+    required: ["query"],
+  },
+};
+
+const GET_OUTLOOK_MESSAGE = {
+  name: "get_outlook_message",
+  description: "Get the full content of a single Outlook message by its ID. Returns subject, from, to, cc, date, full body text, and conversationId.",
+  input_schema: {
+    type: "object",
+    properties: {
+      message_id: { type: "string", description: "The Outlook message ID (from search_outlook_messages results)." },
+    },
+    required: ["message_id"],
+  },
+};
+
+const GET_OUTLOOK_THREAD = {
+  name: "get_outlook_thread",
+  description: "Get all messages in an Outlook conversation thread. Use this when the user asks about an email chain, conversation, or back-and-forth — returns every message in the thread with full bodies, in chronological order. Crucial for summarizing long email discussions.",
+  input_schema: {
+    type: "object",
+    properties: {
+      conversation_id: { type: "string", description: "The Outlook conversationId (returned by search_outlook_messages or get_outlook_message)." },
+    },
+    required: ["conversation_id"],
+  },
+};
+
+const LIST_OUTLOOK_EVENTS = {
+  name: "list_outlook_events",
+  description: "List Outlook (Microsoft 365) Calendar events for a date range. Use this for Microsoft-connected users instead of list_calendar_events.",
+  input_schema: {
+    type: "object",
+    properties: {
+      start_date: { type: "string", description: "Start of date range (ISO 8601, e.g. '2026-04-24T00:00:00Z')." },
+      end_date: { type: "string", description: "End of date range (ISO 8601)." },
+      max_results: { type: "number", description: "Maximum events to return (default 50)." },
+    },
+    required: ["start_date", "end_date"],
+  },
+};
+
+const GET_OUTLOOK_CALENDAR_SUMMARY = {
+  name: "get_outlook_calendar_summary",
+  description: "Get a quick summary of upcoming Outlook calendar events (today + next few days). Faster and lighter than list_outlook_events for 'what's on my calendar' style questions.",
+  input_schema: { type: "object", properties: {}, required: [] },
+};
+
+// ─── PER-RECORD CONTEXT TOOLS ───
+
+const GET_RECORD_CONTEXT = {
+  name: "get_record_context",
+  description: "Get EVERYTHING attached to a single record in one call: the record's own field values, all comments on it, the record's notes (long-form rich text), attached files, sub-items, and incoming/outgoing cell links. ALWAYS use this when the user asks about a specific record, wants a status update, asks for a handoff report, or asks any question about 'what's going on with X'. Returns far more than query_database alone — comments and notes are invisible to query_database.",
+  input_schema: {
+    type: "object",
+    properties: {
+      record_id: { type: "string", description: "The record/row ID." },
+      page_config_id: { type: "string", description: "The database/page ID the record belongs to." },
+      include_files: { type: "boolean", description: "Include attached files list. Default true." },
+      include_children: { type: "boolean", description: "Include sub-items (child rows). Default true." },
+    },
+    required: ["record_id", "page_config_id"],
+  },
+};
+
+const GET_RECORD_COMMENTS = {
+  name: "get_record_comments",
+  description: "Get the full comment thread on a single record. Comments are NOT in the database schema — they live in their own thread per record and are essential for understanding decisions, blockers, and context. Use this whenever the user references comments, discussion, context, or asks for a handoff/status that should include unstructured notes.",
+  input_schema: {
+    type: "object",
+    properties: {
+      record_id: { type: "string", description: "The record/row ID." },
+      page_config_id: { type: "string", description: "The database/page ID the record belongs to." },
+    },
+    required: ["record_id", "page_config_id"],
+  },
+};
+
+const GET_RECORD_NOTE = {
+  name: "get_record_note",
+  description: "Get the long-form rich-text note attached to a single record. This is separate from comments and from column data — a free-form notes field per record.",
+  input_schema: {
+    type: "object",
+    properties: {
+      record_id: { type: "string", description: "The record/row ID." },
+      page_config_id: { type: "string", description: "The database/page ID the record belongs to." },
+    },
+    required: ["record_id", "page_config_id"],
+  },
+};
+
+const LIST_RECORD_FILES = {
+  name: "list_record_files",
+  description: "List files/attachments uploaded to a specific record. Returns file names, IDs, sizes, and types. Use when the user asks 'what files are attached to X?' or for context-rich record summaries.",
+  input_schema: {
+    type: "object",
+    properties: {
+      record_id: { type: "string", description: "The record/row ID." },
+    },
+    required: ["record_id"],
+  },
+};
+
+const LIST_CHILD_ROWS = {
+  name: "list_child_rows",
+  description: "List sub-items (child rows) of a parent record. Sub-items have their own schema (sub-columns) and are tracked separately from the parent — `query_database` returns rows flat without parent-child structure. Use this for hierarchical questions: 'what's under X?', 'what are the sub-tasks?', project breakdowns, etc.",
+  input_schema: {
+    type: "object",
+    properties: {
+      database_id: { type: "string", description: "The parent database/table ID." },
+      parent_row_id: { type: "string", description: "The parent record ID whose sub-items to list." },
+      limit: { type: "number", description: "Max sub-items to return (default 200)." },
+    },
+    required: ["database_id", "parent_row_id"],
+  },
+};
+
+// ─── WORKSPACE STRUCTURE TOOLS ───
+
+const LIST_PAGES = {
+  name: "list_pages",
+  description: "List all pages, databases, folders, and views in the workspace. Returns id, name, page_type, parentId, and databaseIds for each. Use this when you need to understand workspace structure, find a page by name, or reason about cross-page operations. Prefer this over guessing page existence.",
+  input_schema: { type: "object", properties: {}, required: [] },
+};
+
+const LIST_USERS = {
+  name: "list_users",
+  description: "List all users in the workspace with their display names, roles (admin/editor/viewer), and IDs. Use for: assigning work, answering 'who is X?', resolving names to user IDs for permissions or ownership questions.",
+  input_schema: { type: "object", properties: {}, required: [] },
+};
+
+const LIST_NOTIFICATIONS = {
+  name: "list_notifications",
+  description: "List the current user's notifications inbox. Returns recent notifications with message, type (notification/alert/summary), source, related record/page, and read/unread state. Use when the user asks 'what notifications do I have?', 'what's new?', 'any alerts?', or wants a summary of recent activity.",
+  input_schema: {
+    type: "object",
+    properties: {
+      status: { type: "string", enum: ["unread", "read", "all"], description: "Filter by status (default 'all')." },
+      limit: { type: "number", description: "Max notifications to return (default 50)." },
+    },
+    required: [],
+  },
+};
+
+// ─── DOCUMENTS, PERMISSIONS, LINKS ───
+
+const GET_DOCUMENT = {
+  name: "get_document",
+  description: "Get the full block-level content of a Document-type page (Notion-style long-form content). Document pages are NOT databases — they hold rich text, headings, lists, embedded blocks, etc. Use this when the user references a Doc page or asks you to read/summarize/quote from a document.",
+  input_schema: {
+    type: "object",
+    properties: {
+      page_id: { type: "string", description: "The document page ID." },
+    },
+    required: ["page_id"],
+  },
+};
+
+const GET_PAGE_PERMISSIONS = {
+  name: "get_page_permissions",
+  description: "Get the permissions list for a page: which users have access and at what level (viewer/editor/admin). Use when the user asks 'who can see X?', 'who has access to X?', or for any access-control reasoning.",
+  input_schema: {
+    type: "object",
+    properties: {
+      page_id: { type: "string", description: "The page ID to check permissions on." },
+    },
+    required: ["page_id"],
+  },
+};
+
+const LIST_LINKS = {
+  name: "list_links",
+  description: "List cell links (cross-record references). With no arguments, returns all links. Pass source_page_id to get links FROM a page, or target_page_id to get links TO a page. Use for: 'what records reference X?', 'what's linked from this page?', cross-table relationship queries that aren't covered by neurons or get_relationships.",
+  input_schema: {
+    type: "object",
+    properties: {
+      source_page_id: { type: "string", description: "Optional: get all links FROM this source page." },
+      target_page_id: { type: "string", description: "Optional: get all links TO this target page." },
+      target_view_idx: { type: "number", description: "Optional: scope to a specific view index on the target." },
+    },
+    required: [],
+  },
+};
+
 // ─── TOOL SETS ───
 
 export const WASABI_TOOLS = [
@@ -1169,6 +1373,28 @@ export const WASABI_TOOLS = [
   CREATE_CALENDAR_EVENT,
   UPDATE_CALENDAR_EVENT,
   DELETE_CALENDAR_EVENT,
+  // Email/Calendar provider status
+  GET_EMAIL_PROVIDER_STATUS,
+  // Outlook / Microsoft 365 tools
+  SEARCH_OUTLOOK_MESSAGES,
+  GET_OUTLOOK_MESSAGE,
+  GET_OUTLOOK_THREAD,
+  LIST_OUTLOOK_EVENTS,
+  GET_OUTLOOK_CALENDAR_SUMMARY,
+  // Per-record context tools
+  GET_RECORD_CONTEXT,
+  GET_RECORD_COMMENTS,
+  GET_RECORD_NOTE,
+  LIST_RECORD_FILES,
+  LIST_CHILD_ROWS,
+  // Workspace structure tools
+  LIST_PAGES,
+  LIST_USERS,
+  LIST_NOTIFICATIONS,
+  // Documents, permissions, links
+  GET_DOCUMENT,
+  GET_PAGE_PERMISSIONS,
+  LIST_LINKS,
 ];
 
 export const AUTO_TOOLS = [
@@ -1190,36 +1416,51 @@ export const SYSTEM_TOOLS = [
 // Editor: read + lightweight writes (query, update records, email, calendar)
 // Admin: editor tools (full agent access is via Agent tab)
 
-export const ASSISTANT_TOOLS_VIEWER = [
+// Read tools shared across all assistant tiers
+const ASSISTANT_READS = [
   QUERY_DATABASE,
   QUERY_NEURONS,
   QUERY_NEURON_DATA,
   GET_RELATIONSHIPS,
+  // Email/Calendar — both providers + status
+  GET_EMAIL_PROVIDER_STATUS,
   SEARCH_EMAILS,
+  GET_EMAIL,
   LIST_CALENDAR_EVENTS,
+  SEARCH_OUTLOOK_MESSAGES,
+  GET_OUTLOOK_MESSAGE,
+  GET_OUTLOOK_THREAD,
+  LIST_OUTLOOK_EVENTS,
+  GET_OUTLOOK_CALENDAR_SUMMARY,
+  // Per-record context
+  GET_RECORD_CONTEXT,
+  GET_RECORD_COMMENTS,
+  GET_RECORD_NOTE,
+  LIST_RECORD_FILES,
+  LIST_CHILD_ROWS,
+  // Workspace structure
+  LIST_PAGES,
+  LIST_USERS,
+  LIST_NOTIFICATIONS,
+  // Documents, permissions, links
+  GET_DOCUMENT,
+  GET_PAGE_PERMISSIONS,
+  LIST_LINKS,
 ];
 
+export const ASSISTANT_TOOLS_VIEWER = [...ASSISTANT_READS];
+
 export const ASSISTANT_TOOLS_EDITOR = [
-  QUERY_DATABASE,
-  QUERY_NEURONS,
-  QUERY_NEURON_DATA,
-  GET_RELATIONSHIPS,
+  ...ASSISTANT_READS,
   UPDATE_PAGE,
   POST_NOTIFICATION,
-  SEARCH_EMAILS,
-  LIST_CALENDAR_EVENTS,
   CREATE_CALENDAR_EVENT,
 ];
 
 export const ASSISTANT_TOOLS_ADMIN = [
-  QUERY_DATABASE,
-  QUERY_NEURONS,
-  QUERY_NEURON_DATA,
-  GET_RELATIONSHIPS,
+  ...ASSISTANT_READS,
   UPDATE_PAGE,
   POST_NOTIFICATION,
-  SEARCH_EMAILS,
-  LIST_CALENDAR_EVENTS,
   CREATE_CALENDAR_EVENT,
 ];
 

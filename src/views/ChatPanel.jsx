@@ -17,8 +17,9 @@ import { buildNeuronContextSummary } from "../neurons/neuronStorage.js";
 import { routeWithClassification, shouldEscalate, SONNET } from "../agent/aiRouter.js";
 import { classifyQuery, formatClassifierResponse } from "../agent/queryClassifier.js";
 import { buildDataSummary, getTokenBudget, findWorkspaceAncestor } from "../agent/dataSummary.js";
-import { getGoogleStatus } from "../lib/api.js";
+import { getGoogleStatus, getMicrosoftStatus } from "../lib/api.js";
 import { fetchGoogleContext } from "../google/googleContext.js";
+import { fetchMicrosoftContext } from "../microsoft/microsoftContext.js";
 
 export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
   const { user, platformIds, addPage, pages } = usePlatform();
@@ -89,14 +90,21 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
       // Build rich neuron summary (includes node details when graph is cached)
       const neuronSummary = buildNeuronContextSummary();
 
-      // Fetch Google context (best effort, cached 5 min)
+      // Fetch Google + Microsoft context (best effort, cached 5 min each)
       let googleContext = "";
+      let microsoftContext = "";
       try {
-        const gStatus = await getGoogleStatus();
-        if (gStatus?.connected) {
+        const [gStatus, mStatus] = await Promise.allSettled([
+          getGoogleStatus(),
+          getMicrosoftStatus(),
+        ]);
+        if (gStatus.status === "fulfilled" && gStatus.value?.connected) {
           googleContext = await fetchGoogleContext();
         }
-      } catch (err) { console.warn("[ChatPanel] Google context fetch:", err.message || err); }
+        if (mStatus.status === "fulfilled" && mStatus.value?.connected) {
+          microsoftContext = await fetchMicrosoftContext();
+        }
+      } catch (err) { console.warn("[ChatPanel] Mail/calendar context fetch:", err.message || err); }
 
       // Auto-search KB for relevant context (call D1 API directly, not toolExecutor)
       let kbContext = "";
@@ -142,6 +150,7 @@ export default function ChatPanel({ pageConfig, schema, data, onRefresh }) {
         workspaceInstructions,
         agentMode,
         googleContext,
+        microsoftContext,
       });
 
       // ── Query Classification (Haiku pre-check) ──

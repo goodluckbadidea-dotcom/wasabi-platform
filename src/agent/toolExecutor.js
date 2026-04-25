@@ -2147,6 +2147,151 @@ export function createToolExecutor({
         return JSON.stringify(result);
       }
 
+      // ── Email/Calendar Provider Status ──
+      case "get_email_provider_status": {
+        const [g, m] = await Promise.allSettled([
+          api.getGoogleStatus(),
+          api.getMicrosoftStatus(),
+        ]);
+        const google = g.status === "fulfilled" ? (g.value || {}) : {};
+        const microsoft = m.status === "fulfilled" ? (m.value || {}) : {};
+        return JSON.stringify({
+          google: { connected: !!google.connected, email: google.email || null },
+          microsoft: { connected: !!microsoft.connected, email: microsoft.email || null },
+        });
+      }
+
+      // ── Outlook / Microsoft 365 Tools ──
+      case "search_outlook_messages": {
+        const result = await api.searchOutlookMessages(
+          toolInput.query || "",
+          toolInput.max_results || 20,
+          toolInput.folder || "inbox",
+        );
+        return JSON.stringify(result);
+      }
+      case "get_outlook_message": {
+        const result = await api.getOutlookMessage(toolInput.message_id);
+        return JSON.stringify(result);
+      }
+      case "get_outlook_thread": {
+        const result = await api.getOutlookThread(toolInput.conversation_id);
+        return JSON.stringify(result);
+      }
+      case "list_outlook_events": {
+        const result = await api.listOutlookEvents(
+          toolInput.start_date,
+          toolInput.end_date,
+          toolInput.max_results || 50,
+        );
+        return JSON.stringify(result);
+      }
+      case "get_outlook_calendar_summary": {
+        const result = await api.getOutlookCalendarSummary();
+        return JSON.stringify(result);
+      }
+
+      // ── Per-Record Context Tools ──
+      case "get_record_context": {
+        const recordId = toolInput.record_id;
+        const pageConfigId = toolInput.page_config_id;
+        const includeFiles = toolInput.include_files !== false;
+        const includeChildren = toolInput.include_children !== false;
+
+        // Fetch the record itself + comments + note + (optional) files + children + outgoing links in parallel
+        const [
+          rowsResult,
+          commentsResult,
+          noteResult,
+          filesResult,
+          childrenResult,
+          linksResult,
+        ] = await Promise.allSettled([
+          api.queryTable(pageConfigId, { filters: { id: recordId }, limit: 1 })
+            .catch(() => api.listRows(pageConfigId, { limit: 1000 }).then((r) =>
+              ({ rows: (r?.rows || []).filter((row) => row.id === recordId) }))),
+          api.listRecordComments(recordId, pageConfigId),
+          api.getRecordNote(recordId, pageConfigId),
+          includeFiles ? api.listFilesByRecord(recordId) : Promise.resolve(null),
+          includeChildren ? api.listChildRows(pageConfigId, recordId, { limit: 200 }) : Promise.resolve(null),
+          api.getLinksBySource(recordId).catch(() => null),
+        ]);
+
+        const fields = rowsResult.status === "fulfilled"
+          ? (rowsResult.value?.rows?.[0] || rowsResult.value?.[0] || null)
+          : null;
+
+        return JSON.stringify({
+          record_id: recordId,
+          page_config_id: pageConfigId,
+          fields,
+          comments: commentsResult.status === "fulfilled" ? commentsResult.value : { error: commentsResult.reason?.message || "fetch failed" },
+          note: noteResult.status === "fulfilled" ? noteResult.value : null,
+          files: includeFiles
+            ? (filesResult.status === "fulfilled" ? filesResult.value : { error: filesResult.reason?.message || "fetch failed" })
+            : null,
+          sub_items: includeChildren
+            ? (childrenResult.status === "fulfilled" ? childrenResult.value : { error: childrenResult.reason?.message || "fetch failed" })
+            : null,
+          outgoing_links: linksResult.status === "fulfilled" ? linksResult.value : null,
+        });
+      }
+      case "get_record_comments": {
+        const result = await api.listRecordComments(toolInput.record_id, toolInput.page_config_id);
+        return JSON.stringify(result);
+      }
+      case "get_record_note": {
+        const result = await api.getRecordNote(toolInput.record_id, toolInput.page_config_id);
+        return JSON.stringify(result);
+      }
+      case "list_record_files": {
+        const result = await api.listFilesByRecord(toolInput.record_id);
+        return JSON.stringify(result);
+      }
+      case "list_child_rows": {
+        const result = await api.listChildRows(
+          toolInput.database_id,
+          toolInput.parent_row_id,
+          { limit: toolInput.limit || 200 },
+        );
+        return JSON.stringify(result);
+      }
+
+      // ── Workspace Structure Tools ──
+      case "list_pages": {
+        const result = await api.listPages();
+        return JSON.stringify(result);
+      }
+      case "list_users": {
+        const result = await api.listUserDirectory();
+        return JSON.stringify(result);
+      }
+      case "list_notifications": {
+        const result = await api.listNotifications({
+          status: toolInput.status,
+          limit: toolInput.limit || 50,
+        });
+        return JSON.stringify(result);
+      }
+
+      // ── Documents, Permissions, Links ──
+      case "get_document": {
+        const result = await api.getDocument(toolInput.page_id);
+        return JSON.stringify(result);
+      }
+      case "get_page_permissions": {
+        const result = await api.getPagePermissions(toolInput.page_id);
+        return JSON.stringify(result);
+      }
+      case "list_links": {
+        if (toolInput.source_page_id) {
+          const result = await api.getLinksBySource(toolInput.source_page_id);
+          return JSON.stringify(result);
+        }
+        const result = await api.listLinks(toolInput.target_page_id, toolInput.target_view_idx);
+        return JSON.stringify(result);
+      }
+
       default:
         return JSON.stringify({ error: `Unknown tool: ${toolName}` });
     }

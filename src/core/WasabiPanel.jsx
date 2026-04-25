@@ -22,6 +22,7 @@ import { buildAgentContext } from "../agent/agentContext.js";
 import { buildFilteredNeuronContext, loadHydratedNeurons } from "../neurons/neuronStorage.js";
 import { buildDataSummary, getTokenBudget, findWorkspaceAncestor } from "../agent/dataSummary.js";
 import { fetchGoogleContext } from "../google/googleContext.js";
+import { fetchMicrosoftContext } from "../microsoft/microsoftContext.js";
 import * as api from "../lib/api.js";
 // Legacy Notion imports removed — notifications now stored in D1
 import { timeAgo } from "../utils/helpers.js";
@@ -222,14 +223,21 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
         await loadHydratedNeurons().catch(() => {});
         let neuronSummary = buildFilteredNeuronContext(agentText);
 
-        // Fetch Google context (best effort, cached 5 min)
+        // Fetch Google + Microsoft context (best effort, cached 5 min each)
         let googleContext = "";
+        let microsoftContext = "";
         try {
-          const gStatus = await api.getGoogleStatus();
-          if (gStatus?.connected) {
+          const [gStatus, mStatus] = await Promise.allSettled([
+            api.getGoogleStatus(),
+            api.getMicrosoftStatus(),
+          ]);
+          if (gStatus.status === "fulfilled" && gStatus.value?.connected) {
             googleContext = await fetchGoogleContext();
           }
-        } catch (err) { console.warn("[WasabiPanel] Google context fetch:", err.message || err); }
+          if (mStatus.status === "fulfilled" && mStatus.value?.connected) {
+            microsoftContext = await fetchMicrosoftContext();
+          }
+        } catch (err) { console.warn("[WasabiPanel] Mail/calendar context fetch:", err.message || err); }
 
         // Find workspace ancestor for custom AI instructions + agent mode
         let workspaceInstructions = "";
@@ -252,6 +260,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
           neuronSummary,
           kbContext,
           googleContext,
+          microsoftContext,
           agentMode,
           workspaceInstructions,
         });

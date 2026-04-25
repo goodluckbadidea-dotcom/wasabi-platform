@@ -23,6 +23,7 @@ export function buildWasabiPrompt(paramsOrEnvelope) {
       dataSummary: frozenContext.dataSummary,
       platformDbIds: frozenContext.platformDbIds,
       googleContext: frozenContext.googleContext,
+      microsoftContext: frozenContext.microsoftContext,
       agentMode: frozenContext.agentMode,
       workspaceInstructions: frozenContext.workspaceInstructions,
       currentDate: new Date().toISOString().split("T")[0],
@@ -118,6 +119,38 @@ User role: ${role}`,
     parts.push("\n" + frozenContext.googleContext);
   }
 
+  // Microsoft 365 context (Outlook + Calendar)
+  if (frozenContext.microsoftContext) {
+    parts.push("\n" + frozenContext.microsoftContext);
+  }
+
+  // Tool selection guidance for assistant
+  parts.push(`\n## How to Answer Common Questions
+
+When the user asks about EMAIL or CALENDAR:
+- ALWAYS call \`get_email_provider_status\` first to see which provider they have connected.
+- Microsoft connected → use Outlook tools (\`search_outlook_messages\`, \`get_outlook_message\`, \`get_outlook_thread\`, \`list_outlook_events\`, \`get_outlook_calendar_summary\`).
+- Google connected → use Gmail tools (\`search_emails\`, \`get_email\`, \`list_calendar_events\`).
+- Neither connected → tell the user nothing is connected and how to connect; do NOT just say "Google isn't connected" if Outlook is connected.
+- For multi-message email chains/threads, use \`get_outlook_thread\` (Microsoft) — it returns all messages in chronological order.
+
+When the user asks about a SPECIFIC RECORD (status update, handoff, "what's going on with X", summarize):
+- Use \`get_record_context\` — it returns fields + comments + notes + files + sub-items + links in one call.
+- \`query_database\` does NOT include comments, notes, or files. Comments and notes are NEVER in the schema. If the user mentions comments, context, discussion, or asks for a summary that needs unstructured info, you MUST call \`get_record_context\` (or \`get_record_comments\` + \`get_record_note\` directly).
+
+When the user asks about PEOPLE, ASSIGNMENTS, or PERMISSIONS:
+- \`list_users\` returns the user directory with names, roles, and IDs.
+- \`get_page_permissions\` returns who has access to a specific page.
+
+When the user asks about NOTIFICATIONS or "what's new":
+- \`list_notifications\` returns the user's inbox.
+
+When the user asks about WORKSPACE STRUCTURE or where to find something:
+- \`list_pages\` returns all pages, databases, and folders. Use this before guessing a page exists.
+
+When the user asks about a DOC PAGE:
+- \`get_document\` returns the full block-level content. Plain \`query_database\` doesn't apply to doc pages.`);
+
   return parts.join("\n");
 }
 
@@ -158,7 +191,7 @@ function neuronsOverlapWorkspace(neuronSummary, workspaceSummary) {
   return covered / workspaceDbIds.size > 0.8;
 }
 
-function _buildPrompt({ platformDbIds, kbContext = "", currentPageContext, dataSummary, workspaceSummary, neuronSummary, currentDate, workspaceInstructions, agentMode, googleContext }) {
+function _buildPrompt({ platformDbIds, kbContext = "", currentPageContext, dataSummary, workspaceSummary, neuronSummary, currentDate, workspaceInstructions, agentMode, googleContext, microsoftContext }) {
   let pageSection = "";
   if (currentPageContext) {
     const { pageName, databaseIds, schemaText } = currentPageContext;
@@ -228,6 +261,40 @@ ${kbContext ? `\n## Your Knowledge Base Context\n${kbContext}` : ""}
 ${effectiveWorkspaceSummary ? `\n## Workspace Pages\n${effectiveWorkspaceSummary}` : ""}
 ${neuronSummary ? `\n## Neuron Connections\nThe user has created the following neuron connections (semantic links between items):\n${neuronSummary}` : ""}
 ${googleContext ? `\n${googleContext}` : ""}
+${microsoftContext ? `\n${microsoftContext}` : ""}
+
+## How to Answer Common Questions
+
+When the user asks about EMAIL or CALENDAR:
+- ALWAYS call \`get_email_provider_status\` first to see which provider is connected.
+- Microsoft connected → use Outlook tools (\`search_outlook_messages\`, \`get_outlook_message\`, \`get_outlook_thread\`, \`list_outlook_events\`, \`get_outlook_calendar_summary\`).
+- Google connected → use Gmail tools (\`search_emails\`, \`get_email\`, \`list_calendar_events\`).
+- Neither → say so explicitly; do NOT default to Gmail when only Outlook is connected.
+- For multi-message email chains/threads, prefer \`get_outlook_thread\` (Microsoft) — it returns the full conversation in order.
+
+When the user asks about a SPECIFIC RECORD (status update, handoff report, "what's going on with X", summarize a project):
+- Use \`get_record_context\` — returns fields + comments + notes + files + sub-items + links in ONE call.
+- \`query_database\` does NOT include comments, notes, or files. If the user mentions comments, context, discussion, or anything unstructured, you MUST call \`get_record_context\` (or \`get_record_comments\` + \`get_record_note\` directly). Never tell the user comments are inaccessible — they are accessible.
+- For project handoffs: pull \`get_record_context\` for the parent record, then iterate through sub_items in the response and pull comments for each that has activity.
+
+When the user asks about PEOPLE, ASSIGNMENTS, or PERMISSIONS:
+- \`list_users\` returns the user directory with names, roles, and IDs.
+- \`get_page_permissions\` returns who has access to a specific page.
+
+When the user asks about NOTIFICATIONS or "what's new":
+- \`list_notifications\` returns the user's inbox.
+
+When the user asks about WORKSPACE STRUCTURE or where to find something:
+- \`list_pages\` returns all pages, databases, folders, and views. Use this before guessing.
+
+When the user asks about a DOC PAGE (long-form content, not a database):
+- \`get_document\` returns the full block-level content. \`query_database\` does NOT apply to doc pages.
+
+When the user asks about LINKS BETWEEN RECORDS (cross-record references that aren't neurons):
+- \`list_links\` — returns cell links. Pass source_page_id or target_page_id.
+
+When the user asks about DEPENDENCIES or "what blocks X":
+- \`get_relationships\` already handles \`depends_on\` / \`blocks\` relationship types.
 ${pageSection}`;
 }
 
