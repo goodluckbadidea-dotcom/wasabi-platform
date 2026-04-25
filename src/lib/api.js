@@ -1256,3 +1256,66 @@ export async function getAuditLog({ action, resource_type, limit = 100, offset =
   params.set("offset", String(offset));
   return apiFetch(`/audit-log?${params}`, { method: "GET" });
 }
+
+// ─── Unified Relationships (Phase 1+2a backend; Phase 2b client wrappers) ───
+//
+// Thin wrappers around the worker's /relationships routes. Used by
+// RelationshipsContext for app-side state and by the AI agent's
+// get_relationships / write_relationship tools (Phase 2b steps B/A).
+
+/**
+ * GET /relationships — list edges, permission-filtered server-side.
+ *
+ * Filters (all optional):
+ *   entity_type + entity_id  — restrict to edges touching this entity (must
+ *                              be passed together).
+ *   types       — array OR comma-string of relationship types.
+ *   direction   — 'outgoing' | 'incoming' | 'both' (default 'both').
+ *   include_projected — false to exclude origin LIKE 'projected_%'.
+ *   min_confidence    — number in [0, 1).
+ *   include_deleted   — true to include soft-deleted edges.
+ */
+export async function listRelationships(filters = {}) {
+  const params = new URLSearchParams();
+  if (filters.entity_type) params.set("entity_type", filters.entity_type);
+  if (filters.entity_id) params.set("entity_id", filters.entity_id);
+  if (filters.types) {
+    params.set("types", Array.isArray(filters.types) ? filters.types.join(",") : String(filters.types));
+  }
+  if (filters.direction) params.set("direction", filters.direction);
+  if (filters.include_projected === false) params.set("include_projected", "false");
+  if (filters.min_confidence != null) params.set("min_confidence", String(filters.min_confidence));
+  if (filters.include_deleted) params.set("include_deleted", "1");
+  const qs = params.toString();
+  return apiFetch(`/relationships${qs ? `?${qs}` : ""}`, { method: "GET" });
+}
+
+/**
+ * POST /relationships — create a native edge. Required:
+ *   { type, source_type, source_id, target_type, target_id, origin }
+ * Optional: source_page_id, target_page_id, confidence, meta.
+ *
+ * `origin` must be 'user_declared' or 'ai_inferred'. ai_inferred requires
+ * confidence in [0, 1). Type must be registered in relationship_types.
+ * Returns 409 on duplicate (source, target, type) for an active edge.
+ */
+export async function createRelationship(body) {
+  return apiFetch(`/relationships`, { method: "POST", body });
+}
+
+/**
+ * DELETE /relationships/:id — soft-delete via deleted_at.
+ * Idempotent: returns { ok, already_deleted: true } if already deleted.
+ */
+export async function deleteRelationship(id) {
+  return apiFetch(`/relationships/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/**
+ * POST /relationships/rebuild — admin-only. Slate-clears every projected_*
+ * edge and re-runs all five projectors. Returns origin counts before/after
+ * so callers can verify. Useful for drift recovery.
+ */
+export async function rebuildRelationships() {
+  return apiFetch(`/relationships/rebuild`, { method: "POST" });
+}

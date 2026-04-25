@@ -1366,6 +1366,78 @@ export function createToolExecutor({
         }
       }
 
+      // ─── Unified Relationships (Phase 2b) ───
+      // Read tool. Returns edges scoped by the worker's permission filter
+      // automatically — the AI cannot see edges in pages the user can't see.
+      case "get_relationships": {
+        try {
+          if (!toolInput.entity_type || !toolInput.entity_id) {
+            return JSON.stringify({ error: "entity_type and entity_id are required" });
+          }
+          const filters = {
+            entity_type: toolInput.entity_type,
+            entity_id: toolInput.entity_id,
+          };
+          if (Array.isArray(toolInput.types) && toolInput.types.length > 0) filters.types = toolInput.types;
+          if (toolInput.direction) filters.direction = toolInput.direction;
+          if (toolInput.include_projected === false) filters.include_projected = false;
+          if (typeof toolInput.min_confidence === "number") filters.min_confidence = toolInput.min_confidence;
+          const res = await api.listRelationships(filters);
+          return JSON.stringify({
+            edges: res.edges || [],
+            summary: res.summary || { by_type: {}, counts: { total: 0 } },
+          });
+        } catch (err) {
+          return JSON.stringify({ error: err?.message || String(err) });
+        }
+      }
+
+      // AI-side write tool. Origin is hardcoded to 'ai_inferred' — the AI
+      // cannot write 'user_declared' edges (those go through UI flows). The
+      // worker independently enforces this same constraint as a defense-in-
+      // depth check, so even a bug here can't escalate origin.
+      case "write_relationship": {
+        try {
+          const conf = toolInput.confidence;
+          if (typeof conf !== "number" || conf < 0 || conf >= 1) {
+            return JSON.stringify({ error: "confidence must be a number in [0, 1)" });
+          }
+          if (!toolInput.type || !toolInput.source_type || !toolInput.source_id ||
+              !toolInput.target_type || !toolInput.target_id) {
+            return JSON.stringify({
+              error: "type, source_type, source_id, target_type, target_id are all required",
+            });
+          }
+          const body = {
+            type: toolInput.type,
+            origin: "ai_inferred",
+            source_type: toolInput.source_type,
+            source_id: toolInput.source_id,
+            source_page_id: toolInput.source_page_id || null,
+            target_type: toolInput.target_type,
+            target_id: toolInput.target_id,
+            target_page_id: toolInput.target_page_id || null,
+            confidence: conf,
+            meta: toolInput.meta || null,
+          };
+          const res = await api.createRelationship(body);
+          return JSON.stringify({
+            success: true,
+            id: res.id,
+            type: res.type,
+            confidence: res.confidence,
+          });
+        } catch (err) {
+          // Common path: 409 duplicate edge — surface as a non-fatal info so
+          // the AI knows the connection already exists rather than retrying.
+          const msg = err?.message || String(err);
+          if (msg.includes("duplicate")) {
+            return JSON.stringify({ skipped: true, reason: "duplicate edge already exists" });
+          }
+          return JSON.stringify({ error: msg });
+        }
+      }
+
       // ─── Calculation Sandbox ───
 
       case "run_calculation": {

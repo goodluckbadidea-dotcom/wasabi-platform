@@ -8,6 +8,7 @@ import React, { useState, useCallback, useEffect, useRef } from "react";
 import { PlatformProvider, usePlatform } from "./context/PlatformContext.jsx";
 import { LinksProvider } from "./context/LinksContext.jsx";
 import { NeuronsProvider } from "./neurons/NeuronsContext.jsx";
+import { RelationshipsProvider } from "./context/RelationshipsContext.jsx";
 import { RecordDrawerProvider } from "./features/RecordDrawerContext.jsx";
 import { ColorMappingProvider } from "./context/ColorMappingContext.jsx";
 import { ThemeProvider, useTheme } from "./context/ThemeContext.jsx";
@@ -645,11 +646,13 @@ export default function App() {
             <ColorMappingProvider>
               <LinksProvider>
                 <NeuronsProvider>
-                  <RecordDrawerProvider>
-                    <ErrorBoundary fallbackLabel="Wasabi Platform">
-                      <AppContent />
-                    </ErrorBoundary>
-                  </RecordDrawerProvider>
+                  <RelationshipsProvider>
+                    <RecordDrawerProvider>
+                      <ErrorBoundary fallbackLabel="Wasabi Platform">
+                        <AppContent />
+                      </ErrorBoundary>
+                    </RecordDrawerProvider>
+                  </RelationshipsProvider>
                 </NeuronsProvider>
               </LinksProvider>
             </ColorMappingProvider>

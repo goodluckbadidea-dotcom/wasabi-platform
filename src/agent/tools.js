@@ -480,6 +480,90 @@ const REMOVE_NEURON_NODE = {
   },
 };
 
+const GET_RELATIONSHIPS = {
+  name: "get_relationships",
+  description: "Query the unified relationships table for edges touching an entity. Returns a single, complete view across all connection types — sub-items (part_of), cell links (references), relation columns (related_to), neurons (member_of_neuron), @mentions (mentioned_in), task dependencies (depends_on / blocks), AI-inferred similarities (similar_to), and conflicts (conflicts_with). Faster and more complete than calling query_neurons or other per-system tools when you need a holistic picture of what an entity is connected to.",
+  input_schema: {
+    type: "object",
+    properties: {
+      entity_type: {
+        type: "string",
+        description: "Type of entity to look up: 'record', 'page', 'field', 'user', 'neuron', or 'comment'. Most queries are about a record or a page.",
+      },
+      entity_id: {
+        type: "string",
+        description: "ID of the entity (row UUID, page UUID, etc.). Must be paired with entity_type.",
+      },
+      types: {
+        type: "array",
+        description: "Optional. Filter to specific relationship types. E.g. ['depends_on', 'blocks'] for dependency questions, ['member_of_neuron'] for neuron membership only. Omit to get all types.",
+        items: { type: "string" },
+      },
+      direction: {
+        type: "string",
+        description: "Optional. 'outgoing' = edges where this entity is the source, 'incoming' = where it's the target, 'both' = either side (default).",
+        enum: ["outgoing", "incoming", "both"],
+      },
+      include_projected: {
+        type: "boolean",
+        description: "Optional. Default true — include edges mirrored from legacy systems (sub-items, cell links, etc.). Set false to see only native edges (user_declared + ai_inferred).",
+      },
+      min_confidence: {
+        type: "number",
+        description: "Optional. Filter out AI-inferred edges below this confidence. User-declared edges (no confidence) always pass. Use 0.7+ to see only high-confidence AI suggestions.",
+      },
+    },
+    required: ["entity_type", "entity_id"],
+  },
+};
+
+const WRITE_RELATIONSHIP = {
+  name: "write_relationship",
+  description: "Propose a new relationship edge between two entities in the workspace. Use when you discover a meaningful connection worth recording — e.g. one task that depends on another, two records that conflict, two items that look similar, or any cross-page semantic link. Edges proposed by you are marked 'ai_inferred' with the confidence score you provide; users will see them distinctly from their own and can accept or reject. Edges are persistent across conversations. Common types: 'depends_on' (source is blocked by target), 'blocks' (inverse), 'similar_to' (symmetric), 'conflicts_with' (symmetric), 'related_to' (generic). Use this when you've reasoned through evidence and want the connection to outlive the current chat.",
+  input_schema: {
+    type: "object",
+    properties: {
+      type: {
+        type: "string",
+        description: "Relationship type. Must be one of the registered types: 'depends_on', 'blocks', 'similar_to', 'conflicts_with', 'related_to'. Other types are reserved for system projections.",
+      },
+      source_type: {
+        type: "string",
+        description: "Source entity type: 'record', 'page', 'field', 'user', 'neuron', or 'comment'. Most edges go between two records.",
+      },
+      source_id: {
+        type: "string",
+        description: "Source entity ID (row UUID for records, page UUID for pages, etc.).",
+      },
+      source_page_id: {
+        type: "string",
+        description: "Optional but strongly recommended. The page (database) containing the source entity. Required for the permission filter to scope this edge correctly when other users query — without it the edge is visible to anyone with general access.",
+      },
+      target_type: {
+        type: "string",
+        description: "Target entity type: 'record', 'page', 'field', 'user', 'neuron', or 'comment'.",
+      },
+      target_id: {
+        type: "string",
+        description: "Target entity ID.",
+      },
+      target_page_id: {
+        type: "string",
+        description: "Optional but strongly recommended. The page (database) containing the target entity. See source_page_id.",
+      },
+      confidence: {
+        type: "number",
+        description: "Confidence score, must be in [0, 1) — strictly less than 1.0. Use 0.4-0.5 for hunches, 0.6-0.7 for likely connections, 0.85-0.95 for near-certainties grounded in clear evidence.",
+      },
+      meta: {
+        type: "object",
+        description: "Optional metadata. Strongly recommended: include an 'evidence' string explaining why you proposed this edge (e.g., 'Both tasks reference the Q3 launch and have overlapping owners'). Helps users decide whether to accept.",
+      },
+    },
+    required: ["type", "source_type", "source_id", "target_type", "target_id", "confidence"],
+  },
+};
+
 const QUERY_NEURON_DATA = {
   name: "query_neuron_data",
   description: "Get hydrated data for a single neuron, including actual field values from connected records. Use when the neuron summary in your context isn't detailed enough and you need to drill into a specific neuron's data.",
@@ -1060,6 +1144,8 @@ export const WASABI_TOOLS = [
   ADD_NEURON_NODE,
   REMOVE_NEURON_NODE,
   QUERY_NEURON_DATA,
+  GET_RELATIONSHIPS,
+  WRITE_RELATIONSHIP,
   RUN_CALCULATION,
   SAVE_CUSTOM_FUNCTION,
   LIST_CUSTOM_FUNCTIONS,
@@ -1108,6 +1194,7 @@ export const ASSISTANT_TOOLS_VIEWER = [
   QUERY_DATABASE,
   QUERY_NEURONS,
   QUERY_NEURON_DATA,
+  GET_RELATIONSHIPS,
   SEARCH_EMAILS,
   LIST_CALENDAR_EVENTS,
 ];
@@ -1116,6 +1203,7 @@ export const ASSISTANT_TOOLS_EDITOR = [
   QUERY_DATABASE,
   QUERY_NEURONS,
   QUERY_NEURON_DATA,
+  GET_RELATIONSHIPS,
   UPDATE_PAGE,
   POST_NOTIFICATION,
   SEARCH_EMAILS,
@@ -1127,6 +1215,7 @@ export const ASSISTANT_TOOLS_ADMIN = [
   QUERY_DATABASE,
   QUERY_NEURONS,
   QUERY_NEURON_DATA,
+  GET_RELATIONSHIPS,
   UPDATE_PAGE,
   POST_NOTIFICATION,
   SEARCH_EMAILS,
