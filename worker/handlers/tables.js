@@ -6,6 +6,10 @@ import { safeParseJSON, resolveRecordTitle } from '../utils.js';
 import { createNotificationInternal } from './notifications.js';
 import { checkAutomationTriggers } from '../automation/engine.js';
 import { invalidateSummaryCache, archiveNotionPage } from './notion-sync.js';
+import {
+  emitProjectedEdge, deleteProjectedEdge, deleteAllProjectedEdgesForEntity,
+  getRelationColumns, resolveRecordPageId,
+} from './relationshipProjections.js';
 
 // ─── Table Schema Handlers ───
 
@@ -125,6 +129,48 @@ async function handleCreateRows(env, tableId, body, user, jsonResponse) {
     // Invalidate data summary cache for this table's pages
     invalidateSummaryCache(env, tableId).catch(() => {});
 
+    // Live projection: emit 'related_to' edges for any relation column values
+    // on the newly created rows. Skipped entirely if the table has no relation
+    // columns (single schema lookup, very cheap).
+    try {
+      const relCols = await getRelationColumns(env, tableId);
+      if (relCols.length > 0) {
+        for (const row of rows) {
+          const cells = row.cells || {};
+          for (const col of relCols) {
+            const ids = cells[col.id];
+            if (!Array.isArray(ids)) continue;
+            for (const targetId of ids) {
+              if (typeof targetId !== "string" || !targetId) continue;
+              const targetPageId = await resolveRecordPageId(env, targetId);
+              await emitProjectedEdge(env, {
+                type: "related_to", origin: "projected_relation_col",
+                source_type: "record", source_id: row.id || created[rows.indexOf(row)], source_page_id: tableId,
+                target_type: "record", target_id: targetId, target_page_id: targetPageId,
+                meta: { column_id: col.id, column_name: col.name || "" },
+              });
+            }
+          }
+        }
+      }
+    } catch (err) { console.error("[relationships] handleCreateRows projection failed:", err.message || err); }
+
+    // Live projection: emit 'part_of' edges for any newly created sub-items.
+    // Both endpoints share the same table_id (sub-items always live in their
+    // parent's table).
+    try {
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row.parent_row_id) continue;
+        await emitProjectedEdge(env, {
+          type: "part_of", origin: "projected_parent_row",
+          source_type: "record", source_id: row.id || created[i], source_page_id: tableId,
+          target_type: "record", target_id: row.parent_row_id, target_page_id: tableId,
+          meta: null,
+        });
+      }
+    } catch (err) { console.error("[relationships] handleCreateRows part_of projection failed:", err.message || err); }
+
     return jsonResponse({ ok: true, ids: created }, 201);
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
@@ -138,10 +184,12 @@ async function handleUpdateRow(env, tableId, rowId, body, user, jsonResponse) {
   try {
     // Read existing row for merge, automation triggers, and conflict detection
     const existing = await env.DB.prepare(
-      "SELECT cells, cell_versions, metadata, owner_user_id FROM table_rows WHERE id = ? AND table_id = ?"
+      "SELECT cells, cell_versions, metadata, owner_user_id, parent_row_id, archived FROM table_rows WHERE id = ? AND table_id = ?"
     ).bind(rowId, tableId).first();
     const oldCells = existing ? JSON.parse(existing.cells || "{}") : {};
     const currentVersions = existing ? JSON.parse(existing.cell_versions || "{}") : {};
+    const oldParentRowId = existing?.parent_row_id || null;
+    const oldArchived = existing?.archived ? 1 : 0;
 
     // ── Circular reference check for parent_row_id ──
     if (body.parent_row_id) {
@@ -403,6 +451,72 @@ async function handleUpdateRow(env, tableId, rowId, body, user, jsonResponse) {
       })();
     }
 
+    // Live projection: diff relation-column cell values, emit/delete edges
+    // for added/removed targets. Only runs when cells actually changed and
+    // the table has at least one relation column (cheap schema lookup).
+    if (body.cells !== undefined) {
+      try {
+        const relCols = await getRelationColumns(env, tableId);
+        if (relCols.length > 0) {
+          for (const col of relCols) {
+            const oldArr = Array.isArray(oldCells[col.id]) ? oldCells[col.id] : [];
+            const newArr = Array.isArray(newCells[col.id]) ? newCells[col.id] : [];
+            const added = newArr.filter((x) => typeof x === "string" && x && !oldArr.includes(x));
+            const removed = oldArr.filter((x) => typeof x === "string" && x && !newArr.includes(x));
+            for (const targetId of added) {
+              const targetPageId = await resolveRecordPageId(env, targetId);
+              await emitProjectedEdge(env, {
+                type: "related_to", origin: "projected_relation_col",
+                source_type: "record", source_id: rowId, source_page_id: tableId,
+                target_type: "record", target_id: targetId, target_page_id: targetPageId,
+                meta: { column_id: col.id, column_name: col.name || "" },
+              });
+            }
+            for (const targetId of removed) {
+              await deleteProjectedEdge(env, {
+                type: "related_to", origin: "projected_relation_col",
+                source_type: "record", source_id: rowId,
+                target_type: "record", target_id: targetId,
+              });
+            }
+          }
+        }
+      } catch (err) { console.error("[relationships] handleUpdateRow projection failed:", err.message || err); }
+    }
+
+    // Live projection: keep 'part_of' edge in sync with parent_row_id and
+    // archived state. Cases handled:
+    //   - parent_row_id moved A → B: delete old edge, emit new
+    //   - parent_row_id removed (set to null): delete old edge
+    //   - parent_row_id added (was null, now set): emit new edge
+    //   - row archived (effective parent stays the same): delete edge
+    //   - row unarchived: re-emit edge if it currently has a parent
+    try {
+      const parentChanging = body.parent_row_id !== undefined;
+      const archiveChanging = body.archived !== undefined;
+      if (parentChanging || archiveChanging) {
+        const newParentRowId = parentChanging ? (body.parent_row_id || null) : oldParentRowId;
+        const newArchived = archiveChanging ? (body.archived ? 1 : 0) : oldArchived;
+        // Always remove the old edge if there was one
+        if (oldParentRowId && (oldArchived === 0)) {
+          await deleteProjectedEdge(env, {
+            type: "part_of", origin: "projected_parent_row",
+            source_type: "record", source_id: rowId,
+            target_type: "record", target_id: oldParentRowId,
+          });
+        }
+        // Re-emit only if the row is unarchived AND has a parent
+        if (newParentRowId && newArchived === 0) {
+          await emitProjectedEdge(env, {
+            type: "part_of", origin: "projected_parent_row",
+            source_type: "record", source_id: rowId, source_page_id: tableId,
+            target_type: "record", target_id: newParentRowId, target_page_id: tableId,
+            meta: null,
+          });
+        }
+      }
+    } catch (err) { console.error("[relationships] handleUpdateRow part_of projection failed:", err.message || err); }
+
     // Read back the final cell_versions for the response
     const finalRow = await env.DB.prepare(
       "SELECT cell_versions FROM table_rows WHERE id = ? AND table_id = ?"
@@ -487,6 +601,44 @@ async function handleDeleteRow(env, tableId, rowId, cascade, jsonResponse) {
     await env.DB.prepare(
       "DELETE FROM neurons WHERE id NOT IN (SELECT DISTINCT neuron_id FROM neuron_nodes)"
     ).run();
+
+    // Live projection: sweep relation-column + part_of edges touching this row
+    // (origin filter prevents native edges from being touched). For
+    // cascade='delete', also sweep descendants since they're now archived.
+    await deleteAllProjectedEdgesForEntity(env, {
+      entity_type: "record", entity_id: rowId, origin: "projected_relation_col",
+    });
+    await deleteAllProjectedEdgesForEntity(env, {
+      entity_type: "record", entity_id: rowId, origin: "projected_parent_row",
+    });
+    if (childCount > 0 && cascade === "delete") {
+      try {
+        const { results: descs } = await env.DB.prepare(`
+          WITH RECURSIVE descendants(id) AS (
+            SELECT id FROM table_rows WHERE parent_row_id = ? AND table_id = ?
+            UNION ALL
+            SELECT tr.id FROM table_rows tr JOIN descendants d ON tr.parent_row_id = d.id WHERE tr.table_id = ?
+          ) SELECT id FROM descendants
+        `).bind(rowId, tableId, tableId).all();
+        const ids = (descs || []).map((r) => r.id).filter(Boolean);
+        // Chunked DELETE for both relation-col and part_of edges
+        for (let i = 0; i < ids.length; i += 100) {
+          const chunk = ids.slice(i, i + 100);
+          const placeholders = chunk.map(() => "?").join(",");
+          await env.DB.prepare(`
+            DELETE FROM relationships
+             WHERE origin IN ('projected_relation_col', 'projected_parent_row')
+               AND ((source_type = 'record' AND source_id IN (${placeholders}))
+                 OR (target_type = 'record' AND target_id IN (${placeholders})))
+          `).bind(...chunk, ...chunk).run();
+        }
+      } catch (err) { console.error("[relationships] handleDeleteRow descendant sweep failed:", err.message || err); }
+    }
+    if (childCount > 0 && cascade === "orphan") {
+      // Children's parent_row_id was set to NULL — their part_of edges (if any)
+      // pointed at this row, which we already cleaned via the target sweep above.
+      // No additional work needed.
+    }
 
     return jsonResponse({ ok: true, id: rowId });
   } catch (err) {

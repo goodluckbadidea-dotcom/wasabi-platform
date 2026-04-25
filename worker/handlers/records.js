@@ -1,6 +1,7 @@
 // ─── Record comments handlers ───
 import { createNotificationInternal, extractMentions } from './notifications.js';
 import { resolveRecordTitle } from '../utils.js';
+import { emitProjectedEdge } from './relationshipProjections.js';
 
 export async function handleListComments(env, recordId, pageConfigId, jsonResponse) {
   try {
@@ -91,6 +92,15 @@ export async function handleCreateComment(env, user, recordId, body, jsonRespons
               page_config_id: page_config_id,
               page_name: pageName,
               actor_name: commenterName,
+            });
+            // Live projection: mirror as a 'mentioned_in' edge. The unique
+            // index dedupes — if this user was already mentioned in this
+            // record, the INSERT OR IGNORE silently skips.
+            await emitProjectedEdge(env, {
+              type: "mentioned_in", origin: "projected_mention",
+              source_type: "user", source_id: matched.id, source_page_id: null,
+              target_type: "record", target_id: recordId, target_page_id: page_config_id || null,
+              meta: { source: recordId, comment_id: id },
             });
           }
         }

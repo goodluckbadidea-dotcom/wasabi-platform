@@ -385,6 +385,15 @@ CREATE INDEX IF NOT EXISTS idx_rel_target ON relationships(target_type, target_i
 CREATE INDEX IF NOT EXISTS idx_rel_type ON relationships(type);
 CREATE INDEX IF NOT EXISTS idx_rel_source_page ON relationships(source_page_id);
 CREATE INDEX IF NOT EXISTS idx_rel_target_page ON relationships(target_page_id);
+
+-- Partial unique index: one active edge per (source, target, type) tuple.
+-- Soft-deleted edges (deleted_at IS NOT NULL) are excluded so users can
+-- delete-then-recreate the same edge. Projection code uses INSERT OR IGNORE
+-- against this index to skip duplicates and respect existing native edges
+-- (user_declared / ai_inferred always win).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_rel_uniq_active
+  ON relationships(source_type, source_id, target_type, target_id, type)
+  WHERE deleted_at IS NULL;
 `;
 
 // ─── Relationship Type Seed Rows ───

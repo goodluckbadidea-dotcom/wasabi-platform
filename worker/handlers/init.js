@@ -2,6 +2,7 @@
 // Extracted from worker.js — zero logic changes.
 
 import { D1_SCHEMA, D1_INDEXES, RELATIONSHIP_TYPE_SEEDS } from '../schema.js';
+import { rebuildProjections } from './relationshipProjections.js';
 
 // ─── Route Handlers ───
 
@@ -44,7 +45,7 @@ async function handleInit(env, jsonResponse) {
   // ── Schema version fast path ──
   // Skip all DDL if the schema is already at the current version.
   // Reduces ~92 sequential D1 queries to 3 on returning page loads.
-  const CURRENT_SCHEMA_VERSION = "5";
+  const CURRENT_SCHEMA_VERSION = "6";
   try {
     const row = await env.DB.prepare(
       "SELECT value FROM connections WHERE key = 'schema_version'"
@@ -175,6 +176,26 @@ async function handleInit(env, jsonResponse) {
     try {
       await env.DB.batch(RELATIONSHIP_TYPE_SEEDS.map(sql => env.DB.prepare(sql)));
     } catch (_) {}
+
+    // One-shot initial rebuild of the relationships projections.
+    // Mirrors all existing connections from the five legacy systems (sub-items,
+    // cell links, relation columns, neurons, mentions) into the relationships
+    // table the first time this code runs. Self-disabling via a connections-
+    // table flag — re-rebuilds go through POST /relationships/rebuild.
+    try {
+      const flag = await env.DB.prepare(
+        "SELECT value FROM connections WHERE key = 'relationships_initial_rebuild'"
+      ).first();
+      if (flag?.value !== 'done') {
+        const counts = await rebuildProjections(env);
+        console.log('[relationships] initial backfill counts:', JSON.stringify(counts));
+        await env.DB.prepare(
+          "INSERT INTO connections (key, value, metadata, updated_at) VALUES ('relationships_initial_rebuild', 'done', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, metadata = excluded.metadata, updated_at = datetime('now')"
+        ).bind(JSON.stringify(counts)).run();
+      }
+    } catch (err) {
+      console.error('[relationships] initial backfill failed:', err.message || err);
+    }
 
     // Bootstrap: if no users exist, create a default admin invite
     let adminBootstrap = null;

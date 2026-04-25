@@ -30,7 +30,8 @@ import { runAutomationTick, checkAutomationTriggers, runNeuronPruneTick } from '
 import { runSyncFlushTick, handleSyncConfigure, handleSyncPush, handleSyncPull, handleSyncStatus, handleSyncDelete, handleDisconnect, handleSyncBackup, handleSyncBootstrap, handleSyncFlush, getNotionKeyFromDB, invalidateSummaryCache } from './worker/handlers/notion-sync.js';
 import { handleListPages, handleCreatePage, handleGetSummaryCache, handleSetSummaryCache, handleGetPage, handleUpdatePage, handleReorderPages, handleDeletePage } from './worker/handlers/pages.js';
 import { handleGetSchema, handleUpdateSchema, handleListRows, handleCreateRows, handleUpdateRow, handleDeleteRow, handleQueryTable } from './worker/handlers/tables.js';
-import { handleListRelationships, handleCreateRelationship, handleDeleteRelationship } from './worker/handlers/relationships.js';
+import { handleListRelationships, handleCreateRelationship, handleDeleteRelationship, handleRebuildRelationships } from './worker/handlers/relationships.js';
+import { emitProjectedEdge, deleteProjectedEdge, deleteAllProjectedEdgesByTarget, refToFieldId, mapNeuronNodeTypeToEntityType, resolveRecordPageId } from './worker/handlers/relationshipProjections.js';
 import { handleHealth, handleInit, handleFactoryReset } from './worker/handlers/init.js';
 
 
@@ -1187,6 +1188,21 @@ export default {
           "INSERT INTO neuron_nodes (id, neuron_id, node_type, node_id, node_label, page_config_id, meta) VALUES (?, ?, ?, ?, ?, ?, ?)"
         ).bind(nodeRowId, neuronId, node.node_type, node.node_id, node.node_label || "", node.page_config_id || "", JSON.stringify(node.meta || {})).run();
         await env.DB.prepare("UPDATE neurons SET updated_at = datetime('now') WHERE id = ?").bind(neuronId).run();
+        // Live projection: mirror as a 'member_of_neuron' edge
+        const sourceType = mapNeuronNodeTypeToEntityType(node.node_type);
+        if (sourceType && node.node_id) {
+          let sourcePageId = node.page_config_id || null;
+          if (sourceType === "record" && !sourcePageId) {
+            sourcePageId = await resolveRecordPageId(env, node.node_id);
+          }
+          await emitProjectedEdge(env, {
+            type: "member_of_neuron",
+            origin: "projected_neuron_node",
+            source_type: sourceType, source_id: node.node_id, source_page_id: sourcePageId,
+            target_type: "neuron", target_id: neuronId, target_page_id: null,
+            meta: node.node_label ? { node_label: node.node_label } : null,
+          });
+        }
         return jsonResponse({ id: nodeRowId }, 201);
       }
 
@@ -1197,6 +1213,17 @@ export default {
         const nodeId = decodeURIComponent(rawNodeId);
         await env.DB.prepare("DELETE FROM neuron_nodes WHERE neuron_id = ? AND node_id = ?").bind(neuronId, nodeId).run();
         await env.DB.prepare("UPDATE neurons SET updated_at = datetime('now') WHERE id = ?").bind(neuronId).run();
+        // Live projection: delete edges with source_id=nodeId pointing at this neuron
+        // (origin filter ensures native edges are never touched)
+        try {
+          await env.DB.prepare(
+            `DELETE FROM relationships
+              WHERE type = 'member_of_neuron'
+                AND origin = 'projected_neuron_node'
+                AND source_id = ?
+                AND target_type = 'neuron' AND target_id = ?`
+          ).bind(nodeId, neuronId).run();
+        } catch (err) { console.error("[relationships] neuron node delete projection failed:", err.message || err); }
         return jsonResponse({ ok: true });
       }
 
@@ -1204,8 +1231,23 @@ export default {
       const removeNodeMatch = path.match(/^\/neurons\/([^/]+)\/nodes\/([^/]+)$/);
       if (removeNodeMatch && request.method === "DELETE") {
         const [, neuronId, nodeRowId] = removeNodeMatch;
+        // Look up the node before deletion so we know which entity edge to remove
+        const preNode = await env.DB.prepare(
+          "SELECT node_id FROM neuron_nodes WHERE id = ? AND neuron_id = ?"
+        ).bind(nodeRowId, neuronId).first();
         await env.DB.prepare("DELETE FROM neuron_nodes WHERE id = ? AND neuron_id = ?").bind(nodeRowId, neuronId).run();
         await env.DB.prepare("UPDATE neurons SET updated_at = datetime('now') WHERE id = ?").bind(neuronId).run();
+        if (preNode?.node_id) {
+          try {
+            await env.DB.prepare(
+              `DELETE FROM relationships
+                WHERE type = 'member_of_neuron'
+                  AND origin = 'projected_neuron_node'
+                  AND source_id = ?
+                  AND target_type = 'neuron' AND target_id = ?`
+            ).bind(preNode.node_id, neuronId).run();
+          } catch (err) { console.error("[relationships] neuron node delete projection failed:", err.message || err); }
+        }
         return jsonResponse({ ok: true });
       }
 
@@ -1227,6 +1269,10 @@ export default {
         if (request.method === "DELETE") {
           await env.DB.prepare("DELETE FROM neuron_nodes WHERE neuron_id = ?").bind(id).run();
           await env.DB.prepare("DELETE FROM neurons WHERE id = ?").bind(id).run();
+          // Live projection: nuke every member_of_neuron edge pointing at this neuron
+          await deleteAllProjectedEdgesByTarget(env, {
+            target_type: "neuron", target_id: id, origin: "projected_neuron_node",
+          });
           return jsonResponse({ ok: true });
         }
       }
@@ -1254,11 +1300,32 @@ export default {
           await env.DB.prepare(
             "INSERT INTO neuron_nodes (id, neuron_id, node_type, node_id, node_label, page_config_id, meta) VALUES (?, ?, ?, ?, ?, ?, ?)"
           ).bind(nodeRowId, neuronId, node.node_type, node.node_id, node.node_label || "", node.page_config_id || "", JSON.stringify(node.meta || {})).run();
+          // Live projection: mirror as a 'member_of_neuron' edge
+          const sourceType = mapNeuronNodeTypeToEntityType(node.node_type);
+          if (sourceType && node.node_id) {
+            let sourcePageId = node.page_config_id || null;
+            if (sourceType === "record" && !sourcePageId) {
+              sourcePageId = await resolveRecordPageId(env, node.node_id);
+            }
+            await emitProjectedEdge(env, {
+              type: "member_of_neuron",
+              origin: "projected_neuron_node",
+              source_type: sourceType, source_id: node.node_id, source_page_id: sourcePageId,
+              target_type: "neuron", target_id: neuronId, target_page_id: null,
+              meta: node.node_label ? { node_label: node.node_label } : null,
+            });
+          }
         }
         return jsonResponse({ id: neuronId, name: name || "", node_count: nodes.length }, 201);
       }
 
-      // ─── Relationships Routes (Phase 1 — plumbing, no consumers yet) ───
+      // ─── Relationships Routes ───
+
+      // POST /relationships/rebuild — admin-only; re-runs all projectors
+      // (must come before the generic POST /relationships rule below)
+      if (path === "/relationships/rebuild" && request.method === "POST") {
+        return await handleRebuildRelationships(env, jsonResponse);
+      }
 
       // GET /relationships — list edges with permission filter
       if (path === "/relationships" && request.method === "GET") {
@@ -1318,6 +1385,26 @@ export default {
           body.source_field_type || "",
           body.target_field_type || ""
         ).run();
+        // Live projection: mirror as a 'references' edge in the relationships table
+        const sourceFieldId = refToFieldId(body.source_ref);
+        const targetFieldId = refToFieldId(body.target_ref);
+        if (sourceFieldId && targetFieldId) {
+          await emitProjectedEdge(env, {
+            type: "references",
+            origin: "projected_cell_link",
+            source_type: "field", source_id: sourceFieldId, source_page_id: body.source_page_id || null,
+            target_type: "field", target_id: targetFieldId, target_page_id: body.target_page_id || null,
+            meta: {
+              link_id: id,
+              source_ref: body.source_ref || {},
+              target_ref: body.target_ref || {},
+              source_view_idx: body.source_view_idx ?? 0,
+              target_view_idx: body.target_view_idx ?? 0,
+              source_field_type: body.source_field_type || null,
+              target_field_type: body.target_field_type || null,
+            },
+          });
+        }
         return jsonResponse({ id }, 201);
       }
 
@@ -1350,6 +1437,17 @@ export default {
         }
         if (request.method === "PATCH") {
           const body = await request.json();
+          // Capture pre-update link state if any field affecting the projection is changing
+          const refsOrActiveChanging =
+            body.active !== undefined ||
+            body.source_ref !== undefined ||
+            body.target_ref !== undefined;
+          let preLink = null;
+          if (refsOrActiveChanging) {
+            preLink = await env.DB.prepare(
+              "SELECT source_page_id, source_view_idx, source_ref, target_page_id, target_view_idx, target_ref, source_field_type, target_field_type, active FROM cell_links WHERE id = ?"
+            ).bind(id).first();
+          }
           const sets = [];
           const vals = [];
           if (body.direction !== undefined) { sets.push("direction = ?"); vals.push(body.direction); }
@@ -1362,10 +1460,68 @@ export default {
             vals.push(id);
             await env.DB.prepare(`UPDATE cell_links SET ${sets.join(", ")} WHERE id = ?`).bind(...vals).run();
           }
+          // Live projection: rewrite references edge to match the new link state
+          if (refsOrActiveChanging && preLink) {
+            // Always remove the OLD projected edge first (idempotent — no-op if missing)
+            const oldSourceRef = safeParseJSON(preLink.source_ref);
+            const oldTargetRef = safeParseJSON(preLink.target_ref);
+            const oldSourceFieldId = refToFieldId(oldSourceRef);
+            const oldTargetFieldId = refToFieldId(oldTargetRef);
+            if (oldSourceFieldId && oldTargetFieldId) {
+              await deleteProjectedEdge(env, {
+                type: "references", origin: "projected_cell_link",
+                source_type: "field", source_id: oldSourceFieldId,
+                target_type: "field", target_id: oldTargetFieldId,
+              });
+            }
+            // Re-emit only if the post-update link is active
+            const newActive = body.active !== undefined ? !!body.active : !!preLink.active;
+            if (newActive) {
+              const newSourceRef = body.source_ref !== undefined ? body.source_ref : oldSourceRef;
+              const newTargetRef = body.target_ref !== undefined ? body.target_ref : oldTargetRef;
+              const newSourcePageId = preLink.source_page_id || null;
+              const newTargetPageId = preLink.target_page_id || null;
+              const newSourceFieldId = refToFieldId(newSourceRef);
+              const newTargetFieldId = refToFieldId(newTargetRef);
+              if (newSourceFieldId && newTargetFieldId) {
+                await emitProjectedEdge(env, {
+                  type: "references", origin: "projected_cell_link",
+                  source_type: "field", source_id: newSourceFieldId, source_page_id: newSourcePageId,
+                  target_type: "field", target_id: newTargetFieldId, target_page_id: newTargetPageId,
+                  meta: {
+                    link_id: id,
+                    source_ref: newSourceRef,
+                    target_ref: newTargetRef,
+                    source_view_idx: preLink.source_view_idx,
+                    target_view_idx: preLink.target_view_idx,
+                    source_field_type: body.source_field_type !== undefined ? body.source_field_type : preLink.source_field_type,
+                    target_field_type: body.target_field_type !== undefined ? body.target_field_type : preLink.target_field_type,
+                  },
+                });
+              }
+            }
+          }
           return jsonResponse({ ok: true });
         }
         if (request.method === "DELETE") {
+          // Look up the link before deletion so we can clean up its projected edge
+          const preLink = await env.DB.prepare(
+            "SELECT source_ref, target_ref FROM cell_links WHERE id = ?"
+          ).bind(id).first();
           await env.DB.prepare("DELETE FROM cell_links WHERE id = ?").bind(id).run();
+          if (preLink) {
+            const sourceRef = safeParseJSON(preLink.source_ref);
+            const targetRef = safeParseJSON(preLink.target_ref);
+            const sourceFieldId = refToFieldId(sourceRef);
+            const targetFieldId = refToFieldId(targetRef);
+            if (sourceFieldId && targetFieldId) {
+              await deleteProjectedEdge(env, {
+                type: "references", origin: "projected_cell_link",
+                source_type: "field", source_id: sourceFieldId,
+                target_type: "field", target_id: targetFieldId,
+              });
+            }
+          }
           return jsonResponse({ ok: true });
         }
       }

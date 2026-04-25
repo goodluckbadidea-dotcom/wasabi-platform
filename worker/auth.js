@@ -159,6 +159,8 @@ export const ROUTE_PERMISSIONS = [
   { pattern: /^\/links/, method: "DELETE", minRole: "editor" },
   // Relationships — editor for mutations (GET falls through to default, edge-level
   // permission filter enforced inside handleListRelationships)
+  // Rebuild is admin-only (slate-clears all projection edges + re-runs projectors)
+  { pattern: "/relationships/rebuild", method: "POST", minRole: "admin", exact: true },
   { pattern: /^\/relationships/, method: "POST", minRole: "editor" },
   { pattern: /^\/relationships/, method: "DELETE", minRole: "editor" },
   // Sync — editor for all mutations

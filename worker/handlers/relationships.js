@@ -8,6 +8,7 @@
 
 import { getFreshRole } from '../auth.js';
 import { safeParseJSON } from '../utils.js';
+import { rebuildProjections } from './relationshipProjections.js';
 
 const ALLOWED_ENTITY_TYPES = new Set([
   'record', 'page', 'field', 'user', 'neuron', 'comment',
@@ -217,6 +218,26 @@ export async function handleCreateRelationship(env, body, user, jsonResponse) {
     created_at: now, created_by: createdBy, updated_at: now,
     deleted_at: null,
   }, 201);
+}
+
+// ─── POST /relationships/rebuild ───
+// Admin-only. Clears all projection edges and re-runs every projector. Native
+// edges (user_declared, ai_inferred) are untouched. Response includes
+// before/after origin counts so callers can verify the operation's effect.
+export async function handleRebuildRelationships(env, jsonResponse) {
+  const beforeRes = await env.DB.prepare(
+    'SELECT origin, COUNT(*) as count FROM relationships GROUP BY origin'
+  ).all();
+  const before = Object.fromEntries((beforeRes.results || []).map((r) => [r.origin, r.count]));
+
+  const inserted = await rebuildProjections(env);
+
+  const afterRes = await env.DB.prepare(
+    'SELECT origin, COUNT(*) as count FROM relationships GROUP BY origin'
+  ).all();
+  const after = Object.fromEntries((afterRes.results || []).map((r) => [r.origin, r.count]));
+
+  return jsonResponse({ ok: true, inserted, before, after });
 }
 
 // ─── DELETE /relationships/:id ───
