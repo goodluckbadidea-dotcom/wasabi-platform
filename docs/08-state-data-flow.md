@@ -249,10 +249,32 @@ Manages cell_links between tables — cross-page references that connect records
 **Key methods:**
 - `createLink(source, target)` — create a cross-page cell link
 - `removeLink(linkId)` — delete a link
-- `fetchSourceData(sourceRef, sourcePageConfigId)` — fetch data for a source ref with TTL caching. Supports three source types: D1 (via `getTableSchema` + `listRows`), Notion (via `queryAll`), and sheets (via `fetchSheetData`).
-- `resolveLinksForView(targetPageConfigId, targetViewIdx)` — resolve all linked values for a target view. Returns a Map of cell keys to resolved values.
+- `fetchSourceData(sourceRef, sourcePageConfigId)` — fetch data for a source ref with TTL caching. Supports three source types: D1 (via `getTableSchema` + `listRows`), Notion (via `queryAll`), and sheets (via `fetchSheetData`). **2026-05-04:** D1 path now includes `sub_columns` in the returned `d1Data` so the resolver can look up sub-item fields.
+- `resolveLinksForView(targetPageConfigId, targetViewIdx)` — resolve all linked values for a target view. Returns a Map of cell keys (`${pageId}:${fieldName}`) to `{ value, link, stale }` objects.
 
-Links are stored in the `cell_links` D1 table and cached locally. Value resolution is delegated to `resolveRef()` in `src/config/linkStorage.js`, which handles D1 (`record_id` + `column_name`), Notion (`pageId` + `field`), and sheet (`rowIndex` + `column`) ref types.
+Links are stored in the `cell_links` D1 table and cached locally. Value resolution is delegated to `resolveRef()` in `src/config/linkStorage.js`, which handles D1 (`record_id` + `column_name`), Notion (`pageId` + `field`), and sheet (`rowIndex` + `column`) ref types. **2026-05-04:** the D1 branch detects sub-item rows via `row.parent_row_id` and looks up the column in `d1Data.sub_columns` instead of `d1Data.columns` — same ref shape works for both parent and sub-item links because row IDs are unique within a table.
+
+### Cross-View Link Rendering Pattern (2026-05-04)
+
+Every primary view subscribes to `LinksContext` and threads resolved values through its data path so a linked cell renders consistently across all views (table, gantt, calendar, kanban, card grid). The pattern is:
+
+1. `import { useLinks } from "../context/LinksContext.jsx"` — hook into the context.
+2. Derive `viewIdx` via `pageConfig.views.findIndex(v => v === config) ?? 0`.
+3. Fetch `resolvedLinks` via `resolveLinksForView(pageConfig.id, viewIdx)` in a `useEffect`, store in state.
+4. Wrap the field-read function (`readField` / `readProp`) so the link map is consulted before falling through to the regular read.
+5. Add `resolvedLinks` (or the wrapper closure) to the view's main `useMemo` dependency array so derivations update when links resolve asynchronously.
+
+Per-view applications (commit `32b696e`):
+
+| View | Wrapper | Applied to |
+|------|---------|------------|
+| Table | `linkedValue` / `linkInfo` props on `CellDisplay` (commit `8e5b95b`) | every cell render in `TableRow` |
+| Gantt | `coerceLinkedDateValue` helper around `readField` in `buildBars` | bar position + width |
+| Calendar | `coerceLinkedDateValue` around `readProp(page.properties[fieldToUse])` | event grid placement |
+| Kanban | `readFieldL(page, field)` callback | grouping value, sort comparator, card title, preview-fields existence + render |
+| CardGrid | `readFieldL(page, field)` callback | filter, search, sort, title, badge, body fields, metric fields |
+
+`CellDisplay` (Table) gets a richer treatment via `LinkedWrapper`: small accent link icon + left-border stripe to mark the value as sourced; `(source missing)` placeholder with error-color treatment for stale links; click-to-unlink via `onLinkClick`. Other views render the linked value plainly through their normal renderer.
 
 ---
 
