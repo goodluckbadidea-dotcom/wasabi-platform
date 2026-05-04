@@ -1092,5 +1092,147 @@ Brings Microsoft 365 to full Gmail parity in the AI surface. Worker handlers for
 
 ### Out of scope for this push (open backlog)
 - Outlook attachment parsing (PDF/xlsx). Flagged earlier when Graham hit a Premier Press email chain where the latest quantities were in attachments and the AI couldn't see them.
-- Decision on whether to retire single-provider OutlookView/GmailView once unified inbox stabilizes.
 - Tier 3 reads (Flows, Figma, audit log, sync, KB list, user state) still pending.
+
+---
+
+## Unified Inbox Consolidation (2026-05-04)
+
+**Source:** `src/features/UnifiedInboxView.jsx`, `src/App.jsx`, `src/core/Navigation.jsx`. Commit `8dd0445`.
+
+After Phase 5A shipped the Unified Inbox alongside `OutlookView` / `GmailView`, the navigation showed three nearly-identical email surfaces. Retired the single-provider buttons:
+
+- `Navigation.jsx` no longer renders separate Outlook or Gmail buttons. The unified "Inbox" button is the only mail surface, shown when EITHER provider is connected.
+- `App.jsx` removed the lazy imports for `GmailView` and `OutlookView`. The route handler now treats `activePage === "gmail" || "outlook" || "inbox-unified"` as redirects to `UnifiedInboxView`, so any saved localStorage state pointing at the old surfaces still works.
+- The `OutlookView.jsx` and `GmailView.jsx` files are intentionally retained on disk per CLAUDE.md "never delete working code." If we ever want to re-enable per-provider views, restore the imports + route blocks in two minutes.
+
+---
+
+## Inbox Thread Grouping (2026-05-04)
+
+**Source:** `src/features/UnifiedInboxView.jsx`. Commit `e845f86`.
+
+The first version of the Unified Inbox showed every email as its own row — an 8-message back-and-forth filled 8 inbox rows with the same subject. Graham flagged it as non-standard. Replaced with thread grouping that mirrors Gmail/Outlook's native UX:
+
+### Thread grouping mechanics
+
+`groupThreads(messages)` builds an array of thread aggregates from the flat message list. Grouping key:
+- Gmail: `g:${threadId}` (falls back to `g:${id}` when no thread reference)
+- Outlook: `o:${conversationId}` (falls back to `o:${id}`)
+
+Each aggregate carries:
+- `messages` (sorted newest-first within the thread)
+- `latest` — the most recent message
+- `latestDate`, `isAnyUnread`
+- `sendersDisplay` — compacted unique participants ("Mark Brooks, Graham, Stuart" up to 3, then "+N")
+- `messageCount` — visible-window count
+- `displaySubject` — prefers the first non-"Re:" subject, falling back to the latest
+
+Threads sort by `latestDate` DESC across both providers.
+
+### List view behavior
+
+- One row per thread.
+- Provider badge (Gmail red / Outlook MS-blue) on each row.
+- Sender list with overflow handling.
+- Number badge next to senders when `messageCount > 1`.
+- Subject prefers the non-"Re:" form when available.
+- Most-recent snippet shown after the subject.
+- Unread dot when ANY message in the thread is unread.
+
+### Click-to-expand
+
+Clicking a thread fetches the full conversation via `getThread(threadId)` (Gmail) or `getOutlookThread(conversationId)` (Outlook) — both endpoints already existed. The fetched messages render chronologically (oldest first, like Gmail's default) with sender + date + body per message. This means messages outside the 40-message inbox window are still visible on expand.
+
+### Mark-read + reply
+
+- Expanding a thread marks ALL unread messages in it as read on the correct provider in parallel via `Promise.all` (`modifyEmail` for Gmail, `modifyOutlookMessage` for Outlook). Local state updates without a refetch.
+- The Reply button targets the latest message in the thread, so replies land on the active branch.
+
+### Trade-off
+
+Thread row's `messageCount` reflects only messages in the loaded inbox window (40 per provider). Very long threads may understate true thread length in the badge. The full thread loads on expand, so this only affects the at-a-glance count — same limitation as native Gmail/Outlook inbox UIs.
+
+---
+
+## Cell Links — Sub-Item Drill-Down + Cross-View Rendering (2026-05-04)
+
+**Source:** `src/core/LinkPicker.jsx`, `src/context/LinksContext.jsx`, `src/config/linkStorage.js`, `src/views/table/CellDisplay.jsx`, `src/views/Gantt.jsx`, `src/views/Calendar.jsx`, `src/views/Kanban.jsx`, `src/views/CardGrid.jsx`. Commits `8e5b95b` + `32b696e`.
+
+Two long-standing issues with cell links closed:
+
+### Issue 1 — LinkPicker filtered out sub-items
+
+`LinkPicker.jsx` had `(rowsRes.rows || []).filter((r) => !r.parent_row_id)` — sub-items were dropped on the floor, so sub-item-to-sub-item linking was impossible. Fixed:
+
+- D1 fetch now stores raw data (schemaRes incl. `sub_columns` + all rows) in `rawD1` state so drill-in/back can switch view modes without refetching.
+- Computes a `parentIdsWithChildren` Set so parent rows that have sub-items get a drill-in chevron in a new left-edge column.
+- New `subItemContext` state. `handleDrillIn(rowEntry)` rebuilds viewData from `sub_columns` + rows filtered by `parent_row_id`. `handleDrillBack()` returns to the parent grid.
+- Breadcrumb above the grid when drilled in: `← Back  |  Page Name › Parent Title › Sub-items`. Drill-in is disabled while in sub-item view (sub-items don't have grandchildren).
+- `LinkPickerGrid` signature gained `onDrillIn`. Rows are now `{ pageId, cells, hasChildren }`. The chevron column is conditional on any row having children. Sheet path unchanged (still array-of-arrays).
+
+Sub-item links use the same `sourceRef` shape as parent links — `{ type: "d1", record_id, column_name }`. Row IDs are unique within a table whether parent or sub-item, so no flag is needed in the ref.
+
+### Issue 2 — Linked values invisible in views
+
+`CellDisplay` accepted `value` but silently dropped the `linkedValue` and `linkInfo` props that `TableRow` was already passing. So a linked cell rendered the local (empty) value instead of the resolved source. And every other view (Gantt, Calendar, Kanban, CardGrid) read straight from `page.properties` without any link awareness — link rendering was Table-only and even there it didn't work.
+
+#### Resolver fixes
+
+- `linkStorage.resolveRef` for D1 type now branches on `row.parent_row_id`: sub-item rows look up their column in `sub_columns`, parent rows in `columns`. Same ref shape; the resolver picks the right schema set.
+- `LinksContext.fetchSourceData` for D1 type now includes `sub_columns` in the returned `d1Data` alongside `columns`.
+
+#### CellDisplay rendering
+
+`CellDisplay` accepts new props: `linkedValue`, `linkInfo`, `onLinkClick`. When `linkInfo` is present:
+- Uses `linkedValue` instead of `value`.
+- `coerceLinkedValue(linkedValue, type)` parses the resolved string back into the renderer's expected shape: date strings like `"2026-05-01 – 2026-05-31"` parse to `{start, end}` for the date renderer; comma-joined multi-selects split back to arrays; `checkbox` and `number` coerce to typed primitives.
+- Wraps the rendered output in `LinkedWrapper`: a small accent-colored link icon (uses `IconConnect`) plus a left-border accent stripe so users can tell at a glance that the value is sourced from another record. Stale links (resolveRef returned undefined) get error-colored treatment and `(source missing)` placeholder. Clicking the icon triggers `onLinkClick` to unlink.
+
+#### Cross-view rendering pattern
+
+Each non-Table view now follows the same wiring:
+
+1. `import { useLinks } from "../context/LinksContext.jsx"`.
+2. Derive `viewIdx` via `pageConfig.views.findIndex(v === config) ?? 0`.
+3. Fetch `resolvedLinks` via `resolveLinksForView(pageConfig.id, viewIdx)` in a `useEffect`, store in state.
+4. Wrap the field-read function so the link map is consulted before falling through to the regular read.
+
+Per-view application:
+
+- **Gantt** — In `buildBars`, before calling `readField(page, fieldName)`, check `resolvedLinks.get(\`${page.id}:${fieldName}\`)`. A `coerceLinkedDateValue` helper at the top of the file parses range strings back to `{start, end}` so the existing `parseDate` / `parseDateEnd` path keeps working. Sub-items inherit this for free since lookup keys on `page.id`.
+- **Calendar** — Same `coerceLinkedDateValue` applied around the `readProp(page.properties[fieldToUse])` lookup. Both parent and sub-item date placement respect links.
+- **Kanban** — `readFieldL` wrapper used at all five `readField(page, …)` sites: grouping value, sort comparison (a/b), card title, preview-fields existence check, preview-fields render. Linked status fields drive column placement; linked dates sort cards correctly.
+- **CardGrid** — `readFieldL` wrapper at six sites: filter, search, sort, title, badge, body fields, metric fields.
+
+`useMemo` dependency arrays include `resolvedLinks` (or the `readFieldL` callback that closes over it) so views re-derive when links resolve asynchronously.
+
+### Result
+
+Linking a cell from a parent record's date, sub-item's status, or any other field source produces a value that's visible in **every** view — table, timeline, calendar, kanban, card grid — with consistent rendering and a clear link affordance.
+
+---
+
+## Table UI — Variable Row Heights + Comment Auto-Grow (2026-05-04)
+
+**Source:** `src/views/table/TableRow.jsx`, `src/views/table/tableStyles.js`, `src/components/RecordComments.jsx`, `src/components/MentionInput.jsx`. Commits `d82056e` + `b7096cb`.
+
+Two superficial UI bugs that made dense content unreadable:
+
+### Wrapped multi-select pills clipped by fixed row height
+
+`ROW_HEIGHT = 36` was applied as a hard `height` on every row. `multiPillWrap` (`display: flex; flex-wrap: wrap`) wraps pills onto a second line for cells like Market with many state pills, but the row stayed 36px tall and the second line was hidden under the next row.
+
+- `TableRow.jsx` — `height: ROW_HEIGHT` → `minHeight: ROW_HEIGHT` in both parent and sub-item row containers. Rows grow as their tallest cell needs.
+- `tableStyles.js` — removed `overflow: "hidden"` from `gridRow` so the row can show grown content. Kept `overflow: "hidden"` on `gridCell` because removing it caused long single-line pills (`whiteSpace: nowrap`, e.g. "WAREHOUSED (DROPS FACILITY)") to bleed horizontally into the adjacent column. The cell's `overflow: hidden` clips horizontal overflow without preventing the cell box from growing vertically — wrapped flex content inside `multiPillWrap` extends the cell's content height, the cell box grows with it, and the row grows with the cell. Two separate fixes (`d82056e` introduced the row-grow path; `b7096cb` re-added cell overflow:hidden after observing the bleed regression).
+
+**Trade-off documented:** virtualization math in `Table.jsx` still uses `ROW_HEIGHT * idx` to compute scroll positions. With variable row heights, the visible-window calc is slightly off, but `VIRT_BUFFER = 200` compensates for typical workspaces. Revisit if scroll-position bugs surface on large tables with many tall rows.
+
+### Comment input clipped long messages
+
+`RecordComments` used `MentionInput` without `multiline`, which renders a single-line `<input type="text">`. Long comments scrolled horizontally and the start of the message disappeared as the user typed.
+
+- `RecordComments.jsx` — pass `multiline rows={1}` to `MentionInput`. `inputRow` gained `alignItems: "flex-end"` so the Send button stays anchored to the bottom edge as the textarea grows.
+- `MentionInput.jsx` — added auto-grow effect: on value change in multiline mode, reset textarea height to `auto` then set to `scrollHeight`, capped at `MAX_AUTOGROW_PX = 220` (~10 lines). Past the cap, internal vertical scroll kicks in. Removed the manual resize handle (`resize: "none"`) since the textarea sizes itself. Multiline mode gets `minHeight: 38` so an empty textarea matches the previous single-line input height.
+
+Enter-to-send and Shift+Enter-for-newline behavior preserved.

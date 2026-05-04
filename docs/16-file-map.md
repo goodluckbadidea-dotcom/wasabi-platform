@@ -70,7 +70,7 @@ Extracted from worker.js during the 2026-04-06 refactor. Each file is a named ES
 | File | Purpose |
 |------|---------|
 | `src/main.jsx` | React entry point. Renders App into DOM. |
-| `src/App.jsx` | Root component. Context providers, routing (login/setup/main), lazy loading, keyboard shortcuts. |
+| `src/App.jsx` | Root component. Context providers, routing (login/setup/main), lazy loading, keyboard shortcuts. **2026-05-04 (commit `8dd0445`):** retired the lazy imports for `GmailView` and `OutlookView`. Route handler now treats `activePage === "gmail" \|\| "outlook" \|\| "inbox-unified"` as redirects to `UnifiedInboxView`, so saved localStorage state pointing at the old surfaces still works. |
 
 ---
 
@@ -98,10 +98,10 @@ App shell, navigation, settings. Loaded eagerly.
 | `FunctionsPanel.jsx` | Functions management panel |
 | `InlineEdit.jsx` | Inline text editing component |
 | `KnowledgeBase.jsx` | Knowledge base management UI |
-| `LinkPicker.jsx` | Three-panel cross-page cell link picker (Pages → Views → Data Grid). D1 tables (primary), Notion, and linked sheet sources. Uses `resolveSourceType` to branch data loading. Schema type map uses `allFields` for compatibility checks (2026-04-15). |
+| `LinkPicker.jsx` | Three-panel cross-page cell link picker (Pages → Views → Data Grid). D1 tables (primary), Notion, and linked sheet sources. Uses `resolveSourceType` to branch data loading. Schema type map uses `allFields` for compatibility checks (2026-04-15). **2026-05-04 (commit `8e5b95b`):** drill-down into sub-items. D1 fetch caches raw data (`schemaRes` incl. `sub_columns` + `allRows`) in `rawD1` state so drill-in/back doesn't refetch. `parentIdsWithChildren` Set drives which parent rows show a chevron in the new left-edge column of `LinkPickerGrid`. `subItemContext` state + `handleDrillIn` / `handleDrillBack` rebuild `viewData` from `sub_columns` + child rows when drilled in. Breadcrumb above the grid: "← Back  Page › Parent Title › Sub-items". `LinkPickerGrid` rows now `{ pageId, cells, hasChildren }` (sheet path unchanged); `onDrillIn` prop conditionally renders the chevron column. Sub-item links use the same `sourceRef` shape as parent links since row IDs are unique within a table. |
 | `LoginScreen.jsx` | Multi-user login with password + Microsoft SSO (popup OAuth flow, login mode only) |
 | `MiniView.jsx` | Compact/minimal view renderer |
-| `Navigation.jsx` | Left sidebar: page list, search, system nav |
+| `Navigation.jsx` | Left sidebar: page list, search, system nav. **2026-05-04 (commit `8dd0445`):** retired the per-provider Outlook and Gmail buttons. The unified "Inbox" button (added in `e28f979`) is now the only mail surface, shown when EITHER provider is connected. Combined unread badge sums `unreadCount + outlookUnreadCount`. SYSTEM_PAGES set includes `inbox-unified`. |
 | `NodeEditor.jsx` | Visual node editor for automation flows |
 | `Onboarding.jsx` | First-time user onboarding flow |
 | `PageBuilder.jsx` | Page layout builder |
@@ -145,8 +145,8 @@ Database view components. Lazy-loaded by PageShell.
 | File | Purpose |
 |------|---------|
 | `ActivityFeed.jsx` | Activity/changelog feed view |
-| `Calendar.jsx` | Calendar view of date-based records. Sub-items excluded from main grid; shown in day popover on parent expand (2026-04-15). Owner display in popover via `showOwner` config (2026-04-16). |
-| `CardGrid.jsx` | Card grid gallery view. Owner display via `showOwner` config (2026-04-16). |
+| `Calendar.jsx` | Calendar view of date-based records. Sub-items excluded from main grid; shown in day popover on parent expand (2026-04-15). Owner display in popover via `showOwner` config (2026-04-16). **2026-05-04 (commit `32b696e`):** subscribes to `useLinks().resolveLinksForView` and stores `resolvedLinks` Map. `coerceLinkedDateValue` helper (top of file) parses resolved range strings back to `{start, end}` so the existing `readProp` / `parseDateStr` path keeps working. Date placement now respects links for both parent and sub-item rows. |
+| `CardGrid.jsx` | Card grid gallery view. Owner display via `showOwner` config (2026-04-16). **2026-05-04 (commit `32b696e`):** subscribes to `resolveLinksForView` and exposes a `readFieldL(page, field)` wrapper that prefers linked values, falls back to `readField`. Used at six sites: filter (page-property match), search (across title/badge/body/metric), sort (a/b comparison), title, badge, body fields, metric fields. Linked values flow through every part of the card render. |
 | `Charts.jsx` | Chart visualization view |
 | `ChatPanel.jsx` | Chat panel integrated with views |
 | `ConnectionRenderer.jsx` | Renders connection/relation visualizations |
@@ -155,8 +155,8 @@ Database view components. Lazy-loaded by PageShell.
 | `DocumentEditor.jsx` | Rich text document editor with blocks |
 | `FilterChips.jsx` | Filter chip bar for view filtering. Supports synthetic `extraFields` for non-schema fields like owner (2026-04-16). |
 | `Form.jsx` | Public/private form for data collection |
-| `Gantt.jsx` | Timeline bar chart for date-range records. Collapsible parent/child hierarchy, computed range bars, conflict indicators, sub-item drag-to-reschedule, progress badges (2026-04-15). Owner display in sidebar via `showOwner` config (2026-04-16). |
-| `Kanban.jsx` | Card-based board grouped by status/select columns. Sub-items filtered out; parent cards show roll-up progress badge (2026-04-15). Owner display, filtering, and group-by via `showOwner` config + `__owner__` synthetic field (2026-04-16). |
+| `Gantt.jsx` | Timeline bar chart for date-range records. Collapsible parent/child hierarchy, computed range bars, conflict indicators, sub-item drag-to-reschedule, progress badges (2026-04-15). Owner display in sidebar via `showOwner` config (2026-04-16). **2026-05-04 (commit `32b696e`):** subscribes to `resolveLinksForView`, stores `resolvedLinks` Map. In `buildBars`, reads `resolvedLinks.get(\`${page.id}:${fieldName}\`)` before falling back to `readField`. `coerceLinkedDateValue` helper (top of file) parses resolved date-range strings back to `{start, end}` so the existing `parseDate` / `parseDateEnd` path keeps working. Sub-items inherit this for free since lookup keys on `page.id`. |
+| `Kanban.jsx` | Card-based board grouped by status/select columns. Sub-items filtered out; parent cards show roll-up progress badge (2026-04-15). Owner display, filtering, and group-by via `showOwner` config + `__owner__` synthetic field (2026-04-16). **2026-05-04 (commit `32b696e`):** subscribes to `resolveLinksForView` and exposes `readFieldL` wrapper. All five `readField(page, …)` sites swapped: column grouping value, sort (a/b), card title, preview-fields existence check, preview-field display. Linked status fields drive column placement; linked dates / numbers sort cards correctly. |
 | `LinkedSheet.jsx` | Linked Google Sheets viewer |
 | `NetworkGraph.jsx` | Visual graph of record relationships |
 | `NewRecordModal.jsx` | Modal for creating new records |
@@ -181,12 +181,12 @@ Extracted sub-modules for the Table view. Refactored from a 3,600-line monolith 
 | File | Purpose |
 |------|---------|
 | `index.js` | Barrel export — re-exports Table from `../Table.jsx` |
-| `tableStyles.js` | Table style getter functions: `getStyles()`, `getCtxItem()`, `getInputFieldStyle()`, `getGhostInputStyle()`. Converted from module-level objects to functions (2026-04-16) so theme switches pick up fresh `C` values. Also exports standalone `pillStyle`, `toggleStyle`, `multiPillWrap` for CellDisplay's module-level renderers. |
+| `tableStyles.js` | Table style getter functions: `getStyles()`, `getCtxItem()`, `getInputFieldStyle()`, `getGhostInputStyle()`. Converted from module-level objects to functions (2026-04-16) so theme switches pick up fresh `C` values. Also exports standalone `pillStyle`, `toggleStyle`, `multiPillWrap` for CellDisplay's module-level renderers. **2026-05-04 (commits `d82056e` + `b7096cb`):** `gridRow.overflow` removed (was "hidden") so wrapped multi-pill content can grow the row vertically. `gridCell.overflow` retained as "hidden" — clips horizontal bleed from long single-line pills (e.g. "WAREHOUSED (DROPS FACILITY)" with `whiteSpace: nowrap`) without preventing the cell box from growing as flex content extends. Two-step fix: removing both broke horizontal clipping; reinstating cell-only kept both behaviors right. |
 | `tableHelpers.js` | Constants (`ROW_HEIGHT`, `VIRT_BUFFER`, `COLUMN_TYPES`), `resolveColumns()`, type maps. Phase 3 Step B (2026-04-25): COLUMN_TYPES gains `depends_on` (uses `IconLink`) — automatically picked up by `AddColumnDialog`. |
 | `OwnerCell.jsx` | `OwnerCellDisplay` (delegates to `OwnerAvatars` for icon-only rendering, 2026-04-16) + `OwnerPicker` for the owner column |
 | `GhostRow.jsx` | `GhostCell` component for new row creation ghost input (68 lines) |
 | `CellEditor.jsx` | Inline cell editor with type-specific inputs (text, number, date, select, multi-select, checkbox, URL, email, phone) (215 lines) |
-| `CellDisplay.jsx` | Cell renderer with `CELL_RENDERERS` registry for read-only display (~63 lines). Select/multi_select/status renderers read option color from `schemaOptions` via `getSolidPillColor(value, options, schemaOptions)` — 3-arg form, no `colorMapping` override (2026-04-15 unification). `_CellComponents.jsx` used by Kanban/CardGrid is unchanged and still takes `colorMapping`. |
+| `CellDisplay.jsx` | Cell renderer with `CELL_RENDERERS` registry for read-only display. Select/multi_select/status renderers read option color from `schemaOptions` via `getSolidPillColor(value, options, schemaOptions)` — 3-arg form, no `colorMapping` override (2026-04-15 unification). `_CellComponents.jsx` used by Kanban/CardGrid is unchanged and still takes `colorMapping`. **2026-05-04 (commit `8e5b95b`):** accepts `linkedValue`, `linkInfo`, `onLinkClick` props that `TableRow` was already passing but the component had been silently dropping. When `linkInfo` is set, uses `linkedValue` instead of `value`; `coerceLinkedValue(linkedValue, type)` parses resolved strings back into renderer-friendly shapes (date ranges → `{start, end}`, multi-selects → arrays, checkbox/number → typed primitives). Linked output wraps in `LinkedWrapper` with a small `IconConnect` accent + left-border stripe; stale links (resolveRef returned undefined) get error-colored treatment + `(source missing)` placeholder. Click on the icon triggers `onLinkClick` (already wired in TableRow to call `removeLink`). |
 | `ColumnContextMenu.jsx` | Column context menus: `ParentColumnContextMenu` (sort, hide, rename, manage options, type change, delete) + `SubColumnContextMenu` (rename, manage options, change type, delete — full parity with parent as of 2026-04-14). Both open on single-click header tap, double-click to rename, right-click for cursor-anchored menu. Shared `useClampedMenuPosition` hook (2026-04-15) measures the menu via ref after first paint and clamps `left`/`top` inside the viewport (floored at 8px); both menus get `maxHeight: calc(100vh - 24px)` + `overflowY: auto` so items near the viewport edge are reachable and scrollable. |
 | `AddColumnDialog.jsx` | Add column dialogs: `AddColumnDialog` + `AddSubColumnDialog` with type picker, name input, options (250 lines) |
 | `OptionsManagerModal.jsx` | Modal for managing select/multi_select/status column options: CRUD, drag-reorder, color picker (VIEW_PALETTE swatches). `handleAdd` injects a color via `assignOptionColor(prev.length)`. Status columns (2026-04-15): category dropdown per option (not_started/in_progress/complete/on_hold/cancelled) for semantic roll-up. `handleSetCategory` callback. Category preserved through save. |
@@ -195,7 +195,7 @@ Extracted sub-modules for the Table view. Refactored from a 3,600-line monolith 
 | `DependsOnCell.jsx` | Phase 3 Step B cell renderer (2026-04-25) for the new `depends_on` column type. The cell stores nothing — it's a live view of `depends_on` edges where this record is the source. Loads via `useRelationships().loadForEntity(...)`, displays up to 3 title pills with "+N" overflow. Re-pulls when the context's `cacheVersion` bumps after any edge create/delete. Title resolution uses the `recordTitlesById` map passed down from Table.jsx (same-database only; cross-database edges show UUID prefix). |
 | `TableToolbar.jsx` | Toolbar: search, new record, export, saved views dropdown, bulk actions, presence avatars, sub-item expand/collapse toggle (auto-sizing pill button, 2026-04-15) |
 | `TableHeader.jsx` | Column headers with sort indicators, drag-to-resize, double-click rename, column visibility toggle (168 lines) |
-| `TableRow.jsx` | Row rendering: parent rows, sub-item rows, expand/collapse, sub-item mini-headers (with chevron affordance, single-click opens `SubColumnContextMenu`, double-click inline rename, 250ms disambiguation timer), neuron badges. `colorMapping` prop drilling removed from `CellDisplay` sites and from hover-wash `getStatusColor` call (2026-04-15) — hover wash reads from schema options. Warns once per table when a sub-item row renders without `subSchema` (legacy fallback still renders parent schema so nothing crashes). |
+| `TableRow.jsx` | Row rendering: parent rows, sub-item rows, expand/collapse, sub-item mini-headers (with chevron affordance, single-click opens `SubColumnContextMenu`, double-click inline rename, 250ms disambiguation timer), neuron badges. `colorMapping` prop drilling removed from `CellDisplay` sites and from hover-wash `getStatusColor` call (2026-04-15) — hover wash reads from schema options. Warns once per table when a sub-item row renders without `subSchema` (legacy fallback still renders parent schema so nothing crashes). **2026-05-04 (commit `d82056e`):** `height: ROW_HEIGHT` → `minHeight: ROW_HEIGHT` in both parent and sub-item row containers so rows grow when wrapped pills (multiPillWrap) need a second line. Trade-off: virtualization math in Table.jsx still computes by `ROW_HEIGHT * idx`, but `VIRT_BUFFER = 200` absorbs the slop for typical workspaces. |
 | `TableFooter.jsx` | Row count display footer (41 lines) |
 
 #### src/views/table/hooks/ (5 files)
@@ -219,8 +219,9 @@ Personal productivity surface. User-scoped data. Lazy-loaded.
 | File | Purpose |
 |------|---------|
 | `CalendarView.jsx` | Day/week/month calendar with Google Calendar + Outlook Calendar sync. Fetches both providers in parallel; normalizes Outlook events to Google shape for unified display. **2026-05-04**: events now carry explicit `provider: "google" \| "microsoft"` field after normalization (Phase 5B provider tagging). Visual differentiation already exists via per-calendar color (Outlook events use #0078d4 Microsoft blue), so no further tile-level badges added. |
-| `OutlookView.jsx` | Outlook inbox view: folder tabs (Inbox/Sent/Drafts), search, inline expand, compose, reply. Uses Microsoft Graph via worker. Single-provider view — coexists with the unified `UnifiedInboxView`. |
-| `UnifiedInboxView.jsx` | **(Phase 5A, 2026-05-04)** Unified Gmail + Outlook inbox in one surface. Fetches both providers in parallel, normalizes to common shape (`{ key, provider, id, threadId\|conversationId, from, fromName, subject, snippet, date, isRead }`), sorts merged list by date DESC. Provider badges on each message (Gmail red, Outlook MS-blue with 4-square logo). Filter pills: All/Unread + per-provider toggle. Parallel cross-provider search (debounced). Click expand inline with full body, marks read on the correct provider. Reply opens compose locked to source provider; new message shows provider toggle when both connected. Coexists with single-provider GmailView/OutlookView (per CLAUDE.md "never delete working code"). Exports `ProviderBadge` component for reuse. Wired in `App.jsx` as `inbox-unified` route, `Navigation.jsx` as "Inbox" button shown when EITHER provider is connected (combined unread badge). |
+| `OutlookView.jsx` | Outlook inbox view: folder tabs (Inbox/Sent/Drafts), search, inline expand, compose, reply. Uses Microsoft Graph via worker. **2026-05-04: NO LONGER WIRED IN NAVIGATION OR APP ROUTING** — retired in commit `8dd0445` after the unified inbox shipped. The component file is intentionally retained on disk per CLAUDE.md "never delete working code." Restoring requires re-adding the lazy import + route block in App.jsx and the nav button block in Navigation.jsx. |
+| `GmailView.jsx` | Gmail inbox, read, compose, reply. **2026-05-04: NO LONGER WIRED IN NAVIGATION OR APP ROUTING** — same status as `OutlookView.jsx`. File retained for revival if needed. |
+| `UnifiedInboxView.jsx` | **(Phase 5A, 2026-05-04)** Unified Gmail + Outlook inbox in one surface and the ONLY mail surface as of commit `8dd0445`. Fetches both providers in parallel, normalizes to common shape (`{ key, provider, id, threadId\|conversationId, from, fromName, subject, snippet, date, isRead }`), sorts merged list by date DESC. Provider badges on each message (Gmail red, Outlook MS-blue with 4-square logo). Filter pills: All/Unread + per-provider toggle. Parallel cross-provider search (debounced). **Thread grouping (commit `e845f86`):** `groupThreads(messages)` groups by `g:${threadId}` / `o:${conversationId}` (falls back to message id), each group exposes `messages` (sorted), `latest`, `latestDate`, `isAnyUnread`, `sendersDisplay` (deduped participants with overflow), `messageCount`, `displaySubject` (prefers non-"Re:" form). One row per thread with sender list + count badge + most-recent snippet. Click expand fetches full conversation via `getThread` (Gmail) or `getOutlookThread` (Outlook), renders chronologically (oldest first). Mark-read on expand fans out to all unread messages in the thread via `Promise.all` on the correct provider tools. Reply targets the latest message in the thread. Compose new shows provider toggle when both connected. Exports `ProviderBadge` for reuse. App.jsx route: `inbox-unified` (also accepts legacy `gmail` / `outlook` activePage values as redirects). Navigation.jsx shows the "Inbox" button when EITHER provider is connected (combined unread badge: `unreadCount + outlookUnreadCount`). |
 | `ChatPanel.jsx` | Dual-tab AI chat: Assistant (Haiku, role-based tools, neuron-aware) + Agent (full Wasabi agent) |
 | `DashboardView.jsx` | Customizable widget dashboard |
 | `EmailThreadDrawer.jsx` | Email thread slide-out viewer |
@@ -270,13 +271,13 @@ Shared UI components used across views.
 | `ConflictToast.jsx` | Real-time sync conflict resolution UI (design tokens, ARIA, auto-dismiss with per-conflict timing) |
 | `EmptyState.jsx` | Empty state placeholder component (new) |
 | `InlineChart.jsx` | Inline sparkline/mini chart component |
-| `MentionInput.jsx` | @-mention input with user autocomplete (used in RecordComments and RecordNotes) |
+| `MentionInput.jsx` | @-mention input with user autocomplete (used in RecordComments and RecordNotes). **2026-05-04 (commit `d82056e`):** auto-grow effect added for multiline mode — on value change, height resets to `auto` then sets to `scrollHeight`, capped at `MAX_AUTOGROW_PX = 220` (~10 lines). Past the cap, internal vertical scroll kicks in. Manual resize handle disabled (`resize: none`) since the textarea sizes itself. Multiline mode gets `minHeight: 38` so empty matches single-line height. |
 | `MultiSelectPicker.jsx` | Multi-select tag picker |
 | `OwnerAvatars.jsx` | Shared icon-only owner avatar circles (initial letter, gradient, tooltip). Used by Table, Kanban, Calendar, Gantt, CardGrid. |
 | `PagePermissionsPanel.jsx` | Page-level permission management |
 | `PinLockOverlay.jsx` | PIN lock overlay for secure pages |
 | `PresenceAvatars.jsx` | Active user avatar display (design tokens, title attributes for accessibility) |
-| `RecordComments.jsx` | Record-level comment thread |
+| `RecordComments.jsx` | Record-level comment thread. **2026-05-04 (commit `d82056e`):** input now passes `multiline rows={1}` to MentionInput so long comments grow the textarea instead of horizontally clipping. `inputRow` gained `alignItems: "flex-end"` so Send stays bottom-anchored as the textarea grows. Enter-to-send and Shift+Enter-newline preserved. |
 | `RecordDetailPortals.jsx` | Portal components for record detail overlays. Schema switch (2026-04-15): passes `_subSchema` when `detailPage._parentRowId` is set, so sub-items opened from Calendar/other views get correct schema. |
 | `RecordFiles.jsx` | File attachment management for records |
 | `SavedViewsDropdown.jsx` | Saved views selector dropdown |
@@ -299,7 +300,7 @@ React context providers. Wrap the app in App.jsx.
 | `AuthContext.jsx` | Authentication state, login/logout, token management |
 | `CollaborationContext.jsx` | Real-time collaboration: reactive presence Map, typing with 8s TTL, conflict detection with timestamps, reconnect state restore |
 | `ColorMappingContext.jsx` | Deterministic color assignment for users/categories |
-| `LinksContext.jsx` | Cross-page cell link state, CRUD, and resolution. `fetchSourceData` handles D1 (via `getTableSchema` + `listRows`), Notion, and sheet sources with TTL caching (2026-04-15). |
+| `LinksContext.jsx` | Cross-page cell link state, CRUD, and resolution. `fetchSourceData` handles D1 (via `getTableSchema` + `listRows`), Notion, and sheet sources with TTL caching (2026-04-15). **2026-05-04 (commit `8e5b95b`):** D1 path now includes `sub_columns` in the returned `d1Data` so the resolver can look up sub-item fields. Required for sub-item-to-anywhere linking to actually resolve a value. |
 | `NavigationContext.jsx` | Page navigation state and history |
 | `PagesContext.jsx` | Page configs, CRUD operations, page list |
 | `PlatformContext.jsx` | Platform settings, worker URL, feature flags |
@@ -427,7 +428,7 @@ Configuration and storage utilities.
 | File | Purpose |
 |------|---------|
 | `flowStorage.js` | Flow/automation persistence helpers |
-| `linkStorage.js` | Link persistence (D1 `cell_links` table), caching, and value resolution. `resolveRef` handles D1 (`record_id` + `column_name`), Notion, and sheet ref types (2026-04-15). |
+| `linkStorage.js` | Link persistence (D1 `cell_links` table), caching, and value resolution. `resolveRef` handles D1 (`record_id` + `column_name`), Notion, and sheet ref types (2026-04-15). **2026-05-04 (commit `8e5b95b`):** D1 branch detects sub-item rows via `row.parent_row_id` and looks up the column in `d1Data.sub_columns` instead of `d1Data.columns`. Same ref shape — no flag needed. |
 | `linkTypeCompat.js` | Link type compatibility layer |
 | `pageConfig.js` | Page configuration schema and defaults |
 | `setup.js` | Initial setup configuration |

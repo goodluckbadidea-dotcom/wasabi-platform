@@ -364,3 +364,45 @@ Commit `2ca1b5b` (2026-03-10 — "Haiku-first AI routing with smart caching") ad
 ### Dashboard "Pin a View" Silently Failed (Resolved 2026-05-04)
 
 `WidgetGrid.jsx` was refactored at some point to extract `WidgetPickerInline` into its own inner component, but the click handler at line 518 still referenced `viewPrefs` — which is declared via `useViewPrefs()` in the **outer** `WidgetGrid` component, not the picker. Every click on a "Pin a View" button threw `ReferenceError: viewPrefs is not defined`. React event handlers swallow errors silently, so nothing visible happened — the picker stayed open and no widget was pinned. "Quick Add" buttons (Shortcut, Text Block, plugin functions) worked because they didn't reference `viewPrefs`. Fixed by adding `const viewPrefs = useViewPrefs();` inside `WidgetPickerInline`. Commit `f0bf734`.
+
+### LinkPicker Filtered Out Sub-Items (Resolved 2026-05-04)
+
+`src/core/LinkPicker.jsx:185` had `(rowsRes.rows || []).filter((r) => !r.parent_row_id)`. Sub-items were dropped from the picker entirely, so it was impossible to link a cell to a sub-item field — the picker only ever showed top-level records. The data was returned by `listRows` with full `parent_row_id` info; it just got filtered before display.
+
+Fixed by adding drill-down: parent rows that have sub-items now show a chevron in a left-edge column. Clicking it switches the picker into sub-item mode (rebuilds the grid from `sub_columns` + child rows of that parent), with a breadcrumb + back button. The raw fetch is cached in state so drill-in/back doesn't re-hit the API. Sub-item links use the same `sourceRef` shape as parent links (`{ type: "d1", record_id, column_name }`); resolver picks `sub_columns` vs `columns` automatically based on whether the row has `parent_row_id`. Commit `8e5b95b`.
+
+### Linked Cell Values Invisible in Every View (Resolved 2026-05-04)
+
+Two compounding bugs:
+
+1. **CellDisplay silently dropped link props.** `TableRow.jsx` was already passing `linkedValue` and `linkInfo` to `CellDisplay`, but the component's signature didn't include them — React just ignored them. So a linked cell rendered the local (typically empty/stale) cell value instead of the resolved source value, even though the resolution pipeline was working end-to-end.
+
+2. **Non-Table views had no link awareness at all.** Gantt, Calendar, Kanban, and CardGrid all read directly via `readField`/`readProp` from `page.properties`. Links resolved by `LinksContext.resolveLinksForView` never reached these views because they didn't subscribe to the link map.
+
+Combined effect: a user could set up a link, save it, and never see the resolved value anywhere visible.
+
+Resolver fixes:
+- `linkStorage.resolveRef` for D1 type now branches on `row.parent_row_id` to look up sub-item columns in `sub_columns` instead of `columns`. Fixes the case where a sub-item link's source value was always undefined because the column lookup failed.
+- `LinksContext.fetchSourceData` includes `sub_columns` in the returned `d1Data` so the resolver has the schema it needs.
+
+Render fixes:
+- `CellDisplay` now accepts `linkedValue`, `linkInfo`, `onLinkClick`. When `linkInfo` is set, it uses `linkedValue` instead of the cell's stored value, type-coerces resolved strings back into renderer-friendly shapes (date ranges back to `{start, end}`, multi-selects back to arrays, etc.), and wraps the rendered output in a `LinkedWrapper` with a small link icon + accent border. Stale links get error-colored treatment.
+- Gantt, Calendar, Kanban, and CardGrid all now wire `useLinks` + `resolveLinksForView` + a `readFieldL` wrapper (or equivalent inline check) so linked values flow through grouping, sorting, filtering, search, and rendering across every view.
+
+Commits `8e5b95b` and `32b696e`.
+
+### Table Rows Clipped Wrapped Multi-Select Pills (Resolved 2026-05-04)
+
+`ROW_HEIGHT = 36` was applied as a hard `height` on every row in `TableRow.jsx`. When a cell's `multiPillWrap` (display: flex; flex-wrap: wrap) wrapped pills onto a second line — common in Market columns with many state pills — the row stayed 36px tall and the second line of pills was hidden behind the next row.
+
+Fixed by changing `height: ROW_HEIGHT` to `minHeight: ROW_HEIGHT` and removing `overflow: "hidden"` from `gridRow` so the row's bounding box grows with its content. `gridCell` keeps `overflow: "hidden"` so long single-line pills (`whiteSpace: nowrap`, e.g. "WAREHOUSED (DROPS FACILITY)") still clip at the cell edge instead of bleeding into the next column — `overflow: hidden` clips visible overflow without preventing the cell box from growing vertically when its flex content extends.
+
+Two-step fix: `d82056e` introduced the row-grow path (initially also removing cell overflow:hidden, which caused horizontal pill bleed); `b7096cb` reinstated the cell overflow while keeping the row-level removal.
+
+Trade-off: virtualization math in Table.jsx still assumes `ROW_HEIGHT * idx` for scroll positions. `VIRT_BUFFER = 200` absorbs the slop for typical workspaces.
+
+### Comment Input Clipped Long Messages (Resolved 2026-05-04)
+
+`RecordComments` used `MentionInput` without `multiline`, which renders a single-line `<input type="text">`. Long comments scrolled horizontally and the start of the message disappeared as the user typed — they couldn't see what they had already written.
+
+Fixed by passing `multiline rows={1}` and adding auto-grow behavior to `MentionInput`: in multiline mode, the textarea height resets to `auto` then sets to `scrollHeight` on every value change, capped at `MAX_AUTOGROW_PX = 220` (~10 lines). Past the cap, internal vertical scroll kicks in. The Send button stays bottom-anchored via `alignItems: flex-end` on the input row. Enter-to-send and Shift+Enter-for-newline preserved. Commit `d82056e`.
