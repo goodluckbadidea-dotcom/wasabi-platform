@@ -12,6 +12,7 @@ import NewRecordModal from "./NewRecordModal.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 import OwnerAvatars from "../components/OwnerAvatars.jsx";
 import { listUserDirectory } from "../lib/api.js";
+import { useLinks } from "../context/LinksContext.jsx";
 
 // ─── Constants ───
 
@@ -131,7 +132,32 @@ function buildHeaders(origin, days, pxPerDay) {
 
 const DEFAULT_ZOOM_INDEX = 3; // 90-day default
 
+// Convert a resolved linked value back into a date-field-shaped value the
+// existing parseDate/parseDateEnd helpers understand. Date ranges resolve to
+// "YYYY-MM-DD – YYYY-MM-DD"; single dates stay as plain strings.
+function coerceLinkedDateValue(linkedValue) {
+  if (linkedValue == null || linkedValue === "") return null;
+  if (typeof linkedValue === "object") return linkedValue;
+  if (typeof linkedValue === "string" && linkedValue.includes("–")) {
+    const [start, end] = linkedValue.split("–").map((s) => s.trim());
+    return { start, end };
+  }
+  return linkedValue;
+}
+
 export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onViewConfigChange }) {
+  // Link resolution — same wiring as Table view so dates/values pulled from
+  // another record render here too.
+  const { resolveLinksForView } = useLinks();
+  const viewIdx = pageConfig?.views?.findIndex((v) => v === config) ?? 0;
+  const [resolvedLinks, setResolvedLinks] = useState(new Map());
+  useEffect(() => {
+    if (!pageConfig?.id) return;
+    resolveLinksForView(pageConfig.id, viewIdx)
+      .then(setResolvedLinks)
+      .catch((err) => console.warn("[Gantt] resolveLinksForView:", err.message || err));
+  }, [pageConfig?.id, viewIdx, resolveLinksForView]);
+
   const preferredZoomIndex = useMemo(() => {
     if (config.preferredZoom) {
       const idx = ZOOM_LEVELS.findIndex(z => z.key === config.preferredZoom);
@@ -218,7 +244,15 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
 
       for (let fi = 0; fi < fields.length; fi++) {
         const fieldName = fields[fi];
-        const raw = readField(page, fieldName);
+        // Prefer linked value if this cell is linked to a source record.
+        // resolvedLinks key: "<pageId>:<fieldName>" (same as Table view).
+        const linkData = resolvedLinks.get(`${page.id}:${fieldName}`);
+        let raw;
+        if (linkData) {
+          raw = coerceLinkedDateValue(linkData.value);
+        } else {
+          raw = readField(page, fieldName);
+        }
         if (!raw) continue;
 
         const start = parseDate(raw);
@@ -371,7 +405,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
     }
 
     return { rows: result, parentRowMap: pMap };
-  }, [data, schema, subSchema, dateFields, subDateFields, labelField, colorField, colorOptionNames, search, config.colorMode, config.colorMapping, config.sortField, config.sortDir, expandedParents]);
+  }, [data, schema, subSchema, dateFields, subDateFields, labelField, colorField, colorOptionNames, search, config.colorMode, config.colorMapping, config.sortField, config.sortDir, expandedParents, resolvedLinks]);
 
   // ─── Compute timeline origin + bounds ───
 

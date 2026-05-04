@@ -17,9 +17,31 @@ import { useCollaboration } from "../context/CollaborationContext.jsx";
 import PresenceAvatars from "../components/PresenceAvatars.jsx";
 import OwnerAvatars from "../components/OwnerAvatars.jsx";
 import { listUserDirectory } from "../lib/api.js";
+import { useLinks } from "../context/LinksContext.jsx";
 
 export default function Kanban({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, onViewConfigChange, pageConfig, initialDetailRecordId, onInitialDetailConsumed }) {
   const collab = useCollaboration();
+
+  // Link resolution — same wiring as Table/Gantt/Calendar so values pulled
+  // from another record group, sort, and render here too.
+  const { resolveLinksForView } = useLinks();
+  const kanbanViewIdx = pageConfig?.views?.findIndex((v) => v === config) ?? 0;
+  const [resolvedLinks, setResolvedLinks] = useState(new Map());
+  useEffect(() => {
+    if (!pageConfig?.id) return;
+    resolveLinksForView(pageConfig.id, kanbanViewIdx)
+      .then(setResolvedLinks)
+      .catch((err) => console.warn("[Kanban] resolveLinksForView:", err.message || err));
+  }, [pageConfig?.id, kanbanViewIdx, resolveLinksForView]);
+
+  // readField wrapper — returns the resolved linked value when the cell is
+  // linked, otherwise falls through to the regular readField.
+  const readFieldL = useCallback((page, field) => {
+    if (!field) return null;
+    const linkData = resolvedLinks.get(`${page.id}:${field}`);
+    if (linkData && linkData.value !== undefined) return linkData.value;
+    return readField(page, field);
+  }, [resolvedLinks]);
   const [dragState, setDragState] = useState(null); // { pageId, fromCol, startX, startY, isDragging }
   const [dropTarget, setDropTarget] = useState(null); // column option name
   const [colDrag, setColDrag] = useState(null); // { colName, startX } — column reorder drag
@@ -203,7 +225,7 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
     grouped["__uncategorized__"] = [];
 
     for (const page of filteredData) {
-      const val = columnField ? readField(page, columnField) : null;
+      const val = columnField ? readFieldL(page, columnField) : null;
       if (val && grouped[val]) {
         grouped[val].push(page);
       } else {
@@ -252,8 +274,8 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
       const dir = config.sortDir === "desc" ? -1 : 1;
       for (const col of cols) {
         col.pages.sort((a, b) => {
-          const va = readField(a, config.sortField);
-          const vb = readField(b, config.sortField);
+          const va = readFieldL(a, config.sortField);
+          const vb = readFieldL(b, config.sortField);
           if (va == null && vb == null) return 0;
           if (va == null) return 1;
           if (vb == null) return -1;
@@ -265,7 +287,7 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
     }
 
     return cols;
-  }, [filteredData, columnField, columnOptions, optionNames, config.sortField, config.sortDir]);
+  }, [filteredData, columnField, columnOptions, optionNames, config.sortField, config.sortDir, readFieldL]);
 
   // ─── Drag handlers ───
 
@@ -581,7 +603,7 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
                 )}
 
                 {col.pages.map((page) => {
-                  const title = titleField ? readField(page, titleField) : "Untitled";
+                  const title = titleField ? readFieldL(page, titleField) : "Untitled";
                   const isDragging = dragState?.pageId === page.id;
                   const othersOnCard = collab?.getUsersOnRecord?.(page.id) || [];
                   const cardPresenceColor = othersOnCard.length > 0 ? othersOnCard[0].color : null;
@@ -646,7 +668,7 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
                       </div>
 
                       {/* Preview fields with separator + inset zone */}
-                      {previewFields.some((f) => readField(page, f) !== null && readField(page, f) !== undefined) && (
+                      {previewFields.some((f) => readFieldL(page, f) !== null && readFieldL(page, f) !== undefined) && (
                         <>
                           <div style={{
                             height: 1,
@@ -661,7 +683,7 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
                             margin: "0 -5px",
                           }}>
                             {previewFields.map((fieldName) => {
-                              const val = readField(page, fieldName);
+                              const val = readFieldL(page, fieldName);
                               const type = getFieldType(schema, fieldName);
                               if (val === null || val === undefined) return null;
                               return (

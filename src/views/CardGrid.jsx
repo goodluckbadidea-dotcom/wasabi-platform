@@ -12,12 +12,33 @@ import ViewToolbar from "../components/ViewToolbar.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 import OwnerAvatars from "../components/OwnerAvatars.jsx";
 import { listUserDirectory } from "../lib/api.js";
+import { useLinks } from "../context/LinksContext.jsx";
 
 export default function CardGrid({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, onViewConfigChange, pageConfig }) {
   const cellStyles = getCellStyles();
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState(config.activeFilters || {});
   const record = useRecordDetail();
+
+  // Link resolution — values pulled from another record render here too.
+  const { resolveLinksForView } = useLinks();
+  const cardViewIdx = pageConfig?.views?.findIndex((v) => v === config) ?? 0;
+  const [resolvedLinks, setResolvedLinks] = useState(new Map());
+  useEffect(() => {
+    if (!pageConfig?.id) return;
+    resolveLinksForView(pageConfig.id, cardViewIdx)
+      .then(setResolvedLinks)
+      .catch((err) => console.warn("[CardGrid] resolveLinksForView:", err.message || err));
+  }, [pageConfig?.id, cardViewIdx, resolveLinksForView]);
+
+  // readField wrapper — returns the resolved linked value when the cell is
+  // linked, otherwise falls through to the regular readField.
+  const readFieldL = useCallback((page, field) => {
+    if (!field) return null;
+    const linkData = resolvedLinks.get(`${page.id}:${field}`);
+    if (linkData && linkData.value !== undefined) return linkData.value;
+    return readField(page, field);
+  }, [resolvedLinks]);
   const showOwner = !!config.showOwner;
   const [teamUsers, setTeamUsers] = useState([]);
   useEffect(() => {
@@ -64,7 +85,7 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
     // Apply filters
     for (const [field, value] of Object.entries(filters)) {
       if (value) {
-        result = result.filter((page) => readField(page, field) === value);
+        result = result.filter((page) => readFieldL(page, field) === value);
       }
     }
 
@@ -74,7 +95,7 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
       result = result.filter((page) => {
         const allFields = [titleField, badgeField, ...bodyFields, ...metricFields].filter(Boolean);
         return allFields.some((f) => {
-          const val = readField(page, f);
+          const val = readFieldL(page, f);
           const type = getFieldType(schema, f);
           return searchableText(val, type).includes(q);
         });
@@ -85,8 +106,8 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
     if (config.sortField) {
       const dir = config.sortDir || "asc";
       result = [...result].sort((a, b) => {
-        const va = readField(a, config.sortField);
-        const vb = readField(b, config.sortField);
+        const va = readFieldL(a, config.sortField);
+        const vb = readFieldL(b, config.sortField);
         if (va == null && vb == null) return 0;
         if (va == null) return 1;
         if (vb == null) return -1;
@@ -98,7 +119,7 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
     }
 
     return result;
-  }, [data, search, filters, titleField, badgeField, bodyFields, metricFields, schema, config.sortField, config.sortDir]);
+  }, [data, search, filters, titleField, badgeField, bodyFields, metricFields, schema, config.sortField, config.sortDir, readFieldL]);
 
   if (!schema) {
     return (
@@ -142,8 +163,8 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
             gap: 16,
           }}>
             {processedData.map((page, idx) => {
-              const title = titleField ? readField(page, titleField) : "Untitled";
-              const badge = badgeField ? readField(page, badgeField) : null;
+              const title = titleField ? readFieldL(page, titleField) : "Untitled";
+              const badge = badgeField ? readFieldL(page, badgeField) : null;
               const badgeType = badgeField ? getFieldType(schema, badgeField) : null;
 
               // Badge color
@@ -214,7 +235,7 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
 
                     {/* Body fields */}
                     {bodyFields.map((fieldName) => {
-                      const val = readField(page, fieldName);
+                      const val = readFieldL(page, fieldName);
                       const type = getFieldType(schema, fieldName);
                       if (val === null || val === undefined) return null;
                       return (
@@ -246,7 +267,7 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
                         borderTop: `1px solid ${C.edgeLine}`,
                       }}>
                         {metricFields.map((fieldName) => {
-                          const val = readField(page, fieldName);
+                          const val = readFieldL(page, fieldName);
                           return (
                             <div key={fieldName} style={{ flex: 1 }}>
                               <div style={{
