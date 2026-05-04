@@ -158,9 +158,15 @@ export function getStyles() { return {
     fontSize: 13,
     lineHeight: 1.45,
     boxSizing: "border-box",
-    // overflow:hidden removed so the cell grows to fit wrapped multi-select
-    // pills. Single-line text cells still display fine because text wraps
-    // inside a fixed-width grid column rather than overflowing horizontally.
+    // overflow:hidden clips HORIZONTAL bleed (e.g. a long pill like
+    // "WAREHOUSED (DROPS FACILITY)" with whiteSpace:nowrap leaking into the
+    // next column). It does NOT prevent the cell box from growing
+    // vertically: wrapped multi-select pills inside multiPillWrap (display:
+    // flex; flex-wrap: wrap) extend the cell's content height, so the cell
+    // box grows and the row grows with it. Removing this caused pill
+    // overflow into adjacent columns; the row-level overflow stays off so
+    // grown cells still display fully.
+    overflow: "hidden",
     display: "flex",
     alignItems: "center",
     minWidth: 0,
