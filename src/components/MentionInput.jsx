@@ -148,6 +148,21 @@ export default function MentionInput({
 
   const Tag = multiline ? "textarea" : "input";
 
+  // Auto-grow the textarea to fit its content. We resize after every value
+  // change so longer messages aren't hidden by a fixed height. Capped at
+  // ~10 lines (220px) so very long input becomes scrollable instead of
+  // pushing the rest of the panel off-screen.
+  const MAX_AUTOGROW_PX = 220;
+  useEffect(() => {
+    if (!multiline) return;
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const next = Math.min(el.scrollHeight, MAX_AUTOGROW_PX);
+    el.style.height = `${next}px`;
+    el.style.overflowY = el.scrollHeight > MAX_AUTOGROW_PX ? "auto" : "hidden";
+  }, [value, multiline]);
+
   const baseStyle = {
     background: C.darkSurf,
     border: `1px solid ${C.darkBorder}`,
@@ -159,7 +174,12 @@ export default function MentionInput({
     width: "100%",
     boxSizing: "border-box",
     outline: "none",
-    resize: multiline ? "vertical" : "none",
+    // Disable the manual drag-resize handle since we auto-resize. User can
+    // still scroll inside the textarea once content exceeds the cap.
+    resize: "none",
+    // Default min-height for multiline so an empty textarea isn't taller
+    // than a single-line input. Can be overridden via the `style` prop.
+    ...(multiline ? { minHeight: 38, lineHeight: 1.45 } : {}),
     ...style,
   };
 

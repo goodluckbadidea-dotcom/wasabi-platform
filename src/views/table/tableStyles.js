@@ -147,7 +147,9 @@ export function getStyles() { return {
     background: C.darkSurf,
     marginBottom: 4,
     position: "relative",
-    overflow: "hidden",
+    // overflow removed (was "hidden") so multi-line pill wraps in cells expand
+    // the row vertically. borderRadius still works visually since each cell
+    // sits within the row's bounding box.
   },
 
   gridCell: {
@@ -156,7 +158,9 @@ export function getStyles() { return {
     fontSize: 13,
     lineHeight: 1.45,
     boxSizing: "border-box",
-    overflow: "hidden",
+    // overflow:hidden removed so the cell grows to fit wrapped multi-select
+    // pills. Single-line text cells still display fine because text wraps
+    // inside a fixed-width grid column rather than overflowing horizontally.
     display: "flex",
     alignItems: "center",
     minWidth: 0,

@@ -208,7 +208,7 @@ export default function TableRow({
         style={{
           ...styles.gridRow,
           gridTemplateColumns: activeGtc,
-          height: ROW_HEIGHT,
+          minHeight: ROW_HEIGHT,
           background: cardBg,
           ...(isSubItem ? {
             borderLeft: `2px solid ${C.accent}22`,
@@ -387,7 +387,7 @@ export default function TableRow({
           style={{
             ...styles.gridRow,
             gridTemplateColumns: subGtc,
-            height: ROW_HEIGHT,
+            minHeight: ROW_HEIGHT,
             opacity: subItemGhostSaving ? 0.5 : 0.9,
             transition: "opacity 0.15s",
             cursor: "default",

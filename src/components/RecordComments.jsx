@@ -148,6 +148,8 @@ export default function RecordComments({
             onChange={setNewComment}
             onKeyDown={handleKeyDown}
             placeholder="Add a comment... (type @ to mention)"
+            multiline
+            rows={1}
             style={s.input}
           />
         </div>
@@ -208,6 +210,7 @@ function getS() { return {
   },
   inputRow: {
     display: "flex", gap: 6, flexShrink: 0, padding: "4px 0",
+    alignItems: "flex-end", // keep send button anchored to bottom as input grows
   },
   input: {
     flex: 1, background: C.dark, border: `1px solid ${C.darkBorder}`,
