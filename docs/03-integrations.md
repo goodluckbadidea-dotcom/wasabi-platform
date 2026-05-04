@@ -468,9 +468,11 @@ All Outlook/Exchange operations use the Microsoft Graph API (`https://graph.micr
 | summary | `/microsoft/mail/summary` | GET | Unread count (ConsistencyLevel + $filter) + 5 recent messages |
 | search | `/microsoft/mail/messages` | POST | List/search messages (q, maxResults, folder). `$search` adds `ConsistencyLevel: eventual` automatically |
 | read | `/microsoft/mail/messages/{id}` | GET | Get full message with body (HTML or text) |
-| thread | `/microsoft/mail/thread/{conversationId}` | GET | All messages in a conversation, ordered by date |
+| thread | `/microsoft/mail/conversations/{conversationId}` | GET | All messages in a conversation, ordered by date |
 | send | `/microsoft/mail/send` | POST | Send or reply. Pass `replyToId` to reply to a specific message |
-| modify | `/microsoft/mail/modify/{id}` | POST | Mark read/unread (`action: "read"\|"unread"`) |
+| modify | `/microsoft/mail/modify/{id}` | POST | `action: "read"\|"unread"\|"mark_read"\|"mark_unread"\|"flag"\|"unflag"\|"archive"\|"trash"`. PATCH-style for state flags, POST `/move` for folder moves (archive→Archive folder, trash→Deleted Items). Phase 5C extension (2026-05-04). |
+| draft create | `/microsoft/mail/drafts` | POST | Phase 5C (2026-05-04). Create a draft email — POST /messages without sending. Returns id + conversationId. |
+| draft update | `/microsoft/mail/drafts/{id}` | PATCH | Phase 5C (2026-05-04). Update draft fields (to, subject, body). |
 
 ### $select Field Names
 
@@ -486,14 +488,29 @@ The Graph API property for recipients is `toRecipients` (not `to`). Using `to` i
 
 ### AI Tools (2026-05-04)
 
-The AI agent now has full Outlook read coverage via tools defined in `src/agent/tools.js` and dispatched in `src/agent/toolExecutor.js`:
+The AI agent has full Outlook read AND write parity with Gmail via tools defined in `src/agent/tools.js` and dispatched in `src/agent/toolExecutor.js`:
 
+**Provider status:**
 - `get_email_provider_status` — returns Google + Microsoft connection state in one call. The AI is prompted to call this BEFORE choosing email tools so Microsoft 365 users no longer get Gmail tools that fail with "Google isn't connected."
+
+**Reads:**
 - `search_outlook_messages(query, max_results, folder)` — wraps `searchOutlookMessages`. Supports plain-keyword `$search` queries.
 - `get_outlook_message(message_id)` — wraps `getOutlookMessage`.
 - `get_outlook_thread(conversation_id)` — wraps `getOutlookThread`. Returns the full conversation in chronological order — critical for email-chain summaries.
 - `list_outlook_events(start_date, end_date, max_results)` — wraps `listOutlookEvents`.
 - `get_outlook_calendar_summary()` — wraps `getOutlookCalendarSummary`.
+
+**Writes (Phase 5C, 2026-05-04):**
+- `send_outlook_email(to, subject, body, body_html?, reply_to_id?)` — wraps `sendOutlookEmail`. Pass `reply_to_id` for in-thread replies.
+- `create_outlook_draft(to?, subject?, body, body_html?)` — wraps `createOutlookDraft`. Returns draft id.
+- `update_outlook_draft(message_id, to?, subject?, body?, body_html?)` — wraps `updateOutlookDraft`.
+- `modify_outlook_message(message_id, action)` — extended action enum: `read`/`unread`/`flag`/`unflag`/`archive`/`trash`.
+- `create_outlook_event(summary, start, end, description?, location?, attendees?, is_all_day?)` — wraps `createOutlookEvent`.
+- `update_outlook_event(event_id, summary?, start?, end?, description?, location?)` — wraps `updateOutlookEvent`.
+- `delete_outlook_event(event_id)` — wraps `deleteOutlookEvent`.
+- `check_outlook_freebusy(time_min, time_max, attendees?)` — Phase 5D (2026-05-04). Wraps `checkOutlookFreeBusy`. Multi-attendee availability check via Microsoft Graph `/me/calendar/getSchedule`. Returns busy intervals for each attendee, NOT event details (privacy-preserving).
+
+**Tool-set tiering:** Admin gets full write parity. Editor gets `create_outlook_event` + `create_outlook_draft` + `check_outlook_freebusy` (scheduling and drafting allowed; full send and delete are admin-only). Confirm-mode gating in `runAgent.js` applies automatically via `create_*`/`update_*`/`delete_*`/`send_*` name patterns.
 
 ### Microsoft 365 System-Prompt Context (2026-05-04)
 
@@ -512,6 +529,7 @@ The AI agent now has full Outlook read coverage via tools defined in `src/agent/
 | create | `/microsoft/calendar/events` | POST | Create event (summary, start, end, description, location, attendees, isAllDay) |
 | update | `/microsoft/calendar/events/{id}` | PATCH | Update event fields |
 | delete | `/microsoft/calendar/events/{id}` | DELETE | Delete event |
+| freebusy | `/microsoft/calendar/freebusy` | POST | Phase 5D (2026-05-04). Multi-attendee availability check. Calls `POST /me/calendar/getSchedule` against Graph with `availabilityViewInterval: 30`. Body: `{ timeMin, timeMax, attendees? }`. Returns normalized `{ calendars: [{ email, busy: [{ start, end, status, subject }] }] }`. Status enum: `free` / `tentative` / `busy` / `oof` / `workingElsewhere` / `unknown`. |
 
 ### Date Format
 
@@ -535,8 +553,8 @@ The footer banner "Connect Google Calendar in Settings" only appears when **neit
 |------------|------|-------|----------|------|-------|-------------|
 | Gmail | Full (summary, search, read, thread) | Full (send, draft, modify) | Read + write (search_emails, get_email, send_email, modify_email, create_draft) | Google OAuth (per-user) | None | `/google/gmail/*` |
 | Google Calendar | Full (list, events, freebusy) | Full (create, update, delete) | Read + write (list/create/update/delete_calendar_event) | Google OAuth (per-user) | None | `/google/calendar/*` |
-| Outlook Mail | Full (summary, search, read, thread) | Full (send, reply, mark read) | **Read (2026-05-04)** — search_outlook_messages, get_outlook_message, get_outlook_thread. Write deferred. | Microsoft OAuth (per-user) | None | `/microsoft/mail/*` |
-| Outlook Calendar | Full (summary, events) | Full (create, update, delete) | **Read (2026-05-04)** — list_outlook_events, get_outlook_calendar_summary. Write deferred. | Microsoft OAuth (per-user) | None | `/microsoft/calendar/*` |
+| Outlook Mail | Full (summary, search, read, thread, drafts) | Full (send, reply, modify [read/unread/flag/archive/trash], drafts create+update) | **Full read + write (2026-05-04)** — search/get/thread + send_outlook_email, create/update_outlook_draft, modify_outlook_message (extended actions). | Microsoft OAuth (per-user) | None | `/microsoft/mail/*` |
+| Outlook Calendar | Full (summary, events, free/busy) | Full (create, update, delete) | **Full read + write (2026-05-04)** — list_outlook_events, get_outlook_calendar_summary, create/update/delete_outlook_event, check_outlook_freebusy. | Microsoft OAuth (per-user) | None | `/microsoft/calendar/*` |
 | Notion | Full (pages, databases, blocks, search) | Full (create, update, archive) | API key (per-user or global) | None | `/page/*`, `/database/*`, `/blocks/*`, `/query`, `/search` |
 | Notion Sync | Pull + status | Push + flush | API key | sync_configs table | `/sync/{id}/*` |
 | Monday.com | Full (boards, columns, items) | None | API key (global) | None | `/monday/graphql` |

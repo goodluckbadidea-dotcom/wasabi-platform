@@ -74,7 +74,7 @@ Worker (Cloudflare Workers — single file: worker.js, ~9500 lines)
 | Database | D1 (SQLite at edge) | Source of truth for all workspace data |
 | Storage | R2 | File attachments, document exports |
 | Real-time | Durable Objects | WebSocket rooms per table (TableRoom) and per user (UserRoom) |
-| AI | Claude API | Haiku (fast/cheap) and Sonnet (complex) with 63+ tools |
+| AI | Claude API | Haiku (fast/cheap) and Sonnet (complex) with 71+ tools |
 | Auth | JWT + HttpOnly cookies | 15-min access token (memory), 7-day refresh token (cookie) |
 
 ### Key Technical Decisions
@@ -85,7 +85,7 @@ Worker (Cloudflare Workers — single file: worker.js, ~9500 lines)
 - **Single worker.js** handles all API routes, auth, WebSocket upgrade, cron, and OAuth
 - **Schema version fast path** on `/init`: returning users skip all DDL (~2-3 queries in <1s instead of ~92). First boot and version bumps use batched DDL via `env.DB.batch()`. Version tracked in `connections` table as `schema_version`.
 - **Auth gate in PlatformContext**: `AuthGate` component sits between AuthProvider and data-fetching providers (PagesProvider, NavigationProvider), ensuring nothing mounts pre-auth
-- **AI routing**: `queryClassifier.js` determines complexity → Haiku (fast/cheap) or Sonnet (complex reasoning) with 63+ tools available to the agent
+- **AI routing**: `queryClassifier.js` determines complexity → Haiku (fast/cheap) or Sonnet (complex reasoning) with 71+ tools available to the agent
 - **Real-time collaboration** via Durable Objects — field-level conflict detection with `cell_versions`
 
 ---

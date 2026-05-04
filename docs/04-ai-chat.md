@@ -70,7 +70,7 @@ Classifies each user message before it reaches the model to determine:
 
 **File:** `src/agent/toolExecutor.js`
 
-Dispatches tool calls from the Claude response to the appropriate worker API endpoint. **63+ tools** organized by category. The 2026-05-04 expansion added 17 read tools to close major visibility gaps — comments, notes, files, sub-items, page list, user directory, notifications, document content, page permissions, cell links, and the entire Microsoft 365 stack were previously invisible to the AI.
+Dispatches tool calls from the Claude response to the appropriate worker API endpoint. **71+ tools** organized by category. Two 2026-05-04 expansions: (1) added 17 read tools to close major visibility gaps — comments, notes, files, sub-items, page list, user directory, notifications, document content, page permissions, cell links, and the entire Microsoft 365 stack were previously invisible to the AI; (2) Phase 5C/D added 8 Outlook write tools to bring Microsoft 365 to full Gmail parity (send/draft create+update/modify with archive+trash+flag/calendar CRUD/free+busy).
 
 | Category | Tools |
 |----------|-------|
@@ -80,7 +80,8 @@ Dispatches tool calls from the Claude response to the appropriate worker API end
 | **Documents, Permissions, Links (2026-05-04)** | `get_document`, `get_page_permissions`, `list_links` |
 | **Provider Status (2026-05-04)** | `get_email_provider_status` — returns `{ google: { connected, email }, microsoft: { connected, email } }`. AI is instructed to call this FIRST when user asks about email/calendar, then route to the right provider's tools. |
 | **Gmail (Google)** | `search_emails`, `get_email`, `send_email`, `modify_email`, `create_email_draft` |
-| **Outlook (Microsoft 365, 2026-05-04)** | `search_outlook_messages`, `get_outlook_message`, `get_outlook_thread` (full conversation, chronological), `list_outlook_events`, `get_outlook_calendar_summary` |
+| **Outlook reads (Microsoft 365, 2026-05-04)** | `search_outlook_messages`, `get_outlook_message`, `get_outlook_thread` (full conversation, chronological), `list_outlook_events`, `get_outlook_calendar_summary` |
+| **Outlook writes (Phase 5C/D, 2026-05-04)** | `send_outlook_email`, `create_outlook_draft`, `update_outlook_draft`, `modify_outlook_message` (read/unread/flag/unflag/archive/trash), `create_outlook_event`, `update_outlook_event`, `delete_outlook_event`, `check_outlook_freebusy` (multi-attendee availability) |
 | **Calendar (Google)** | `list_calendar_events`, `create_calendar_event`, `update_calendar_event`, `delete_calendar_event` |
 | **Automation** | `create_automation_rule`, `save_custom_function`, `list_custom_functions`, `run_custom_function`, `delete_custom_function`, `run_calculation` |
 | **Neurons** | `query_neurons`, `query_neuron_data`, `create_neuron`, `update_neuron`, `delete_neuron`, `add_neuron_node`, `remove_neuron_node` |
@@ -273,7 +274,7 @@ The ChatPanel provides two tabs in a single resizable side panel:
 | Tab | Model | Tools | Context | Use Case |
 |-----|-------|-------|---------|----------|
 | **Assistant** | Haiku | Role-based subset (query, update, notifications, email, calendar, neurons read-only) | Workspace summary, current page, Google, tasks, relevance-filtered neurons | Quick lookups, data queries, scheduling |
-| **Agent** | Haiku/Sonnet (auto-routed) | Full 63+ tool set | Full workspace context, KB, neurons, data summary | Complex operations, system building, multi-step tasks |
+| **Agent** | Haiku/Sonnet (auto-routed) | Full 71+ tool set | Full workspace context, KB, neurons, data summary | Complex operations, system building, multi-step tasks |
 
 - **Assistant tab** uses `buildAssistantContext()` + `buildAssistantPrompt()` + lightweight `executeChatTool()` (inline switch statement, no main toolExecutor). Max 3 iterations, 1024 max tokens.
 - **Agent tab** embeds `WasabiPanel` with `embedded={true}`. Full agent loop via `runAgent()`.

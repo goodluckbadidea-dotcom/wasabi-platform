@@ -438,7 +438,7 @@ Refactored from a single file into a folder with 9 files:
 | File | Purpose |
 |------|---------|
 | `runAgent.js` | Agent loop: prompt, classify, route to model, execute tools, respond |
-| `toolExecutor.js` | 63+ tool implementations: CRUD pages/rows, email (Gmail + Outlook), calendar (Google + Outlook), automations, neuron CRUD, per-record context (`get_record_context` mega-tool), workspace structure (`list_pages`/`list_users`/`list_notifications`), documents, page permissions, cell links. 2026-05-04 expansion. |
+| `toolExecutor.js` | 71+ tool implementations: CRUD pages/rows, email (Gmail + Outlook full parity), calendar (Google + Outlook full parity incl. free/busy), automations, neuron CRUD, per-record context (`get_record_context` mega-tool), workspace structure (`list_pages`/`list_users`/`list_notifications`), documents, page permissions, cell links. 2026-05-04 expansions: read tools + Phase 5C/D Outlook write parity. |
 | `queryClassifier.js` | Determines query complexity, routes to Haiku (fast/cheap) or Sonnet (complex) |
 | `tools.js` | Tool definitions (name, description, parameters) for Claude |
 | `automations.js` | Cron-triggered automation engine: evaluates rules, executes actions |
@@ -1030,3 +1030,67 @@ distinction.
   inside `WidgetPickerInline` (commit `f0bf734`). See doc 15.
 
 Commits: `c2e72d4`, `a6c34e5`, `162505e`, `f0bf734`.
+
+---
+
+## Microsoft 365 Phase 5 — Closed (2026-05-04)
+
+**Source:** `worker/handlers/outlook.js`, `src/agent/tools.js`, `src/agent/toolExecutor.js`, `src/agent/wasabiPrompt.js`, `src/lib/api.js`, `src/features/UnifiedInboxView.jsx` (new), `src/features/CalendarView.jsx`, `src/App.jsx`, `src/core/Navigation.jsx`. Commits `4e94642` (worker, deployed `78652baa`) + `e28f979` (frontend).
+
+Phase 5 had been pending since 2026-04-07 with the items "agent tools, unified views" still open. Closed in this session.
+
+### 5C — Outlook Write AI Tools (8 new)
+Brings Microsoft 365 to full Gmail parity in the AI surface. Worker handlers for send/modify/calendar already existed; this added missing draft endpoints and extended the modify action enum.
+
+**Worker additions:**
+- `handleOutlookCreateDraft` — POST /messages, returns id + conversationId.
+- `handleOutlookUpdateDraft` — PATCH /messages/{id} for to/subject/body fields.
+- `handleOutlookModify` extended action enum — now supports `archive` (move to Archive folder), `trash` (move to Deleted Items), `flag`/`unflag` (Microsoft equivalent of star), plus `mark_read`/`mark_unread` aliases for Gmail naming parity.
+- Routes wired in `worker.js`: POST `/microsoft/mail/drafts`, PATCH `/microsoft/mail/drafts/:id`.
+
+**API client (src/lib/api.js):** `createOutlookDraft`, `updateOutlookDraft`.
+
+**AI tools (8 new):** `send_outlook_email`, `create_outlook_draft`, `update_outlook_draft`, `modify_outlook_message` (extended actions), `create_outlook_event`, `update_outlook_event`, `delete_outlook_event`, `check_outlook_freebusy`.
+
+**Tool-set tiering:** Admin gets full Outlook write parity. Editor gets `create_outlook_event` + `create_outlook_draft` + `check_outlook_freebusy` (scheduling and drafting allowed; full send and delete are admin-only). Confirm-mode gating in `runAgent.js` applies automatically via `create_*`/`update_*`/`delete_*`/`send_*` name patterns.
+
+**Prompt builder:** "How to Answer Common Questions" section enumerates Outlook writes alongside reads so the AI knows when to reach for them. Includes guidance to use `check_outlook_freebusy` for multi-attendee scheduling instead of guessing availability.
+
+### 5D — Free/Busy Endpoint
+- Worker handler `handleOutlookFreeBusy` calls `POST /me/calendar/getSchedule` against Microsoft Graph with `availabilityViewInterval: 30` (30-min granularity). Normalizes response to `{ calendars: [{ email, busy: [{ start, end, status, subject }] }] }`. Status enum: `free` / `tentative` / `busy` / `oof` / `workingElsewhere` / `unknown`.
+- Worker route: POST `/microsoft/calendar/freebusy`.
+- API client: `checkOutlookFreeBusy(timeMin, timeMax, attendees)`. Defaults to current user's calendar when no attendees given.
+- AI tool: `check_outlook_freebusy(time_min, time_max, attendees?)`.
+
+### 5A — Unified Inbox View
+
+**New file:** `src/features/UnifiedInboxView.jsx` (~520 lines).
+
+**Architecture:**
+- Fetches Gmail + Outlook in parallel via `Promise.all` on `getGoogleStatus`/`getMicrosoftStatus` + `searchEmails`/`searchOutlookMessages`.
+- Normalizes both into common shape: `{ key, provider, id, threadId|conversationId, from, fromName, subject, snippet, date, isRead }`. Key prefix `g:` or `o:` distinguishes provider for React keys.
+- Merged list sorted by date DESC.
+
+**UI:**
+- Provider badges on every message — Gmail red with the M envelope, Outlook MS-blue with the four-square logo. `ProviderBadge` component exported for reuse.
+- Filter pills: `All` / `Unread`, plus per-provider `Both` / `Gmail` / `Outlook`.
+- Search bar searches both providers in parallel (debounced 400ms).
+- Click message expands inline with full body, marks read on the correct provider via `modifyEmail`/`modifyOutlookMessage`.
+- Reply opens compose modal locked to source provider.
+- Compose new shows provider toggle when both connected (defaults to Outlook if Microsoft connected).
+
+**Coexistence:** Does NOT replace `OutlookView` or `GmailView`. Per CLAUDE.md "never delete working code", existing single-provider views are preserved. Graham can decide later whether to retire them.
+
+**Wiring:**
+- `src/App.jsx`: lazy import `UnifiedInboxView`, route `activePage === "inbox-unified"`.
+- `src/core/Navigation.jsx`: new "Inbox" button shown when EITHER provider is connected. Combined unread badge (`unreadCount + outlookUnreadCount`). Placed above per-provider buttons. SYSTEM_PAGES set updated.
+
+### 5B — Provider Tagging on Calendar Events
+- `src/features/CalendarView.jsx`: every event normalized with `provider: "google" | "microsoft"` field after merging.
+- Visual provider differentiation already existed via per-calendar color (`calendarColor: "#0078d4"` for Outlook). Color is the signal — no additional badges added in calendar tiles to avoid clutter.
+- Provider field gives clean data for AI tool returns and any future UI consumers.
+
+### Out of scope for this push (open backlog)
+- Outlook attachment parsing (PDF/xlsx). Flagged earlier when Graham hit a Premier Press email chain where the latest quantities were in attachments and the AI couldn't see them.
+- Decision on whether to retire single-provider OutlookView/GmailView once unified inbox stabilizes.
+- Tier 3 reads (Flows, Figma, audit log, sync, KB list, user state) still pending.
