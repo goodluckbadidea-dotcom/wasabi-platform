@@ -222,24 +222,152 @@ export async function handleOutlookModify(env, messageId, body, userId, jsonResp
 
   const { action } = body;
   try {
-    let patch = {};
-    if (action === "read") patch = { isRead: true };
-    else if (action === "unread") patch = { isRead: false };
-    else return jsonResponse({ _error: `Unknown action: ${action}` }, 400);
+    const authHeaders = {
+      Authorization: `Bearer ${tokens.access_token}`,
+      "Content-Type": "application/json",
+    };
 
+    // PATCH-style mutations (state flags)
+    let patch = null;
+    if (action === "read" || action === "mark_read") patch = { isRead: true };
+    else if (action === "unread" || action === "mark_unread") patch = { isRead: false };
+    else if (action === "flag" || action === "star") patch = { flag: { flagStatus: "flagged" } };
+    else if (action === "unflag" || action === "unstar") patch = { flag: { flagStatus: "notFlagged" } };
+
+    if (patch) {
+      const res = await fetch(`${GRAPH}/messages/${encodeURIComponent(messageId)}`, {
+        method: "PATCH",
+        headers: authHeaders,
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        return jsonResponse({ _error: err.error?.message || `Modify failed: ${res.status}` }, res.status);
+      }
+      return jsonResponse({ ok: true });
+    }
+
+    // Move-style mutations (folder relocation)
+    let destinationId = null;
+    if (action === "archive") destinationId = "archive";
+    else if (action === "trash") destinationId = "deleteditems";
+
+    if (destinationId) {
+      const res = await fetch(`${GRAPH}/messages/${encodeURIComponent(messageId)}/move`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({ destinationId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        return jsonResponse({ _error: err.error?.message || `Move failed: ${res.status}` }, res.status);
+      }
+      return jsonResponse({ ok: true });
+    }
+
+    return jsonResponse({ _error: `Unknown action: ${action}. Supported: read, unread, archive, trash, flag, unflag.` }, 400);
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// ─── Drafts ───
+
+export async function handleOutlookCreateDraft(env, body, userId, jsonResponse) {
+  if (!userId) return jsonResponse({ _error: "Not authenticated" }, 401);
+  const tokens = await getMicrosoftAccessToken(userId, env);
+  if (!tokens) return jsonResponse({ _error: "Microsoft not connected" }, 401);
+
+  const { to, subject, bodyText, bodyHtml } = body;
+  try {
+    const message = {
+      subject: subject || "",
+      body: { contentType: bodyHtml ? "html" : "text", content: bodyHtml || bodyText || "" },
+      ...(to ? { toRecipients: [{ emailAddress: { address: to } }] } : {}),
+    };
+    const res = await fetch(`${GRAPH}/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tokens.access_token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(message),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return jsonResponse({ _error: data?.error?.message || `Draft create failed: ${res.status}` }, res.status);
+    }
+    return jsonResponse({ ok: true, id: data.id, conversationId: data.conversationId });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+export async function handleOutlookUpdateDraft(env, messageId, body, userId, jsonResponse) {
+  if (!userId) return jsonResponse({ _error: "Not authenticated" }, 401);
+  const tokens = await getMicrosoftAccessToken(userId, env);
+  if (!tokens) return jsonResponse({ _error: "Microsoft not connected" }, 401);
+
+  const { to, subject, bodyText, bodyHtml } = body;
+  try {
+    const patch = {};
+    if (subject !== undefined) patch.subject = subject;
+    if (bodyText !== undefined || bodyHtml !== undefined) {
+      patch.body = { contentType: bodyHtml ? "html" : "text", content: bodyHtml || bodyText || "" };
+    }
+    if (to !== undefined) {
+      patch.toRecipients = to ? [{ emailAddress: { address: to } }] : [];
+    }
     const res = await fetch(`${GRAPH}/messages/${encodeURIComponent(messageId)}`, {
       method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${tokens.access_token}`,
-        "Content-Type": "application/json",
-      },
+      headers: { Authorization: `Bearer ${tokens.access_token}`, "Content-Type": "application/json" },
       body: JSON.stringify(patch),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      return jsonResponse({ _error: err.error?.message || `Modify failed: ${res.status}` }, res.status);
+      return jsonResponse({ _error: err.error?.message || `Draft update failed: ${res.status}` }, res.status);
     }
     return jsonResponse({ ok: true });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// ─── Free / Busy ───
+
+export async function handleOutlookFreeBusy(env, body, userId, jsonResponse) {
+  if (!userId) return jsonResponse({ _error: "Not authenticated" }, 401);
+  const tokens = await getMicrosoftAccessToken(userId, env);
+  if (!tokens) return jsonResponse({ _error: "Microsoft not connected" }, 401);
+
+  const { timeMin, timeMax, attendees } = body;
+  if (!timeMin || !timeMax) return jsonResponse({ _error: "timeMin and timeMax required" }, 400);
+
+  try {
+    // Microsoft Graph getSchedule — returns availability for a list of mailboxes (default: self)
+    const schedules = (attendees && attendees.length) ? attendees : ["me"];
+    const res = await fetch(`${GRAPH}/calendar/getSchedule`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tokens.access_token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        schedules,
+        startTime: { dateTime: timeMin, timeZone: "UTC" },
+        endTime: { dateTime: timeMax, timeZone: "UTC" },
+        availabilityViewInterval: 30,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return jsonResponse({ _error: data?.error?.message || `FreeBusy failed: ${res.status}` }, res.status);
+    }
+    // Normalize to a simpler shape: { calendars: [{ email, busy: [{ start, end, status }] }] }
+    const calendars = (data.value || []).map((s) => ({
+      email: s.scheduleId,
+      busy: (s.scheduleItems || []).map((it) => ({
+        start: it.start?.dateTime,
+        end: it.end?.dateTime,
+        status: it.status, // free | tentative | busy | oof | workingElsewhere | unknown
+        subject: it.subject || "",
+      })),
+    }));
+    return jsonResponse({ calendars });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
   }

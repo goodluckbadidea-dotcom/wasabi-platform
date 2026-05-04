@@ -24,7 +24,7 @@ import { handleListRules, handleCreateRule, handleGetRule, handleUpdateRule, han
 import { handleListComments, handleCreateComment, handleDeleteComment } from './worker/handlers/records.js';
 import { handleGoogleAuthUrl, handleGoogleCallback, handleGoogleStatus, handleGoogleDisconnect, handleGmailSummary, handleGmailSearch, handleGmailGetMessage, handleGmailGetThread, handleGmailUpdateDraft, handleGmailSend, handleGmailCreateDraft, handleGmailModify, handleCalendarSummary, handleCalendarList, handleCalendarListEvents, handleCalendarCreateEvent, handleCalendarUpdateEvent, handleCalendarDeleteEvent, handleCalendarFreeBusy } from './worker/handlers/google.js';
 import { handleMicrosoftAuthUrl, handleMicrosoftCallback, handleMicrosoftStatus, handleMicrosoftDisconnect } from './worker/handlers/microsoft.js';
-import { handleOutlookSummary, handleOutlookSearch, handleOutlookGetMessage, handleOutlookGetThread, handleOutlookSend, handleOutlookModify, handleOutlookCalendarSummary, handleOutlookListEvents, handleOutlookCreateEvent, handleOutlookUpdateEvent, handleOutlookDeleteEvent } from './worker/handlers/outlook.js';
+import { handleOutlookSummary, handleOutlookSearch, handleOutlookGetMessage, handleOutlookGetThread, handleOutlookSend, handleOutlookModify, handleOutlookCreateDraft, handleOutlookUpdateDraft, handleOutlookFreeBusy, handleOutlookCalendarSummary, handleOutlookListEvents, handleOutlookCreateEvent, handleOutlookUpdateEvent, handleOutlookDeleteEvent } from './worker/handlers/outlook.js';
 import { handleFigmaStatus, handleFigmaProjects, handleFigmaFiles, handleFigmaFile, handleFigmaImport } from './worker/handlers/figma.js';
 import { runAutomationTick, checkAutomationTriggers, runNeuronPruneTick } from './worker/automation/engine.js';
 import { runSyncFlushTick, handleSyncConfigure, handleSyncPush, handleSyncPull, handleSyncStatus, handleSyncDelete, handleDisconnect, handleSyncBackup, handleSyncBootstrap, handleSyncFlush, getNotionKeyFromDB, invalidateSummaryCache } from './worker/handlers/notion-sync.js';
@@ -510,6 +510,19 @@ export default {
           const msgId = path.split("/microsoft/mail/modify/")[1];
           const body = await request.json();
           return await handleOutlookModify(env, msgId, body, msUid, jsonResponse);
+        }
+        if (path === "/microsoft/mail/drafts" && request.method === "POST") {
+          const body = await request.json();
+          return await handleOutlookCreateDraft(env, body, msUid, jsonResponse);
+        }
+        if (path.match(/^\/microsoft\/mail\/drafts\/[^/]+$/) && request.method === "PATCH") {
+          const msgId = path.split("/microsoft/mail/drafts/")[1];
+          const body = await request.json();
+          return await handleOutlookUpdateDraft(env, msgId, body, msUid, jsonResponse);
+        }
+        if (path === "/microsoft/calendar/freebusy" && request.method === "POST") {
+          const body = await request.json();
+          return await handleOutlookFreeBusy(env, body, msUid, jsonResponse);
         }
         if (path === "/microsoft/calendar/summary" && request.method === "GET") {
           return await handleOutlookCalendarSummary(env, msUid, jsonResponse);
