@@ -32,7 +32,6 @@ const VIEW_TYPES = [
   { type: "summaryTiles", label: "Summary Tiles", desc: "KPI metric tiles", Icon: IconBolt },
   { type: "activityFeed", label: "Activity Feed", desc: "Recent changes stream", Icon: IconInbox },
   { type: "document", label: "Document", desc: "Rich text page content", Icon: IconPage },
-  { type: "chat", label: "Chat", desc: "AI chat with data context", Icon: IconBell },
   { type: "linked_sheet", label: "Linked Sheet", desc: "Read-only Google Sheet or CSV", Icon: IconSheet },
 ];
 

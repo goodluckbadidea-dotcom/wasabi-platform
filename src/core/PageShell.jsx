@@ -10,7 +10,6 @@ import { fetchDataSource, updateRecord, createRecord, deleteRecords, resolveSour
 import { configureSyncNotionDB, syncPull } from "../lib/api.js";
 // savePageConfig is handled internally by updatePageConfig (PagesContext)
 import ViewRenderer from "../views/ViewRenderer.jsx";
-import ChatPanel from "../views/ChatPanel.jsx";
 import SubPageNav from "./SubPageNav.jsx";
 import DatabaseBrowser from "./DatabaseBrowser.jsx";
 import ViewTypePicker from "./ViewTypePicker.jsx";
@@ -449,16 +448,22 @@ export default function PageShell({
     );
   }
 
-  // ── Chat view (full-screen) ──
+  // ── Chat view fallback (legacy view type, removed 2026-05-05) ──
+  // Existing pages with a saved chat view render an empty state instead of crashing.
   if (activeView?.type === "chat") {
     return (
-      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-        <ChatPanel
-          pageConfig={pageConfig}
-          schema={schema}
-          data={data}
-          onRefresh={fetchData}
-        />
+      <div
+        style={{
+          display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          height: "100%", color: C.darkMuted,
+          fontSize: 14, gap: 8, padding: 40, textAlign: "center",
+        }}
+      >
+        <div style={{ fontWeight: 600, color: C.darkText }}>Chat view is no longer supported</div>
+        <div style={{ fontSize: 12, lineHeight: 1.5, maxWidth: 360 }}>
+          Open the Wasabi panel from the sidebar instead. You can delete this view from the View menu.
+        </div>
       </div>
     );
   }

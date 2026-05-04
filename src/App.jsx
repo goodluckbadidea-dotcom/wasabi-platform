@@ -1,6 +1,6 @@
 // ─── Wasabi Platform App Shell ───
 // Root component: auth gate → layout → routing
-// Layout: TopHeader + [ChatPanel | Sidebar | Content]
+// Layout: TopHeader + [WasabiPanel | Sidebar | Content]
 // Top header: WASABI wordmark + page-level controls (right side).
 // Sidebar: Icon-bar navigation, expandable.
 
@@ -39,7 +39,7 @@ function lazyWithRetry(importFn) {
   );
 }
 
-const ChatPanel = lazyWithRetry(() => import("./features/ChatPanel.jsx"));
+const WasabiPanel = lazyWithRetry(() => import("./core/WasabiPanel.jsx"));
 import Onboarding from "./core/Onboarding.jsx";
 import PageBuilder from "./core/PageBuilder.jsx";
 import PageShell from "./core/PageShell.jsx";
@@ -268,7 +268,10 @@ function AppContent() {
     {
       shortcut: "mod+.",
       description: "Toggle Wasabi panel",
-      handler: () => setWasabiPanelOpen((o) => !o),
+      handler: () => {
+        if (identity?.role === "viewer") return;
+        setWasabiPanelOpen((o) => !o);
+      },
     },
     {
       shortcut: "mod+i",
@@ -537,8 +540,8 @@ function AppContent() {
           position: "relative",
         }}
       >
-        {/* Wasabi Panel (inline on desktop, overlay on narrow viewports) */}
-        {wasabiPanelOpen && !isNarrow && (
+        {/* Wasabi Panel (inline on desktop, overlay on narrow viewports) — viewers hidden */}
+        {wasabiPanelOpen && !isNarrow && identity?.role !== "viewer" && (
           <div style={{
             animation: ANIM.snapInLeft(0.02),
             display: "flex",
@@ -546,7 +549,7 @@ function AppContent() {
             borderRight: `1px solid ${C.edgeLine}`,
           }}>
             <React.Suspense fallback={null}>
-              <ChatPanel
+              <WasabiPanel
                 onClose={() => setWasabiPanelOpen(false)}
                 activePageConfig={activePageConfig}
                 activePageData={activePageData}
@@ -556,7 +559,7 @@ function AppContent() {
             </React.Suspense>
           </div>
         )}
-        {wasabiPanelOpen && isNarrow && (
+        {wasabiPanelOpen && isNarrow && identity?.role !== "viewer" && (
           <>
             {/* Backdrop */}
             <div

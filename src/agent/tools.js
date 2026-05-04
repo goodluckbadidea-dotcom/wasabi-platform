@@ -1549,71 +1549,25 @@ export const SYSTEM_TOOLS = [
   UPDATE_KNOWLEDGE_BASE,
 ];
 
-// ── Assistant tool sets by role ──
-// Viewer: read-only (query databases, search emails, view calendar)
-// Editor: read + lightweight writes (query, update records, email, calendar)
-// Admin: editor tools (full agent access is via Agent tab)
+// ── Role-based Wasabi tool filtering ──
+// Editors get most of WASABI_TOOLS but lose destructive / admin-shaped tools.
+// Admins get the full set. Viewers don't reach this path — chat is hidden for viewers.
+const ADMIN_ONLY_TOOL_NAMES = new Set([
+  "create_page_config",
+  "save_plugin",
+  "batch_operations",
+  "delete_neuron",
+  "remove_neuron_node",
+  "delete_custom_function",
+  "send_email",
+  "modify_email",
+  "delete_calendar_event",
+  "send_outlook_email",
+  "modify_outlook_message",
+  "delete_outlook_event",
+]);
 
-// Read tools shared across all assistant tiers
-const ASSISTANT_READS = [
-  QUERY_DATABASE,
-  QUERY_NEURONS,
-  QUERY_NEURON_DATA,
-  GET_RELATIONSHIPS,
-  // Email/Calendar — both providers + status
-  GET_EMAIL_PROVIDER_STATUS,
-  SEARCH_EMAILS,
-  GET_EMAIL,
-  LIST_CALENDAR_EVENTS,
-  SEARCH_OUTLOOK_MESSAGES,
-  GET_OUTLOOK_MESSAGE,
-  GET_OUTLOOK_THREAD,
-  LIST_OUTLOOK_EVENTS,
-  GET_OUTLOOK_CALENDAR_SUMMARY,
-  // Per-record context
-  GET_RECORD_CONTEXT,
-  GET_RECORD_COMMENTS,
-  GET_RECORD_NOTE,
-  LIST_RECORD_FILES,
-  LIST_CHILD_ROWS,
-  // Workspace structure
-  LIST_PAGES,
-  LIST_USERS,
-  LIST_NOTIFICATIONS,
-  // Documents, permissions, links
-  GET_DOCUMENT,
-  GET_PAGE_PERMISSIONS,
-  LIST_LINKS,
-];
-
-export const ASSISTANT_TOOLS_VIEWER = [...ASSISTANT_READS];
-
-export const ASSISTANT_TOOLS_EDITOR = [
-  ...ASSISTANT_READS,
-  UPDATE_PAGE,
-  POST_NOTIFICATION,
-  CREATE_CALENDAR_EVENT,
-  // Outlook calendar/draft writes — assistant can schedule and draft, full send/delete is admin only
-  CREATE_OUTLOOK_EVENT,
-  CREATE_OUTLOOK_DRAFT,
-  CHECK_OUTLOOK_FREEBUSY,
-];
-
-export const ASSISTANT_TOOLS_ADMIN = [
-  ...ASSISTANT_READS,
-  UPDATE_PAGE,
-  POST_NOTIFICATION,
-  CREATE_CALENDAR_EVENT,
-  // Outlook write parity for admin
-  SEND_OUTLOOK_EMAIL,
-  CREATE_OUTLOOK_DRAFT,
-  UPDATE_OUTLOOK_DRAFT,
-  MODIFY_OUTLOOK_MESSAGE,
-  CREATE_OUTLOOK_EVENT,
-  UPDATE_OUTLOOK_EVENT,
-  DELETE_OUTLOOK_EVENT,
-  CHECK_OUTLOOK_FREEBUSY,
-];
-
-// Legacy export — defaults to admin tool set
-export const ASSISTANT_TOOLS = ASSISTANT_TOOLS_ADMIN;
+export function getWasabiToolsForRole(role) {
+  if (role === "admin") return WASABI_TOOLS;
+  return WASABI_TOOLS.filter((t) => !ADMIN_ONLY_TOOL_NAMES.has(t.name));
+}

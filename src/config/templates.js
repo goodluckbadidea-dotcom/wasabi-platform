@@ -21,7 +21,6 @@ export const TEMPLATES = [
       { type: "gantt", position: "main", config: {} },
       { type: "kanban", position: "main", config: {} },
       { type: "summaryTiles", position: "main", config: {} },
-      { type: "chat", position: "main", config: {} },
     ],
     agentPrompt:
       "You are a project management assistant. Help users track tasks, manage timelines, and report on project health. Suggest priority adjustments and flag overdue items proactively.",
@@ -45,7 +44,6 @@ export const TEMPLATES = [
       { type: "cardGrid", position: "main", config: {} },
       { type: "activityFeed", position: "main", config: {} },
       { type: "summaryTiles", position: "main", config: {} },
-      { type: "chat", position: "main", config: {} },
     ],
     agentPrompt:
       "You are a CRM assistant. Help users manage contacts, track deals, and follow up on leads. Summarize pipeline health and flag stale contacts.",
@@ -69,7 +67,6 @@ export const TEMPLATES = [
       { type: "charts", position: "main", config: {} },
       { type: "summaryTiles", position: "main", config: {} },
       { type: "form", position: "main", config: {} },
-      { type: "chat", position: "main", config: {} },
     ],
     agentPrompt:
       "You are an inventory management assistant. Help users track stock levels, flag low inventory, calculate reorder quantities, and analyze category trends.",
@@ -92,7 +89,6 @@ export const TEMPLATES = [
       { type: "kanban", position: "main", config: {} },
       { type: "gantt", position: "main", config: {} },
       { type: "notificationFeed", position: "main", config: {} },
-      { type: "chat", position: "main", config: {} },
     ],
     agentPrompt:
       "You are an operations assistant. Help users manage task workflows, track blockers, and report on team velocity. Flag overdue items and suggest reassignments.",
@@ -114,7 +110,6 @@ export const TEMPLATES = [
       { type: "table", position: "main", config: {} },
       { type: "charts", position: "main", config: {} },
       { type: "summaryTiles", position: "main", config: {} },
-      { type: "chat", position: "main", config: {} },
     ],
     agentPrompt:
       "You are a financial tracking assistant. Help users categorize transactions, track balances, generate spending summaries, and identify trends.",
@@ -135,7 +130,6 @@ export const TEMPLATES = [
       { type: "table", position: "main", config: {} },
       { type: "kanban", position: "main", config: {} },
       { type: "form", position: "main", config: {} },
-      { type: "chat", position: "main", config: {} },
     ],
     agentPrompt:
       "You are a task management assistant. Help users organize their to-do list, set priorities, and track deadlines. Suggest what to focus on next.",

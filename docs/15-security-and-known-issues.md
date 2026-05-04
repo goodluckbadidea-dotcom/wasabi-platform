@@ -1,6 +1,6 @@
 # Security Posture & Known Issues
 
-**Last Updated:** 2026-05-04
+**Last Updated:** 2026-05-05
 
 ## Product Context
 
@@ -406,3 +406,26 @@ Trade-off: virtualization math in Table.jsx still assumes `ROW_HEIGHT * idx` for
 `RecordComments` used `MentionInput` without `multiline`, which renders a single-line `<input type="text">`. Long comments scrolled horizontally and the start of the message disappeared as the user typed — they couldn't see what they had already written.
 
 Fixed by passing `multiline rows={1}` and adding auto-grow behavior to `MentionInput`: in multiline mode, the textarea height resets to `auto` then sets to `scrollHeight` on every value change, capped at `MAX_AUTOGROW_PX = 220` (~10 lines). Past the cap, internal vertical scroll kicks in. The Send button stays bottom-anchored via `alignItems: flex-end` on the input row. Enter-to-send and Shift+Enter-for-newline preserved. Commit `d82056e`.
+
+### Assistant Mode Removed; Chat Now Editor + Admin Only (2026-05-05)
+
+The dual-tab Assistant/Agent chat ([features/ChatPanel.jsx](src/features/ChatPanel.jsx)) was removed. The Wasabi panel now always runs the full agent. Role access shifted in two ways:
+
+- **Editors gain chat for the first time.** Previously the Agent tab was admin-only ([features/ChatPanel.jsx:161](src/features/ChatPanel.jsx:161): `canUseAgent = identity?.role === "admin"`). Now editors can use the chat too. To prevent privilege escalation via tools, `getWasabiToolsForRole(role)` in [src/agent/tools.js](src/agent/tools.js) filters `WASABI_TOOLS` for non-admins — editors lose `delete_neuron`, `remove_neuron_node`, `delete_custom_function`, `delete_calendar_event`, `delete_outlook_event`, `send_email`, `send_outlook_email`, `modify_email`, `modify_outlook_message`, `save_plugin`, `create_page_config`, `batch_operations`. Admins keep the full set.
+- **Viewers lose chat entirely.** The Wasabi flame button in [Navigation.jsx:784](src/core/Navigation.jsx:784) is gated on `identity?.role !== "viewer"`. Defense-in-depth: the Cmd+. shortcut and the panel render in [App.jsx](src/App.jsx) are also gated on the same check, so a viewer can't open the panel via keyboard or programmatic state push.
+
+Removed code: `buildAssistantContext`, `buildAssistantPrompt`, `ASSISTANT_TOOLS_*`, `ASSISTANT_READS`, `executeChatTool`, the `wasabi_chat_tab` localStorage key, and `features/ChatPanel.jsx` itself. App.jsx now imports `WasabiPanel` directly.
+
+### Per-Workspace `agentMode` Collapsed to Single Global Toggle (2026-05-05)
+
+The per-workspace `agentMode` setting (3-way radio: `auto` / `confirm` / `plan`, surfaced redundantly in `WorkspaceSettings.jsx` and `RecordDrawer.jsx`) was overengineered: a "how aggressively the AI takes action" preference is naturally global, not per-workspace; "plan" mode was prompt-only with no code enforcement; and the duplicate UI was a maintenance hazard.
+
+Replaced with a single workspace-wide toggle in **SystemManager → Settings** ("Confirm before write actions", admin-only). Storage: a new `agent_confirm_writes` key in the `connections` D1 table (added to `NON_SECRET_KEYS` so it isn't encrypted). [WasabiPanel.jsx](src/core/WasabiPanel.jsx) reads it via `api.getConnections()` per turn and converts on/off → `"confirm"`/`"auto"` for the existing prompt + `onToolApproval` plumbing. The `getAgentBehaviorPrompt` helper in `wasabiPrompt.js` was simplified to two cases (`confirm` returns the ask-permission instructions, anything else returns ""). The `plan` branch was deleted.
+
+Removed: per-workspace `agentMode` field from `pageConfig.js` defaults; the radio UI in `WorkspaceSettings.jsx` and `RecordDrawer.jsx`; the `frozenContext.agentMode === "assistant"` role-derivation branch (which was only used by the now-deleted `buildAssistantPrompt`).
+
+### Per-Page "Chat" View Type Removed (2026-05-05)
+
+`views/ChatPanel.jsx` was a separate per-page chat view (not the floating panel). Marked as a registered view type — listed in `ViewTypePicker.jsx`, `VisualPageBuilder.jsx`, and used in 6 page templates (`templates.js`). Vestigial — superseded by the floating Wasabi panel.
+
+Deleted the file, removed the `<ChatPanel>` import + render block from `PageShell.jsx`, deleted the chat entries from `ViewTypePicker.jsx`, `VisualPageBuilder.jsx`, and all 6 templates. To avoid breaking existing user pages that have a saved `viewConfig.type === "chat"`, `PageShell.jsx` retains a small fallback render block that shows an empty state ("Chat view is no longer supported — open the Wasabi panel from the sidebar instead") when it encounters one. Users can delete the stale view from the View menu.

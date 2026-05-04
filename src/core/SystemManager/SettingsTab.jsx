@@ -10,6 +10,95 @@ import * as api from "../../lib/api.js";
 import { clearConnection, factoryReset as apiFactoryReset } from "../../lib/api.js";
 import { isAdmin } from "../../lib/roles.js";
 
+// ── Agent Confirmation Section (admin-only) ──
+// Single workspace-wide toggle for "Ask before write actions" agent behavior.
+// Replaces the per-workspace `agentMode` setting that lived on each pageConfig.
+
+function AgentConfirmSection() {
+  const { identity } = usePlatform();
+  const [enabled, setEnabled] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const conns = await api.getConnections();
+        const row = (conns?.connections || []).find((c) => c.key === "agent_confirm_writes");
+        if (!cancelled) setEnabled(row?.value === "on");
+      } catch (err) {
+        console.warn("[SettingsTab] Load agent_confirm_writes:", err.message || err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (identity && identity.role !== "admin") return null;
+
+  const handleToggle = async (next) => {
+    setEnabled(next);
+    setSaving(true);
+    try {
+      await api.setConnection("agent_confirm_writes", next ? "on" : "off");
+    } catch (err) {
+      console.warn("[SettingsTab] Save agent_confirm_writes:", err.message || err);
+      setEnabled(!next); // revert on failure
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <div style={{
+        fontSize: 10, color: C.darkMuted, fontFamily: FONT,
+        textTransform: "uppercase", letterSpacing: "0.08em",
+        marginTop: 40, marginBottom: 14,
+      }}>
+        AI Behavior
+      </div>
+      <div style={{
+        background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
+        borderRadius: RADIUS.lg, padding: "16px 18px",
+        display: "flex", alignItems: "center", gap: 16, marginBottom: 28,
+      }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.darkText, fontFamily: FONT, marginBottom: 4 }}>
+            Confirm before write actions
+          </div>
+          <div style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT, lineHeight: 1.4 }}>
+            Wasabi will ask before creating, updating, or deleting records. Read-only operations always run freely.
+          </div>
+        </div>
+        <button
+          onClick={() => handleToggle(!enabled)}
+          disabled={loading || saving}
+          aria-pressed={enabled}
+          aria-label="Confirm before write actions"
+          style={{
+            width: 42, height: 24, borderRadius: 12, border: "none",
+            background: enabled ? C.accent : C.darkBorder,
+            position: "relative", cursor: loading || saving ? "default" : "pointer",
+            transition: "background 0.15s",
+            opacity: loading ? 0.5 : 1, flexShrink: 0,
+            outline: "none",
+          }}
+        >
+          <span style={{
+            position: "absolute", top: 2,
+            left: enabled ? 20 : 2,
+            width: 20, height: 20, borderRadius: "50%",
+            background: "#fff", transition: "left 0.15s",
+          }} />
+        </button>
+      </div>
+    </>
+  );
+}
+
 // ── PIN Setup Section (admin-only, used inside SettingsTab) ──
 
 function PinSetupSection() {
@@ -434,6 +523,9 @@ export default function SettingsTab() {
           Log Out
         </button>
       </div>
+
+      {/* ── AI Behavior ── */}
+      <AgentConfirmSection />
 
       {/* ── PIN Lock ── */}
       <PinSetupSection />

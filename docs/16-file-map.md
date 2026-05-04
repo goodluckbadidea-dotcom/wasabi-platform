@@ -1,6 +1,6 @@
 # File Map
 
-**Last Updated:** 2026-05-04
+**Last Updated:** 2026-05-05
 
 Complete source file listing for the Wasabi platform. Excludes `node_modules/`, `dist/`, and `.git/`.
 
@@ -42,7 +42,7 @@ Extracted from worker.js during the 2026-04-06 refactor. Each file is a named ES
 | `worker/schema.js` | D1 schema definitions for all tables. Source of truth for CREATE TABLE statements. |
 | `worker/handlers/init.js` | Database initialization, schema migrations, schema version tracking |
 | `worker/handlers/auth.js` | Login, register, refresh, session management |
-| `worker/handlers/connections.js` | API key CRUD (`connections` + `user_connections` tables). Encrypts secret keys on write, decrypts on read. |
+| `worker/handlers/connections.js` | API key CRUD (`connections` + `user_connections` tables). Encrypts secret keys on write, decrypts on read. **2026-05-05:** `agent_confirm_writes` added to `NON_SECRET_KEYS` (workspace-wide AI behavior toggle, plain string `"on"`/`"off"`). |
 | `worker/handlers/google.js` | Google OAuth callback, status, disconnect, token refresh. All token values encrypted at rest. |
 | `worker/handlers/microsoft.js` | Microsoft Entra OAuth: auth URL generation, callback (find/create user by email, issue JWT), status, disconnect, `getMicrosoftAccessToken()` with auto-refresh. |
 | `worker/handlers/outlook.js` | Microsoft Graph API handlers: Outlook mail (summary, search, read, thread, send, modify, draft create/update) and calendar (summary, list, create, update, delete, free/busy). Phase 5C/D (2026-05-04) extended `handleOutlookModify` with archive/trash/flag/unflag actions and added `handleOutlookCreateDraft`, `handleOutlookUpdateDraft`, `handleOutlookFreeBusy`. |
@@ -70,7 +70,7 @@ Extracted from worker.js during the 2026-04-06 refactor. Each file is a named ES
 | File | Purpose |
 |------|---------|
 | `src/main.jsx` | React entry point. Renders App into DOM. |
-| `src/App.jsx` | Root component. Context providers, routing (login/setup/main), lazy loading, keyboard shortcuts. **2026-05-04 (commit `8dd0445`):** retired the lazy imports for `GmailView` and `OutlookView`. Route handler now treats `activePage === "gmail" \|\| "outlook" \|\| "inbox-unified"` as redirects to `UnifiedInboxView`, so saved localStorage state pointing at the old surfaces still works. |
+| `src/App.jsx` | Root component. Context providers, routing (login/setup/main), lazy loading, keyboard shortcuts. **2026-05-04 (commit `8dd0445`):** retired the lazy imports for `GmailView` and `OutlookView`. Route handler now treats `activePage === "gmail" \|\| "outlook" \|\| "inbox-unified"` as redirects to `UnifiedInboxView`, so saved localStorage state pointing at the old surfaces still works. **2026-05-05:** lazy import points at `core/WasabiPanel.jsx` directly (the dual-tab `features/ChatPanel.jsx` wrapper was deleted alongside the Assistant feature). Cmd+. shortcut and the panel render are both gated on `identity?.role !== "viewer"` for defense-in-depth. |
 
 ---
 
@@ -101,11 +101,11 @@ App shell, navigation, settings. Loaded eagerly.
 | `LinkPicker.jsx` | Three-panel cross-page cell link picker (Pages → Views → Data Grid). D1 tables (primary), Notion, and linked sheet sources. Uses `resolveSourceType` to branch data loading. Schema type map uses `allFields` for compatibility checks (2026-04-15). **2026-05-04 (commit `8e5b95b`):** drill-down into sub-items. D1 fetch caches raw data (`schemaRes` incl. `sub_columns` + `allRows`) in `rawD1` state so drill-in/back doesn't refetch. `parentIdsWithChildren` Set drives which parent rows show a chevron in the new left-edge column of `LinkPickerGrid`. `subItemContext` state + `handleDrillIn` / `handleDrillBack` rebuild `viewData` from `sub_columns` + child rows when drilled in. Breadcrumb above the grid: "← Back  Page › Parent Title › Sub-items". `LinkPickerGrid` rows now `{ pageId, cells, hasChildren }` (sheet path unchanged); `onDrillIn` prop conditionally renders the chevron column. Sub-item links use the same `sourceRef` shape as parent links since row IDs are unique within a table. |
 | `LoginScreen.jsx` | Multi-user login with password + Microsoft SSO (popup OAuth flow, login mode only) |
 | `MiniView.jsx` | Compact/minimal view renderer |
-| `Navigation.jsx` | Left sidebar: page list, search, system nav. **2026-05-04 (commit `8dd0445`):** retired the per-provider Outlook and Gmail buttons. The unified "Inbox" button (added in `e28f979`) is now the only mail surface, shown when EITHER provider is connected. Combined unread badge sums `unreadCount + outlookUnreadCount`. SYSTEM_PAGES set includes `inbox-unified`. |
+| `Navigation.jsx` | Left sidebar: page list, search, system nav. **2026-05-04 (commit `8dd0445`):** retired the per-provider Outlook and Gmail buttons. The unified "Inbox" button (added in `e28f979`) is now the only mail surface, shown when EITHER provider is connected. Combined unread badge sums `unreadCount + outlookUnreadCount`. SYSTEM_PAGES set includes `inbox-unified`. **2026-05-05:** Wasabi flame button hidden when `identity?.role === "viewer"` — chat is editor + admin only. |
 | `NodeEditor.jsx` | Visual node editor for automation flows |
 | `Onboarding.jsx` | First-time user onboarding flow |
 | `PageBuilder.jsx` | Page layout builder |
-| `PageShell.jsx` | Orchestrator: loads page config, fetches data, renders active view. `handleUpdate` passes `isSubItem: !!record?._parentRowId` to `updateRecord` so sub-item cell edits route to `sub_columns` instead of silently resolving against parent columns (2026-04-15). Conflict resolver does the same lookup. |
+| `PageShell.jsx` | Orchestrator: loads page config, fetches data, renders active view. `handleUpdate` passes `isSubItem: !!record?._parentRowId` to `updateRecord` so sub-item cell edits route to `sub_columns` instead of silently resolving against parent columns (2026-04-15). Conflict resolver does the same lookup. **2026-05-05:** `views/ChatPanel.jsx` import removed (file deleted). Pages with a saved `activeView.type === "chat"` render an empty-state fallback that points users at the Wasabi panel. |
 | `PluginWidget.jsx` | Sandboxed iframe plugin renderer |
 | `SetupWizard.jsx` | First-run setup: worker URL, secret, admin creation |
 | `SheetUrlDialog.jsx` | Google Sheets URL input dialog |
@@ -115,7 +115,7 @@ App shell, navigation, settings. Loaded eagerly.
 | `VisualPageBuilder.jsx` | Drag-and-drop page layout builder. On new D1 table creation, awaits `updateSubColumnSchema(pageId, [{id, name: "Name", type: "title"}])` after `savePageConfig` before calling `addPage` (2026-04-15) — guarantees default sub-column seed lands before navigation triggers the first fetch, so sub-item creation works out of the box. |
 | `WasabiFlame.jsx` | Animated flame logo component |
 | `WasabiOrb.jsx` | Animated orb logo component |
-| `WasabiPanel.jsx` | Full Wasabi agent chat panel. Pre-warms hydrated neuron cache, uses relevance-filtered neuron context. |
+| `WasabiPanel.jsx` | The Wasabi agent chat panel — the only chat surface (rendered directly from `App.jsx` since 2026-05-05). Pre-warms hydrated neuron cache, uses relevance-filtered neuron context. **2026-05-05:** uses `getWasabiToolsForRole(identity?.role)` so editors get a restricted tool set (no destructive admin tools). Reads workspace-wide `agent_confirm_writes` from the connections table to decide whether to wire `onToolApproval` (replaces the old per-workspace `pageConfig.settings.agentMode`). |
 
 ### src/core/SystemManager/ (9 files)
 
@@ -127,7 +127,7 @@ Settings panel with tabbed interface.
 | `SystemManager.jsx` | Main settings container with tab navigation |
 | `OverviewTab.jsx` | System overview: stats, health, version |
 | `ConnectionsTab.jsx` | External service connections (Notion, Google, Claude) |
-| `SettingsTab.jsx` | General settings configuration |
+| `SettingsTab.jsx` | General settings configuration. **2026-05-05:** new admin-only `AgentConfirmSection` toggle ("Confirm before write actions") backed by the `agent_confirm_writes` connection key. Replaces the per-workspace `agentMode` setting (workspace-wide single global toggle now). |
 | `UsersTab.jsx` | User management: invite, roles, sessions |
 | `AuditLogTab.jsx` | Activity audit log viewer |
 | `components/ConnectionRow.jsx` | Single connection row component |
@@ -148,7 +148,6 @@ Database view components. Lazy-loaded by PageShell.
 | `Calendar.jsx` | Calendar view of date-based records. Sub-items excluded from main grid; shown in day popover on parent expand (2026-04-15). Owner display in popover via `showOwner` config (2026-04-16). **2026-05-04 (commit `32b696e`):** subscribes to `useLinks().resolveLinksForView` and stores `resolvedLinks` Map. `coerceLinkedDateValue` helper (top of file) parses resolved range strings back to `{start, end}` so the existing `readProp` / `parseDateStr` path keeps working. Date placement now respects links for both parent and sub-item rows. |
 | `CardGrid.jsx` | Card grid gallery view. Owner display via `showOwner` config (2026-04-16). **2026-05-04 (commit `32b696e`):** subscribes to `resolveLinksForView` and exposes a `readFieldL(page, field)` wrapper that prefers linked values, falls back to `readField`. Used at six sites: filter (page-property match), search (across title/badge/body/metric), sort (a/b comparison), title, badge, body fields, metric fields. Linked values flow through every part of the card render. |
 | `Charts.jsx` | Chart visualization view |
-| `ChatPanel.jsx` | Chat panel integrated with views |
 | `ConnectionRenderer.jsx` | Renders connection/relation visualizations |
 | `CustomView.jsx` | User-authored HTML/JS custom views |
 | `Document.jsx` | Document page component |
@@ -222,7 +221,6 @@ Personal productivity surface. User-scoped data. Lazy-loaded.
 | `OutlookView.jsx` | Outlook inbox view: folder tabs (Inbox/Sent/Drafts), search, inline expand, compose, reply. Uses Microsoft Graph via worker. **2026-05-04: NO LONGER WIRED IN NAVIGATION OR APP ROUTING** — retired in commit `8dd0445` after the unified inbox shipped. The component file is intentionally retained on disk per CLAUDE.md "never delete working code." Restoring requires re-adding the lazy import + route block in App.jsx and the nav button block in Navigation.jsx. |
 | `GmailView.jsx` | Gmail inbox, read, compose, reply. **2026-05-04: NO LONGER WIRED IN NAVIGATION OR APP ROUTING** — same status as `OutlookView.jsx`. File retained for revival if needed. |
 | `UnifiedInboxView.jsx` | **(Phase 5A, 2026-05-04)** Unified Gmail + Outlook inbox in one surface and the ONLY mail surface as of commit `8dd0445`. Fetches both providers in parallel, normalizes to common shape (`{ key, provider, id, threadId\|conversationId, from, fromName, subject, snippet, date, isRead }`), sorts merged list by date DESC. Provider badges on each message (Gmail red, Outlook MS-blue with 4-square logo). Filter pills: All/Unread + per-provider toggle. Parallel cross-provider search (debounced). **Thread grouping (commit `e845f86`):** `groupThreads(messages)` groups by `g:${threadId}` / `o:${conversationId}` (falls back to message id), each group exposes `messages` (sorted), `latest`, `latestDate`, `isAnyUnread`, `sendersDisplay` (deduped participants with overflow), `messageCount`, `displaySubject` (prefers non-"Re:" form). One row per thread with sender list + count badge + most-recent snippet. Click expand fetches full conversation via `getThread` (Gmail) or `getOutlookThread` (Outlook), renders chronologically (oldest first). Mark-read on expand fans out to all unread messages in the thread via `Promise.all` on the correct provider tools. Reply targets the latest message in the thread. Compose new shows provider toggle when both connected. Exports `ProviderBadge` for reuse. App.jsx route: `inbox-unified` (also accepts legacy `gmail` / `outlook` activePage values as redirects). Navigation.jsx shows the "Inbox" button when EITHER provider is connected (combined unread badge: `unreadCount + outlookUnreadCount`). |
-| `ChatPanel.jsx` | Dual-tab AI chat: Assistant (Haiku, role-based tools, neuron-aware) + Agent (full Wasabi agent) |
 | `DashboardView.jsx` | Customizable widget dashboard |
 | `EmailThreadDrawer.jsx` | Email thread slide-out viewer |
 | `FigmaView.jsx` | Figma project browser: project sidebar, file thumbnail grid, search/filter, detail panel, multi-select import to Design Assets database |
@@ -318,7 +316,7 @@ AI agent system. Lazy-loaded.
 
 | File | Purpose |
 |------|---------|
-| `agentContext.js` | Context envelope builders: `buildAgentContext()` (full agent) + `buildAssistantContext()` (lightweight assistant). 2026-05-04: both builders now accept `microsoftContext` parameter alongside `googleContext` so the system prompt sees Outlook context for Microsoft 365 users. |
+| `agentContext.js` | Context envelope builder: `buildAgentContext()` for the single Wasabi agent. Accepts `microsoftContext` parameter alongside `googleContext` so the system prompt sees Outlook context for Microsoft 365 users. **2026-05-05:** `buildAssistantContext()` removed alongside the Assistant feature — the Wasabi panel now always runs the full agent. |
 | `aiRouter.js` | Multi-tier model routing (Haiku for fast/cheap, Sonnet for complex) |
 | `automations.js` | Automation execution engine: evaluates triggers, executes actions |
 | `dataSummary.js` | Builds data context summaries for AI within token budget |
@@ -327,8 +325,8 @@ AI agent system. Lazy-loaded.
 | `queryClassifier.js` | Query intent classification for tool selection and routing |
 | `runAgent.js` | Core agent loop: prompt, classify, route, execute tools, respond |
 | `toolExecutor.js` | 71+ tool implementations: CRUD, email (Gmail + Outlook), calendar (Google + Outlook), automations, neuron CRUD. Phase 2b (2026-04-25) added `get_relationships` and `write_relationship`. **2026-05-04 expansion (reads)** added 17 read tools — `get_email_provider_status`, Outlook reads (`search_outlook_messages`, `get_outlook_message`, `get_outlook_thread`, `list_outlook_events`, `get_outlook_calendar_summary`), per-record context (`get_record_context` mega-tool with parallel `Promise.allSettled` fan-out, plus granular `get_record_comments`, `get_record_note`, `list_record_files`, `list_child_rows`), workspace structure (`list_pages`, `list_users`, `list_notifications`), and documents/permissions/links (`get_document`, `get_page_permissions`, `list_links`). **2026-05-04 Phase 5C/D (writes + freebusy)** added 8 Outlook write tools: `send_outlook_email`, `create_outlook_draft`, `update_outlook_draft`, `modify_outlook_message` (extended action enum: read/unread/flag/unflag/archive/trash), `create_outlook_event`, `update_outlook_event`, `delete_outlook_event`, `check_outlook_freebusy`. **2026-05-04 hotfix:** Gmail/Calendar tool cases referenced bare `input` instead of the `toolInput` parameter — every email/calendar call had been throwing `ReferenceError: Can't find variable: input` at runtime. Renamed all 14 references to `toolInput`. |
-| `tools.js` | Tool definitions (schemas) for Claude's tool_use. Role-based assistant tool sets (admin/editor/viewer). Phase 2b (2026-04-25) added relationship tools. **2026-05-04 expansion** added 17 new read-tool definitions and refactored the assistant tool sets — VIEWER/EDITOR/ADMIN now all share a single `ASSISTANT_READS` array (full read parity across roles), with EDITOR/ADMIN adding the lightweight write set on top. **2026-05-04 Phase 5C/D** added 8 Outlook write-tool definitions (`SEND_OUTLOOK_EMAIL`, `CREATE_OUTLOOK_DRAFT`, `UPDATE_OUTLOOK_DRAFT`, `MODIFY_OUTLOOK_MESSAGE` with extended action enum, `CREATE_OUTLOOK_EVENT`, `UPDATE_OUTLOOK_EVENT`, `DELETE_OUTLOOK_EVENT`, `CHECK_OUTLOOK_FREEBUSY`). Tier breakdown: Admin gets full Outlook write parity; Editor gets `CREATE_OUTLOOK_EVENT` + `CREATE_OUTLOOK_DRAFT` + `CHECK_OUTLOOK_FREEBUSY` (scheduling and drafting allowed; full send and delete are admin-only). |
-| `wasabiPrompt.js` | System prompt generation for Agent and Assistant. Context budget competition compresses workspace summary when neurons are rich. **2026-05-04:** accepts `microsoftContext` alongside `googleContext` (renders both as separate sections), and adds a "How to Answer Common Questions" guidance section that explicitly tells the AI when to call `get_email_provider_status`, `get_record_context`, `list_users`, `list_pages`, `list_notifications`, `get_document`, etc. **2026-05-04 Phase 5C/D update:** the email/calendar guidance section now enumerates Outlook writes alongside reads (send_outlook_email, create_outlook_draft, modify_outlook_message with extended actions, calendar create/update/delete, check_outlook_freebusy) and tells the AI to use `check_outlook_freebusy` for multi-attendee scheduling instead of guessing availability. Added to both `_buildPrompt` (full agent) and `buildAssistantPrompt` (assistant). Without this prompt guidance the new tools exist but never get called — the model defaults to `query_database` and `search_emails` for everything. |
+| `tools.js` | Tool definitions (schemas) for Claude's tool_use. Phase 2b (2026-04-25) added relationship tools. **2026-05-04 expansion** added 17 new read-tool definitions. **2026-05-04 Phase 5C/D** added 8 Outlook write-tool definitions (`SEND_OUTLOOK_EMAIL`, `CREATE_OUTLOOK_DRAFT`, `UPDATE_OUTLOOK_DRAFT`, `MODIFY_OUTLOOK_MESSAGE` with extended action enum, `CREATE_OUTLOOK_EVENT`, `UPDATE_OUTLOOK_EVENT`, `DELETE_OUTLOOK_EVENT`, `CHECK_OUTLOOK_FREEBUSY`). **2026-05-05:** `ASSISTANT_TOOLS_*` exports removed alongside the Assistant feature. New `getWasabiToolsForRole(role)` helper filters `WASABI_TOOLS` for non-admins (editors lose destructive tools: `delete_neuron`, `remove_neuron_node`, `delete_custom_function`, `delete_calendar_event`, `delete_outlook_event`, `send_email`, `send_outlook_email`, `modify_email`, `modify_outlook_message`, `save_plugin`, `create_page_config`, `batch_operations`). Admins get the full set. |
+| `wasabiPrompt.js` | System prompt generation for the Wasabi agent. Context budget competition compresses workspace summary when neurons are rich. Accepts `microsoftContext` alongside `googleContext` (renders both as separate sections). "How to Answer Common Questions" guidance section explicitly tells the AI when to call `get_email_provider_status`, `get_record_context`, `list_users`, `list_pages`, `list_notifications`, `get_document`, etc. The email/calendar guidance enumerates Outlook writes alongside reads and tells the AI to use `check_outlook_freebusy` for multi-attendee scheduling instead of guessing availability. **2026-05-05:** `buildAssistantPrompt` removed alongside the Assistant feature. `getAgentBehaviorPrompt` simplified to two modes (`auto` / `confirm`) — `plan` mode dropped (was prompt-only, never enforced). |
 
 ---
 
@@ -417,7 +415,7 @@ Utility and helper modules.
 
 | File | Purpose |
 |------|---------|
-| `microsoftContext.js` | Microsoft 365 (Outlook + Calendar) context fetcher. Mirror of `googleContext.js`. Fetches `getOutlookSummary` + `getOutlookCalendarSummary` in parallel via `Promise.allSettled`, formats a "## Microsoft 365 Context" block with unread count, recent subjects, and upcoming events. 5-min sessionStorage cache, separate cache key (`wasabi_microsoft_context`) so Google and Microsoft contexts can coexist. Consumed by `ChatPanel.jsx` and `WasabiPanel.jsx` via `getMicrosoftStatus().connected → fetchMicrosoftContext()` gate. |
+| `microsoftContext.js` | Microsoft 365 (Outlook + Calendar) context fetcher. Mirror of `googleContext.js`. Fetches `getOutlookSummary` + `getOutlookCalendarSummary` in parallel via `Promise.allSettled`, formats a "## Microsoft 365 Context" block with unread count, recent subjects, and upcoming events. 5-min sessionStorage cache, separate cache key (`wasabi_microsoft_context`) so Google and Microsoft contexts can coexist. Consumed by `WasabiPanel.jsx` via `getMicrosoftStatus().connected → fetchMicrosoftContext()` gate. |
 
 ---
 

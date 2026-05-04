@@ -4,7 +4,7 @@
 import { encryptSecret, decryptSecret } from '../crypto.js';
 
 // Keys that are configs/hashes — never encrypted
-const NON_SECRET_KEYS = new Set(['schema_version', 'table_pin', 'external_api_whitelist', 'figma_team_id']);
+const NON_SECRET_KEYS = new Set(['schema_version', 'table_pin', 'external_api_whitelist', 'figma_team_id', 'agent_confirm_writes']);
 function isSecretKey(key) {
   return !NON_SECRET_KEYS.has(key) && !key.startsWith('external_api:');
 }

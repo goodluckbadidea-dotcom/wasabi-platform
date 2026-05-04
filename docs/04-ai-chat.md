@@ -12,7 +12,7 @@ The AI system prompt is assembled dynamically from four layers of persistent con
 
 1. **Knowledge Base** — User-curated domain rules, business context, and operational knowledge stored in the `knowledge_base` D1 table. All KB entries are injected directly into the system prompt so the AI has institutional memory without the user repeating themselves.
 
-2. **Neurons** — Named relationship clusters linking records, pages, and fields across the workspace. The AI receives **hydrated** neuron context — actual field values (status, dates, amounts) from connected records, not just labels. Context is filtered by relevance to the user's query (keyword scoring: name +3, label +2, field value +1). When neurons are rich enough, the workspace summary is automatically compressed or omitted to save tokens. The AI has full CRUD tools to create, rename, delete neurons and manage nodes conversationally. Both Agent and Assistant modes are neuron-aware.
+2. **Neurons** — Named relationship clusters linking records, pages, and fields across the workspace. The AI receives **hydrated** neuron context — actual field values (status, dates, amounts) from connected records, not just labels. Context is filtered by relevance to the user's query (keyword scoring: name +3, label +2, field value +1). When neurons are rich enough, the workspace summary is automatically compressed or omitted to save tokens. The AI has full CRUD tools to create, rename, delete neurons and manage nodes conversationally. The Wasabi agent is neuron-aware.
 
 3. **Page Structure** — The hierarchy of pages, folders, and views tells the AI what matters and how data relates. A workspace summary of all pages is included so the AI can reason about cross-table operations.
 
@@ -165,7 +165,7 @@ Assembles the full system prompt in order:
 
 ### "How to Answer Common Questions" Section (2026-05-04)
 
-Added to both `_buildPrompt` (Agent) and `buildAssistantPrompt` (Assistant). Tells the AI explicitly which tools to reach for in common scenarios:
+Added to `_buildPrompt`. Tells the AI explicitly which tools to reach for in common scenarios:
 
 - **Email/Calendar** — call `get_email_provider_status` first. Microsoft → Outlook tools; Google → Gmail tools; neither → say so plainly. For email chains, prefer `get_outlook_thread` (full conversation in order).
 - **Specific record** ("status update", "handoff", "what's going on with X") — call `get_record_context`. Explicit instruction: *"Never tell the user comments are inaccessible — they are accessible."*
@@ -188,7 +188,7 @@ When neuron context is rich, the prompt builder automatically compresses variabl
 - **Skip:** If neurons reference >80% of workspace databases, workspace summary is omitted entirely
 - **Protected:** KB context and current page context are never compressed
 
-The same budget logic applies to both the Agent prompt (`_buildPrompt`) and the Assistant prompt (`buildAssistantPrompt`), with the Assistant using a simpler 2000-token neuron threshold.
+The budget logic applies to the agent prompt (`_buildPrompt`).
 
 ### Agent Behavior Modes
 
@@ -267,31 +267,23 @@ Token usage is recorded per API request:
 
 ### ChatPanel (Dual-Tab)
 
-**File:** `src/features/ChatPanel.jsx`
-
-The ChatPanel provides two tabs in a single resizable side panel:
-
-| Tab | Model | Tools | Context | Use Case |
-|-----|-------|-------|---------|----------|
-| **Assistant** | Haiku | Role-based subset (query, update, notifications, email, calendar, neurons read-only) | Workspace summary, current page, Google, tasks, relevance-filtered neurons | Quick lookups, data queries, scheduling |
-| **Agent** | Haiku/Sonnet (auto-routed) | Full 71+ tool set | Full workspace context, KB, neurons, data summary | Complex operations, system building, multi-step tasks |
-
-- **Assistant tab** uses `buildAssistantContext()` + `buildAssistantPrompt()` + lightweight `executeChatTool()` (inline switch statement, no main toolExecutor). Max 3 iterations, 1024 max tokens.
-- **Agent tab** embeds `WasabiPanel` with `embedded={true}`. Full agent loop via `runAgent()`.
-- Tab state persisted in localStorage. Agent tab restricted to admin users.
-- Panel resizable: 280–640px (320px default), tablet max 400px.
-
-### WasabiPanel (Agent)
-
 **File:** `src/core/WasabiPanel.jsx`
 
-Full Wasabi agent with all tools. Pre-warms hydrated neuron cache before each turn. Uses `buildFilteredNeuronContext(agentText)` for relevance-filtered neuron injection.
+Single chat surface (no tabs, no toggle). Full Wasabi agent with the full tool set, role-filtered. Pre-warms hydrated neuron cache before each turn. Uses `buildFilteredNeuronContext(agentText)` for relevance-filtered neuron injection. Auto-routes Haiku/Sonnet via the query classifier.
 
-### Neuron Integration in Both Modes
+| Audience | Tools | Use Case |
+|----------|-------|----------|
+| **Admin** | Full 71+ tool set via `WASABI_TOOLS` | Everything — system building, deletes, sends, plugin saves, batch ops |
+| **Editor** | `WASABI_TOOLS` minus admin-only destructive tools (deletes, sends, modifies, plugin saves, page-config writes, batch ops) | Reads, updates, scheduling, drafting, neuron maintenance |
+| **Viewer** | None — chat panel is hidden | n/a |
 
-Both Assistant and Agent receive neuron context:
-- **Agent:** Relevance-filtered hydrated neurons via `buildFilteredNeuronContext()`. Full neuron CRUD tools (7 tools). Prompt includes neuron maintenance guidance and cross-table suggestion heuristic.
-- **Assistant:** Relevance-filtered hydrated neurons via `buildFilteredNeuronContext()`. Read-only neuron tools (`query_neurons`, `query_neuron_data`). Neuron connections section injected into assistant system prompt.
+- Role filtering happens via `getWasabiToolsForRole(identity?.role)` in `src/agent/tools.js`.
+- Confirm-before-write behavior is gated by the workspace `agent_confirm_writes` connection key (admin toggle in SystemManager → Settings). When on, `onToolApproval` is wired into the runAgent loop and the system prompt gets the "Ask Permission" behavior section.
+- Panel resizable: 280–640px (320px default), tablet max 400px.
+
+### Neuron Integration
+
+The agent receives relevance-filtered hydrated neurons via `buildFilteredNeuronContext(agentText)` and the full neuron CRUD tool set (admins) or the non-destructive subset (editors — `query_neurons`, `query_neuron_data`, `create_neuron`, `update_neuron`, `add_neuron_node`).
 
 ---
 
@@ -299,14 +291,13 @@ Both Assistant and Agent receive neuron context:
 
 **File:** `src/agent/agentContext.js`
 
-All context for a conversation turn is assembled into a single envelope object, built once before invoking the agent. Two builders:
+All context for a conversation turn is assembled into a single envelope object, built once before invoking the agent.
 
 | Builder | Used By | Includes |
 |---------|---------|----------|
-| `buildAgentContext()` | WasabiPanel (Agent tab) | Full context: KB, neurons, workspace, data summary, Google, workspace instructions, agent mode |
-| `buildAssistantContext()` | ChatPanel (Assistant tab) | Lighter fill: workspace summary, current page, Google, tasks, neurons. No KB or workspace instructions. |
+| `buildAgentContext()` | WasabiPanel | Full context: KB, neurons, workspace, data summary, Google, Microsoft 365, workspace instructions, agent mode |
 
-Both return the same `AgentContext` shape with frozen context, identity, routing metadata, and mutable conversation state. The envelope is passed through the entire pipeline (classifier → prompt builder → agent loop → tool executor).
+The envelope has frozen context, identity, routing metadata, and mutable conversation state. It's passed through the entire pipeline (classifier → prompt builder → agent loop → tool executor).
 
 ---
 
@@ -315,10 +306,10 @@ Both return the same `AgentContext` shape with frozen context, identity, routing
 | File | Purpose |
 |------|---------|
 | `src/agent/runAgent.js` | Agent loop: classify, route, call Claude, execute tools, respond |
-| `src/agent/agentContext.js` | Context envelope builders: `buildAgentContext()` + `buildAssistantContext()`. Both accept `googleContext` AND `microsoftContext` (2026-05-04). |
+| `src/agent/agentContext.js` | Context envelope builder: `buildAgentContext()`. Accepts `googleContext` AND `microsoftContext` (2026-05-04). 2026-05-05: `buildAssistantContext()` removed. |
 | `src/agent/queryClassifier.js` | Determines strategy, complexity, model routing |
 | `src/agent/toolExecutor.js` | 63+ tool implementations dispatched to worker API. 2026-05-04: added 17 read tools (per-record context, workspace structure, documents, Microsoft 365, provider status). 2026-05-04 hotfix: renamed bare `input` → `toolInput` in Gmail/Calendar cases (was throwing `ReferenceError: Can't find variable: input` on every email/calendar call). |
-| `src/agent/tools.js` | Tool definitions (schemas) for Claude's tool_use. Role-based assistant tool sets refactored 2026-05-04 to share `ASSISTANT_READS` array — VIEWER gets reads only, EDITOR/ADMIN get reads + lightweight writes. |
+| `src/agent/tools.js` | Tool definitions (schemas) for Claude's tool_use. **2026-05-05:** `ASSISTANT_TOOLS_*` exports removed; `getWasabiToolsForRole(role)` filters `WASABI_TOOLS` so editors lose destructive tools (deletes, sends, modifies, plugin saves, page-config writes, batch ops). Admins get the full set; viewers don't have a chat surface. |
 | `src/agent/wasabiPrompt.js` | System prompt builder — injects KB, neurons, page context, data summary. 2026-05-04: accepts `microsoftContext` alongside `googleContext`, renders both sections, adds "How to Answer Common Questions" guidance section. Context budget competition for workspace summary compression. |
 | `src/agent/dataSummary.js` | Compact data context within token budget |
 | `src/agent/automations.js` | Cron-triggered automation rule engine |

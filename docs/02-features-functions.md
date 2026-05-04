@@ -28,7 +28,7 @@ Personal productivity surface. User-scoped data. All components lazy-loaded.
 | TasksView | `src/features/TasksView.jsx` | Personal task list + calendar integration |
 | CalendarView | `src/features/CalendarView.jsx` | Day/week/month calendar with Google Calendar sync |
 | RecordDrawer | `src/features/RecordDrawer.jsx` | Slide-out record editor (primary edit surface for all views). "Go to Task" button uses `navigateToRecord()` to open RecordDetail drawer after navigating to source database. |
-| ChatPanel | `src/features/ChatPanel.jsx` | Dual-tab AI chat: Assistant (Haiku, lightweight tools, neuron-aware) and Agent (full Wasabi agent with all tools). 2026-05-04: now fetches both Google AND Microsoft 365 context in parallel via `Promise.allSettled` so Outlook users get email/calendar context in the system prompt. |
+| WasabiPanel | `src/core/WasabiPanel.jsx` | The Wasabi agent chat panel (only chat surface). Fetches Google + Microsoft 365 context in parallel via `Promise.allSettled` so connected users get email/calendar context in the system prompt. **2026-05-05:** the previous dual-tab `features/ChatPanel.jsx` (Assistant + Agent toggle) was removed; the floating panel now always runs the full agent. Hidden from viewers. Editors get a restricted tool set (no destructive admin tools). |
 | GmailView | `src/features/GmailView.jsx` | Gmail inbox, read, compose, reply |
 | FigmaView | `src/features/FigmaView.jsx` | Browse Figma team projects and files. Project sidebar, file thumbnail grid, search/filter, file detail panel. Multi-select import creates/reuses a "Design Assets" database with status tracking (Draft/In Review/Approved/Archived). De-duplicates by file key. |
 | DashboardView | `src/features/DashboardView.jsx` | Customizable widget dashboard |
@@ -484,7 +484,7 @@ Neurons are named relationship clusters linking:
 - External data sources (calendars, emails)
 - Arbitrary fields
 
-Visual representation: nodes (circles) connected by lines, color-coded per neuron. Hover highlights connections; click navigates to the linked entity. Both the Agent and Assistant AI modes use neurons as their primary navigation tool for cross-table reasoning.
+Visual representation: nodes (circles) connected by lines, color-coded per neuron. Hover highlights connections; click navigates to the linked entity. The Wasabi agent uses neurons as its primary navigation tool for cross-table reasoning.
 
 ### Hydrated Neurons
 
@@ -527,9 +527,9 @@ The Agent has full CRUD tools for neurons:
 | `add_neuron_node` | Add a node to an existing neuron |
 | `remove_neuron_node` | Remove a node by entity ID |
 
-The Assistant (lightweight chat) has read-only access: `query_neurons` and `query_neuron_data`.
+Editors get neuron read + non-destructive write tools (`query_neurons`, `query_neuron_data`, `create_neuron`, `update_neuron`, `add_neuron_node`). The destructive ones (`delete_neuron`, `remove_neuron_node`) are admin-only.
 
-Write tools (`update_neuron`, `delete_neuron`, `add_neuron_node`, `remove_neuron_node`) require user approval in confirm mode.
+Write tools require user approval when the workspace `agent_confirm_writes` setting is on (admin-set in SystemManager → Settings).
 
 ### Context Budget Competition
 
@@ -995,21 +995,23 @@ Without this, even with new tools the AI would default to Gmail because
 
 ### "How to Answer Common Questions" Prompt Section
 
-Added to both `_buildPrompt` (Agent) and `buildAssistantPrompt` (Assistant) in
-`wasabiPrompt.js`. Explicit rules: call `get_email_provider_status` before
-choosing email tools; call `get_record_context` for any record-level question;
-call `list_pages`/`list_users`/`list_notifications`/`get_document` for the
-respective surfaces. Includes the directive *"Never tell the user comments are
-inaccessible — they are accessible."* Without this guidance the model defaults
-to `query_database` for everything and never reaches for the new tools.
+Added to `_buildPrompt` in `wasabiPrompt.js`. Explicit rules: call
+`get_email_provider_status` before choosing email tools; call
+`get_record_context` for any record-level question; call
+`list_pages`/`list_users`/`list_notifications`/`get_document` for the
+respective surfaces. Includes the directive *"Never tell the user comments
+are inaccessible — they are accessible."* Without this guidance the model
+defaults to `query_database` for everything and never reaches for the new
+tools.
 
-### Tool Set Restructure
+### Tool Set Restructure (2026-05-05)
 
-`ASSISTANT_TOOLS_VIEWER` / `_EDITOR` / `_ADMIN` were three nearly-identical
-arrays. Refactored to a single `ASSISTANT_READS` array shared across all
-three tiers; EDITOR/ADMIN add the lightweight write set on top. All assistant
-roles now have full read parity — restricting writes is the only role
-distinction.
+The Assistant feature was removed (single chat = the full Wasabi agent).
+`ASSISTANT_TOOLS_*` and `ASSISTANT_READS` exports deleted. New
+`getWasabiToolsForRole(role)` helper filters `WASABI_TOOLS` for non-admins:
+admins get the full set, editors lose destructive admin-only tools (deletes,
+sends, modifies, plugin saves, page-config writes, batch ops). Viewers get
+no chat at all — the Wasabi flame button is hidden in `Navigation.jsx`.
 
 ### Deferred (Tier 3 reads + all writes)
 

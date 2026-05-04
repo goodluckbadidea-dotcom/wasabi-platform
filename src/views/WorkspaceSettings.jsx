@@ -204,7 +204,6 @@ export default function WorkspaceSettings({ pageConfig, onUpdate }) {
 
   const [instructions, setInstructions] = useState(settings.aiInstructions || "");
   const [model, setModel] = useState(settings.defaultModel || "auto");
-  const [agentMode, setAgentMode] = useState(settings.agentMode || "auto");
   const [autoKb, setAutoKb] = useState(settings.autoSearchKb !== false);
   const [saved, setSaved] = useState(false);
   const saveTimer = useRef(null);
@@ -216,7 +215,6 @@ export default function WorkspaceSettings({ pageConfig, onUpdate }) {
       const newSettings = {
         aiInstructions: instructions,
         defaultModel: model,
-        agentMode,
         autoSearchKb: autoKb,
         kbCategories: settings.kbCategories || [],
         ...updates,
@@ -225,7 +223,7 @@ export default function WorkspaceSettings({ pageConfig, onUpdate }) {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     }, 600);
-  }, [instructions, model, agentMode, autoKb, settings.kbCategories, onUpdate]);
+  }, [instructions, model, autoKb, settings.kbCategories, onUpdate]);
 
   // Handle instruction changes
   const handleInstructionsChange = useCallback((e) => {
@@ -238,12 +236,6 @@ export default function WorkspaceSettings({ pageConfig, onUpdate }) {
   const handleModelChange = useCallback((val) => {
     setModel(val);
     persistSettings({ defaultModel: val });
-  }, [persistSettings]);
-
-  // Handle agent mode change
-  const handleAgentModeChange = useCallback((val) => {
-    setAgentMode(val);
-    persistSettings({ agentMode: val });
   }, [persistSettings]);
 
   // Handle auto-KB toggle
@@ -339,39 +331,6 @@ export default function WorkspaceSettings({ pageConfig, onUpdate }) {
           </div>
           <div style={{ fontSize: 11, color: C.darkMuted }}>
             Auto routes simple queries to Haiku and complex ones to Sonnet for the best cost/quality balance.
-          </div>
-        </div>
-
-        {/* Agent Behavior */}
-        <div style={ws.section}>
-          <div style={ws.sectionTitle}>Agent Behavior</div>
-          <div style={ws.label}>
-            Control how Wasabi handles actions that create, update, or delete data.
-          </div>
-          <div style={ws.radioGroup}>
-            <button
-              style={ws.radioBtn(agentMode === "auto")}
-              onClick={() => handleAgentModeChange("auto")}
-            >
-              Auto-Accept
-            </button>
-            <button
-              style={ws.radioBtn(agentMode === "confirm")}
-              onClick={() => handleAgentModeChange("confirm")}
-            >
-              Ask Permission
-            </button>
-            <button
-              style={ws.radioBtn(agentMode === "plan")}
-              onClick={() => handleAgentModeChange("plan")}
-            >
-              Plan Mode
-            </button>
-          </div>
-          <div style={{ fontSize: 11, color: C.darkMuted }}>
-            {agentMode === "auto" && "Execute actions immediately without asking."}
-            {agentMode === "confirm" && "Ask before creating, updating, or deleting records. Read-only queries run freely."}
-            {agentMode === "plan" && "Present a plan before taking any actions. You approve before execution begins."}
           </div>
         </div>
 

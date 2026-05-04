@@ -781,8 +781,8 @@ export default function Navigation({
               </button>
             )}
 
-            {/* Wasabi flame */}
-            {!wasabiPanelOpen && (
+            {/* Wasabi flame — hidden for viewers (chat is editor+admin only) */}
+            {!wasabiPanelOpen && identity?.role !== "viewer" && (
               <button
                 onClick={onToggleWasabiPanel}
                 style={{

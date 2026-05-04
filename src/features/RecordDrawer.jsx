@@ -961,7 +961,6 @@ function WorkspaceSettingsEditor({ workspace, onClose }) {
 
   const [instructions, setInstructions] = useState(settings.aiInstructions || "");
   const [model, setModel] = useState(settings.defaultModel || "auto");
-  const [agentMode, setAgentMode] = useState(settings.agentMode || "auto");
   const [autoKb, setAutoKb] = useState(settings.autoSearchKb !== false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -971,7 +970,6 @@ function WorkspaceSettingsEditor({ workspace, onClose }) {
     const s = pageConfig.settings || pageConfig.config?.settings || {};
     setInstructions(s.aiInstructions || "");
     setModel(s.defaultModel || "auto");
-    setAgentMode(s.agentMode || "auto");
     setAutoKb(s.autoSearchKb !== false);
     setError(null);
   }, [workspace.id]);
@@ -983,7 +981,6 @@ function WorkspaceSettingsEditor({ workspace, onClose }) {
       const newSettings = {
         aiInstructions: instructions,
         defaultModel: model,
-        agentMode,
         autoSearchKb: autoKb,
         kbCategories: settings.kbCategories || [],
       };
@@ -995,7 +992,7 @@ function WorkspaceSettingsEditor({ workspace, onClose }) {
     } finally {
       setSaving(false);
     }
-  }, [pageConfig.id, instructions, model, agentMode, autoKb, settings.kbCategories, updatePageConfig, onClose]);
+  }, [pageConfig.id, instructions, model, autoKb, settings.kbCategories, updatePageConfig, onClose]);
 
   const handleCancel = useCallback(() => {
     onClose();
@@ -1040,21 +1037,6 @@ function WorkspaceSettingsEditor({ workspace, onClose }) {
         </div>
         <div style={{ fontSize: 11, color: C.darkMuted, marginTop: 6 }}>
           Auto routes simple queries to Haiku and complex ones to Sonnet.
-        </div>
-      </div>
-
-      {/* Agent Behavior */}
-      <div style={fieldGroup}>
-        <label style={labelStyle}>Agent Behavior</label>
-        <div style={{ display: "flex", gap: 6 }}>
-          <button style={radioBtn(agentMode === "auto")} onClick={() => setAgentMode("auto")}>Auto-Accept</button>
-          <button style={radioBtn(agentMode === "confirm")} onClick={() => setAgentMode("confirm")}>Ask Permission</button>
-          <button style={radioBtn(agentMode === "plan")} onClick={() => setAgentMode("plan")}>Plan Mode</button>
-        </div>
-        <div style={{ fontSize: 11, color: C.darkMuted, marginTop: 6 }}>
-          {agentMode === "auto" && "Execute actions immediately without asking."}
-          {agentMode === "confirm" && "Ask before creating, updating, or deleting records."}
-          {agentMode === "plan" && "Present a plan before taking any actions."}
         </div>
       </div>
 

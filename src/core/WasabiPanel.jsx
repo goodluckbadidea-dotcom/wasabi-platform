@@ -13,7 +13,7 @@ import WasabiFlame from "./WasabiFlame.jsx";
 import WasabiOrb from "./WasabiOrb.jsx";
 import ChatUI from "./ChatUI.jsx";
 import { runAgent, runAgentMultiPhase, extractQuestions, trimHistory } from "../agent/runAgent.js";
-import { WASABI_TOOLS } from "../agent/tools.js";
+import { getWasabiToolsForRole } from "../agent/tools.js";
 import { buildWasabiPrompt } from "../agent/wasabiPrompt.js";
 import { createToolExecutor } from "../agent/toolExecutor.js";
 import { routeWithClassification, shouldEscalate, SONNET } from "../agent/aiRouter.js";
@@ -36,6 +36,9 @@ const MAX_WIDTH = 640;
 export default function WasabiPanel({ onClose, isThinking, activePageConfig, activePageData, pendingChatMessage, onClearPendingMessage, embedded = false }) {
   const { user, identity, platformIds, pages, addPage } =
     usePlatform();
+
+  // Editor-or-admin tool set — editors lose destructive/admin-shaped tools.
+  const wasabiTools = useMemo(() => getWasabiToolsForRole(identity?.role), [identity?.role]);
 
   // ── Resize state ──
   const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH);
@@ -239,14 +242,22 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
           }
         } catch (err) { console.warn("[WasabiPanel] Mail/calendar context fetch:", err.message || err); }
 
-        // Find workspace ancestor for custom AI instructions + agent mode
+        // Find workspace ancestor for custom AI instructions
         let workspaceInstructions = "";
-        let agentMode = "auto";
         if (activePageConfig) {
           const wsConfig = findWorkspaceAncestor(activePageConfig.id || activePageConfig.parentId, pages);
           const wsSettings = wsConfig?.settings || wsConfig?.config?.settings;
           if (wsSettings?.aiInstructions) workspaceInstructions = wsSettings.aiInstructions;
-          if (wsSettings?.agentMode) agentMode = wsSettings.agentMode;
+        }
+
+        // Read workspace-wide agent confirm-writes setting (admin-only toggle in SystemManager > Settings)
+        let agentMode = "auto";
+        try {
+          const conns = await api.getConnections();
+          const row = (conns?.connections || []).find((c) => c.key === "agent_confirm_writes");
+          if (row?.value === "on") agentMode = "confirm";
+        } catch (err) {
+          console.warn("[WasabiPanel] Load agent_confirm_writes:", err.message || err);
         }
 
         // ── Build context envelope (assembled once per turn) ──
@@ -339,8 +350,8 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
               envelope,
               messages: newHistory,
               systemPrompt: finalSystemPrompt,
-              orientTools: WASABI_TOOLS,
-              executeTools: WASABI_TOOLS,
+              orientTools: wasabiTools,
+              executeTools: wasabiTools,
               model,
               workerUrl: wUrl,
               claudeKey: user?.claudeKey || "",
@@ -358,7 +369,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
               envelope,
               messages: newHistory,
               systemPrompt: finalSystemPrompt,
-              tools: WASABI_TOOLS,
+              tools: wasabiTools,
               model,
               workerUrl: wUrl,
               claudeKey: user?.claudeKey || "",
@@ -380,7 +391,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
             envelope,
             messages: newHistory,
             systemPrompt: finalSystemPrompt,
-            tools: WASABI_TOOLS,
+            tools: wasabiTools,
             model: SONNET,
             workerUrl: wUrl,
             claudeKey: user?.claudeKey || "",

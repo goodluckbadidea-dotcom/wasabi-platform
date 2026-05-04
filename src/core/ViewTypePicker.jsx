@@ -8,7 +8,7 @@ import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
 import {
   IconTable, IconKanban, IconCalendar, IconTimeline,
   IconCards, IconChart, IconForm,
-  IconDiamond, IconChat, IconBell, IconStar,
+  IconDiamond, IconBell, IconStar,
 } from "../design/icons.jsx";
 
 const VIEW_TYPES = [
@@ -22,7 +22,6 @@ const VIEW_TYPES = [
   { type: "document", label: "Document", icon: IconDiamond, description: "Rich text editor" },
   { type: "summaryTiles", label: "Summary", icon: IconStar, description: "KPI tiles" },
   { type: "activityFeed", label: "Activity", icon: IconBell, description: "Activity log" },
-  { type: "chat", label: "Chat", icon: IconChat, description: "AI chat view" },
 ];
 
 export default function ViewTypePicker({ onSelect, onClose }) {

@@ -136,7 +136,6 @@ export function createWorkspaceConfig(name) {
       defaultModel: "auto",   // "auto" | "haiku" | "sonnet"
       autoSearchKb: true,     // Auto-search KB before agent responds
       kbCategories: [],       // KB category filters for this workspace
-      agentMode: "auto",      // "auto" | "confirm" | "plan"
     },
   };
 }
