@@ -259,20 +259,20 @@ export default function TableRow({
               style={{
                 background: hasChildren && isExpanded ? C.darkSurf2 : "none",
                 border: "none", cursor: "pointer",
-                padding: 0, display: "flex", alignItems: "center",
-                gap: 3,
-                minWidth: 32, height: 28, justifyContent: "center",
+                padding: "0 6px", display: "flex", alignItems: "center",
+                gap: 5,
+                minWidth: 40, height: 32, justifyContent: "center",
                 borderRadius: RADIUS.sm,
                 transition: "background 0.12s",
               }}
               onMouseEnter={(e) => { if (!(hasChildren && isExpanded)) e.currentTarget.style.background = C.darkSurf2; }}
               onMouseLeave={(e) => { if (!(hasChildren && isExpanded)) e.currentTarget.style.background = "none"; }}
             >
-              <IconSubItems size={14} color={C.darkMuted} />
+              <IconSubItems size={18} color={C.darkMuted} />
               {hasChildren && (
                 <span style={{
-                  fontSize: 9, fontWeight: 600, color: C.darkMuted,
-                  lineHeight: 1, minWidth: 8, textAlign: "left",
+                  fontSize: 12, fontWeight: 600, color: C.darkMuted,
+                  lineHeight: 1, minWidth: 10, textAlign: "left",
                 }}>
                   {getChildren(pageId).length}
                 </span>
