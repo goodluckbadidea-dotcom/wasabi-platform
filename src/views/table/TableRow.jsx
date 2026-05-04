@@ -9,7 +9,7 @@ import { C, FONT, RADIUS, getStatusColor } from "../../design/tokens.js";
 // console doesn't fill with duplicate messages on every row render.
 const _subSchemaWarned = new Set();
 import { ANIM } from "../../design/animations.js";
-import { IconPlus, IconChevronDown } from "../../design/icons.jsx";
+import { IconPlus, IconChevronDown, IconSubItems } from "../../design/icons.jsx";
 import { getPageTitle } from "../../notion/properties.js";
 import { isNeuronsMode, dispatchNeuronSelect } from "../../neurons/NeuronsContext.jsx";
 import NeuronBadge from "../../neurons/NeuronBadge.jsx";
@@ -239,25 +239,44 @@ export default function TableRow({
           >
             {isSelected ? "\u2713" : ""}
           </span>
-          {/* Branch icon: always visible on parent rows (not hover-only) for iPad support */}
+          {/* Sub-items button: unified expand-or-add control with stacked-L glyph.
+              Has children → toggles expand/collapse. No children → opens ghost row
+              (which auto-expands as a side effect). Always full opacity for iPad-friendly
+              tap target. */}
           {subItemsEnabled && !isSubItem && rowDepth < 5 && onCreate && (
             <button
               data-sub-item-trigger
-              title="Add sub-item"
-              onClick={(e) => { e.stopPropagation(); handleCreateSubItem(pageId); }}
-              style={{
-                background: "none", border: "none", cursor: "pointer",
-                padding: 6, display: "flex", alignItems: "center",
-                opacity: isHovered ? 0.8 : 0.3, transition: "opacity 0.15s",
-                minWidth: 28, minHeight: 28, justifyContent: "center",
+              title={hasChildren ? (isExpanded ? "Collapse sub-items" : `Show ${getChildren(pageId).length} sub-item${getChildren(pageId).length === 1 ? "" : "s"}`) : "Add sub-item"}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (hasChildren) {
+                  toggleExpand(pageId);
+                } else {
+                  handleCreateSubItem(pageId);
+                }
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.opacity = isHovered ? "0.8" : "0.3"; }}
+              aria-expanded={hasChildren ? isExpanded : undefined}
+              style={{
+                background: hasChildren && isExpanded ? C.darkSurf2 : "none",
+                border: "none", cursor: "pointer",
+                padding: 0, display: "flex", alignItems: "center",
+                gap: 3,
+                minWidth: 32, height: 28, justifyContent: "center",
+                borderRadius: RADIUS.sm,
+                transition: "background 0.12s",
+              }}
+              onMouseEnter={(e) => { if (!(hasChildren && isExpanded)) e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (!(hasChildren && isExpanded)) e.currentTarget.style.background = "none"; }}
             >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke={C.darkMuted} strokeWidth="1.5" strokeLinecap="round">
-                <path d="M4 4v8M4 8h4c2 0 3 0 3-2V4" />
-                <path d="M4 12h4c2 0 3 0 3-2V8" />
-              </svg>
+              <IconSubItems size={14} color={C.darkMuted} />
+              {hasChildren && (
+                <span style={{
+                  fontSize: 9, fontWeight: 600, color: C.darkMuted,
+                  lineHeight: 1, minWidth: 8, textAlign: "left",
+                }}>
+                  {getChildren(pageId).length}
+                </span>
+              )}
             </button>
           )}
         </div>
@@ -292,28 +311,6 @@ export default function TableRow({
               {isFirstCol && subItemsEnabled ? (
                 <div style={{ display: "flex", alignItems: "center", minWidth: 0, width: "100%" }}>
                   {rowDepth > 0 && <div style={{ width: rowDepth * 24, flexShrink: 0 }} />}
-                  {hasChildren ? (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); toggleExpand(pageId); }}
-                      aria-expanded={isExpanded}
-                      style={{
-                        background: "none", border: "none", cursor: "pointer",
-                        outline: "none", padding: "0 4px", display: "flex",
-                        alignItems: "center", flexShrink: 0,
-                      }}
-                    >
-                      <IconChevronDown
-                        size={10}
-                        color={C.darkMuted}
-                        style={{
-                          transition: "transform 0.15s",
-                          transform: isExpanded ? "rotate(0deg)" : "rotate(-90deg)",
-                        }}
-                      />
-                    </button>
-                  ) : rowDepth > 0 ? (
-                    <div style={{ width: 16, flexShrink: 0 }} />
-                  ) : null}
                   <div style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
                     <CellDisplay
                       value={value}
@@ -326,15 +323,6 @@ export default function TableRow({
                       onLinkClick={linkData ? () => removeLink(linkData.link.id) : undefined}
                     />
                   </div>
-                  {hasChildren && !isExpanded && (
-                    <span style={{
-                      fontSize: 10, color: C.darkMuted, marginLeft: 4,
-                      background: C.darkSurf2, borderRadius: 8, padding: "1px 5px",
-                      flexShrink: 0,
-                    }}>
-                      {getChildren(pageId).length}
-                    </span>
-                  )}
                 </div>
               ) : type === "depends_on" ? (
                 <DependsOnCell

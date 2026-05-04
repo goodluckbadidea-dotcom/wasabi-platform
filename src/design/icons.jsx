@@ -751,3 +751,29 @@ export function IconCheckSquare({ size = 20, color = d, ...rest }) {
     </Icon>
   );
 }
+
+export function IconSubItems({ size = 20, color = d, ...rest }) {
+  // Two stacked L-shapes ending in dots — sub-item / subtask hierarchy glyph
+  return (
+    <Icon size={size} {...rest}>
+      <path
+        d="M6 5 V18 H12"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+      <path
+        d="M6 11 H12"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+      <circle cx="14" cy="11" r="1.6" fill={color} stroke="none" />
+      <circle cx="14" cy="18" r="1.6" fill={color} stroke="none" />
+    </Icon>
+  );
+}
