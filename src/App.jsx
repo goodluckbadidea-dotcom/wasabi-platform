@@ -64,8 +64,8 @@ import { IconGear } from "./design/icons.jsx";
 const TasksView = lazyWithRetry(() => import("./features/TasksView.jsx"));
 const NotesView = lazyWithRetry(() => import("./features/NotesView.jsx"));
 const DashboardView = lazyWithRetry(() => import("./features/DashboardView.jsx"));
-const GmailView = lazyWithRetry(() => import("./features/GmailView.jsx"));
-const OutlookView = lazyWithRetry(() => import("./features/OutlookView.jsx"));
+// GmailView and OutlookView lazy imports removed 2026-05-04 — UnifiedInboxView replaces both.
+// The .jsx files are retained on disk in case they need to be re-enabled.
 const UnifiedInboxView = lazyWithRetry(() => import("./features/UnifiedInboxView.jsx"));
 const FigmaView = lazyWithRetry(() => import("./features/FigmaView.jsx"));
 const WorkspaceBrowser = lazyWithRetry(() => import("./features/WorkspaceBrowser.jsx"));
@@ -385,36 +385,9 @@ function AppContent() {
         </ErrorBoundary>
       );
     }
-    // Gmail
-    if (activePage === "gmail") {
-      return (
-        <ErrorBoundary fallbackLabel="Gmail">
-          <React.Suspense fallback={
-            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
-              Loading...
-            </div>
-          }>
-            <GmailView />
-          </React.Suspense>
-        </ErrorBoundary>
-      );
-    }
-    // Outlook
-    if (activePage === "outlook") {
-      return (
-        <ErrorBoundary fallbackLabel="Outlook">
-          <React.Suspense fallback={
-            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
-              Loading...
-            </div>
-          }>
-            <OutlookView />
-          </React.Suspense>
-        </ErrorBoundary>
-      );
-    }
-    // Unified Inbox (Gmail + Outlook merged)
-    if (activePage === "inbox-unified") {
+    // Legacy "gmail" / "outlook" routes redirect to the unified inbox.
+    // Old saved-state references (e.g. localStorage.activePage) won't break.
+    if (activePage === "gmail" || activePage === "outlook" || activePage === "inbox-unified") {
       return (
         <ErrorBoundary fallbackLabel="Inbox">
           <React.Suspense fallback={

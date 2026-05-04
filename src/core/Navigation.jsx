@@ -703,62 +703,8 @@ export default function Navigation({
               </button>
             )}
 
-            {/* Outlook (only when Microsoft connected) */}
-            {microsoftConnected && (
-              <button
-                onClick={() => setActivePage("outlook")}
-                title="Outlook"
-                style={bottomBtnStyle(activePage === "outlook")}
-                onMouseEnter={(e) => { if (activePage !== "outlook") e.currentTarget.style.background = C.darkSurf2; }}
-                onMouseLeave={(e) => { if (activePage !== "outlook") e.currentTarget.style.background = "transparent"; }}
-              >
-                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                  <IconMail size={iconSize(activePage === "outlook")} color={activePage === "outlook" ? C.accent : navInactiveColor} />
-                  {outlookUnreadCount > 0 && (
-                    <span style={{
-                      position: "absolute", top: -5, right: -8,
-                      background: C.accent, color: "#fff",
-                      borderRadius: 7, fontSize: 9, fontWeight: 700,
-                      fontFamily: FONT, lineHeight: 1,
-                      width: 18, height: 18,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                    }}>
-                      {outlookUnreadCount > 99 ? "99+" : outlookUnreadCount}
-                    </span>
-                  )}
-                </div>
-                {!collapsed && <span style={bottomLabelStyle(activePage === "outlook")}>Outlook</span>}
-              </button>
-            )}
-
-            {/* Gmail (only when Google connected) */}
-            {googleConnected && (
-              <button
-                onClick={() => setActivePage("gmail")}
-                title="Gmail"
-                style={bottomBtnStyle(activePage === "gmail")}
-                onMouseEnter={(e) => { if (activePage !== "gmail") e.currentTarget.style.background = C.darkSurf2; }}
-                onMouseLeave={(e) => { if (activePage !== "gmail") e.currentTarget.style.background = "transparent"; }}
-              >
-                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                  <IconMail size={iconSize(activePage === "gmail")} color={activePage === "gmail" ? C.accent : navInactiveColor} />
-                  {unreadCount > 0 && (
-                    <span style={{
-                      position: "absolute", top: -5, right: -8,
-                      background: C.accent, color: "#fff",
-                      fontSize: 9, fontWeight: 700, fontFamily: FONT,
-                      borderRadius: 7,
-                      width: 18, height: 18,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      lineHeight: 1,
-                    }}>
-                      {unreadCount > 99 ? "99+" : unreadCount}
-                    </span>
-                  )}
-                </div>
-                {!collapsed && <span style={bottomLabelStyle(activePage === "gmail")}>Gmail</span>}
-              </button>
-            )}
+            {/* Single-provider Outlook and Gmail buttons removed 2026-05-04.
+                The unified "Inbox" button above handles both providers. */}
 
             {/* Figma (only when connected) */}
             {figmaConnected && (
