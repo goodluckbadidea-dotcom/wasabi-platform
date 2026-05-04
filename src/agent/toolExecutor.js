@@ -2191,6 +2191,69 @@ export function createToolExecutor({
         return JSON.stringify(result);
       }
 
+      // ── Outlook Write Tools (Phase 5C) ──
+      case "send_outlook_email": {
+        const result = await api.sendOutlookEmail({
+          to: toolInput.to,
+          subject: toolInput.subject,
+          bodyText: toolInput.body,
+          bodyHtml: toolInput.body_html,
+          replyToId: toolInput.reply_to_id,
+        });
+        return JSON.stringify(result);
+      }
+      case "create_outlook_draft": {
+        const result = await api.createOutlookDraft({
+          to: toolInput.to,
+          subject: toolInput.subject,
+          bodyText: toolInput.body,
+          bodyHtml: toolInput.body_html,
+        });
+        return JSON.stringify(result);
+      }
+      case "update_outlook_draft": {
+        const result = await api.updateOutlookDraft(toolInput.message_id, {
+          to: toolInput.to,
+          subject: toolInput.subject,
+          bodyText: toolInput.body,
+          bodyHtml: toolInput.body_html,
+        });
+        return JSON.stringify(result);
+      }
+      case "modify_outlook_message": {
+        const result = await api.modifyOutlookMessage(toolInput.message_id, toolInput.action);
+        return JSON.stringify(result);
+      }
+      case "create_outlook_event": {
+        const result = await api.createOutlookEvent({
+          summary: toolInput.summary,
+          start: toolInput.start,
+          end: toolInput.end,
+          description: toolInput.description,
+          location: toolInput.location,
+          attendees: toolInput.attendees,
+          isAllDay: toolInput.is_all_day,
+        });
+        return JSON.stringify(result);
+      }
+      case "update_outlook_event": {
+        const { event_id, ...updates } = toolInput;
+        const result = await api.updateOutlookEvent(event_id, updates);
+        return JSON.stringify(result);
+      }
+      case "delete_outlook_event": {
+        const result = await api.deleteOutlookEvent(toolInput.event_id);
+        return JSON.stringify(result);
+      }
+      case "check_outlook_freebusy": {
+        const result = await api.checkOutlookFreeBusy(
+          toolInput.time_min,
+          toolInput.time_max,
+          toolInput.attendees,
+        );
+        return JSON.stringify(result);
+      }
+
       // ── Per-Record Context Tools ──
       case "get_record_context": {
         const recordId = toolInput.record_id;

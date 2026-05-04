@@ -129,10 +129,11 @@ User role: ${role}`,
 
 When the user asks about EMAIL or CALENDAR:
 - ALWAYS call \`get_email_provider_status\` first to see which provider they have connected.
-- Microsoft connected → use Outlook tools (\`search_outlook_messages\`, \`get_outlook_message\`, \`get_outlook_thread\`, \`list_outlook_events\`, \`get_outlook_calendar_summary\`).
-- Google connected → use Gmail tools (\`search_emails\`, \`get_email\`, \`list_calendar_events\`).
+- Microsoft connected → reads: \`search_outlook_messages\`, \`get_outlook_message\`, \`get_outlook_thread\`, \`list_outlook_events\`, \`get_outlook_calendar_summary\`. Writes: \`send_outlook_email\`, \`create_outlook_draft\`, \`update_outlook_draft\`, \`modify_outlook_message\` (read/unread/flag/unflag/archive/trash), \`create_outlook_event\`, \`update_outlook_event\`, \`delete_outlook_event\`, \`check_outlook_freebusy\` (find available meeting slots).
+- Google connected → reads: \`search_emails\`, \`get_email\`, \`list_calendar_events\`. Writes: \`send_email\`, \`create_draft\`, \`modify_email\`, \`create_calendar_event\`, \`update_calendar_event\`, \`delete_calendar_event\`.
 - Neither connected → tell the user nothing is connected and how to connect; do NOT just say "Google isn't connected" if Outlook is connected.
 - For multi-message email chains/threads, use \`get_outlook_thread\` (Microsoft) — it returns all messages in chronological order.
+- To find a meeting time across multiple attendees, use \`check_outlook_freebusy\` (Microsoft) — pass attendee email list. Don't guess availability; check it.
 
 When the user asks about a SPECIFIC RECORD (status update, handoff, "what's going on with X", summarize):
 - Use \`get_record_context\` — it returns fields + comments + notes + files + sub-items + links in one call.
@@ -267,10 +268,11 @@ ${microsoftContext ? `\n${microsoftContext}` : ""}
 
 When the user asks about EMAIL or CALENDAR:
 - ALWAYS call \`get_email_provider_status\` first to see which provider is connected.
-- Microsoft connected → use Outlook tools (\`search_outlook_messages\`, \`get_outlook_message\`, \`get_outlook_thread\`, \`list_outlook_events\`, \`get_outlook_calendar_summary\`).
-- Google connected → use Gmail tools (\`search_emails\`, \`get_email\`, \`list_calendar_events\`).
+- Microsoft connected → reads: \`search_outlook_messages\`, \`get_outlook_message\`, \`get_outlook_thread\`, \`list_outlook_events\`, \`get_outlook_calendar_summary\`. Writes: \`send_outlook_email\`, \`create_outlook_draft\`, \`update_outlook_draft\`, \`modify_outlook_message\` (read/unread/flag/unflag/archive/trash), \`create_outlook_event\`, \`update_outlook_event\`, \`delete_outlook_event\`, \`check_outlook_freebusy\`.
+- Google connected → reads: \`search_emails\`, \`get_email\`, \`list_calendar_events\`. Writes: \`send_email\`, \`create_draft\`, \`modify_email\`, \`create_calendar_event\`, \`update_calendar_event\`, \`delete_calendar_event\`.
 - Neither → say so explicitly; do NOT default to Gmail when only Outlook is connected.
 - For multi-message email chains/threads, prefer \`get_outlook_thread\` (Microsoft) — it returns the full conversation in order.
+- To find a meeting time across multiple attendees, use \`check_outlook_freebusy\` (Microsoft). Don't guess availability; check it.
 
 When the user asks about a SPECIFIC RECORD (status update, handoff report, "what's going on with X", summarize a project):
 - Use \`get_record_context\` — returns fields + comments + notes + files + sub-items + links in ONE call.

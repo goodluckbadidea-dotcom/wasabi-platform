@@ -1187,6 +1187,135 @@ const GET_OUTLOOK_CALENDAR_SUMMARY = {
   input_schema: { type: "object", properties: {}, required: [] },
 };
 
+// ─── OUTLOOK WRITE TOOLS (Phase 5C) ───
+
+const SEND_OUTLOOK_EMAIL = {
+  name: "send_outlook_email",
+  description: "Send an Outlook email or reply to a thread. For Microsoft 365 users — use this instead of send_email (Gmail). Pass reply_to_id to reply to a specific message in its thread.",
+  input_schema: {
+    type: "object",
+    properties: {
+      to: { type: "string", description: "Recipient email address." },
+      subject: { type: "string", description: "Email subject line." },
+      body: { type: "string", description: "Email body text (plain text)." },
+      body_html: { type: "string", description: "Optional: HTML body. If provided, takes precedence over plain text." },
+      reply_to_id: { type: "string", description: "Optional: Outlook message ID to reply to. When set, sends as a reply on that thread." },
+    },
+    required: ["to", "subject", "body"],
+  },
+};
+
+const CREATE_OUTLOOK_DRAFT = {
+  name: "create_outlook_draft",
+  description: "Create an Outlook draft email without sending. The user can review and send it later from the drafts folder.",
+  input_schema: {
+    type: "object",
+    properties: {
+      to: { type: "string", description: "Recipient email address (optional for drafts)." },
+      subject: { type: "string", description: "Subject line." },
+      body: { type: "string", description: "Body text (plain text)." },
+      body_html: { type: "string", description: "Optional: HTML body." },
+    },
+    required: ["body"],
+  },
+};
+
+const UPDATE_OUTLOOK_DRAFT = {
+  name: "update_outlook_draft",
+  description: "Update an existing Outlook draft (by message ID). Pass only the fields you want to change.",
+  input_schema: {
+    type: "object",
+    properties: {
+      message_id: { type: "string", description: "The Outlook draft message ID." },
+      to: { type: "string", description: "Recipient email address." },
+      subject: { type: "string", description: "Subject line." },
+      body: { type: "string", description: "Body text." },
+      body_html: { type: "string", description: "Optional: HTML body." },
+    },
+    required: ["message_id"],
+  },
+};
+
+const MODIFY_OUTLOOK_MESSAGE = {
+  name: "modify_outlook_message",
+  description: "Modify an Outlook message: mark read/unread, flag/unflag (Microsoft equivalent of star), archive (move to Archive folder), or trash (move to Deleted Items).",
+  input_schema: {
+    type: "object",
+    properties: {
+      message_id: { type: "string", description: "The Outlook message ID." },
+      action: {
+        type: "string",
+        enum: ["read", "unread", "flag", "unflag", "archive", "trash"],
+        description: "Action to perform.",
+      },
+    },
+    required: ["message_id", "action"],
+  },
+};
+
+// ─── OUTLOOK CALENDAR WRITE TOOLS ───
+
+const CREATE_OUTLOOK_EVENT = {
+  name: "create_outlook_event",
+  description: "Create an event on the user's Outlook (Microsoft 365) Calendar. For Microsoft-connected users — use this instead of create_calendar_event (Google).",
+  input_schema: {
+    type: "object",
+    properties: {
+      summary: { type: "string", description: "Event title." },
+      start: { type: "string", description: "Start time (ISO 8601 UTC, e.g. '2026-05-05T14:30:00Z')." },
+      end: { type: "string", description: "End time (ISO 8601 UTC)." },
+      description: { type: "string", description: "Event description / agenda." },
+      location: { type: "string", description: "Location string." },
+      attendees: { type: "array", items: { type: "string" }, description: "Attendee email addresses." },
+      is_all_day: { type: "boolean", description: "True for all-day events. Default false." },
+    },
+    required: ["summary", "start", "end"],
+  },
+};
+
+const UPDATE_OUTLOOK_EVENT = {
+  name: "update_outlook_event",
+  description: "Update an existing Outlook calendar event by ID. Pass only the fields you want to change.",
+  input_schema: {
+    type: "object",
+    properties: {
+      event_id: { type: "string", description: "The Outlook event ID." },
+      summary: { type: "string", description: "New event title." },
+      start: { type: "string", description: "New start time (ISO 8601 UTC)." },
+      end: { type: "string", description: "New end time (ISO 8601 UTC)." },
+      description: { type: "string", description: "New description." },
+      location: { type: "string", description: "New location." },
+    },
+    required: ["event_id"],
+  },
+};
+
+const DELETE_OUTLOOK_EVENT = {
+  name: "delete_outlook_event",
+  description: "Delete an Outlook calendar event by ID.",
+  input_schema: {
+    type: "object",
+    properties: {
+      event_id: { type: "string", description: "The Outlook event ID." },
+    },
+    required: ["event_id"],
+  },
+};
+
+const CHECK_OUTLOOK_FREEBUSY = {
+  name: "check_outlook_freebusy",
+  description: "Check free/busy availability for one or more Outlook calendars in a time range. Use to find a meeting slot that works for multiple attendees. Returns busy intervals (does NOT show event details — just busy/free).",
+  input_schema: {
+    type: "object",
+    properties: {
+      time_min: { type: "string", description: "Start of range (ISO 8601 UTC)." },
+      time_max: { type: "string", description: "End of range (ISO 8601 UTC)." },
+      attendees: { type: "array", items: { type: "string" }, description: "List of email addresses to check. If omitted, checks the current user's calendar only." },
+    },
+    required: ["time_min", "time_max"],
+  },
+};
+
 // ─── PER-RECORD CONTEXT TOOLS ───
 
 const GET_RECORD_CONTEXT = {
@@ -1381,6 +1510,15 @@ export const WASABI_TOOLS = [
   GET_OUTLOOK_THREAD,
   LIST_OUTLOOK_EVENTS,
   GET_OUTLOOK_CALENDAR_SUMMARY,
+  // Outlook write tools (Phase 5C)
+  SEND_OUTLOOK_EMAIL,
+  CREATE_OUTLOOK_DRAFT,
+  UPDATE_OUTLOOK_DRAFT,
+  MODIFY_OUTLOOK_MESSAGE,
+  CREATE_OUTLOOK_EVENT,
+  UPDATE_OUTLOOK_EVENT,
+  DELETE_OUTLOOK_EVENT,
+  CHECK_OUTLOOK_FREEBUSY,
   // Per-record context tools
   GET_RECORD_CONTEXT,
   GET_RECORD_COMMENTS,
@@ -1455,6 +1593,10 @@ export const ASSISTANT_TOOLS_EDITOR = [
   UPDATE_PAGE,
   POST_NOTIFICATION,
   CREATE_CALENDAR_EVENT,
+  // Outlook calendar/draft writes — assistant can schedule and draft, full send/delete is admin only
+  CREATE_OUTLOOK_EVENT,
+  CREATE_OUTLOOK_DRAFT,
+  CHECK_OUTLOOK_FREEBUSY,
 ];
 
 export const ASSISTANT_TOOLS_ADMIN = [
@@ -1462,6 +1604,15 @@ export const ASSISTANT_TOOLS_ADMIN = [
   UPDATE_PAGE,
   POST_NOTIFICATION,
   CREATE_CALENDAR_EVENT,
+  // Outlook write parity for admin
+  SEND_OUTLOOK_EMAIL,
+  CREATE_OUTLOOK_DRAFT,
+  UPDATE_OUTLOOK_DRAFT,
+  MODIFY_OUTLOOK_MESSAGE,
+  CREATE_OUTLOOK_EVENT,
+  UPDATE_OUTLOOK_EVENT,
+  DELETE_OUTLOOK_EVENT,
+  CHECK_OUTLOOK_FREEBUSY,
 ];
 
 // Legacy export — defaults to admin tool set

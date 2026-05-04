@@ -1038,7 +1038,16 @@ export async function sendOutlookEmail({ to, subject, bodyText, bodyHtml, replyT
 }
 
 export async function modifyOutlookMessage(messageId, action) {
+  // action: "read" | "unread" | "archive" | "trash" | "flag" | "unflag"
   return apiFetch(`/microsoft/mail/modify/${messageId}`, { method: "POST", body: { action } });
+}
+
+export async function createOutlookDraft({ to, subject, bodyText, bodyHtml }) {
+  return apiFetch("/microsoft/mail/drafts", { method: "POST", body: { to, subject, bodyText, bodyHtml } });
+}
+
+export async function updateOutlookDraft(messageId, { to, subject, bodyText, bodyHtml }) {
+  return apiFetch(`/microsoft/mail/drafts/${messageId}`, { method: "PATCH", body: { to, subject, bodyText, bodyHtml } });
 }
 
 // ─── Microsoft Calendar ───
@@ -1065,6 +1074,13 @@ export async function updateOutlookEvent(eventId, updates) {
 
 export async function deleteOutlookEvent(eventId) {
   return apiFetch(`/microsoft/calendar/events/${eventId}`, { method: "DELETE" });
+}
+
+export async function checkOutlookFreeBusy(timeMin, timeMax, attendees) {
+  return apiFetch("/microsoft/calendar/freebusy", {
+    method: "POST",
+    body: { timeMin, timeMax, attendees },
+  });
 }
 
 // ─── Figma ───

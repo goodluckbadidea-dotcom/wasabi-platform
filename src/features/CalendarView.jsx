@@ -148,7 +148,9 @@ export default function CalendarView({ allTasks, refreshRef }) {
         const [googleResult, outlookResult] = await Promise.all(fetches);
         if (cancelled) return;
 
-        const googleEvents = googleResult ? (googleResult.events || googleResult.items || []) : [];
+        const googleEvents = googleResult
+          ? (googleResult.events || googleResult.items || []).map((ev) => ({ ...ev, provider: "google" }))
+          : [];
         const googleCals = googleResult?.calendars || [];
 
         // Normalize Outlook events to match Google Calendar event shape
@@ -160,6 +162,7 @@ export default function CalendarView({ allTasks, refreshRef }) {
               calendarId: "outlook",
               calendarName: "Outlook Calendar",
               calendarColor: "#0078d4",
+              provider: "microsoft",
             }))
           : [];
 

@@ -592,7 +592,7 @@ export default function Navigation({
 
             {/* Workspaces — also highlighted when viewing a real page opened from workspaces */}
             {(() => {
-              const SYSTEM_PAGES = new Set(["system", "wasabi", "inbox", "automations", "functions", "build", "knowledge-base", "dashboard", "workspaces", "tasks", "notes", "gmail", "outlook", "notifications", "knowledge"]);
+              const SYSTEM_PAGES = new Set(["system", "wasabi", "inbox", "inbox-unified", "automations", "functions", "build", "knowledge-base", "dashboard", "workspaces", "tasks", "notes", "gmail", "outlook", "notifications", "knowledge"]);
               const isWsActive = activePage === "workspaces" ||
                 (activePage && !SYSTEM_PAGES.has(activePage) && pages.some(p => p.id === activePage));
               return (
@@ -674,6 +674,34 @@ export default function Navigation({
               </svg>
               {!collapsed && <span style={bottomLabelStyle(activePage === "notes")}>Notes</span>}
             </button>
+
+            {/* Unified Inbox (when EITHER Google or Microsoft connected) */}
+            {(googleConnected || microsoftConnected) && (
+              <button
+                onClick={() => setActivePage("inbox-unified")}
+                title="Inbox (Gmail + Outlook)"
+                style={bottomBtnStyle(activePage === "inbox-unified")}
+                onMouseEnter={(e) => { if (activePage !== "inbox-unified") e.currentTarget.style.background = C.darkSurf2; }}
+                onMouseLeave={(e) => { if (activePage !== "inbox-unified") e.currentTarget.style.background = "transparent"; }}
+              >
+                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                  <IconMail size={iconSize(activePage === "inbox-unified")} color={activePage === "inbox-unified" ? C.accent : navInactiveColor} />
+                  {(unreadCount + outlookUnreadCount) > 0 && (
+                    <span style={{
+                      position: "absolute", top: -5, right: -8,
+                      background: C.accent, color: "#fff",
+                      borderRadius: 7, fontSize: 9, fontWeight: 700,
+                      fontFamily: FONT, lineHeight: 1,
+                      width: 18, height: 18,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      {(unreadCount + outlookUnreadCount) > 99 ? "99+" : (unreadCount + outlookUnreadCount)}
+                    </span>
+                  )}
+                </div>
+                {!collapsed && <span style={bottomLabelStyle(activePage === "inbox-unified")}>Inbox</span>}
+              </button>
+            )}
 
             {/* Outlook (only when Microsoft connected) */}
             {microsoftConnected && (

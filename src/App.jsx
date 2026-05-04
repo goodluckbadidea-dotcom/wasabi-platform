@@ -66,6 +66,7 @@ const NotesView = lazyWithRetry(() => import("./features/NotesView.jsx"));
 const DashboardView = lazyWithRetry(() => import("./features/DashboardView.jsx"));
 const GmailView = lazyWithRetry(() => import("./features/GmailView.jsx"));
 const OutlookView = lazyWithRetry(() => import("./features/OutlookView.jsx"));
+const UnifiedInboxView = lazyWithRetry(() => import("./features/UnifiedInboxView.jsx"));
 const FigmaView = lazyWithRetry(() => import("./features/FigmaView.jsx"));
 const WorkspaceBrowser = lazyWithRetry(() => import("./features/WorkspaceBrowser.jsx"));
 const KnowledgeHub = lazyWithRetry(() => import("./features/KnowledgeHub.jsx"));
@@ -408,6 +409,20 @@ function AppContent() {
             </div>
           }>
             <OutlookView />
+          </React.Suspense>
+        </ErrorBoundary>
+      );
+    }
+    // Unified Inbox (Gmail + Outlook merged)
+    if (activePage === "inbox-unified") {
+      return (
+        <ErrorBoundary fallbackLabel="Inbox">
+          <React.Suspense fallback={
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
+              Loading...
+            </div>
+          }>
+            <UnifiedInboxView />
           </React.Suspense>
         </ErrorBoundary>
       );
