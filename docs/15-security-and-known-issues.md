@@ -1,6 +1,6 @@
 # Security Posture & Known Issues
 
-**Last Updated:** 2026-04-07
+**Last Updated:** 2026-05-04
 
 ## Product Context
 
@@ -340,3 +340,27 @@ Fixed in Stage 0 above. Verified in production: 5-of-5 expected mentions created
 ### Console and Error Hygiene
 
 All `console.log` debug statements have been removed from production code. Error handling uses the ToastContext system for user-visible errors and silent catch for non-critical failures (localStorage, optional features). **Exception (2026-04-17):** notification and mention-creation code paths in `worker/handlers/records.js` and `worker/handlers/notifications.js` now use `console.error("[tag] message:", err)` instead of silent swallows — errors in these paths were previously invisible and masked real bugs (see "Mention Notifications Silently Dropped" above).
+
+### AI Tool Visibility Gap (Resolved 2026-05-04)
+
+The AI chat had 46 tools but the app surfaced ~130 capabilities. Major surfaces were dark to the AI: **comments, record notes, attached files, sub-items as a hierarchy, the full page list, the user directory, the notifications inbox, document content, page permissions, cell links, AND the entire Microsoft 365 stack (Outlook mail + calendar)**. This caused the chat to:
+
+- Tell users "I can't access comments" when asked for handoff reports — comments were one tool call away.
+- Default to Gmail tools for Microsoft 365 users, then conclude "Google isn't connected" as a dead end.
+- Fall back to `query_database` for record-level questions, missing all unstructured context.
+
+Fixed by adding 17 read tools across four buckets — per-record context (with a `get_record_context` mega-tool that fans out 6 parallel API calls), workspace structure (`list_pages`, `list_users`, `list_notifications`), documents/permissions/links (`get_document`, `get_page_permissions`, `list_links`), and the full Outlook tool set (`search_outlook_messages`, `get_outlook_message`, `get_outlook_thread`, `list_outlook_events`, `get_outlook_calendar_summary`) plus `get_email_provider_status` for routing. Also added `microsoftContext.js` (mirror of `googleContext.js`) so the system prompt sees Outlook context for Microsoft 365 users — both `ChatPanel.jsx` and `WasabiPanel.jsx` now fetch both providers in parallel via `Promise.allSettled`. Prompt builder gained a "How to Answer Common Questions" section explicitly directing the AI to call the right tool for each scenario — without this the model defaults back to `query_database` for everything.
+
+Writes for these surfaces (add comment, save note, update document, set permission, send Outlook email, create/update/delete events) are intentionally deferred — current scope is read-everything + guardrails-on-write. Commit `162505e`.
+
+### AI Email/Calendar Tools Threw ReferenceError on Every Call (Resolved 2026-05-04)
+
+`createToolExecutor` in `src/agent/toolExecutor.js` defines `executeTool(toolName, toolInput)`, but every Gmail and Calendar case body referenced a bare variable named `input` (14 occurrences across `search_emails`, `get_email`, `send_email`, `modify_email`, `create_draft`, `list_calendar_events`, `create_calendar_event`, `update_calendar_event`, `delete_calendar_event`). JavaScript threw `ReferenceError: Can't find variable: input` at runtime — every email and calendar tool call had been silently failing. Bug was likely introduced when the file was extracted/refactored and the parameter rename was never carried through. Fixed by renaming bare `input` → `toolInput`. Commit `c2e72d4`.
+
+### CORS Allow-Headers Missing X-Cache-Hint, Killing Smart Cache (Resolved 2026-05-04)
+
+Commit `2ca1b5b` (2026-03-10 — "Haiku-first AI routing with smart caching") added an `X-Cache-Hint` request header in `src/agent/runAgent.js:348` for cacheable Claude proxy calls, but **never updated `worker/cors.js`** to permit it in `Access-Control-Allow-Headers`. Browsers (especially Safari) blocked the preflight, so every cacheable Claude call had been failing CORS for ~7 weeks. Visible as 401/CORS errors in console and zero cache-hit rate on first-turn AI requests. Non-cacheable calls succeeded because they didn't add the extra header — so AI worked some of the time, with cache misses on every turn. Fixed by adding `X-Cache-Hint` to the allow-headers string in `worker/cors.js`. Worker deploy required. Commit `a6c34e5`.
+
+### Dashboard "Pin a View" Silently Failed (Resolved 2026-05-04)
+
+`WidgetGrid.jsx` was refactored at some point to extract `WidgetPickerInline` into its own inner component, but the click handler at line 518 still referenced `viewPrefs` — which is declared via `useViewPrefs()` in the **outer** `WidgetGrid` component, not the picker. Every click on a "Pin a View" button threw `ReferenceError: viewPrefs is not defined`. React event handlers swallow errors silently, so nothing visible happened — the picker stayed open and no widget was pinned. "Quick Add" buttons (Shortcut, Text Block, plugin functions) worked because they didn't reference `viewPrefs`. Fixed by adding `const viewPrefs = useViewPrefs();` inside `WidgetPickerInline`. Commit `f0bf734`.

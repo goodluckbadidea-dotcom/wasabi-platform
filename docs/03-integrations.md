@@ -334,10 +334,12 @@ CORS_ORIGINS = "https://wasabi-platform.pages.dev,http://localhost:5173,http://1
 ```
 Access-Control-Allow-Origin: {matched origin}
 Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS
-Access-Control-Allow-Headers: Content-Type, Authorization, X-Claude-Key, X-Wasabi-Key, X-Wasabi-Pin-Token
+Access-Control-Allow-Headers: Content-Type, Authorization, X-Claude-Key, X-Wasabi-Key, X-Wasabi-Pin-Token, X-Cache-Hint
 Access-Control-Allow-Credentials: true
 Vary: Origin
 ```
+
+**`X-Cache-Hint` (added 2026-05-04):** the frontend sends this header on cacheable Claude proxy calls (see `src/agent/runAgent.js`). The header was added to `runAgent.js` on 2026-03-10 alongside Haiku-first routing and worker-side response caching, but the CORS allow-list was not updated at the same time. Browsers (especially Safari) blocked the preflight, silently breaking smart caching for ~7 weeks. Worker deploy required after this change. See doc 15 for the resolved-bug entry.
 
 ---
 
@@ -482,6 +484,21 @@ The Graph API property for recipients is `toRecipients` (not `to`). Using `to` i
 
 `worker/handlers/outlook.js` — All mail and calendar handlers.
 
+### AI Tools (2026-05-04)
+
+The AI agent now has full Outlook read coverage via tools defined in `src/agent/tools.js` and dispatched in `src/agent/toolExecutor.js`:
+
+- `get_email_provider_status` — returns Google + Microsoft connection state in one call. The AI is prompted to call this BEFORE choosing email tools so Microsoft 365 users no longer get Gmail tools that fail with "Google isn't connected."
+- `search_outlook_messages(query, max_results, folder)` — wraps `searchOutlookMessages`. Supports plain-keyword `$search` queries.
+- `get_outlook_message(message_id)` — wraps `getOutlookMessage`.
+- `get_outlook_thread(conversation_id)` — wraps `getOutlookThread`. Returns the full conversation in chronological order — critical for email-chain summaries.
+- `list_outlook_events(start_date, end_date, max_results)` — wraps `listOutlookEvents`.
+- `get_outlook_calendar_summary()` — wraps `getOutlookCalendarSummary`.
+
+### Microsoft 365 System-Prompt Context (2026-05-04)
+
+`src/microsoft/microsoftContext.js` — mirror of `src/google/googleContext.js`. Fetches `getOutlookSummary` + `getOutlookCalendarSummary` in parallel, formats a `## Microsoft 365 Context` block (unread count, recent subjects, upcoming events), caches in sessionStorage for 5 min. Both `ChatPanel.jsx` and `WasabiPanel.jsx` fetch both providers via `Promise.allSettled` so Outlook users see Outlook context in the system prompt — not blank or Gmail-only context.
+
 ---
 
 ## Outlook Calendar (Microsoft Graph)
@@ -514,12 +531,12 @@ The footer banner "Connect Google Calendar in Settings" only appears when **neit
 
 ## Integration Summary
 
-| Integration | Read | Write | Auth | Cache | Proxy Route |
-|------------|------|-------|------|-------|-------------|
-| Gmail | Full (summary, search, read, thread) | Full (send, draft, modify) | Google OAuth (per-user) | None | `/google/gmail/*` |
-| Google Calendar | Full (list, events, freebusy) | Full (create, update, delete) | Google OAuth (per-user) | None | `/google/calendar/*` |
-| Outlook Mail | Full (summary, search, read, thread) | Full (send, reply, mark read) | Microsoft OAuth (per-user) | None | `/microsoft/mail/*` |
-| Outlook Calendar | Full (summary, events) | Full (create, update, delete) | Microsoft OAuth (per-user) | None | `/microsoft/calendar/*` |
+| Integration | Read | Write | AI Tools | Auth | Cache | Proxy Route |
+|------------|------|-------|----------|------|-------|-------------|
+| Gmail | Full (summary, search, read, thread) | Full (send, draft, modify) | Read + write (search_emails, get_email, send_email, modify_email, create_draft) | Google OAuth (per-user) | None | `/google/gmail/*` |
+| Google Calendar | Full (list, events, freebusy) | Full (create, update, delete) | Read + write (list/create/update/delete_calendar_event) | Google OAuth (per-user) | None | `/google/calendar/*` |
+| Outlook Mail | Full (summary, search, read, thread) | Full (send, reply, mark read) | **Read (2026-05-04)** — search_outlook_messages, get_outlook_message, get_outlook_thread. Write deferred. | Microsoft OAuth (per-user) | None | `/microsoft/mail/*` |
+| Outlook Calendar | Full (summary, events) | Full (create, update, delete) | **Read (2026-05-04)** — list_outlook_events, get_outlook_calendar_summary. Write deferred. | Microsoft OAuth (per-user) | None | `/microsoft/calendar/*` |
 | Notion | Full (pages, databases, blocks, search) | Full (create, update, archive) | API key (per-user or global) | None | `/page/*`, `/database/*`, `/blocks/*`, `/query`, `/search` |
 | Notion Sync | Pull + status | Push + flush | API key | sync_configs table | `/sync/{id}/*` |
 | Monday.com | Full (boards, columns, items) | None | API key (global) | None | `/monday/graphql` |

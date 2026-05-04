@@ -1,6 +1,6 @@
 # File Map
 
-**Last Updated:** 2026-04-16
+**Last Updated:** 2026-05-04
 
 Complete source file listing for the Wasabi platform. Excludes `node_modules/`, `dist/`, and `.git/`.
 
@@ -285,7 +285,7 @@ Shared UI components used across views.
 | `SyncPanel.jsx` | Notion sync status and controls panel |
 | `ViewSettingsPanel.jsx` | View settings/configuration panel. `ColorMappingSection` (COLOR SOURCE dropdown + swatch grid) is hidden for Table views via `!isTable` gate (2026-04-15) — Table option colors live on the schema and are edited via Manage Options. Kanban/Gantt/CardGrid still render the section and consume `viewConfig.colorMapping`. |
 | `ViewToolbar.jsx` | View-level toolbar (filters, sorts, group by) |
-| `WidgetGrid.jsx` | Dashboard widget grid layout |
+| `WidgetGrid.jsx` | Dashboard widget grid layout. 2026-05-04 fix: `WidgetPickerInline` was referencing `viewPrefs` (declared in outer `WidgetGrid` via `useViewPrefs()`) without it being in scope — clicking any "Pin a View" button silently threw `ReferenceError`. Added `const viewPrefs = useViewPrefs()` inside the inline picker. |
 
 ---
 
@@ -316,7 +316,7 @@ AI agent system. Lazy-loaded.
 
 | File | Purpose |
 |------|---------|
-| `agentContext.js` | Context envelope builders: `buildAgentContext()` (full agent) + `buildAssistantContext()` (lightweight assistant) |
+| `agentContext.js` | Context envelope builders: `buildAgentContext()` (full agent) + `buildAssistantContext()` (lightweight assistant). 2026-05-04: both builders now accept `microsoftContext` parameter alongside `googleContext` so the system prompt sees Outlook context for Microsoft 365 users. |
 | `aiRouter.js` | Multi-tier model routing (Haiku for fast/cheap, Sonnet for complex) |
 | `automations.js` | Automation execution engine: evaluates triggers, executes actions |
 | `dataSummary.js` | Builds data context summaries for AI within token budget |
@@ -324,9 +324,9 @@ AI agent system. Lazy-loaded.
 | `memory.js` | Persistent conversation memory for agents |
 | `queryClassifier.js` | Query intent classification for tool selection and routing |
 | `runAgent.js` | Core agent loop: prompt, classify, route, execute tools, respond |
-| `toolExecutor.js` | 55+ tool implementations: CRUD, email, calendar, automations, neuron CRUD. Phase 2b (2026-04-25) added `get_relationships` (read unified edges with permission filter applied server-side) and `write_relationship` (origin hardcoded to `ai_inferred`, validates confidence in [0, 1), surfaces 409 duplicates as `{ skipped: true }` so the AI doesn't retry-loop). |
-| `tools.js` | Tool definitions (schemas) for Claude's tool_use. Role-based assistant tool sets (admin/editor/viewer). Phase 2b (2026-04-25) added `GET_RELATIONSHIPS` (in WASABI_TOOLS + all three ASSISTANT_TOOLS_* tiers — read-only) and `WRITE_RELATIONSHIP` (full agent only — proposing edges is a "thinking" task, not a quick assistant query). |
-| `wasabiPrompt.js` | System prompt generation for Agent and Assistant. Context budget competition compresses workspace summary when neurons are rich. |
+| `toolExecutor.js` | 63+ tool implementations: CRUD, email, calendar, automations, neuron CRUD. Phase 2b (2026-04-25) added `get_relationships` and `write_relationship`. **2026-05-04 expansion** added 17 read tools — `get_email_provider_status`, Outlook tools (`search_outlook_messages`, `get_outlook_message`, `get_outlook_thread`, `list_outlook_events`, `get_outlook_calendar_summary`), per-record context (`get_record_context` mega-tool with parallel `Promise.allSettled` fan-out, plus granular `get_record_comments`, `get_record_note`, `list_record_files`, `list_child_rows`), workspace structure (`list_pages`, `list_users`, `list_notifications`), and documents/permissions/links (`get_document`, `get_page_permissions`, `list_links`). **2026-05-04 hotfix:** Gmail/Calendar tool cases referenced bare `input` instead of the `toolInput` parameter — every email/calendar call had been throwing `ReferenceError: Can't find variable: input` at runtime. Renamed all 14 references to `toolInput`. |
+| `tools.js` | Tool definitions (schemas) for Claude's tool_use. Role-based assistant tool sets (admin/editor/viewer). Phase 2b (2026-04-25) added relationship tools. **2026-05-04 expansion** added 17 new tool definitions and refactored the assistant tool sets — VIEWER/EDITOR/ADMIN now all share a single `ASSISTANT_READS` array (full read parity across roles), with EDITOR/ADMIN adding the lightweight write set on top. New tool sections: provider status (`GET_EMAIL_PROVIDER_STATUS`), Outlook (`SEARCH_OUTLOOK_MESSAGES`, `GET_OUTLOOK_MESSAGE`, `GET_OUTLOOK_THREAD`, `LIST_OUTLOOK_EVENTS`, `GET_OUTLOOK_CALENDAR_SUMMARY`), per-record context (`GET_RECORD_CONTEXT`, `GET_RECORD_COMMENTS`, `GET_RECORD_NOTE`, `LIST_RECORD_FILES`, `LIST_CHILD_ROWS`), workspace structure (`LIST_PAGES`, `LIST_USERS`, `LIST_NOTIFICATIONS`), documents/perms/links (`GET_DOCUMENT`, `GET_PAGE_PERMISSIONS`, `LIST_LINKS`). |
+| `wasabiPrompt.js` | System prompt generation for Agent and Assistant. Context budget competition compresses workspace summary when neurons are rich. **2026-05-04:** accepts `microsoftContext` alongside `googleContext` (renders both as separate sections), and adds a "How to Answer Common Questions" guidance section that explicitly tells the AI when to call `get_email_provider_status`, `get_record_context`, `list_users`, `list_pages`, `list_notifications`, `get_document`, etc. Added to both `_buildPrompt` (full agent) and `buildAssistantPrompt` (assistant). Without this prompt guidance the new tools exist but never get called — the model defaults to `query_database` and `search_emails` for everything. |
 
 ---
 
@@ -405,7 +405,17 @@ Utility and helper modules.
 
 | File | Purpose |
 |------|---------|
-| `googleContext.js` | Google OAuth state and API context |
+| `googleContext.js` | Google OAuth state and API context. Fetches Gmail + Calendar summaries via `getGmailSummary` + `getCalendarSummary`, formats compact context block for system prompt injection. 5-min sessionStorage cache. |
+
+---
+
+## src/microsoft/ (1 file)
+
+**(Added 2026-05-04)**
+
+| File | Purpose |
+|------|---------|
+| `microsoftContext.js` | Microsoft 365 (Outlook + Calendar) context fetcher. Mirror of `googleContext.js`. Fetches `getOutlookSummary` + `getOutlookCalendarSummary` in parallel via `Promise.allSettled`, formats a "## Microsoft 365 Context" block with unread count, recent subjects, and upcoming events. 5-min sessionStorage cache, separate cache key (`wasabi_microsoft_context`) so Google and Microsoft contexts can coexist. Consumed by `ChatPanel.jsx` and `WasabiPanel.jsx` via `getMicrosoftStatus().connected → fetchMicrosoftContext()` gate. |
 
 ---
 

@@ -28,7 +28,7 @@ Personal productivity surface. User-scoped data. All components lazy-loaded.
 | TasksView | `src/features/TasksView.jsx` | Personal task list + calendar integration |
 | CalendarView | `src/features/CalendarView.jsx` | Day/week/month calendar with Google Calendar sync |
 | RecordDrawer | `src/features/RecordDrawer.jsx` | Slide-out record editor (primary edit surface for all views). "Go to Task" button uses `navigateToRecord()` to open RecordDetail drawer after navigating to source database. |
-| ChatPanel | `src/features/ChatPanel.jsx` | Dual-tab AI chat: Assistant (Haiku, lightweight tools, neuron-aware) and Agent (full Wasabi agent with all tools) |
+| ChatPanel | `src/features/ChatPanel.jsx` | Dual-tab AI chat: Assistant (Haiku, lightweight tools, neuron-aware) and Agent (full Wasabi agent with all tools). 2026-05-04: now fetches both Google AND Microsoft 365 context in parallel via `Promise.allSettled` so Outlook users get email/calendar context in the system prompt. |
 | GmailView | `src/features/GmailView.jsx` | Gmail inbox, read, compose, reply |
 | FigmaView | `src/features/FigmaView.jsx` | Browse Figma team projects and files. Project sidebar, file thumbnail grid, search/filter, file detail panel. Multi-select import creates/reuses a "Design Assets" database with status tracking (Draft/In Review/Approved/Archived). De-duplicates by file key. |
 | DashboardView | `src/features/DashboardView.jsx` | Customizable widget dashboard |
@@ -438,7 +438,7 @@ Refactored from a single file into a folder with 9 files:
 | File | Purpose |
 |------|---------|
 | `runAgent.js` | Agent loop: prompt, classify, route to model, execute tools, respond |
-| `toolExecutor.js` | 55+ tool implementations: CRUD pages/rows, email, calendar, automations, neuron CRUD |
+| `toolExecutor.js` | 63+ tool implementations: CRUD pages/rows, email (Gmail + Outlook), calendar (Google + Outlook), automations, neuron CRUD, per-record context (`get_record_context` mega-tool), workspace structure (`list_pages`/`list_users`/`list_notifications`), documents, page permissions, cell links. 2026-05-04 expansion. |
 | `queryClassifier.js` | Determines query complexity, routes to Haiku (fast/cheap) or Sonnet (complex) |
 | `tools.js` | Tool definitions (name, description, parameters) for Claude |
 | `automations.js` | Cron-triggered automation engine: evaluates rules, executes actions |
@@ -934,3 +934,99 @@ create/delete elsewhere in the app.
 **Skipped: Step C (Gantt dependency arrows).** Decorative more than
 useful for the current workflow. Revisit if a future user signal calls
 for it.
+
+---
+
+## AI Tool Expansion — Read Coverage (2026-05-04)
+
+**Source:** `src/agent/tools.js`, `src/agent/toolExecutor.js`, `src/agent/wasabiPrompt.js`, `src/microsoft/microsoftContext.js` (new).
+
+The AI chat had 46 tools — but the app surfaced ~130 capabilities. Comments,
+record notes, attached files, sub-items, page list, user directory,
+notifications, document content, page permissions, cell links, and the entire
+Microsoft 365 stack were dark to the AI. Practical effect: handoff reports
+collapsed at "I can't access comments," and Outlook users got Gmail tools that
+returned zero results then concluded "Google isn't connected."
+
+Added 17 read tools across four buckets, plus prompt guidance and a Microsoft
+context provider. Writes deferred — current rule is **read everything,
+guardrails on writes**.
+
+### `get_record_context` — One-Call Record Picture
+
+Mega-tool that fans six fetches in parallel via `Promise.allSettled`:
+
+- Record fields (via `queryTable` with `listRows` fallback)
+- `listRecordComments`
+- `getRecordNote`
+- `listFilesByRecord` (toggleable)
+- `listChildRows` (toggleable)
+- `getLinksBySource`
+
+Returns a single structured blob. Replaces 6–7 separate AI tool calls for any
+"what's going on with X" question. Failures in one section don't kill the
+others.
+
+### Outlook / Microsoft 365 Tool Set
+
+Mirror of the Gmail/Calendar set: `search_outlook_messages`,
+`get_outlook_message`, `get_outlook_thread` (full conversation in chronological
+order — critical for email-chain summaries), `list_outlook_events`,
+`get_outlook_calendar_summary`. Plus `get_email_provider_status` which returns
+both Google and Microsoft connection state in one call so the AI can route
+correctly.
+
+### Workspace Structure & Document Tools
+
+- `list_pages` — full workspace page list (replaces "I'll guess if this page exists")
+- `list_users` — user directory with names, roles, IDs
+- `list_notifications` — read user's notification inbox
+- `get_document` — full block-level content of Doc-type pages
+- `get_page_permissions` — who has access to a page
+- `list_links` — cell links by source or target page
+
+### Microsoft 365 Context Provider
+
+`src/microsoft/microsoftContext.js` mirrors `googleContext.js`. Both
+`ChatPanel.jsx` and `WasabiPanel.jsx` now fetch both providers in parallel via
+`Promise.allSettled` and inject both context blocks into the system prompt.
+Without this, even with new tools the AI would default to Gmail because
+"Microsoft Context" never appeared in the prompt.
+
+### "How to Answer Common Questions" Prompt Section
+
+Added to both `_buildPrompt` (Agent) and `buildAssistantPrompt` (Assistant) in
+`wasabiPrompt.js`. Explicit rules: call `get_email_provider_status` before
+choosing email tools; call `get_record_context` for any record-level question;
+call `list_pages`/`list_users`/`list_notifications`/`get_document` for the
+respective surfaces. Includes the directive *"Never tell the user comments are
+inaccessible — they are accessible."* Without this guidance the model defaults
+to `query_database` for everything and never reaches for the new tools.
+
+### Tool Set Restructure
+
+`ASSISTANT_TOOLS_VIEWER` / `_EDITOR` / `_ADMIN` were three nearly-identical
+arrays. Refactored to a single `ASSISTANT_READS` array shared across all
+three tiers; EDITOR/ADMIN add the lightweight write set on top. All assistant
+roles now have full read parity — restricting writes is the only role
+distinction.
+
+### Deferred (Tier 3 reads + all writes)
+
+- Reads: Flows CRUD, Figma tools, audit log query, sync controls, KB
+  enumeration/deletion, user state/dashboard reads, connection status.
+- Writes: `add_record_comment`, `save_record_note`, `update_document`,
+  `set_page_permission`, `send_outlook_email`, calendar create/update/delete
+  for Outlook, page admin (rename, reorder, delete) — all with confirm-mode
+  gating per `agentMode`.
+
+### Bug Fixes Bundled With This Work
+
+- **`input/toolInput` ReferenceError** — every Gmail and Calendar tool call
+  had been throwing at runtime (commit `c2e72d4`). See doc 15.
+- **CORS missing `X-Cache-Hint`** — smart caching had been silently broken
+  since 2026-03-10 (commit `a6c34e5`). Worker deploy. See doc 15.
+- **Dashboard "Pin a View" silently failed** — `viewPrefs` out of scope
+  inside `WidgetPickerInline` (commit `f0bf734`). See doc 15.
+
+Commits: `c2e72d4`, `a6c34e5`, `162505e`, `f0bf734`.
