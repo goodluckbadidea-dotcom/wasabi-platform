@@ -504,6 +504,29 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
           >
             Wasabi
           </span>
+          {/* Model routing toggle — Auto / Sonnet / Haiku */}
+          <button
+            onClick={() => {
+              const next = modelOverride === null ? "sonnet" : modelOverride === "sonnet" ? "haiku" : null;
+              setModelOverride(next);
+            }}
+            style={{
+              background: modelOverride ? (modelOverride === "sonnet" ? C.accent + "22" : C.darkSurf2) : "transparent",
+              border: `1px solid ${modelOverride ? (modelOverride === "sonnet" ? C.accent + "44" : C.darkBorder) : C.darkBorder}`,
+              borderRadius: 999,
+              padding: "2px 8px",
+              fontSize: 9,
+              color: modelOverride === "sonnet" ? C.accent : C.darkMuted,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              lineHeight: 1.4,
+              transition: "all 0.15s",
+              outline: "none",
+            }}
+            title={modelOverride === null ? "Auto model (click to pin Sonnet)" : modelOverride === "sonnet" ? "Pinned to Sonnet (click for Haiku)" : "Pinned to Haiku (click for Auto)"}
+          >
+            {modelOverride === null ? "Auto" : modelOverride === "sonnet" ? "Sonnet" : "Haiku"}
+          </button>
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 2 }}>
             {/* Minimize button — only visible when panel has been resized */}
             {isResized && (
@@ -560,31 +583,6 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
 
       {/* ═══ CHAT ═══ */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-          {/* Model toggle pill */}
-          <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 10px 0" }}>
-            <button
-              onClick={() => {
-                const next = modelOverride === null ? "sonnet" : modelOverride === "sonnet" ? "haiku" : null;
-                setModelOverride(next);
-              }}
-              style={{
-                background: modelOverride ? (modelOverride === "sonnet" ? C.accent + "22" : C.darkSurf2) : "transparent",
-                border: `1px solid ${modelOverride ? (modelOverride === "sonnet" ? C.accent + "44" : C.darkBorder) : C.darkBorder}`,
-                borderRadius: 999,
-                padding: "2px 8px",
-                fontSize: 9,
-                color: modelOverride === "sonnet" ? C.accent : C.darkMuted,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                lineHeight: 1.4,
-                transition: "all 0.15s",
-                outline: "none",
-              }}
-              title={modelOverride === null ? "Auto model (click to pin Sonnet)" : modelOverride === "sonnet" ? "Pinned to Sonnet (click for Haiku)" : "Pinned to Haiku (click for Auto)"}
-            >
-              {modelOverride === null ? "Auto" : modelOverride === "sonnet" ? "Sonnet" : "Haiku"}
-            </button>
-          </div>
           <ChatUI
             messages={chatMessages}
             onSend={handleChatSend}
