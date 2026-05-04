@@ -13,10 +13,12 @@ import {
   getMicrosoftStatus,
   searchEmails,
   getEmail,
+  getThread,
   sendEmail,
   modifyEmail,
   searchOutlookMessages,
   getOutlookMessage,
+  getOutlookThread,
   sendOutlookEmail,
   modifyOutlookMessage,
 } from "../lib/api.js";
@@ -214,6 +216,84 @@ function ComposeModal({ onClose, onSent, replyTo, defaultProvider, googleConnect
   );
 }
 
+// ─── Sender display helpers ───
+
+// "Mark Brooks <mark@premier.com>" → "Mark Brooks"
+// "mark@premier.com" → "mark@premier.com"
+function senderName(raw) {
+  if (!raw) return "Unknown";
+  const lt = raw.indexOf("<");
+  if (lt > 0) return raw.slice(0, lt).trim().replace(/^"|"$/g, "");
+  return raw;
+}
+
+// Compact a list of senders into a display string with overflow indicator.
+function compactSenders(senders) {
+  const unique = [];
+  const seen = new Set();
+  for (const s of senders) {
+    const name = senderName(s);
+    const k = name.toLowerCase();
+    if (!seen.has(k)) { seen.add(k); unique.push(name); }
+  }
+  if (unique.length === 0) return "Unknown";
+  if (unique.length === 1) return unique[0];
+  if (unique.length === 2) return `${unique[0]}, ${unique[1]}`;
+  if (unique.length === 3) return `${unique[0]}, ${unique[1]}, ${unique[2]}`;
+  return `${unique[0]}, ${unique[1]} +${unique.length - 2}`;
+}
+
+// ─── Thread grouping ───
+// Group flat messages into threads by provider+threadId/conversationId.
+// Falls back to the message id when no thread/conversation id is available.
+function groupThreads(messages) {
+  const groups = new Map();
+  for (const m of messages) {
+    const tid = m.provider === "google"
+      ? (m.threadId || m.id)
+      : (m.conversationId || m.id);
+    const key = `${m.provider === "google" ? "g" : "o"}:${tid}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        threadKey: key,
+        provider: m.provider,
+        threadId: m.provider === "google" ? tid : null,
+        conversationId: m.provider === "microsoft" ? tid : null,
+        subject: m.subject,
+        messages: [],
+      });
+    }
+    groups.get(key).messages.push(m);
+  }
+  // Compute aggregates for each thread.
+  return Array.from(groups.values()).map((g) => {
+    const sorted = [...g.messages].sort((a, b) => {
+      const da = new Date(a.date).getTime() || 0;
+      const db = new Date(b.date).getTime() || 0;
+      return db - da; // newest first
+    });
+    const latest = sorted[0];
+    return {
+      ...g,
+      messages: sorted,
+      latest,
+      latestDate: latest?.date || "",
+      isAnyUnread: g.messages.some((m) => !m.isRead),
+      sendersDisplay: compactSenders(sorted.map((m) => m.fromName || m.from)),
+      messageCount: g.messages.length,
+      // Subject from any message — they're all the same thread, but pick the
+      // one that doesn't start with "Re:" if available, otherwise latest.
+      displaySubject: (g.messages.find((m) => m.subject && !/^re:\s/i.test(m.subject))?.subject)
+        || latest?.subject
+        || "(no subject)",
+    };
+  }).sort((a, b) => {
+    const da = new Date(a.latestDate).getTime() || 0;
+    const db = new Date(b.latestDate).getTime() || 0;
+    return db - da;
+  });
+}
+
 // ─── Main View ───
 export default function UnifiedInboxView() {
   const [googleConnected, setGoogleConnected] = useState(false);
@@ -224,8 +304,8 @@ export default function UnifiedInboxView() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState("all"); // "all" | "unread"
   const [providerFilter, setProviderFilter] = useState("all"); // "all" | "google" | "microsoft"
-  const [expandedKey, setExpandedKey] = useState(null);
-  const [expandedBody, setExpandedBody] = useState(null);
+  const [expandedThreadKey, setExpandedThreadKey] = useState(null);
+  const [expandedThread, setExpandedThread] = useState(null); // { loading, messages?, error? }
   const [compose, setCompose] = useState(null);
   const searchTimerRef = useRef(null);
 
@@ -306,51 +386,70 @@ export default function UnifiedInboxView() {
     searchTimerRef.current = setTimeout(() => { fetchMessages(v); }, 400);
   };
 
-  // ── Visible (filtered) messages ──
-  const visible = useMemo(() => {
-    return messages.filter((m) => {
-      if (filter === "unread" && m.isRead) return false;
-      if (providerFilter !== "all" && m.provider !== providerFilter) return false;
+  // ── Group messages into threads, then filter ──
+  const visibleThreads = useMemo(() => {
+    const threads = groupThreads(messages);
+    return threads.filter((t) => {
+      if (filter === "unread" && !t.isAnyUnread) return false;
+      if (providerFilter !== "all" && t.provider !== providerFilter) return false;
       return true;
     });
   }, [messages, filter, providerFilter]);
 
-  // ── Expand a message ──
-  const handleExpand = useCallback(async (msg) => {
-    if (expandedKey === msg.key) {
-      setExpandedKey(null);
-      setExpandedBody(null);
+  // ── Expand a thread (fetch full conversation) ──
+  const handleExpandThread = useCallback(async (thread) => {
+    if (expandedThreadKey === thread.threadKey) {
+      setExpandedThreadKey(null);
+      setExpandedThread(null);
       return;
     }
-    setExpandedKey(msg.key);
-    setExpandedBody({ loading: true });
+    setExpandedThreadKey(thread.threadKey);
+    setExpandedThread({ loading: true });
     try {
-      const full = msg.provider === "google"
-        ? await getEmail(msg.id)
-        : await getOutlookMessage(msg.id);
-      setExpandedBody(full);
+      const fullThread = thread.provider === "google"
+        ? await getThread(thread.threadId)
+        : await getOutlookThread(thread.conversationId);
+      const fullMessages = (fullThread?.messages || []).slice().sort((a, b) => {
+        const da = new Date(a.date).getTime() || 0;
+        const db = new Date(b.date).getTime() || 0;
+        return da - db; // chronological (oldest first) for natural reading order
+      });
+      setExpandedThread({ messages: fullMessages });
 
-      // Mark read on expand
-      if (!msg.isRead) {
-        try {
-          if (msg.provider === "google") {
-            await modifyEmail(msg.id, "mark_read");
-          } else {
-            await modifyOutlookMessage(msg.id, "read");
-          }
-          setMessages((prev) => prev.map((m) => m.key === msg.key ? { ...m, isRead: true } : m));
-        } catch (markErr) {
-          console.warn("[UnifiedInbox] Mark read failed:", markErr);
-        }
+      // Mark all unread messages in this thread as read on the right provider.
+      const unreadInThread = thread.messages.filter((m) => !m.isRead);
+      if (unreadInThread.length) {
+        const markPromises = unreadInThread.map((m) => {
+          if (m.provider === "google") return modifyEmail(m.id, "mark_read").catch(() => null);
+          return modifyOutlookMessage(m.id, "read").catch(() => null);
+        });
+        Promise.all(markPromises).then(() => {
+          // Reflect read state locally so the thread list updates without refetch.
+          setMessages((prev) => prev.map((m) => {
+            const tid = m.provider === "google" ? (m.threadId || m.id) : (m.conversationId || m.id);
+            const inThread = `${m.provider === "google" ? "g" : "o"}:${tid}` === thread.threadKey;
+            return inThread && !m.isRead ? { ...m, isRead: true } : m;
+          }));
+        });
       }
     } catch (err) {
-      console.error("[UnifiedInbox] Get message failed:", err);
-      setExpandedBody({ error: "Failed to load message" });
+      console.error("[UnifiedInbox] Get thread failed:", err);
+      setExpandedThread({ error: "Failed to load thread" });
     }
-  }, [expandedKey]);
+  }, [expandedThreadKey]);
 
+  // Reply to a specific message within a thread (caller picks which one — usually the latest).
   const handleReply = useCallback((msg) => {
-    setCompose({ replyTo: msg });
+    setCompose({
+      replyTo: {
+        provider: msg.provider,
+        id: msg.id,
+        threadId: msg.threadId,
+        conversationId: msg.conversationId,
+        from: msg.from,
+        subject: msg.subject,
+      },
+    });
   }, []);
 
   const handleSent = useCallback(() => {
@@ -488,20 +587,19 @@ export default function UnifiedInboxView() {
               cursor: "pointer", fontFamily: FONT, fontSize: 11, outline: "none",
             }}>Retry</button>
           </div>
-        ) : visible.length === 0 ? (
+        ) : visibleThreads.length === 0 ? (
           <div style={{ padding: "60px 20px", textAlign: "center", color: C.darkMuted, fontFamily: FONT, fontSize: 12 }}>
             No messages
           </div>
         ) : (
-          visible.map((msg, idx) => {
-            const isUnread = !msg.isRead;
-            const isExpanded = expandedKey === msg.key;
-            const senderDisplay = msg.fromName || msg.from || "Unknown";
+          visibleThreads.map((thread, idx) => {
+            const isUnread = thread.isAnyUnread;
+            const isExpanded = expandedThreadKey === thread.threadKey;
 
             return (
-              <div key={msg.key} style={{ animation: ANIM.scrollReveal(idx) }}>
+              <div key={thread.threadKey} style={{ animation: ANIM.scrollReveal(idx) }}>
                 <div
-                  onClick={() => handleExpand(msg)}
+                  onClick={() => handleExpandThread(thread)}
                   style={{
                     display: "flex", alignItems: "center", gap: 10,
                     padding: "10px 18px",
@@ -516,62 +614,118 @@ export default function UnifiedInboxView() {
                     width: 6, height: 6, borderRadius: "50%",
                     background: isUnread ? C.accent : "transparent", flexShrink: 0,
                   }} />
-                  <ProviderBadge provider={msg.provider} size="sm" />
+                  <ProviderBadge provider={thread.provider} size="sm" />
+                  {/* Sender list (with count badge if multi-message thread) */}
                   <div style={{
-                    width: 130, flexShrink: 0,
+                    width: 160, flexShrink: 0,
                     fontSize: 13, fontFamily: FONT,
                     fontWeight: isUnread ? 700 : 400,
                     color: isUnread ? C.darkText : C.darkMuted,
                     whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                  }}>{truncate(senderDisplay, 18)}</div>
+                    display: "flex", alignItems: "center", gap: 6,
+                  }}>
+                    <span style={{
+                      whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                      minWidth: 0,
+                    }}>{thread.sendersDisplay}</span>
+                    {thread.messageCount > 1 && (
+                      <span style={{
+                        flexShrink: 0,
+                        fontSize: 10, fontWeight: 600,
+                        color: C.darkMuted,
+                        background: C.darkBorder + "66",
+                        padding: "1px 6px", borderRadius: RADIUS.pill,
+                        minWidth: 18, textAlign: "center",
+                      }}>{thread.messageCount}</span>
+                    )}
+                  </div>
                   <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "baseline", gap: 6 }}>
                     <span style={{
                       fontSize: 13, fontFamily: FONT,
                       fontWeight: isUnread ? 600 : 400, color: C.darkText,
                       whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                       flexShrink: 0, maxWidth: "50%",
-                    }}>{truncate(msg.subject, 40)}</span>
+                    }}>{truncate(thread.displaySubject, 40)}</span>
                     <span style={{
                       fontSize: 12, fontFamily: FONT, color: C.darkMuted,
                       whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1,
-                    }}>{msg.snippet}</span>
+                    }}>{thread.latest?.snippet || ""}</span>
                   </div>
                   <div style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT, flexShrink: 0 }}>
-                    {formatEmailDate(msg.date)}
+                    {formatEmailDate(thread.latestDate)}
                   </div>
                 </div>
 
-                {/* Expanded body */}
+                {/* Expanded thread — all messages chronologically */}
                 {isExpanded && (
                   <div style={{
                     padding: "12px 18px 16px", background: C.darkSurf2,
                     borderBottom: `1px solid ${C.darkBorder}`,
                   }}>
-                    {expandedBody?.loading ? (
-                      <div style={{ fontSize: 12, color: C.darkMuted, fontFamily: FONT }}>Loading…</div>
-                    ) : expandedBody?.error ? (
-                      <div style={{ fontSize: 12, color: C.error, fontFamily: FONT }}>{expandedBody.error}</div>
+                    {expandedThread?.loading ? (
+                      <div style={{ fontSize: 12, color: C.darkMuted, fontFamily: FONT }}>Loading thread…</div>
+                    ) : expandedThread?.error ? (
+                      <div style={{ fontSize: 12, color: C.error, fontFamily: FONT }}>{expandedThread.error}</div>
                     ) : (
                       <>
                         <div style={{ marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                          <button onClick={() => handleReply(msg)} style={{
+                          <span style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>
+                            {(expandedThread?.messages || []).length} message{(expandedThread?.messages || []).length === 1 ? "" : "s"} in thread
+                          </span>
+                          <button onClick={() => {
+                            // Reply to the latest message in the thread.
+                            const msgs = expandedThread?.messages || [];
+                            const latest = msgs[msgs.length - 1];
+                            if (latest) {
+                              handleReply({
+                                provider: thread.provider,
+                                id: latest.id,
+                                threadId: thread.threadId,
+                                conversationId: thread.conversationId,
+                                from: latest.from,
+                                subject: latest.subject,
+                              });
+                            }
+                          }} style={{
                             background: C.accent + "22", border: `1px solid ${C.accent}44`,
                             color: C.accent, padding: "5px 12px", borderRadius: RADIUS.pill,
                             cursor: "pointer", fontFamily: FONT, fontSize: 11, fontWeight: 600, outline: "none",
                           }}>↩ Reply</button>
                         </div>
-                        <div style={{
-                          fontSize: 13, fontFamily: FONT, color: C.darkText,
-                          whiteSpace: "pre-wrap", lineHeight: 1.5,
-                        }}>
-                          {expandedBody?.body || expandedBody?.snippet || ""}
-                        </div>
-                        {expandedBody?.htmlBody && !expandedBody?.body && (
-                          <div
-                            style={{ fontSize: 13, fontFamily: FONT, color: C.darkText, lineHeight: 1.5 }}
-                            dangerouslySetInnerHTML={{ __html: expandedBody.htmlBody }}
-                          />
-                        )}
+
+                        {(expandedThread?.messages || []).map((m, mIdx) => (
+                          <div key={m.id || mIdx} style={{
+                            padding: "12px 0",
+                            borderTop: mIdx > 0 ? `1px solid ${C.darkBorder}66` : "none",
+                          }}>
+                            <div style={{
+                              display: "flex", alignItems: "baseline", gap: 8,
+                              marginBottom: 6, flexWrap: "wrap",
+                            }}>
+                              <span style={{
+                                fontSize: 12, fontWeight: 600, color: C.darkText, fontFamily: FONT,
+                              }}>{senderName(m.from) || "Unknown"}</span>
+                              <span style={{
+                                fontSize: 11, color: C.darkMuted, fontFamily: FONT,
+                              }}>{formatEmailDate(m.date)}</span>
+                            </div>
+                            {m.body ? (
+                              <div style={{
+                                fontSize: 13, fontFamily: FONT, color: C.darkText,
+                                whiteSpace: "pre-wrap", lineHeight: 1.5,
+                              }}>{m.body}</div>
+                            ) : m.htmlBody ? (
+                              <div
+                                style={{ fontSize: 13, fontFamily: FONT, color: C.darkText, lineHeight: 1.5 }}
+                                dangerouslySetInnerHTML={{ __html: m.htmlBody }}
+                              />
+                            ) : (
+                              <div style={{ fontSize: 13, color: C.darkMuted, fontFamily: FONT, fontStyle: "italic" }}>
+                                {m.snippet || "(no body)"}
+                              </div>
+                            )}
+                          </div>
+                        ))}
                       </>
                     )}
                   </div>
