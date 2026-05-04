@@ -40,7 +40,7 @@ const LINKABLE_TYPES = new Set(["table", "kanban", "cardGrid", "linked_sheet"]);
 const WRITABLE_TYPES = new Set(["table", "kanban", "cardGrid"]);
 
 // ── Grid sub-component with type filtering ──
-function LinkPickerGrid({ viewData, targetFieldType, selectedCell, setSelectedCell, s }) {
+function LinkPickerGrid({ viewData, targetFieldType, selectedCell, setSelectedCell, s, onDrillIn }) {
   // Build column type map
   const colTypeMap = useMemo(() => {
     const map = {};
@@ -52,10 +52,15 @@ function LinkPickerGrid({ viewData, targetFieldType, selectedCell, setSelectedCe
     return map;
   }, [viewData.schema]);
 
+  // Sheets are array-of-arrays; D1/Notion are array-of-{ pageId, cells, hasChildren? }.
+  const isSheet = viewData.type === "sheet";
+  const showDrillCol = !isSheet && !!onDrillIn && viewData.rows.some((r) => r.hasChildren);
+
   return (
     <table style={s.gridTable}>
       <thead>
         <tr>
+          {showDrillCol && <th style={{ ...s.th, width: 24, padding: "6px 4px" }} />}
           {viewData.columns.slice(0, 12).map((col) => {
             const colType = colTypeMap[col] || (viewData.type === "sheet" ? "rich_text" : "");
             const compatible = !targetFieldType || areTypesCompatible(colType, targetFieldType);
@@ -73,32 +78,53 @@ function LinkPickerGrid({ viewData, targetFieldType, selectedCell, setSelectedCe
         </tr>
       </thead>
       <tbody>
-        {(viewData.type === "sheet" ? viewData.rows : viewData.rows.map((r) => r.cells))
-          .slice(0, 50).map((row, ri) => (
-          <tr key={ri}>
-            {(Array.isArray(row) ? row : row).slice(0, 12).map((cell, ci) => {
-              const isActive = selectedCell?.rowIdx === ri && selectedCell?.colIdx === ci;
-              const displayVal = cell === null || cell === undefined ? "" : String(cell);
-              const colType = colTypeMap[viewData.columns[ci]] || (viewData.type === "sheet" ? "rich_text" : "");
-              const compatible = !targetFieldType || areTypesCompatible(colType, targetFieldType);
-              return (
+        {viewData.rows.slice(0, 50).map((rowEntry, ri) => {
+          const cells = isSheet ? rowEntry : rowEntry.cells;
+          const hasChildren = !isSheet && rowEntry.hasChildren;
+          return (
+            <tr key={ri}>
+              {showDrillCol && (
                 <td
-                  key={ci}
-                  style={{ ...s.td(isActive), opacity: compatible ? 1 : 0.3, cursor: compatible ? "pointer" : "not-allowed" }}
-                  onClick={() => compatible && setSelectedCell({
-                    rowIdx: ri,
-                    colIdx: ci,
-                    column: viewData.columns[ci],
-                    value: displayVal,
-                  })}
-                  title={compatible ? displayVal : `Incompatible type: ${getGroupLabel(getCompatGroup(colType))}`}
+                  style={{ ...s.td(false), width: 24, padding: 0, textAlign: "center", cursor: hasChildren ? "pointer" : "default" }}
+                  onClick={(e) => {
+                    if (!hasChildren) return;
+                    e.stopPropagation();
+                    onDrillIn(rowEntry, ri);
+                  }}
+                  title={hasChildren ? "Drill into sub-items" : ""}
                 >
-                  {displayVal.slice(0, 60) || "\u2014"}
+                  {hasChildren ? (
+                    <span style={{
+                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      width: 16, height: 16, color: C.accent, fontSize: 14, fontWeight: 700,
+                    }}>{"\u203a"}</span>
+                  ) : null}
                 </td>
-              );
-            })}
-          </tr>
-        ))}
+              )}
+              {cells.slice(0, 12).map((cell, ci) => {
+                const isActive = selectedCell?.rowIdx === ri && selectedCell?.colIdx === ci;
+                const displayVal = cell === null || cell === undefined ? "" : String(cell);
+                const colType = colTypeMap[viewData.columns[ci]] || (isSheet ? "rich_text" : "");
+                const compatible = !targetFieldType || areTypesCompatible(colType, targetFieldType);
+                return (
+                  <td
+                    key={ci}
+                    style={{ ...s.td(isActive), opacity: compatible ? 1 : 0.3, cursor: compatible ? "pointer" : "not-allowed" }}
+                    onClick={() => compatible && setSelectedCell({
+                      rowIdx: ri,
+                      colIdx: ci,
+                      column: viewData.columns[ci],
+                      value: displayVal,
+                    })}
+                    title={compatible ? displayVal : `Incompatible type: ${getGroupLabel(getCompatGroup(colType))}`}
+                  >
+                    {displayVal.slice(0, 60) || "\u2014"}
+                  </td>
+                );
+              })}
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );
@@ -113,6 +139,11 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
   const [viewData, setViewData] = useState(null);   // { columns, rows, schema?, type }
   const [viewLoading, setViewLoading] = useState(false);
   const [selectedCell, setSelectedCell] = useState(null); // { rowIdx, colIdx, column, value }
+  // Raw D1 fetch result, kept so we can switch between parent/sub-item views
+  // without refetching when the user drills in/out of a record.
+  const [rawD1, setRawD1] = useState(null); // { tableId, schemaRes, allRows }
+  // null = parent view; { parentRow } = drilled into that record's sub-items.
+  const [subItemContext, setSubItemContext] = useState(null);
   const searchRef = useRef(null);
 
   useEffect(() => { searchRef.current?.focus(); }, []);
@@ -139,6 +170,8 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
     setViewLoading(true);
     setViewData(null);
     setSelectedCell(null);
+    setRawD1(null);
+    setSubItemContext(null);
 
     (async () => {
       try {
@@ -162,15 +195,15 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
             // ── D1-backed table ──
             const tableId = selectedPage.id;
             const [schemaRes, rowsRes] = await Promise.all([
-              getTableSchema(tableId).catch(() => ({ columns: [] })),
-              listRows(tableId, { limit: 200 }).catch(() => ({ rows: [] })),
+              getTableSchema(tableId).catch(() => ({ columns: [], sub_columns: [] })),
+              listRows(tableId, { limit: 500 }).catch(() => ({ rows: [] })),
             ]);
             if (cancelled) return;
 
             const cols = schemaRes.columns || [];
             if (cols.length === 0) return;
 
-            // Build classified schema for type compatibility checks
+            // Build classified schema for type compatibility checks (parent fields)
             const titleField = cols[0]; // first column is always title
             const schema = {
               title: { name: titleField.name, id: titleField.id, type: "title" },
@@ -181,10 +214,18 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
               })),
             };
 
+            const allRows = rowsRes.rows || [];
+            const parentRows = allRows.filter((r) => !r.parent_row_id);
+            // Pre-compute which parents have at least one sub-item so we can
+            // show the drill-in chevron on those rows.
+            const parentIdsWithChildren = new Set(
+              allRows.filter((r) => r.parent_row_id).map((r) => r.parent_row_id)
+            );
+
             const columns = cols.map((c) => c.name);
-            const parentRows = (rowsRes.rows || []).filter((r) => !r.parent_row_id);
             const rows = parentRows.slice(0, 100).map((row) => ({
               pageId: row.id,
+              hasChildren: parentIdsWithChildren.has(row.id),
               cells: cols.map((col) => {
                 const val = row.cells?.[col.id];
                 if (val == null) return "";
@@ -196,6 +237,8 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
               }),
             }));
 
+            // Store raw fetch so drill-down can switch view modes without refetching.
+            setRawD1({ tableId, schemaRes, allRows });
             setViewData({ type: "d1", columns, rows, schema, dbId: tableId });
           } else {
             // ── Notion-backed view (legacy) — requires Notion key ──
@@ -232,6 +275,76 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
 
     return () => { cancelled = true; };
   }, [selectedView, selectedPage, user]);
+
+  // Drill-in handler — switches viewData to show sub-items of the selected parent.
+  const handleDrillIn = useCallback((rowEntry) => {
+    if (!rawD1) return;
+    const parentRowId = rowEntry.pageId;
+    const parentTitle = rowEntry.cells?.[0] || "Record";
+    const subCols = rawD1.schemaRes.sub_columns || [];
+    if (subCols.length === 0) return;
+
+    const subSchema = {
+      title: subCols[0] ? { name: subCols[0].name, id: subCols[0].id, type: "title" } : undefined,
+      allFields: subCols.slice(1).map((c) => ({
+        name: c.name,
+        id: c.id,
+        type: c.type === "title" ? "rich_text" : c.type,
+      })),
+    };
+
+    const subRows = rawD1.allRows.filter((r) => r.parent_row_id === parentRowId);
+    const columns = subCols.map((c) => c.name);
+    const rows = subRows.slice(0, 200).map((row) => ({
+      pageId: row.id,
+      hasChildren: false, // sub-items don't have grandchildren
+      cells: subCols.map((col) => {
+        const val = row.cells?.[col.id];
+        if (val == null) return "";
+        if (typeof val === "object" && val.start) return val.end ? `${val.start} – ${val.end}` : val.start;
+        if (Array.isArray(val)) return val.map((v) => typeof v === "object" ? (v.name || v.id || "") : v).join(", ");
+        return String(val);
+      }),
+    }));
+
+    setSubItemContext({ parentRowId, parentTitle });
+    setSelectedCell(null);
+    setViewData({ type: "d1", columns, rows, schema: subSchema, dbId: rawD1.tableId });
+  }, [rawD1]);
+
+  // Back to parent rows from sub-items.
+  const handleDrillBack = useCallback(() => {
+    if (!rawD1) return;
+    const cols = rawD1.schemaRes.columns || [];
+    const titleField = cols[0];
+    const schema = {
+      title: { name: titleField.name, id: titleField.id, type: "title" },
+      allFields: cols.slice(1).map((c) => ({
+        name: c.name,
+        id: c.id,
+        type: c.type === "title" ? "rich_text" : c.type,
+      })),
+    };
+    const parentRows = rawD1.allRows.filter((r) => !r.parent_row_id);
+    const parentIdsWithChildren = new Set(
+      rawD1.allRows.filter((r) => r.parent_row_id).map((r) => r.parent_row_id)
+    );
+    const columns = cols.map((c) => c.name);
+    const rows = parentRows.slice(0, 100).map((row) => ({
+      pageId: row.id,
+      hasChildren: parentIdsWithChildren.has(row.id),
+      cells: cols.map((col) => {
+        const val = row.cells?.[col.id];
+        if (val == null) return "";
+        if (typeof val === "object" && val.start) return val.end ? `${val.start} – ${val.end}` : val.start;
+        if (Array.isArray(val)) return val.map((v) => typeof v === "object" ? (v.name || v.id || "") : v).join(", ");
+        return String(val);
+      }),
+    }));
+    setSubItemContext(null);
+    setSelectedCell(null);
+    setViewData({ type: "d1", columns, rows, schema, dbId: rawD1.tableId });
+  }, [rawD1]);
 
   // Handle link confirm
   const handleConfirm = useCallback(() => {
@@ -455,13 +568,40 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
               </div>
             )}
             {viewData && !viewLoading && (
-              <LinkPickerGrid
-                viewData={viewData}
-                targetFieldType={targetFieldType}
-                selectedCell={selectedCell}
-                setSelectedCell={setSelectedCell}
-                s={s}
-              />
+              <>
+                {/* Breadcrumb — visible when drilled into sub-items */}
+                {subItemContext && (
+                  <div style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "8px 14px", borderBottom: `1px solid ${C.darkBorder}`,
+                    fontSize: 12, fontFamily: FONT, color: C.darkMuted,
+                    background: C.darkSurf2,
+                  }}>
+                    <button
+                      onClick={handleDrillBack}
+                      style={{
+                        background: "transparent", border: `1px solid ${C.darkBorder}`,
+                        color: C.darkText, padding: "3px 10px", borderRadius: RADIUS.pill,
+                        cursor: "pointer", fontSize: 11, fontFamily: FONT, outline: "none",
+                      }}
+                    >← Back</button>
+                    <span>
+                      {selectedPage?.name || "Page"}
+                      {" › "}
+                      <span style={{ color: C.darkText, fontWeight: 600 }}>{subItemContext.parentTitle}</span>
+                      {" › Sub-items"}
+                    </span>
+                  </div>
+                )}
+                <LinkPickerGrid
+                  viewData={viewData}
+                  targetFieldType={targetFieldType}
+                  selectedCell={selectedCell}
+                  setSelectedCell={setSelectedCell}
+                  s={s}
+                  onDrillIn={!subItemContext ? handleDrillIn : undefined}
+                />
+              </>
             )}
           </div>
         </div>

@@ -7,6 +7,7 @@ import { C, RADIUS, getSolidPillColor } from "../../design/tokens.js";
 import { getFieldOptions, getOptionNames } from "../_viewHelpers.js";
 import { formatDate, truncate } from "../../utils/helpers.js";
 import { pillStyle, toggleStyle, multiPillWrap } from "./tableStyles.js";
+import { IconConnect } from "../../design/icons.jsx";
 
 // Cell type renderers — keyed by Notion property type.
 // Each receives { value, fieldName, schema, onClick, relationTitles }.
@@ -59,11 +60,91 @@ export const CELL_RENDERERS = {
   created_time: ({ value }) => <span style={{ fontSize: 12, color: C.darkMuted, fontVariantNumeric: "tabular-nums" }}>{formatDate(String(value), { short: true })}</span>,
 };
 
-export default function CellDisplay({ value, type, fieldName, schema, onClick, relationTitles }) {
-  if (value === null || value === undefined || value === "") {
-    return <span style={{ color: C.darkMuted, fontSize: 12, fontStyle: "italic", cursor: onClick ? "pointer" : "default" }} onClick={onClick}>--</span>;
+// Coerce a resolved linked value into a renderer-friendly shape per cell type.
+// Sources are different shapes than what each renderer expects, so we parse here.
+function coerceLinkedValue(linkedValue, type) {
+  if (linkedValue == null || linkedValue === "") return linkedValue;
+
+  // Date renderers expect either a string or { start, end }. resolveRef returns
+  // strings like "2026-05-01" or "2026-05-01 – 2026-05-31" for ranges.
+  if (type === "date" || type === "last_edited_time" || type === "created_time") {
+    if (typeof linkedValue === "string" && linkedValue.includes("–")) {
+      const [start, end] = linkedValue.split("–").map((s) => s.trim());
+      return { start, end };
+    }
+    return linkedValue;
   }
+  // Multi-select / people renderers expect arrays. resolveRef joins them with ", ".
+  if (type === "multi_select" || type === "people") {
+    if (typeof linkedValue === "string" && linkedValue.includes(",")) {
+      return linkedValue.split(",").map((s) => s.trim()).filter(Boolean);
+    }
+    if (typeof linkedValue === "string") return [linkedValue];
+    return linkedValue;
+  }
+  // checkbox/number — coerce to typed primitives
+  if (type === "checkbox") return linkedValue === "true" || linkedValue === true || linkedValue === 1;
+  if (type === "number") {
+    const n = Number(linkedValue);
+    return Number.isNaN(n) ? linkedValue : n;
+  }
+  return linkedValue;
+}
+
+// Wrapper that adds a small link icon + linked styling to indicate the value
+// is sourced from elsewhere. Click on the icon (passed via onLinkClick) unlinks.
+function LinkedWrapper({ children, sourceName, stale, onLinkClick }) {
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 4,
+      borderLeft: `2px solid ${stale ? C.error || "#c4514e" : C.accent}`,
+      paddingLeft: 6, marginLeft: -2,
+      opacity: stale ? 0.6 : 1,
+    }}>
+      <span
+        title={sourceName ? `Linked from ${sourceName}${stale ? " (stale)" : ""}` : (stale ? "Linked (stale)" : "Linked")}
+        onClick={(e) => { if (onLinkClick) { e.stopPropagation(); onLinkClick(); } }}
+        style={{
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          width: 14, height: 14, flexShrink: 0,
+          cursor: onLinkClick ? "pointer" : "default",
+        }}
+      >
+        <IconConnect size={11} color={stale ? (C.error || "#c4514e") : C.accent} />
+      </span>
+      <span style={{ minWidth: 0 }}>{children}</span>
+    </span>
+  );
+}
+
+export default function CellDisplay({ value, type, fieldName, schema, onClick, relationTitles, linkedValue, linkInfo, onLinkClick }) {
+  // When a cell is linked, the displayed value comes from the source — not the
+  // local cell value. Non-linked cells fall through to the existing path.
+  const isLinked = !!linkInfo;
+  const displayValue = isLinked ? coerceLinkedValue(linkedValue, type) : value;
+
+  // Empty-state rendering
+  if (displayValue === null || displayValue === undefined || displayValue === "") {
+    const placeholder = isLinked && linkInfo?.stale ? "(source missing)" : "--";
+    const empty = (
+      <span style={{ color: C.darkMuted, fontSize: 12, fontStyle: "italic", cursor: onClick ? "pointer" : "default" }} onClick={onClick}>
+        {placeholder}
+      </span>
+    );
+    return isLinked
+      ? <LinkedWrapper sourceName={linkInfo?.sourceName} stale={linkInfo?.stale} onLinkClick={onLinkClick}>{empty}</LinkedWrapper>
+      : empty;
+  }
+
   const renderer = CELL_RENDERERS[type];
-  if (renderer) return renderer({ value, fieldName, schema, onClick, relationTitles });
-  return <span style={{ cursor: onClick ? "pointer" : "default" }} onClick={onClick}>{truncate(String(value), 120)}</span>;
+  // Linked cells should not respond to onClick (no inline edit) — passing
+  // undefined onClick disables the cursor: pointer hint.
+  const effectiveOnClick = isLinked ? undefined : onClick;
+  const rendered = renderer
+    ? renderer({ value: displayValue, fieldName, schema, onClick: effectiveOnClick, relationTitles })
+    : <span style={{ cursor: effectiveOnClick ? "pointer" : "default" }} onClick={effectiveOnClick}>{truncate(String(displayValue), 120)}</span>;
+
+  return isLinked
+    ? <LinkedWrapper sourceName={linkInfo?.sourceName} stale={linkInfo?.stale} onLinkClick={onLinkClick}>{rendered}</LinkedWrapper>
+    : rendered;
 }

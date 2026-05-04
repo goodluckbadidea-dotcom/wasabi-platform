@@ -145,7 +145,10 @@ export function resolveRef(ref, notionData = [], sheetDataMap = {}, d1Data = nul
     if (!d1Data) return undefined;
     const row = d1Data.rows.find((r) => r.id === ref.record_id);
     if (!row) return undefined;
-    const col = d1Data.columns.find((c) => c.name === ref.column_name);
+    // Sub-item rows have a parent_row_id and use sub_columns; parent rows use columns.
+    const isSubItem = !!row.parent_row_id;
+    const colSet = isSubItem ? (d1Data.sub_columns || []) : (d1Data.columns || []);
+    const col = colSet.find((c) => c.name === ref.column_name);
     if (!col) return undefined;
     const val = row.cells?.[col.id];
     if (val == null) return "";

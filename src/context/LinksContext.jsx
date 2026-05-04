@@ -97,7 +97,11 @@ export function LinksProvider({ children }) {
           getTableSchema(tableId),
           listRows(tableId, { limit: 500 }),
         ]);
-        const d1Data = { columns: schemaRes.columns || [], rows: rowsRes.rows || [] };
+        const d1Data = {
+          columns: schemaRes.columns || [],
+          sub_columns: schemaRes.sub_columns || [],
+          rows: rowsRes.rows || [],
+        };
         dataCacheRef.current[cacheKey] = { data: d1Data, fetchedAt: Date.now() };
         return { notionData: [], sheetDataMap: {}, d1Data };
       } catch (err) { console.warn("[LinksContext] D1 fetch:", err.message || err); }
