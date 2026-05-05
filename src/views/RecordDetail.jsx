@@ -1164,6 +1164,17 @@ function RecordDependencies({ recordId, tableId, pageConfigId, schema, onUpdate,
     () => (schema?._columns || []).find((c) => c.type === "status"),
     [schema]
   );
+  // Sub-item schema lookups — sub-items store titles + status in sub_columns,
+  // so we resolve them with a separate column ID to keep titles human-readable
+  // in the picker / linked list.
+  const subTitleColId = useMemo(() => {
+    const subCols = schema?._subColumns || [];
+    return (subCols.find((c) => c.type === "title") || subCols[0])?.id || null;
+  }, [schema]);
+  const subStatusCol = useMemo(
+    () => (schema?._subColumns || []).find((c) => c.type === "status"),
+    [schema]
+  );
 
   const refreshEdges = useCallback(async () => {
     if (!recordId) return;
@@ -1180,14 +1191,20 @@ function RecordDependencies({ recordId, tableId, pageConfigId, schema, onUpdate,
 
   useEffect(() => { refreshEdges(); }, [refreshEdges]);
 
-  // Pull all rows in this table for picker results + title display
+  // Pull all rows in this table for picker results + title display.
+  // Two-pass build so sub-items can prefix their parent's title in the
+  // displayed label ("Parent › Sub Title").
   useEffect(() => {
     if (!tableId) return;
     listRows(tableId, { limit: 1000 })
       .then((res) => {
+        const rows = (res?.rows || []).filter((r) => !r.archived);
+        const parentTitleById = {};
         const map = {};
-        for (const r of (res?.rows || [])) {
-          if (r.archived) continue;
+
+        // Pass 1: parents
+        for (const r of rows) {
+          if (r.parent_row_id) continue;
           const cells = typeof r.cells === "string" ? JSON.parse(r.cells || "{}") : (r.cells || {});
           const title = titleColId && cells[titleColId]
             ? String(cells[titleColId])
@@ -1198,12 +1215,32 @@ function RecordDependencies({ recordId, tableId, pageConfigId, schema, onUpdate,
             const opt = statusCol.options.find((o) => o.name === statusVal);
             statusCategory = opt?.category || "not_started";
           }
-          map[r.id] = { id: r.id, title, statusVal, statusCategory };
+          parentTitleById[r.id] = title;
+          map[r.id] = { id: r.id, title, statusVal, statusCategory, isSubItem: false, parentTitle: null };
         }
+
+        // Pass 2: sub-items (titles live in sub_columns, status uses subStatusCol)
+        for (const r of rows) {
+          if (!r.parent_row_id) continue;
+          const cells = typeof r.cells === "string" ? JSON.parse(r.cells || "{}") : (r.cells || {});
+          const ownTitle = subTitleColId && cells[subTitleColId]
+            ? String(cells[subTitleColId])
+            : r.id.slice(0, 8);
+          const parentTitle = parentTitleById[r.parent_row_id] || null;
+          const title = parentTitle ? `${parentTitle} › ${ownTitle}` : ownTitle;
+          const statusVal = subStatusCol ? cells[subStatusCol.id] || null : null;
+          let statusCategory = null;
+          if (statusVal && subStatusCol?.options) {
+            const opt = subStatusCol.options.find((o) => o.name === statusVal);
+            statusCategory = opt?.category || "not_started";
+          }
+          map[r.id] = { id: r.id, title, statusVal, statusCategory, isSubItem: true, parentTitle };
+        }
+
         setRecordsById(map);
       })
       .catch((err) => console.warn("[RecordDependencies] listRows:", err.message || err));
-  }, [tableId, titleColId, statusCol]);
+  }, [tableId, titleColId, statusCol, subTitleColId, subStatusCol]);
 
   const upstream = useMemo(() => edges.filter((e) => e.source_id === recordId), [edges, recordId]);
   const downstream = useMemo(() => edges.filter((e) => e.target_id === recordId), [edges, recordId]);
