@@ -429,3 +429,42 @@ Removed: per-workspace `agentMode` field from `pageConfig.js` defaults; the radi
 `views/ChatPanel.jsx` was a separate per-page chat view (not the floating panel). Marked as a registered view type — listed in `ViewTypePicker.jsx`, `VisualPageBuilder.jsx`, and used in 6 page templates (`templates.js`). Vestigial — superseded by the floating Wasabi panel.
 
 Deleted the file, removed the `<ChatPanel>` import + render block from `PageShell.jsx`, deleted the chat entries from `ViewTypePicker.jsx`, `VisualPageBuilder.jsx`, and all 6 templates. To avoid breaking existing user pages that have a saved `viewConfig.type === "chat"`, `PageShell.jsx` retains a small fallback render block that shows an empty state ("Chat view is no longer supported — open the Wasabi panel from the sidebar instead") when it encounters one. Users can delete the stale view from the View menu.
+
+### Sub-Item Buttons Consolidated to One Control (2026-05-05)
+
+A parent row with sub-items had two separate buttons in two different cells:
+
+1. A chevron icon (`IconChevronDown` rotated -90°) in the Name cell that toggled expand/collapse.
+2. A hand-drawn "branch" SVG in the checkbox cell that called `handleCreateSubItem` to add a new sub-item.
+
+Two problems: the chevron collided with the column-header chevron (same icon, two functions = bad UI); the branch SVG looked more like a Hangul "ㅂ" than a hierarchy glyph. Two cramped tap targets also fought iPad ergonomics.
+
+Fixed by collapsing both into a single button in the checkbox cell using a new `IconSubItems` glyph (vertical stem + two right-going horizontals ending in dots — two stacked L's, tree-like). Click behavior depends on row state:
+
+- Has children → toggles expand/collapse. Count badge appears inline next to the icon.
+- No children → opens the sub-item ghost row (which auto-expands the parent as a side effect via `useSubItemGhost`).
+
+Always full opacity (Graham confirmed iPad-tap-friendly). Hover paints `C.darkSurf2`; expanded state stays painted to read as "on". Icon: 18px (matches the 18px checkbox). Count: 12px. Button: 40×32 with 6px horizontal padding and 5px gap.
+
+Required widening the first column from `52px` → `80px` in `Table.jsx` (both the parent row `gtc` and the sub-item grid `subGtc` template strings, plus `totalTableWidth`). At 52px, content overflowed once the button grew (checkbox 18 + gap 2 + button ~60 = 80). Three-digit counts ("999") now render without clipping.
+
+Files: `src/views/table/TableRow.jsx`, `src/views/Table.jsx`, `src/design/icons.jsx` (new `IconSubItems`).
+
+Don't reintroduce the chevron-in-the-Name-cell pattern. The collision with column-header chevrons is the user-visible bug we resolved.
+
+### Model Routing Toggle Moved Into Wasabi Panel Header (2026-05-05)
+
+The `Auto`/`Sonnet`/`Haiku` model-override pill was rendered in its own right-aligned row beneath the panel header, eating vertical space. Moved inline next to the "Wasabi" title in the header so the chat starts immediately below. No behavior change — same `modelOverride` state cycling through `null` → `"sonnet"` → `"haiku"` → `null`. File: `src/core/WasabiPanel.jsx`.
+
+### Dependency Picker Showed UUIDs for Sub-Items (Resolved 2026-05-05)
+
+`RecordDependencies` in `RecordDetail.jsx` populated its `recordsById` map by iterating every row from `listRows(tableId, { limit: 1000 })` and reading `cells[schema.title.id]`. That works for parent rows but sub-items store their title in `sub_columns` (keys like `subcol_xxx`), so every sub-item row fell through to the `r.id.slice(0, 8)` fallback — the picker rendered "8a67bc80", "de3068a1", etc. instead of names. Same issue for the status icon (read from `schema._columns` status col, not `schema._subColumns`).
+
+Fixed with a two-pass build:
+
+1. **Pass 1 — parents.** Title from `schema.title.id`, status from `schema._columns` status col. Stores resolved title in a side `parentTitleById` map for pass 2.
+2. **Pass 2 — sub-items.** Title from `schema._subColumns` title col (`subTitleColId`). Status from `schema._subColumns` status col (`subStatusCol`). Display label is breadcrumb-style: `${parentTitle} › ${subTitle}` so the picker reads unambiguously when the same sub-title appears under multiple parents.
+
+`isSubItem: boolean` and `parentTitle: string | null` are stored on each `recordsById[id]` entry in case later renderers want to style sub-items distinctly (current breadcrumb is sufficient on its own).
+
+Sub-item-level dependencies are intentional — Graham wanted both parents and sub-items pickable. Don't filter to top-level only.
