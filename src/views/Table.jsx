@@ -1086,8 +1086,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           </div>
         ) : (
           (() => {
-            const gtc = `52px ${columns.map(col => `${colWidths[col] || (col === OWNER_COL_NAME ? OWNER_COL_WIDTH : 120)}px`).join(" ")} 56px 40px${canEditSchema ? " 44px" : ""}`;
-            const totalTableWidth = 52 + columns.reduce((sum, col) => sum + (colWidths[col] || (col === OWNER_COL_NAME ? OWNER_COL_WIDTH : 120)), 0) + 40 + (canEditSchema ? 44 : 0);
+            const gtc = `80px ${columns.map(col => `${colWidths[col] || (col === OWNER_COL_NAME ? OWNER_COL_WIDTH : 120)}px`).join(" ")} 56px 40px${canEditSchema ? " 44px" : ""}`;
+            const totalTableWidth = 80 + columns.reduce((sum, col) => sum + (colWidths[col] || (col === OWNER_COL_NAME ? OWNER_COL_WIDTH : 120)), 0) + 40 + (canEditSchema ? 44 : 0);
             // Sub-item grid: checkbox + indent + sub-columns + badge + neuron + optional add-col
             const subColsList = subVisibleColumns.length > 0 ? subVisibleColumns : (subTitleField ? [subTitleField] : []);
             if (showSubItemOwnerColumn && subColsList.length > 0 && !subColsList.includes(OWNER_COL_NAME)) {
@@ -1095,7 +1095,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
               subColsList.splice(idx, 0, OWNER_COL_NAME);
             }
             const subGtc = subColsList.length > 0
-              ? `52px ${subColsList.map((col) => `${subColWidths[col] || (col === OWNER_COL_NAME ? OWNER_COL_WIDTH : 150)}px`).join(" ")} 56px 40px${canEditSchema ? " 44px" : ""}`
+              ? `80px ${subColsList.map((col) => `${subColWidths[col] || (col === OWNER_COL_NAME ? OWNER_COL_WIDTH : 150)}px`).join(" ")} 56px 40px${canEditSchema ? " 44px" : ""}`
               : gtc;
 
             return (
