@@ -416,7 +416,7 @@ export default {
         return await handleGoogleStatus(env, user?.sub, jsonResponse);
       }
       if (path === "/google/disconnect" && request.method === "POST") {
-        return await handleGoogleDisconnect(env, user?.sub, jsonResponse);
+        return await handleGoogleDisconnect(env, user?.sub, request, jsonResponse);
       }
       // Gmail proxy (per-user — role enforced by middleware)
       {

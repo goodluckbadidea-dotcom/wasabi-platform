@@ -57,9 +57,13 @@ export default function Navigation({
 
   // ── Google status + sidebar widgets ──
   const [googleConnected, setGoogleConnected] = useState(false);
+  const [googleGrants, setGoogleGrants] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [nextEventLabel, setNextEventLabel] = useState("");
   const googlePollRef = useRef(null);
+
+  const gmailGranted = googleGrants.includes("gmail");
+  const calendarGranted = googleGrants.includes("calendar");
 
   // ── Microsoft status + sidebar widgets ──
   const [microsoftConnected, setMicrosoftConnected] = useState(false);
@@ -116,18 +120,24 @@ export default function Navigation({
         const status = await getGoogleStatus();
         if (cancelled) return;
         setGoogleConnected(!!status?.connected);
+        const grants = Array.isArray(status?.grants) ? status.grants : [];
+        setGoogleGrants(grants);
         retryCount = 0; // reset on success
         if (status?.connected) {
-          // Fetch summaries in parallel
+          // Only fetch summaries the user has granted access to.
+          const wantsGmail = grants.includes("gmail");
+          const wantsCal = grants.includes("calendar");
           const [gmailRes, calRes] = await Promise.allSettled([
-            getGmailSummary(),
-            getCalendarSummary(),
+            wantsGmail ? getGmailSummary() : Promise.resolve(null),
+            wantsCal ? getCalendarSummary() : Promise.resolve(null),
           ]);
           if (cancelled) return;
-          if (gmailRes.status === "fulfilled") {
+          if (wantsGmail && gmailRes.status === "fulfilled") {
             setUnreadCount(gmailRes.value?.unread || 0);
+          } else if (!wantsGmail) {
+            setUnreadCount(0);
           }
-          if (calRes.status === "fulfilled") {
+          if (wantsCal && calRes.status === "fulfilled") {
             const upcoming = calRes.value?.upcoming;
             if (upcoming?.length > 0) {
               const ev = upcoming[0];
@@ -138,7 +148,12 @@ export default function Navigation({
             } else {
               setNextEventLabel("");
             }
+          } else if (!wantsCal) {
+            setNextEventLabel("");
           }
+        } else {
+          setUnreadCount(0);
+          setNextEventLabel("");
         }
       } catch (err) {
         console.warn("[Navigation] Google status check:", err.message || err);
@@ -675,8 +690,8 @@ export default function Navigation({
               {!collapsed && <span style={bottomLabelStyle(activePage === "notes")}>Notes</span>}
             </button>
 
-            {/* Unified Inbox (when EITHER Google or Microsoft connected) */}
-            {(googleConnected || microsoftConnected) && (
+            {/* Unified Inbox (only when Gmail granted OR Microsoft connected — Sheets-only Google users don't see this) */}
+            {(gmailGranted || microsoftConnected) && (
               <button
                 onClick={() => setActivePage("inbox-unified")}
                 title="Inbox (Gmail + Outlook)"

@@ -1,14 +1,53 @@
-// ─── Google OAuth & API Handlers (Gmail + Calendar) ───
+// ─── Google OAuth & API Handlers (Gmail + Calendar + Sheets) ───
 import { encryptSecret, decryptSecret } from '../crypto.js';
 
-const GOOGLE_SCOPES = [
-  "https://www.googleapis.com/auth/gmail.modify",
-  "https://www.googleapis.com/auth/gmail.send",
-  "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/calendar",
-  "https://www.googleapis.com/auth/calendar.events",
-  "https://www.googleapis.com/auth/userinfo.email",
-].join(" ");
+// Per-feature scope groups. A "grant" is a friendly name for one of these groups.
+// Users opt in to grants individually; we request only the scopes for chosen grants.
+const SCOPE_GROUPS = {
+  gmail: [
+    "https://www.googleapis.com/auth/gmail.modify",
+    "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/gmail.readonly",
+  ],
+  calendar: [
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/calendar.events",
+  ],
+  sheets: [
+    "https://www.googleapis.com/auth/spreadsheets.readonly",
+  ],
+};
+
+// Always requested so we can identify the connected account.
+const BASE_SCOPES = ["https://www.googleapis.com/auth/userinfo.email"];
+
+const VALID_GRANTS = Object.keys(SCOPE_GROUPS);
+
+function grantsToScopeString(grants) {
+  const set = new Set(BASE_SCOPES);
+  for (const g of grants || []) {
+    if (SCOPE_GROUPS[g]) SCOPE_GROUPS[g].forEach((s) => set.add(s));
+  }
+  return Array.from(set).join(" ");
+}
+
+// Derive the friendly grants array from a raw scope string (used for migrating
+// existing tokens that pre-date the grants field).
+function scopesToGrants(scopeString) {
+  const scopes = (scopeString || "").split(/\s+/).filter(Boolean);
+  const grants = [];
+  for (const [name, groupScopes] of Object.entries(SCOPE_GROUPS)) {
+    // Grant is considered active if ANY of its group scopes is present.
+    if (groupScopes.some((s) => scopes.includes(s))) grants.push(name);
+  }
+  return grants;
+}
+
+function normalizeGrantsParam(value) {
+  if (!value) return [];
+  const list = Array.isArray(value) ? value : String(value).split(",");
+  return list.map((g) => g.trim()).filter((g) => VALID_GRANTS.includes(g));
+}
 
 /**
  * Get a valid Google access token for a specific user.
@@ -106,18 +145,26 @@ export function handleGoogleAuthUrl(request, env, userId, jsonResponse) {
   const clientId = env.GOOGLE_CLIENT_ID;
   if (!clientId) return jsonResponse({ _error: "GOOGLE_CLIENT_ID not configured" }, 500);
 
-  const workerUrl = new URL(request.url).origin;
+  const reqUrl = new URL(request.url);
+  const workerUrl = reqUrl.origin;
   const redirectUri = `${workerUrl}/google/callback`;
 
-  // Encode user ID in state so the callback can store tokens per-user
-  const stateObj = { workerUrl, userId: userId || null };
+  // Caller specifies which grants to request via ?grants=gmail,sheets.
+  // Default to gmail+calendar for backward compatibility with old clients.
+  const grants = normalizeGrantsParam(reqUrl.searchParams.get("grants"))
+    .filter((g, i, arr) => arr.indexOf(g) === i);
+  const requested = grants.length ? grants : ["gmail", "calendar"];
+
+  // Encode user ID + requested grants in state so the callback can resolve them.
+  const stateObj = { workerUrl, userId: userId || null, grants: requested };
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: GOOGLE_SCOPES,
+    scope: grantsToScopeString(requested),
     access_type: "offline",
     prompt: "consent",
+    include_granted_scopes: "true",
     state: JSON.stringify(stateObj),
   });
 
@@ -192,22 +239,55 @@ export async function handleGoogleCallback(request, env, jsonResponse) {
       }
     } catch {}
 
-    // Store tokens in D1
-    const tokens = {
-      access_token: tokenData.access_token,
-      refresh_token: tokenData.refresh_token,
-      expires_at: Date.now() + (tokenData.expires_in || 3600) * 1000,
-      email,
-      scopes: GOOGLE_SCOPES,
-    };
-
-    // Extract user ID from OAuth state for per-user storage
+    // Extract state (user ID + requested grants)
     let stateUserId = null;
+    let requestedGrants = [];
     const stateParam = url.searchParams.get("state");
     try {
       const stateObj = JSON.parse(stateParam);
       stateUserId = stateObj.userId || null;
+      requestedGrants = Array.isArray(stateObj.grants) ? stateObj.grants : [];
     } catch { /* state may be plain URL from old flow */ }
+
+    // Compute the actual grants Google issued. Token response includes a `scope`
+    // field listing what the user approved (may be a subset of what we asked for).
+    const grantedScopes = tokenData.scope || "";
+    const newGrants = scopesToGrants(grantedScopes);
+
+    // Look up any existing token row so we can merge grants + preserve refresh_token
+    // when Google omits it on incremental consent.
+    let existing = null;
+    try {
+      if (stateUserId) {
+        const row = await env.DB.prepare(
+          "SELECT value FROM user_connections WHERE user_id = ? AND key = 'google'"
+        ).bind(stateUserId).first();
+        if (row?.value) existing = JSON.parse(await decryptSecret(row.value, env));
+      } else {
+        const row = await env.DB.prepare(
+          "SELECT value FROM connections WHERE key = 'google'"
+        ).first();
+        if (row?.value) existing = JSON.parse(await decryptSecret(row.value, env));
+      }
+    } catch {}
+
+    // Merge grants: union of (existing grants) ∪ (newly granted).
+    // We don't shrink grants here — that's only done via /google/disconnect.
+    const existingGrants = Array.isArray(existing?.grants)
+      ? existing.grants
+      : scopesToGrants(existing?.scopes || "");
+    const mergedGrants = Array.from(new Set([...existingGrants, ...newGrants]));
+
+    // Store tokens in D1
+    const tokens = {
+      access_token: tokenData.access_token,
+      // Google sometimes omits refresh_token on subsequent consents — keep prior.
+      refresh_token: tokenData.refresh_token || existing?.refresh_token || null,
+      expires_at: Date.now() + (tokenData.expires_in || 3600) * 1000,
+      email: email || existing?.email || "",
+      scopes: grantedScopes,
+      grants: mergedGrants,
+    };
 
     const tokensJson = await encryptSecret(JSON.stringify(tokens), env);
 
@@ -259,54 +339,120 @@ setTimeout(function(){window.close()},3000);
 </script></body></html>`;
 }
 
-export async function handleGoogleStatus(env, userId, jsonResponse) {
+// Read the token row for the given user (or global if userId is null).
+// Returns { tokens, scope: "user"|"global" } or null if not connected.
+async function readGoogleTokens(env, userId) {
   try {
-    // Per-user: only show their own connection
     if (userId) {
-      const userRow = await env.DB.prepare(
+      const row = await env.DB.prepare(
         "SELECT value FROM user_connections WHERE user_id = ? AND key = 'google'"
       ).bind(userId).first();
-      if (!userRow?.value) return jsonResponse({ connected: false });
-      const tokens = JSON.parse(await decryptSecret(userRow.value, env));
-      return jsonResponse({ connected: true, email: tokens.email || "", scopes: tokens.scopes || "" });
+      if (!row?.value) return null;
+      const tokens = JSON.parse(await decryptSecret(row.value, env));
+      return { tokens, scope: "user" };
     }
-    // No userId (MCP/API key access) — check global
     const row = await env.DB.prepare("SELECT value FROM connections WHERE key = 'google'").first();
-    if (!row?.value) return jsonResponse({ connected: false });
+    if (!row?.value) return null;
     const tokens = JSON.parse(await decryptSecret(row.value, env));
-    return jsonResponse({ connected: true, email: tokens.email || "", scopes: tokens.scopes || "" });
-  } catch (err) {
-    return jsonResponse({ connected: false, error: err.message });
+    return { tokens, scope: "global" };
+  } catch {
+    return null;
   }
 }
 
-export async function handleGoogleDisconnect(env, userId, jsonResponse) {
+async function writeGoogleTokens(env, userId, tokens) {
+  const json = await encryptSecret(JSON.stringify(tokens), env);
+  if (userId) {
+    await env.DB.prepare(
+      `INSERT INTO user_connections (user_id, key, value, updated_at)
+       VALUES (?, 'google', ?, datetime('now'))
+       ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+    ).bind(userId, json).run();
+  } else {
+    await env.DB.prepare(
+      `INSERT INTO connections (key, value, metadata, updated_at)
+       VALUES ('google', ?, '{}', datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+    ).bind(json).run();
+  }
+}
+
+async function deleteGoogleRow(env, userId) {
+  if (userId) {
+    await env.DB.prepare("DELETE FROM user_connections WHERE user_id = ? AND key = 'google'").bind(userId).run();
+  } else {
+    await env.DB.prepare("DELETE FROM connections WHERE key = 'google'").run();
+  }
+}
+
+export async function handleGoogleStatus(env, userId, jsonResponse) {
   try {
-    // Per-user: only disconnect their own token
-    if (userId) {
-      const userRow = await env.DB.prepare(
-        "SELECT value FROM user_connections WHERE user_id = ? AND key = 'google'"
-      ).bind(userId).first();
-      if (userRow?.value) {
-        const tokens = JSON.parse(await decryptSecret(userRow.value, env));
+    const result = await readGoogleTokens(env, userId);
+    if (!result) return jsonResponse({ connected: false, grants: [] });
+    const { tokens } = result;
+
+    // Backfill grants for tokens that pre-date the grants field.
+    let grants = Array.isArray(tokens.grants) ? tokens.grants : null;
+    if (!grants) {
+      grants = scopesToGrants(tokens.scopes || "");
+      // Persist the migration so we only do this once.
+      try {
+        await writeGoogleTokens(env, userId, { ...tokens, grants });
+      } catch { /* non-fatal — status will recompute on next call */ }
+    }
+
+    return jsonResponse({
+      connected: true,
+      email: tokens.email || "",
+      scopes: tokens.scopes || "",
+      grants,
+    });
+  } catch (err) {
+    return jsonResponse({ connected: false, grants: [], error: err.message });
+  }
+}
+
+export async function handleGoogleDisconnect(env, userId, request, jsonResponse) {
+  try {
+    // Optional: disconnect a single grant via ?grant=gmail. With no param,
+    // disconnect everything (revoke token at Google + delete row).
+    const reqUrl = new URL(request.url);
+    const grantParam = reqUrl.searchParams.get("grant");
+    const grant = grantParam && VALID_GRANTS.includes(grantParam) ? grantParam : null;
+
+    const result = await readGoogleTokens(env, userId);
+    if (!result) return jsonResponse({ ok: true });
+    const { tokens } = result;
+
+    if (grant) {
+      // Per-grant disconnect: shrink the grants array. The OAuth token at
+      // Google's end retains all scopes — revoking a single scope requires
+      // re-authorization. Local gating prevents Wasabi from using the dropped
+      // grant. Users who want full revocation can revoke at myaccount.google.com.
+      const currentGrants = Array.isArray(tokens.grants)
+        ? tokens.grants
+        : scopesToGrants(tokens.scopes || "");
+      const remaining = currentGrants.filter((g) => g !== grant);
+
+      if (remaining.length === 0) {
+        // No grants left — revoke at Google and delete the row.
         if (tokens.access_token) {
           await fetch(`https://oauth2.googleapis.com/revoke?token=${tokens.access_token}`, { method: "POST" }).catch(() => {});
         }
-        await env.DB.prepare("DELETE FROM user_connections WHERE user_id = ? AND key = 'google'").bind(userId).run();
+        await deleteGoogleRow(env, userId);
+        return jsonResponse({ ok: true, grants: [] });
       }
-      // Always return ok — user is now disconnected (even if they had no token)
-      return jsonResponse({ ok: true });
+
+      await writeGoogleTokens(env, userId, { ...tokens, grants: remaining });
+      return jsonResponse({ ok: true, grants: remaining });
     }
-    // No userId (MCP/API key access) — disconnect global
-    const row = await env.DB.prepare("SELECT value FROM connections WHERE key = 'google'").first();
-    if (row?.value) {
-      const tokens = JSON.parse(await decryptSecret(row.value, env));
-      if (tokens.access_token) {
-        await fetch(`https://oauth2.googleapis.com/revoke?token=${tokens.access_token}`, { method: "POST" }).catch(() => {});
-      }
+
+    // Full disconnect: revoke at Google + delete row.
+    if (tokens.access_token) {
+      await fetch(`https://oauth2.googleapis.com/revoke?token=${tokens.access_token}`, { method: "POST" }).catch(() => {});
     }
-    await env.DB.prepare("DELETE FROM connections WHERE key = 'google'").run();
-    return jsonResponse({ ok: true });
+    await deleteGoogleRow(env, userId);
+    return jsonResponse({ ok: true, grants: [] });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
   }

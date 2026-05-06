@@ -16,8 +16,10 @@ export default function ConnectionsTab() {
   const connectionsFetched = useRef(false);
 
   // ── Google OAuth state ──
-  const [googleStatus, setGoogleStatus] = useState({ connected: false, email: "" });
-  const [googleLoading, setGoogleLoading] = useState(false);
+  // googleStatus = { connected, email, grants: ["gmail", "calendar", ...] }
+  // googleLoading = null | "all" | grant id (e.g. "sheets") for per-row spinners
+  const [googleStatus, setGoogleStatus] = useState({ connected: false, email: "", grants: [] });
+  const [googleLoading, setGoogleLoading] = useState(null);
   const [googleError, setGoogleError] = useState("");
 
   // ── Microsoft OAuth state ──
@@ -47,12 +49,16 @@ export default function ConnectionsTab() {
     checkHealth().then(setHealth).catch(() => setHealth(null));
   }, []);
 
-  // Google OAuth: open popup and listen for result
-  const handleGoogleConnect = useCallback(async () => {
-    setGoogleLoading(true);
+  // Google OAuth: open popup and listen for result.
+  // grants: array of grant ids to request (e.g. ["sheets"]). The popup row id
+  // is used as the loading indicator key so only that row spins.
+  const handleGoogleConnect = useCallback(async (grants) => {
+    const requested = Array.isArray(grants) && grants.length ? grants : ["gmail", "calendar"];
+    const loadingKey = requested.length === 1 ? requested[0] : "all";
+    setGoogleLoading(loadingKey);
     setGoogleError("");
     try {
-      const result = await getGoogleAuthUrl();
+      const result = await getGoogleAuthUrl(requested);
       if (!result?.url) {
         throw new Error(result?._error || "No auth URL returned — check Google OAuth configuration");
       }
@@ -60,7 +66,7 @@ export default function ConnectionsTab() {
 
       if (!popup) {
         setGoogleError("Popup blocked — allow popups for this site and try again");
-        setGoogleLoading(false);
+        setGoogleLoading(null);
         return;
       }
 
@@ -73,7 +79,7 @@ export default function ConnectionsTab() {
           }
           // Refresh status
           getGoogleStatus().then(setGoogleStatus).catch(err => console.warn("[ConnectionsTab] getGoogleStatus:", err.message || err));
-          setGoogleLoading(false);
+          setGoogleLoading(null);
         }
       };
       window.addEventListener("message", onMessage);
@@ -84,7 +90,7 @@ export default function ConnectionsTab() {
           clearInterval(pollId);
           window.removeEventListener("message", onMessage);
           getGoogleStatus().then(setGoogleStatus).catch(err => console.warn("[ConnectionsTab] getGoogleStatus:", err.message || err));
-          setGoogleLoading(false);
+          setGoogleLoading(null);
         }
       }, 1000);
     } catch (err) {
@@ -95,19 +101,27 @@ export default function ConnectionsTab() {
       } else {
         setGoogleError(msg);
       }
-      setGoogleLoading(false);
+      setGoogleLoading(null);
     }
   }, []);
 
-  const handleGoogleDisconnect = useCallback(async () => {
-    setGoogleLoading(true);
+  // grant: optional single grant id to revoke. Omit to disconnect everything.
+  const handleGoogleDisconnect = useCallback(async (grant) => {
+    setGoogleLoading(grant || "all");
     try {
-      await disconnectGoogle();
-      setGoogleStatus({ connected: false, email: "" });
+      const res = await disconnectGoogle(grant);
+      // Worker returns updated grants array; refresh status to keep UI in sync.
+      const updatedGrants = Array.isArray(res?.grants) ? res.grants : [];
+      if (updatedGrants.length === 0) {
+        setGoogleStatus({ connected: false, email: "", grants: [] });
+      } else {
+        // Some grants remain — re-fetch full status (preserves email).
+        getGoogleStatus().then(setGoogleStatus).catch(() => {});
+      }
     } catch (err) {
       console.error("Google disconnect failed:", err);
     } finally {
-      setGoogleLoading(false);
+      setGoogleLoading(null);
     }
   }, []);
 
@@ -257,6 +271,7 @@ export default function ConnectionsTab() {
           <GoogleConnectionRow
             connected={googleStatus.connected}
             email={googleStatus.email}
+            grants={googleStatus.grants || []}
             onConnect={handleGoogleConnect}
             onDisconnect={handleGoogleDisconnect}
             loading={googleLoading}

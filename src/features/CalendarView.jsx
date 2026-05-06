@@ -116,7 +116,9 @@ export default function CalendarView({ allTasks, refreshRef }) {
         ]);
         if (cancelled) return;
 
-        const isGoogle = !!googleStatus?.connected;
+        // googleConnected here means "user has Calendar grant" — Sheets-only or
+        // Gmail-only Google connections don't surface in the calendar.
+        const isGoogle = !!googleStatus?.connected && (googleStatus?.grants || []).includes("calendar");
         const isMs = !!msStatus?.connected;
         setGoogleConnected(isGoogle);
         setOutlookConnected(isMs);

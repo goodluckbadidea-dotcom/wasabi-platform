@@ -345,7 +345,9 @@ export default function UnifiedInboxView() {
         getGoogleStatus().catch(() => null),
         getMicrosoftStatus().catch(() => null),
       ]);
-      const isGoogle = !!gStatus?.connected;
+      // googleConnected here means "user has Gmail grant" — Sheets-only Google
+      // connections don't surface in the inbox.
+      const isGoogle = !!gStatus?.connected && (gStatus?.grants || []).includes("gmail");
       const isMicrosoft = !!mStatus?.connected;
       setGoogleConnected(isGoogle);
       setMicrosoftConnected(isMicrosoft);

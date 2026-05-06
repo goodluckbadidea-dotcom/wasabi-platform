@@ -3,7 +3,7 @@
 // Light auto-context: unread count + recent email subjects + upcoming events.
 // Cached for 5 minutes to avoid excessive API calls.
 
-import { getGmailSummary, getCalendarSummary } from "../lib/api.js";
+import { getGmailSummary, getCalendarSummary, getGoogleStatus } from "../lib/api.js";
 
 const CACHE_KEY = "wasabi_google_context";
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -87,10 +87,25 @@ export async function fetchGoogleContext() {
   if (cached !== null) return cached;
 
   try {
-    // Fetch Gmail and Calendar summaries in parallel
+    // Skip the entire fetch if neither Gmail nor Calendar is granted —
+    // a Sheets-only Google connection contributes nothing here, and we'd
+    // get 401s from Google for endpoints we don't have scope for.
+    const status = await getGoogleStatus().catch(() => null);
+    if (!status?.connected) {
+      writeCache("");
+      return "";
+    }
+    const grants = Array.isArray(status.grants) ? status.grants : [];
+    const wantsGmail = grants.includes("gmail");
+    const wantsCal = grants.includes("calendar");
+    if (!wantsGmail && !wantsCal) {
+      writeCache("");
+      return "";
+    }
+
     const [gmailResult, calResult] = await Promise.allSettled([
-      getGmailSummary(),
-      getCalendarSummary(),
+      wantsGmail ? getGmailSummary() : Promise.resolve(null),
+      wantsCal ? getCalendarSummary() : Promise.resolve(null),
     ]);
 
     const context = buildContextString(gmailResult, calResult);

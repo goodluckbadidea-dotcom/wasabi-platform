@@ -847,16 +847,23 @@ export async function getRecordBadgeCounts(recordIds, pageConfigId) {
 
 // ─── Google OAuth ───
 
-export async function getGoogleAuthUrl() {
-  return apiFetch("/google/auth-url", { method: "GET" });
+// grants: optional array of grant names ("gmail", "calendar", "sheets").
+// If omitted, the worker requests its default set (gmail+calendar) for backward compat.
+export async function getGoogleAuthUrl(grants) {
+  const qs = Array.isArray(grants) && grants.length
+    ? `?grants=${encodeURIComponent(grants.join(","))}`
+    : "";
+  return apiFetch(`/google/auth-url${qs}`, { method: "GET" });
 }
 
 export async function getGoogleStatus() {
   return apiFetch("/google/status", { method: "GET" });
 }
 
-export async function disconnectGoogle() {
-  return apiFetch("/google/disconnect", { method: "POST" });
+// grant: optional single grant name to revoke. Omit to disconnect entirely.
+export async function disconnectGoogle(grant) {
+  const qs = grant ? `?grant=${encodeURIComponent(grant)}` : "";
+  return apiFetch(`/google/disconnect${qs}`, { method: "POST" });
 }
 
 // ─── Gmail ───
