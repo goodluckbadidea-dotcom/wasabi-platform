@@ -1080,3 +1080,192 @@ export async function handleCalendarFreeBusy(env, body, userId, jsonResponse) {
     return jsonResponse({ _error: err.message }, 500);
   }
 }
+
+// ─── Sheets API ───
+// Fetches a Google Sheet via the Sheets API v4 (per-user OAuth) and converts
+// the deeply-nested response into a flat shape with cell values, per-cell
+// formatting, and inline-image URLs. Used by /sheets/fetch when the URL is a
+// Google Sheet AND the user has the "sheets" grant — otherwise the worker
+// falls back to the public CSV path.
+
+const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
+
+// Convert a Sheets API color (RGBA in [0,1]) to "#rrggbb". Returns null when
+// the color is missing or fully default white (Sheets sends default white as
+// {red:1,green:1,blue:1} for cells with no background — we don't want to mark
+// those as formatted).
+function rgbaToHex(c) {
+  if (!c || typeof c !== "object") return null;
+  const r = Math.round((c.red ?? 0) * 255);
+  const g = Math.round((c.green ?? 0) * 255);
+  const b = Math.round((c.blue ?? 0) * 255);
+  const hex = "#" + [r, g, b].map((n) => n.toString(16).padStart(2, "0")).join("");
+  return hex;
+}
+
+// Pull a cell-level format object from a Sheets API cell. Only includes keys
+// that are present so the response stays small.
+function extractFormat(cell) {
+  const f = cell?.effectiveFormat || cell?.userEnteredFormat;
+  if (!f) return null;
+  const out = {};
+  const tf = f.textFormat || {};
+  if (tf.bold) out.bold = true;
+  if (tf.italic) out.italic = true;
+  if (tf.underline) out.underline = true;
+  if (tf.strikethrough) out.strikethrough = true;
+  if (typeof tf.fontSize === "number" && tf.fontSize > 0) out.fontSize = tf.fontSize;
+  const fg = rgbaToHex(tf.foregroundColor);
+  if (fg && fg !== "#000000") out.fgColor = fg;
+  const bg = rgbaToHex(f.backgroundColor);
+  // Treat pure white as "no background" so the cell renders on Wasabi's surface.
+  if (bg && bg !== "#ffffff") out.bgColor = bg;
+  if (f.horizontalAlignment) out.align = String(f.horizontalAlignment).toLowerCase();
+  if (f.verticalAlignment) out.valign = String(f.verticalAlignment).toLowerCase();
+  return Object.keys(out).length ? out : null;
+}
+
+// Try to extract an image URL from a cell. Handles both:
+//   1. "Image in cell" (Insert > Image > Image in cell) — Google returns this
+//      via effectiveValue.imageValue.{imageUrl|contentUrl}
+//   2. =IMAGE("url") formulas — URL is in the formula string
+function extractImageUrl(cell) {
+  if (!cell) return null;
+  const ev = cell.effectiveValue || {};
+  const uv = cell.userEnteredValue || {};
+  const img = ev.imageValue || uv.imageValue;
+  if (img) {
+    return img.contentUrl || img.imageUrl || img.image?.contentUrl || null;
+  }
+  // =IMAGE("https://...") — extract the first quoted URL after =IMAGE(
+  const formula = uv.formulaValue || ev.formulaValue || "";
+  const m = formula.match(/=IMAGE\s*\(\s*["']([^"']+)["']/i);
+  if (m) return m[1];
+  return null;
+}
+
+// Convert one Sheets API row (rowData entry) into an array of rich-cell objects.
+// Each cell: { value: string, format?: object, image?: string }
+function convertRow(rowData, columnCount) {
+  const values = rowData?.values || [];
+  const cells = [];
+  for (let i = 0; i < columnCount; i++) {
+    const cell = values[i];
+    const value = cell?.formattedValue || "";
+    const out = { value };
+    const fmt = extractFormat(cell);
+    if (fmt) out.format = fmt;
+    const img = extractImageUrl(cell);
+    if (img) out.image = img;
+    cells.push(out);
+  }
+  return cells;
+}
+
+// Pick which sheet/tab to use. The URL's gid query param identifies a tab —
+// match it against sheets[].properties.sheetId. Falls back to the first sheet.
+function pickSheet(spreadsheet, gid) {
+  const sheets = spreadsheet?.sheets || [];
+  if (!sheets.length) return null;
+  if (gid != null) {
+    const target = sheets.find((s) => String(s.properties?.sheetId) === String(gid));
+    if (target) return target;
+  }
+  return sheets[0];
+}
+
+/**
+ * Fetch a Google Sheet via the v4 API and return a structured payload.
+ * spreadsheetId: the doc id from the URL.
+ * gid: optional sheet-tab id (from URL fragment ?gid=...). Defaults to first tab.
+ * Returns { columns, rows, richHeader, richRows, sheetTitle, truncated, source: "api" }
+ * or { _error, status } shape on failure.
+ */
+export async function fetchGoogleSheetViaApi(env, userId, spreadsheetId, gid = null) {
+  const tokens = await getGoogleAccessTokenForUser(env, userId);
+  if (!tokens) return { _error: "Google not connected", status: 401 };
+  const grants = Array.isArray(tokens.grants)
+    ? tokens.grants
+    : scopesToGrants(tokens.scopes || "");
+  if (!grants.includes("sheets")) {
+    return { _error: "Sheets grant not active", status: 403 };
+  }
+
+  // Ask for grid data with the fields we need. Cap at 10k rows × 100 cols to
+  // keep response size bounded.
+  const range = "A1:CV10000";
+  const fields = [
+    "sheets.properties(sheetId,title,gridProperties)",
+    "sheets.data(rowData(values(formattedValue,effectiveValue,userEnteredValue,effectiveFormat,userEnteredFormat)))",
+  ].join(",");
+  const url = `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}?ranges=${encodeURIComponent(range)}&includeGridData=true&fields=${encodeURIComponent(fields)}`;
+
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${tokens.access_token}` },
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    return { _error: `Sheets API error: ${errText}`, status: res.status };
+  }
+  const data = await res.json();
+  const sheet = pickSheet(data, gid);
+  if (!sheet) return { _error: "Sheet has no tabs", status: 502 };
+
+  const sheetTitle = sheet.properties?.title || "";
+  const grid = sheet.data?.[0];
+  const rowDataArr = grid?.rowData || [];
+
+  // Determine column count from the widest row that has data.
+  let columnCount = 0;
+  for (const rd of rowDataArr) {
+    const len = (rd?.values || []).length;
+    if (len > columnCount) columnCount = len;
+  }
+  // Trim trailing all-empty columns to avoid a sea of blanks past the data.
+  if (columnCount > 0 && rowDataArr.length > 0) {
+    let lastNonEmpty = -1;
+    for (let c = columnCount - 1; c >= 0; c--) {
+      let any = false;
+      for (const rd of rowDataArr) {
+        if (rd?.values?.[c]?.formattedValue) { any = true; break; }
+      }
+      if (any) { lastNonEmpty = c; break; }
+    }
+    columnCount = lastNonEmpty + 1;
+  }
+  if (columnCount === 0) {
+    return {
+      columns: [],
+      rows: [],
+      richHeader: [],
+      richRows: [],
+      sheetTitle,
+      truncated: false,
+      source: "api",
+    };
+  }
+
+  // First row is the header — match CSV behavior.
+  const headerRichCells = rowDataArr.length > 0 ? convertRow(rowDataArr[0], columnCount) : [];
+  const columns = headerRichCells.map((c) => c.value);
+
+  const richRows = [];
+  const rows = [];
+  for (let r = 1; r < rowDataArr.length; r++) {
+    const richRow = convertRow(rowDataArr[r], columnCount);
+    // Skip rows that are entirely empty (no value, no image).
+    if (richRow.every((c) => !c.value && !c.image)) continue;
+    richRows.push(richRow);
+    rows.push(richRow.map((c) => c.value));
+  }
+
+  return {
+    columns,
+    rows,
+    richHeader: headerRichCells,
+    richRows,
+    sheetTitle,
+    truncated: false,
+    source: "api",
+  };
+}

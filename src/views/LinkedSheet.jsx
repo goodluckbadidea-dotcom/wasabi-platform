@@ -271,14 +271,21 @@ export default function LinkedSheet({ config = {}, pageConfig }) {
   }, []);
 
   // ── Processed data (search + sort) ──
+  // Each entry pairs the text row with its rich-cell counterpart (when available
+  // via the API path) so renderers can apply formatting + show images while the
+  // existing text-based filter/sort continues to work.
   const processedRows = useMemo(() => {
     if (!sheetData) return [];
-    let rows = [...sheetData.rows];
+    const richRows = Array.isArray(sheetData.richRows) ? sheetData.richRows : null;
+    let pairs = (sheetData.rows || []).map((row, i) => ({
+      row,
+      richRow: richRows ? richRows[i] : null,
+    }));
 
     // Search filter
     if (debouncedSearch) {
       const q = debouncedSearch.toLowerCase();
-      rows = rows.filter((row) =>
+      pairs = pairs.filter(({ row }) =>
         row.some((cell) => String(cell).toLowerCase().includes(q))
       );
     }
@@ -288,9 +295,9 @@ export default function LinkedSheet({ config = {}, pageConfig }) {
       const colIdx = sheetData.columns.indexOf(sortField);
       if (colIdx >= 0) {
         const type = columnTypes[sortField] || "text";
-        rows.sort((a, b) => {
-          let va = a[colIdx] || "";
-          let vb = b[colIdx] || "";
+        pairs.sort((a, b) => {
+          let va = a.row[colIdx] || "";
+          let vb = b.row[colIdx] || "";
           if (type === "number") {
             const na = parseFloat(va);
             const nb = parseFloat(vb);
@@ -307,23 +314,63 @@ export default function LinkedSheet({ config = {}, pageConfig }) {
       }
     }
 
-    return rows;
+    return pairs;
   }, [sheetData, debouncedSearch, sortField, sortDir, columnTypes]);
 
-  // ── Render cell by type ──
-  const renderCell = useCallback((value, colName) => {
+  // Build inline-style props from a Sheets API cell.format object. Only sets
+  // styles the source actually specified; falls through to the table defaults.
+  const formatToTextStyle = useCallback((fmt) => {
+    if (!fmt) return null;
+    const s = {};
+    if (fmt.bold) s.fontWeight = 600;
+    if (fmt.italic) s.fontStyle = "italic";
+    if (fmt.underline || fmt.strikethrough) {
+      s.textDecoration = [
+        fmt.underline ? "underline" : null,
+        fmt.strikethrough ? "line-through" : null,
+      ].filter(Boolean).join(" ");
+    }
+    if (fmt.fgColor) s.color = fmt.fgColor;
+    if (fmt.fontSize) s.fontSize = `${Math.min(Math.max(fmt.fontSize, 9), 22)}px`;
+    return Object.keys(s).length ? s : null;
+  }, []);
+
+  // ── Render cell by type, with optional rich-cell formatting + inline image ──
+  const renderCell = useCallback((value, colName, richCell) => {
+    // In-cell image — preferred over text when present.
+    if (richCell?.image) {
+      return (
+        <img
+          src={richCell.image}
+          alt={richCell.value || colName || ""}
+          referrerPolicy="no-referrer"
+          loading="lazy"
+          style={{
+            maxHeight: 56,
+            maxWidth: 80,
+            objectFit: "contain",
+            borderRadius: 4,
+            display: "block",
+          }}
+        />
+      );
+    }
+
     const v = value || "";
     const type = columnTypes[colName] || "text";
+    const textStyle = formatToTextStyle(richCell?.format);
 
+    let inner;
     switch (type) {
       case "number":
-        return (
+        inner = (
           <span style={{ fontVariantNumeric: "tabular-nums", textAlign: "right", display: "block" }}>
             {v}
           </span>
         );
+        break;
       case "url":
-        return (
+        inner = (
           <a
             href={v}
             target="_blank"
@@ -334,24 +381,28 @@ export default function LinkedSheet({ config = {}, pageConfig }) {
             {truncate(v, 60)}
           </a>
         );
+        break;
       case "date":
-        try {
-          return formatDate(v);
-        } catch {
-          return v;
-        }
+        try { inner = formatDate(v); } catch { inner = v; }
+        break;
       case "checkbox": {
         const isTrue = ["true", "yes", "1"].includes(String(v).toLowerCase());
-        return (
+        inner = (
           <span style={{ color: isTrue ? C.accent : C.darkMuted, fontSize: 14 }}>
             {isTrue ? "✓" : "—"}
           </span>
         );
+        break;
       }
       default:
-        return truncate(v, 120);
+        inner = truncate(v, 120);
     }
-  }, [columnTypes]);
+
+    if (textStyle) {
+      return <span style={textStyle}>{inner}</span>;
+    }
+    return inner;
+  }, [columnTypes, formatToTextStyle]);
 
   // ── No URL configured ──
   if (!sheetUrl) {
@@ -450,8 +501,12 @@ export default function LinkedSheet({ config = {}, pageConfig }) {
         <table style={styles.table}>
           <thead>
             <tr>
-              {columns.map((col) => {
+              {columns.map((col, colIdx) => {
                 const isSort = sortField === col;
+                // Header formatting from the Sheets API (background + text color).
+                const headCell = sheetData?.richHeader?.[colIdx];
+                const headFmt = headCell?.format || null;
+                const headTextStyle = formatToTextStyle(headFmt);
                 return (
                   <th
                     key={col}
@@ -460,6 +515,8 @@ export default function LinkedSheet({ config = {}, pageConfig }) {
                       ...styles.th,
                       ...(isSort ? styles.thActive : {}),
                       ...(columnTypes[col] === "number" ? { textAlign: "right" } : {}),
+                      ...(headFmt?.bgColor ? { background: headFmt.bgColor } : {}),
+                      ...(headTextStyle || {}),
                     }}
                   >
                     {col}
@@ -471,7 +528,7 @@ export default function LinkedSheet({ config = {}, pageConfig }) {
             </tr>
           </thead>
           <tbody>
-            {processedRows.map((row, rowIdx) => (
+            {processedRows.map(({ row, richRow }, rowIdx) => (
               <tr
                 key={rowIdx}
                 style={{
@@ -483,18 +540,23 @@ export default function LinkedSheet({ config = {}, pageConfig }) {
               >
                 {columns.map((col, colIdx) => {
                   const isCellHovered = hoveredCell?.rowIdx === rowIdx && hoveredCell?.colIdx === colIdx;
+                  const richCell = richRow?.[colIdx] || null;
+                  const cellBg = richCell?.format?.bgColor;
+                  const cellAlign = richCell?.format?.align;
                   return (
                     <td
                       key={colIdx}
                       style={{
                         ...styles.td,
                         ...(columnTypes[col] === "number" ? { textAlign: "right" } : {}),
+                        ...(cellAlign ? { textAlign: cellAlign } : {}),
+                        ...(cellBg ? { background: cellBg } : {}),
                         position: "relative",
                       }}
                       onMouseEnter={() => setHoveredCell({ rowIdx, colIdx })}
                       onMouseLeave={() => setHoveredCell(null)}
                     >
-                      {renderCell(row[colIdx], col)}
+                      {renderCell(row[colIdx], col, richCell)}
                       {/* Link icon on hover */}
                       {isCellHovered && (
                         <button

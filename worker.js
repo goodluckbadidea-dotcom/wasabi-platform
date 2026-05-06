@@ -22,7 +22,7 @@ import { handleCreateInvite, handleUserDirectory, handleListUsers, handleDeleteU
 import { handleListCustomFunctions, handleCreateCustomFunction, handleGetCustomFunction, handleUpdateCustomFunction, handleDeleteCustomFunction, handleExternalApiProxy, validatePluginCodeServer } from './worker/handlers/custom-functions.js';
 import { handleListRules, handleCreateRule, handleGetRule, handleUpdateRule, handleDeleteRule, handleListFlows, handleCreateFlow, handleGetFlow, handleUpdateFlow, handleDeleteFlow, handleListFunctionExecutions, handleCreateFunctionExecution, handleListFlowExecutions, handleCreateFlowExecution, handleUpdateFlowExecution } from './worker/handlers/automations.js';
 import { handleListComments, handleCreateComment, handleDeleteComment } from './worker/handlers/records.js';
-import { handleGoogleAuthUrl, handleGoogleCallback, handleGoogleStatus, handleGoogleDisconnect, handleGmailSummary, handleGmailSearch, handleGmailGetMessage, handleGmailGetThread, handleGmailUpdateDraft, handleGmailSend, handleGmailCreateDraft, handleGmailModify, handleCalendarSummary, handleCalendarList, handleCalendarListEvents, handleCalendarCreateEvent, handleCalendarUpdateEvent, handleCalendarDeleteEvent, handleCalendarFreeBusy } from './worker/handlers/google.js';
+import { handleGoogleAuthUrl, handleGoogleCallback, handleGoogleStatus, handleGoogleDisconnect, handleGmailSummary, handleGmailSearch, handleGmailGetMessage, handleGmailGetThread, handleGmailUpdateDraft, handleGmailSend, handleGmailCreateDraft, handleGmailModify, handleCalendarSummary, handleCalendarList, handleCalendarListEvents, handleCalendarCreateEvent, handleCalendarUpdateEvent, handleCalendarDeleteEvent, handleCalendarFreeBusy, fetchGoogleSheetViaApi } from './worker/handlers/google.js';
 import { handleMicrosoftAuthUrl, handleMicrosoftCallback, handleMicrosoftStatus, handleMicrosoftDisconnect } from './worker/handlers/microsoft.js';
 import { handleOutlookSummary, handleOutlookSearch, handleOutlookGetMessage, handleOutlookGetThread, handleOutlookSend, handleOutlookModify, handleOutlookCreateDraft, handleOutlookUpdateDraft, handleOutlookFreeBusy, handleOutlookCalendarSummary, handleOutlookListEvents, handleOutlookCreateEvent, handleOutlookUpdateEvent, handleOutlookDeleteEvent } from './worker/handlers/outlook.js';
 import { handleFigmaStatus, handleFigmaProjects, handleFigmaFiles, handleFigmaFile, handleFigmaImport } from './worker/handlers/figma.js';
@@ -1842,7 +1842,7 @@ export default {
         return jsonResponse({ base64, contentType, size: buffer.byteLength });
       }
 
-      // ─── Linked Sheet proxy (fetch + parse CSV with caching) ───
+      // ─── Linked Sheet proxy (Google Sheets API when Sheets-granted, CSV fallback) ───
       if (path === "/sheets/fetch" && request.method === "POST") {
         const { url: sheetUrl } = await request.json();
         if (!sheetUrl) return jsonResponse({ _error: "Missing sheet URL" }, 400);
@@ -1850,10 +1850,34 @@ export default {
 
         let fetchUrl = sheetUrl;
         let sheetType = "csv";
+        let spreadsheetId = null;
+        let gid = null;
         const gMatch = sheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
         if (gMatch) {
           sheetType = "google_sheets";
-          fetchUrl = `https://docs.google.com/spreadsheets/d/${gMatch[1]}/gviz/tq?tqx=out:csv`;
+          spreadsheetId = gMatch[1];
+          // gid can be in either ?gid=... or #gid=...
+          const gidMatch = sheetUrl.match(/[?&#]gid=(\d+)/);
+          if (gidMatch) gid = gidMatch[1];
+          fetchUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv${gid ? `&gid=${gid}` : ""}`;
+        }
+
+        // Google Sheets via OAuth API path: returns formatting + inline images.
+        // Only kicks in when the caller is authenticated AND has the "sheets"
+        // grant. Per-user data — bypass the shared CDN cache.
+        if (sheetType === "google_sheets" && user?.sub) {
+          const apiResult = await fetchGoogleSheetViaApi(env, user.sub, spreadsheetId, gid);
+          if (!apiResult._error) {
+            return jsonResponse({
+              ...apiResult,
+              cachedAt: Date.now(),
+              sheetType,
+            });
+          }
+          // Fall through to CSV on 401 (no sheets grant) — preserves backward
+          // compatibility for users who haven't granted Sheets yet. Other
+          // errors (404, 500) bubble up as the CSV path can't recover from them
+          // anyway, but try CSV as a last resort.
         }
 
         const cacheKey = new Request(`https://wasabi-cache.internal/sheets/${encodeURIComponent(sheetUrl)}`, { method: "GET" });
@@ -1872,7 +1896,7 @@ export default {
         const csvText = await csvRes.text();
 
         const { columns, rows } = parseCSV(csvText);
-        const result = { columns, rows: rows.slice(0, 10000), cachedAt: Date.now(), sheetType, truncated: rows.length > 10000 };
+        const result = { columns, rows: rows.slice(0, 10000), cachedAt: Date.now(), sheetType, truncated: rows.length > 10000, source: "csv" };
 
         const response = jsonResponse(result);
         const cachedResponse = new Response(response.body, response);
