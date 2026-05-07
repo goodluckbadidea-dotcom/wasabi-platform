@@ -33,8 +33,9 @@ import { useCollaboration } from "../context/CollaborationContext.jsx";
 import { getFieldType, getFieldOptions, getOptionNames, readField, displayValue } from "./_viewHelpers.js";
 import {
   OWNER_COL_NAME, OWNER_COL_WIDTH, D1_TO_NOTION_TYPE, COLUMN_TYPES, TYPE_ICON_MAP,
-  mapD1TypeForUI, getTypeIcon, ROW_HEIGHT, VIRT_BUFFER, EDITABLE_TYPES, TEXT_SEARCH_TYPES,
-  resolveColumns,
+  mapD1TypeForUI, getTypeIcon, ROW_HEIGHT, VIRT_BUFFER, GROUP_GAP, SUB_HEADER_HEIGHT,
+  EDITABLE_TYPES, TEXT_SEARCH_TYPES,
+  resolveColumns, buildGroupList, computeOffsets, findGroupAtOffset,
 } from "./table/tableHelpers.js";
 
 import { getStyles, getGhostInputStyle } from "./table/tableStyles.js";
@@ -498,6 +499,21 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     handleCreateSubItem, handleSubItemGhostCommit,
   } = subGhost;
 
+  // ── Grouped layout (parent + expanded sub-items render as one card) ──
+  // Sub-items are nested visually inside the parent's card. The flat
+  // `displayList` (used by keyboard nav and selection) stays the source of
+  // truth; `groupList` is a render-only derivation.
+  const groupList = useMemo(() => buildGroupList(displayList), [displayList]);
+
+  // Pixel offsets for variable-height virtualization. Each group's height
+  // depends on parent (ROW_HEIGHT) + (when expanded) sub-header + N children
+  // + optional sub-item ghost row + GROUP_GAP between groups.
+  const offsetData = useMemo(
+    () => computeOffsets(displayList, subItemGhostParent),
+    [displayList, subItemGhostParent]
+  );
+  const { groupOffsets, rowOffsets, totalHeight: totalContentHeight } = offsetData;
+
   // ── Record badge counts (comments, notes, files) ──
   const [badgeCounts, setBadgeCounts] = useState({});
   const badgeFetchRef = useRef(null);
@@ -515,14 +531,15 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     return () => { if (badgeFetchRef.current) clearTimeout(badgeFetchRef.current); };
   }, [processedData, pageConfig?.id]);
 
-  // Re-sync visible range when data or container size changes
+  // Re-sync visible range (group indices) when data or container size changes.
+  // start/end are GROUP indices into groupList, not row indices.
   useEffect(() => {
     const st = scrollTopRef.current;
-    const totalRows = displayList.length;
-    const newStart = Math.min(totalRows, Math.max(0, Math.floor(st / ROW_HEIGHT) - VIRT_BUFFER));
-    const newEnd = Math.min(totalRows, Math.ceil((st + containerHeight) / ROW_HEIGHT) + VIRT_BUFFER);
-    setVisibleRange({ start: newStart, end: newEnd });
-  }, [displayList.length, containerHeight]);
+    const totalGroups = groupList.length;
+    const startG = Math.max(0, findGroupAtOffset(st, groupOffsets) - VIRT_BUFFER);
+    const endG = Math.min(totalGroups, findGroupAtOffset(st + containerHeight, groupOffsets) + VIRT_BUFFER + 1);
+    setVisibleRange({ start: startG, end: endG });
+  }, [groupList.length, groupOffsets, containerHeight]);
 
   // Column sort handler — cycles asc -> desc -> none
   const handleSort = useCallback((field) => {
@@ -616,10 +633,11 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     return () => document.removeEventListener("keydown", handler);
   }, [focusedCell, displayList, columns]);
 
-  // Scroll focused cell into view (for virtualization compatibility)
+  // Scroll focused cell into view (variable-height aware).
+  // rowOffsets[i] gives pixel-top of displayList[i] regardless of grouping.
   useEffect(() => {
     if (focusedCell && scrollAreaRef.current) {
-      const targetTop = focusedCell.row * ROW_HEIGHT;
+      const targetTop = rowOffsets[focusedCell.row] ?? focusedCell.row * ROW_HEIGHT;
       const container = scrollAreaRef.current;
       const viewTop = container.scrollTop;
       const viewBottom = viewTop + container.clientHeight - 80; // account for header
@@ -629,7 +647,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
         container.scrollTop = targetTop + ROW_HEIGHT - container.clientHeight + 80;
       }
     }
-  }, [focusedCell]);
+  }, [focusedCell, rowOffsets]);
 
   // Filter change handler
   const handleFilterChange = useCallback((field, value) => {
@@ -1062,11 +1080,11 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           scrollRAF.current = requestAnimationFrame(() => {
             const st = target.scrollTop;
             scrollTopRef.current = st;
-            const totalRows = displayList.length;
-            const newStart = Math.min(totalRows, Math.max(0, Math.floor(st / ROW_HEIGHT) - VIRT_BUFFER));
-            const newEnd = Math.min(totalRows, Math.ceil((st + containerHeight) / ROW_HEIGHT) + VIRT_BUFFER);
+            const totalGroups = groupList.length;
+            const startG = Math.max(0, findGroupAtOffset(st, groupOffsets) - VIRT_BUFFER);
+            const endG = Math.min(totalGroups, findGroupAtOffset(st + containerHeight, groupOffsets) + VIRT_BUFFER + 1);
             setVisibleRange(prev =>
-              prev.start === newStart && prev.end === newEnd ? prev : { start: newStart, end: newEnd }
+              prev.start === startG && prev.end === endG ? prev : { start: startG, end: endG }
             );
           });
         }}
@@ -1127,93 +1145,97 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                   setAddColOpen={setAddColOpen}
                 />
 
-                {/* ── Virtualized Card Rows ── */}
+                {/* ── Virtualized Card Rows (group-based) ── */}
                 <div style={{ padding: "4px 8px" }}>
                   {(() => {
-                    const totalRows = displayList.length;
+                    const totalGroups = groupList.length;
                     const visibleStart = visibleRange.start;
-                    const visibleEnd = Math.min(totalRows, visibleRange.end);
-                    const visibleEntries = displayList.slice(visibleStart, visibleEnd);
-                    const cardHeight = ROW_HEIGHT + 4; // row + marginBottom
+                    const visibleEnd = Math.min(totalGroups, visibleRange.end);
+                    const visibleGroups = groupList.slice(visibleStart, visibleEnd);
+                    const topSpacer = groupOffsets[visibleStart] || 0;
+                    const lastVisibleBottom = visibleEnd < totalGroups
+                      ? groupOffsets[visibleEnd]
+                      : totalContentHeight;
+                    const bottomSpacer = Math.max(0, totalContentHeight - lastVisibleBottom);
 
                     return (
                       <>
                         {/* Top spacer */}
-                        <div style={{ height: visibleStart * cardHeight }} />
-                        {visibleEntries.map((entry, localIdx) => {
-                          const prev = localIdx > 0 ? visibleEntries[localIdx - 1] : (visibleStart > 0 ? displayList[visibleStart + localIdx - 1] : null);
-                          return (
-                            <TableRow
-                              key={entry.row.id}
-                              entry={entry}
-                              localIdx={localIdx}
-                              prevEntry={prev}
-                              gtc={gtc}
-                              subGtc={subGtc}
-                              columns={columns}
-                              subColsList={subColsList}
-                              subColumns={subColumns}
-                              schema={schema}
-                              subSchema={subSchema}
-                              subItemsEnabled={subItemsEnabled}
-                              isHovered={hoveredRow === entry.row.id}
-                              isSelected={selectedRows.has(entry.row.id)}
-                              showOwnerColumn={showOwnerColumn}
-                              showSubItemOwnerColumn={showSubItemOwnerColumn}
-                              canEditSchema={canEditSchema}
-                              setHoveredRow={setHoveredRow}
-                              setDetailPage={setDetailPage}
-                              toggleRow={toggleRow}
-                              toggleExpand={toggleExpand}
-                              handleCreateSubItem={handleCreateSubItem}
-                              onCreate={onCreate}
-                              teamUsers={teamUsers}
-                              resolvedLinks={resolvedLinks}
-                              config={config}
-                              relationTitles={relationTitles}
-                              recordTitlesById={recordTitlesById}
-                              badgeCounts={badgeCounts}
-                              removeLink={removeLink}
-                              collab={collab}
-                              renamingSubCol={renamingSubCol}
-                              setRenamingSubCol={setRenamingSubCol}
-                              renameSubValue={renameSubValue}
-                              setRenameSubValue={setRenameSubValue}
-                              handleRenameSubCol={handleRenameSubCol}
-                              setSubColCtxMenu={setSubColCtxMenu}
-                              setAddSubColOpen={setAddSubColOpen}
-                              handleSubResizeStart={handleSubResizeStart}
-                              subItemGhostParent={subItemGhostParent}
-                              setSubItemGhostParent={setSubItemGhostParent}
-                              subItemGhostValues={subItemGhostValues}
-                              setSubItemGhostValues={setSubItemGhostValues}
-                              subItemGhostSaving={subItemGhostSaving}
-                              subItemGhostActive={subItemGhostActive}
-                              subGhostRef={subGhostRef}
-                              handleSubItemGhostCommit={handleSubItemGhostCommit}
-                              getChildren={getChildren}
-                            />
-                          );
-                        })}
+                        <div style={{ height: topSpacer }} />
+                        {visibleGroups.map((group, localIdx) => (
+                          <TableRow
+                            key={group.parent.row.id}
+                            group={group}
+                            localIdx={localIdx}
+                            gtc={gtc}
+                            subGtc={subGtc}
+                            columns={columns}
+                            subColsList={subColsList}
+                            subColumns={subColumns}
+                            schema={schema}
+                            subSchema={subSchema}
+                            subItemsEnabled={subItemsEnabled}
+                            isHovered={hoveredRow === group.parent.row.id}
+                            selectedRows={selectedRows}
+                            showOwnerColumn={showOwnerColumn}
+                            showSubItemOwnerColumn={showSubItemOwnerColumn}
+                            canEditSchema={canEditSchema}
+                            setHoveredRow={setHoveredRow}
+                            setDetailPage={setDetailPage}
+                            toggleRow={toggleRow}
+                            toggleExpand={toggleExpand}
+                            handleCreateSubItem={handleCreateSubItem}
+                            onCreate={onCreate}
+                            teamUsers={teamUsers}
+                            resolvedLinks={resolvedLinks}
+                            config={config}
+                            relationTitles={relationTitles}
+                            recordTitlesById={recordTitlesById}
+                            badgeCounts={badgeCounts}
+                            removeLink={removeLink}
+                            collab={collab}
+                            renamingSubCol={renamingSubCol}
+                            setRenamingSubCol={setRenamingSubCol}
+                            renameSubValue={renameSubValue}
+                            setRenameSubValue={setRenameSubValue}
+                            handleRenameSubCol={handleRenameSubCol}
+                            setSubColCtxMenu={setSubColCtxMenu}
+                            setAddSubColOpen={setAddSubColOpen}
+                            handleSubResizeStart={handleSubResizeStart}
+                            subItemGhostParent={subItemGhostParent}
+                            setSubItemGhostParent={setSubItemGhostParent}
+                            subItemGhostValues={subItemGhostValues}
+                            setSubItemGhostValues={setSubItemGhostValues}
+                            subItemGhostSaving={subItemGhostSaving}
+                            subItemGhostActive={subItemGhostActive}
+                            subGhostRef={subGhostRef}
+                            handleSubItemGhostCommit={handleSubItemGhostCommit}
+                            getChildren={getChildren}
+                          />
+                        ))}
                         {/* Bottom spacer */}
-                        <div style={{ height: Math.max(0, (totalRows - visibleEnd) * cardHeight) }} />
+                        <div style={{ height: bottomSpacer }} />
                       </>
                     );
                   })()}
 
-                  {/* Ghost row — new record creation */}
+                  {/* Ghost row — new record creation. Dashed border + reduced
+                      opacity flags it as "ghost" vs a real row card. */}
                   {onCreate && targetDatabaseId && (
                     <div
                       style={{
                         ...styles.gridRow,
+                        display: "grid",
                         gridTemplateColumns: gtc,
-                        height: ROW_HEIGHT,
-                        opacity: ghostSaving ? 0.5 : 0.6,
-                        transition: "opacity 0.15s",
+                        minHeight: ROW_HEIGHT,
+                        border: `1px dashed ${C.darkBorder}`,
+                        boxShadow: "none",
+                        opacity: ghostSaving ? 0.5 : 0.7,
+                        transition: "opacity 0.15s, border-color 0.15s",
                         cursor: "default",
                       }}
                       onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-                      onMouseLeave={(e) => { if (!ghostActive.current) e.currentTarget.style.opacity = "0.6"; }}
+                      onMouseLeave={(e) => { if (!ghostActive.current) e.currentTarget.style.opacity = "0.7"; }}
                     >
                       <div style={{ ...styles.gridCell, justifyContent: "center", padding: "4px 4px" }}>
                         <IconPlus size={10} color={C.darkMuted} />

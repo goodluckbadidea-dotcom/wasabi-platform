@@ -129,10 +129,10 @@ export default function TableHeader({
       {/* Badge column header */}
       <div style={{ ...styles.gridHeaderCell, padding: "10px 2px" }} />
       {/* Neuron column header */}
-      <div style={{ ...styles.gridHeaderCell, padding: "10px 4px" }} />
+      <div style={{ ...styles.gridHeaderCell, padding: "10px 4px", ...(canEditSchema ? {} : { borderRight: "none" }) }} />
       {/* Add column button */}
       {canEditSchema && (
-        <div style={{ ...styles.gridHeaderCell, textAlign: "center", padding: "10px 8px", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+        <div style={{ ...styles.gridHeaderCell, textAlign: "center", padding: "10px 8px", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", borderRight: "none" }}>
           <div
             style={{
               display: "flex", alignItems: "center", justifyContent: "center",

@@ -115,8 +115,7 @@ export function getStyles() { return {
     top: 0,
     zIndex: 10,
     background: C.dark,
-    borderBottom: `2px solid ${C.accent}33`,
-    boxShadow: `0 2px 8px rgba(0,0,0,0.08)`,
+    borderBottom: `1px solid ${C.border}`,
   },
 
   gridHeaderCell: {
@@ -133,23 +132,43 @@ export function getStyles() { return {
     transition: "color 0.15s",
     position: "relative",
     overflow: "hidden",
+    borderRight: `1px solid ${C.border}33`,
   },
 
   gridHeaderCellActive: {
     color: C.darkText,
   },
 
+  // Row card — every parent row gets card treatment (border, shadow, radius).
+  // Sub-items inside an expanded group strip these via the `subRowOverride` style.
   gridRow: {
     display: "grid",
     borderRadius: RADIUS.lg,
     cursor: "pointer",
-    transition: "background 0.15s ease, box-shadow 0.15s ease",
+    transition: "background 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease",
     background: C.darkSurf,
-    marginBottom: 4,
+    border: `1px solid ${C.darkBorder}`,
+    boxShadow: SHADOW.cardMaterial,
+    marginBottom: 8,
     position: "relative",
     // overflow removed (was "hidden") so multi-line pill wraps in cells expand
     // the row vertically. borderRadius still works visually since each cell
     // sits within the row's bounding box.
+  },
+
+  // Sub-item row inside a group card — strips the card chrome.
+  // Lives inside the parent's gridRow border, so renders as a transparent
+  // strip with hairline padding only.
+  gridSubRow: {
+    display: "grid",
+    cursor: "pointer",
+    transition: "background 0.15s ease",
+    background: "transparent",
+    border: "none",
+    boxShadow: "none",
+    borderRadius: 0,
+    marginBottom: 0,
+    position: "relative",
   },
 
   gridCell: {
@@ -158,6 +177,7 @@ export function getStyles() { return {
     fontSize: 13,
     lineHeight: 1.45,
     boxSizing: "border-box",
+    borderRight: `1px solid ${C.border}33`,
     // overflow:hidden clips HORIZONTAL bleed (e.g. a long pill like
     // "WAREHOUSED (DROPS FACILITY)" with whiteSpace:nowrap leaking into the
     // next column). It does NOT prevent the cell box from growing
@@ -178,7 +198,7 @@ export function getStyles() { return {
     bottom: 0,
     zIndex: 5,
     background: C.dark,
-    borderTop: `2px solid ${C.darkBorder}`,
+    borderTop: `1px solid ${C.border}`,
   },
 
   // Legacy styles used by CellEditor (in RecordDetail drawer) and CSV import modal

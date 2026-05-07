@@ -159,16 +159,14 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping, dateChip
     ? barColor + (isDark ? "18" : "14")
     : null;
   const hasSubs = (task.subItems?.length || 0) > 0;
+  const showSubs = hasSubs && isExpanded;
 
   return (
     <div
-      onClick={() => onTaskClick?.(task)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "10px 14px",
-        marginBottom: 4,
+        marginBottom: 8,
         borderRadius: RADIUS.lg,
         cursor: "pointer",
         transition: "background 0.15s ease, box-shadow 0.15s ease",
@@ -179,74 +177,102 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping, dateChip
         position: "relative",
         overflow: "hidden",
       }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
     >
-      {/* Left color fill */}
+      {/* Status/priority color bar — extends through the full group card
+          height when sub-items are expanded, signaling "this group's status." */}
       {barColor && (
         <div style={{
           position: "absolute",
           left: 0, top: 0, bottom: 0,
           width: 6, borderRadius: 0,
           background: barColor,
+          pointerEvents: "none",
         }} />
       )}
 
-      {/* Disclosure chevron (only when sub-items exist) */}
-      {hasSubs && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onToggleExpand?.(); }}
-          aria-label={isExpanded ? "Collapse sub-items" : "Expand sub-items"}
-          aria-expanded={!!isExpanded}
-          style={{
-            background: "none", border: "none", cursor: "pointer",
-            padding: 0, marginLeft: barColor ? 2 : 0, flexShrink: 0,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            width: 16, height: 16,
-            color: C.darkMuted,
-            transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)",
-            transition: "transform 0.15s ease",
-            outline: "none",
-          }}
-        >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-            <path d="M3.5 2L6.5 5L3.5 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-      )}
+      {/* Parent strip */}
+      <div
+        onClick={() => onTaskClick?.(task)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "10px 14px",
+        }}
+      >
+        {/* Disclosure chevron (only when sub-items exist) */}
+        {hasSubs && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleExpand?.(); }}
+            aria-label={isExpanded ? "Collapse sub-items" : "Expand sub-items"}
+            aria-expanded={!!isExpanded}
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              padding: 0, marginLeft: barColor ? 2 : 0, flexShrink: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              width: 16, height: 16,
+              color: C.darkMuted,
+              transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)",
+              transition: "transform 0.15s ease",
+              outline: "none",
+            }}
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M3.5 2L6.5 5L3.5 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        )}
 
-      {/* Title */}
-      <span style={{
-        flex: 1, fontSize: 13, fontFamily: FONT, color: C.darkText,
-        textDecoration: task.done ? "line-through" : "none",
-        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-        minWidth: 0,
-        paddingLeft: barColor && !hasSubs ? 4 : 0,
-      }}>
-        {task.title}
-      </span>
+        {/* Title */}
+        <span style={{
+          flex: 1, fontSize: 13, fontFamily: FONT, color: C.darkText,
+          textDecoration: task.done ? "line-through" : "none",
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          minWidth: 0,
+          paddingLeft: barColor && !hasSubs ? 4 : 0,
+        }}>
+          {task.title}
+        </span>
 
-      {/* Badges */}
-      <SubItemRollupChip subItems={task.subItems} dateChipColors={dateChipColors} />
-      <DueBadge due={task.due} dateChipColors={dateChipColors} />
-      <SourceBadge sourceName={task.sourceName} />
+        {/* Badges */}
+        <SubItemRollupChip subItems={task.subItems} dateChipColors={dateChipColors} />
+        <DueBadge due={task.due} dateChipColors={dateChipColors} />
+        <SourceBadge sourceName={task.sourceName} />
 
-      {/* Delete (on hover, manual tasks only, hidden when readOnly/no handler) */}
-      {hovered && task.source === "manual" && onDelete && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(task.id); }}
-          style={{
-            background: "none", border: "none", cursor: "pointer",
-            padding: 6, display: "flex", opacity: 0.5,
-            outline: "none", flexShrink: 0,
-            borderRadius: RADIUS.sm, minWidth: 28, minHeight: 28,
-            alignItems: "center", justifyContent: "center",
-          }}
-        >
-          <svg width="12" height="12" viewBox="0 0 10 10" fill="none">
-            <path d="M2 2L8 8M8 2L2 8" stroke={C.darkMuted} strokeWidth="1.2" />
-          </svg>
-        </button>
+        {/* Delete (on hover, manual tasks only, hidden when readOnly/no handler) */}
+        {hovered && task.source === "manual" && onDelete && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(task.id); }}
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              padding: 6, display: "flex", opacity: 0.5,
+              outline: "none", flexShrink: 0,
+              borderRadius: RADIUS.sm, minWidth: 28, minHeight: 28,
+              alignItems: "center", justifyContent: "center",
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 10 10" fill="none">
+              <path d="M2 2L8 8M8 2L2 8" stroke={C.darkMuted} strokeWidth="1.2" />
+            </svg>
+          </button>
+        )}
+      </div>
+
+      {/* Sub-items inside the same card — they share the parent's border,
+          shadow, and status bar. Tree-line connector + indent live in
+          SubItemRow. */}
+      {showSubs && (
+        <div style={{ animation: "fadeSlideIn 0.2s ease both", paddingBottom: 4 }}>
+          {task.subItems.map((sub) => (
+            <SubItemRow
+              key={sub.id}
+              subItem={sub}
+              onTaskClick={onTaskClick}
+              colorMapping={colorMapping}
+              dateChipColors={dateChipColors}
+            />
+          ))}
+        </div>
       )}
     </div>
   );
@@ -463,19 +489,6 @@ export default function TaskList({ userTasks, aiTasks, aiLoading, aiRefreshing, 
                     isExpanded={expandedIds.has(task.id)}
                     onToggleExpand={() => toggleExpand(task.id)}
                   />
-                  {expandedIds.has(task.id) && task.subItems?.length > 0 && (
-                    <div style={{ animation: "fadeSlideIn 0.2s ease both" }}>
-                      {task.subItems.map((sub) => (
-                        <SubItemRow
-                          key={sub.id}
-                          subItem={sub}
-                          onTaskClick={onTaskClick}
-                          colorMapping={colorMapping}
-                          dateChipColors={dateChipColors}
-                        />
-                      ))}
-                    </div>
-                  )}
                 </div>
               ))
             )}

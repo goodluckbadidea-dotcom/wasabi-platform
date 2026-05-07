@@ -53,7 +53,89 @@ export function getTypeIcon(schema, fieldName) { return TYPE_ICON_MAP[getFieldTy
 
 // ─── Constants ───
 export const ROW_HEIGHT = 36;
-export const VIRT_BUFFER = 20;
+export const VIRT_BUFFER = 30;
+export const GROUP_GAP = 8;
+export const SUB_HEADER_HEIGHT = 28;
+
+// Build a flat displayList into groups: each group has { parent, children }.
+// A collapsed parent is { parent, children: [] }. Sub-items always belong to
+// the most recently seen depth-0 entry.
+export function buildGroupList(displayList) {
+  const groups = [];
+  let current = null;
+  for (const entry of displayList) {
+    if (entry.depth === 0) {
+      if (current) groups.push(current);
+      current = { parent: entry, children: [] };
+    } else if (current) {
+      current.children.push(entry);
+    }
+  }
+  if (current) groups.push(current);
+  return groups;
+}
+
+// Compute group/row offsets and total content height in a single pass.
+// `subItemGhostParentId` adds ROW_HEIGHT to its containing group when active.
+// Returns { groupOffsets, rowOffsets, totalHeight } where:
+//   - groupOffsets[i] = pixel-top of group i
+//   - rowOffsets[rowIdx] = pixel-top of displayList[rowIdx]
+//   - totalHeight = full content height including trailing GROUP_GAP
+export function computeOffsets(displayList, subItemGhostParentId) {
+  const groupOffsets = [];
+  const rowOffsets = new Array(displayList.length);
+  let cursor = 0;
+  let currentParentIdx = -1;
+  let currentHasChildren = false;
+
+  const closeGroup = () => {
+    if (currentParentIdx === -1) return;
+    const parentEntry = displayList[currentParentIdx];
+    const isGhost = subItemGhostParentId === parentEntry.row.id && parentEntry.isExpanded;
+    if (isGhost && !currentHasChildren) {
+      cursor += SUB_HEADER_HEIGHT + ROW_HEIGHT;
+    } else if (isGhost) {
+      cursor += ROW_HEIGHT;
+    }
+    cursor += GROUP_GAP;
+  };
+
+  for (let i = 0; i < displayList.length; i++) {
+    const entry = displayList[i];
+    if (entry.depth === 0) {
+      closeGroup();
+      groupOffsets.push(cursor);
+      rowOffsets[i] = cursor;
+      cursor += ROW_HEIGHT;
+      currentParentIdx = i;
+      currentHasChildren = false;
+    } else {
+      if (!currentHasChildren) {
+        cursor += SUB_HEADER_HEIGHT;
+        currentHasChildren = true;
+      }
+      rowOffsets[i] = cursor;
+      cursor += ROW_HEIGHT;
+    }
+  }
+  closeGroup();
+
+  return { groupOffsets, rowOffsets, totalHeight: cursor };
+}
+
+// Binary search: largest index i where groupOffsets[i] <= offset.
+export function findGroupAtOffset(offset, groupOffsets) {
+  if (groupOffsets.length === 0) return 0;
+  if (offset <= 0) return 0;
+  let lo = 0, hi = groupOffsets.length - 1;
+  if (offset >= groupOffsets[hi]) return hi;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (groupOffsets[mid] <= offset) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
+}
 
 export const EDITABLE_TYPES = new Set([
   "title", "rich_text", "number", "select", "status",
