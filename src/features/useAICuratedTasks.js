@@ -19,7 +19,7 @@ import {
   sortSubItemsByParentContext,
 } from "./taskHelpers.js";
 
-const CACHE_KEY_PREFIX = "wasabi_ai_tasks_v12"; // v12: sub-items grouped under parents (subItems[])
+const CACHE_KEY_PREFIX = "wasabi_ai_tasks_v13"; // v13: schema-category done detection (terminal-status fix)
 const INSIGHT_CACHE_KEY = "wasabi_insight";
 const CACHE_TTL = 30 * 60 * 1000; // 30 minutes — stale-while-revalidate shows cached data instantly
 const MAX_DATABASES = 25;
@@ -429,7 +429,7 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
     try {
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (k && (k.startsWith("wasabi_ai_tasks_v8") || k.startsWith("wasabi_ai_tasks_v9") || k.startsWith("wasabi_ai_tasks_v10") || k.startsWith("wasabi_ai_tasks_v11"))) { localStorage.removeItem(k); i--; }
+        if (k && (k.startsWith("wasabi_ai_tasks_v8") || k.startsWith("wasabi_ai_tasks_v9") || k.startsWith("wasabi_ai_tasks_v10") || k.startsWith("wasabi_ai_tasks_v11") || k.startsWith("wasabi_ai_tasks_v12"))) { localStorage.removeItem(k); i--; }
       }
     } catch {}
 

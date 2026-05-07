@@ -242,27 +242,47 @@ export function normalizeD1Task(row, columns, parentCellMap = {}) {
   const assigneeKey = findCellKey(["assignee", "assigned", "owner", "responsible"]);
   if (assigneeKey) _fieldMap.assignee = assigneeKey;
 
-  // Extract status options from column schema (for dropdown in RecordDrawer)
+  // Extract status options from column schema (for dropdown in RecordDrawer
+  // and for category-based done/hold detection below).
   const _statusOptions = [];
   if (statusKey) {
     const statusCol = colMap[statusKey];
     if (statusCol?.options) {
       for (const opt of statusCol.options) {
-        _statusOptions.push({ name: opt.label || opt.name || opt, color: opt.color || "default" });
+        _statusOptions.push({
+          name: opt.label || opt.name || opt,
+          color: opt.color || "default",
+          category: opt.category || null,
+        });
       }
     }
   }
 
-  // Terminal status detection — check both checkbox and status value
-  let done = !!findCell(["done", "complete", "check"]);
+  // Resolve the schema category for the current status value (e.g.
+  // "Warehoused (Drops Facility)" → "complete"). Schema-driven and the
+  // source of truth; the legacy keyword check below is a fallback for
+  // status values whose options haven't been categorized yet.
   const statusVal = findCell(["status"]) || "";
+  const _statusCategory = (() => {
+    if (!statusVal) return null;
+    const opt = _statusOptions.find((o) => o.name === statusVal);
+    return opt?.category || null;
+  })();
+
+  // Terminal status detection — checkbox first, then schema category, then
+  // legacy keyword scan for un-categorized options.
+  let done = !!findCell(["done", "complete", "check"]);
   if (!done && statusVal) {
-    const statusLower = statusVal.toLowerCase().trim();
-    const TERMINAL_WORDS = [
-      "complete", "completed", "done", "shipped", "delivered",
-      "closed", "archived", "cancelled", "canceled", "resolved", "finished",
-    ];
-    done = TERMINAL_WORDS.some((w) => statusLower.includes(w));
+    if (_statusCategory === "complete" || _statusCategory === "cancelled") {
+      done = true;
+    } else if (!_statusCategory) {
+      const statusLower = statusVal.toLowerCase().trim();
+      const TERMINAL_WORDS = [
+        "complete", "completed", "done", "shipped", "delivered",
+        "closed", "archived", "cancelled", "canceled", "resolved", "finished",
+      ];
+      done = TERMINAL_WORDS.some((w) => statusLower.includes(w));
+    }
   }
 
   // Inherit parent priority/dates for sub-items
@@ -310,6 +330,7 @@ export function normalizeD1Task(row, columns, parentCellMap = {}) {
     _ownerUserIds: ownerUserIds,
     _fieldMap,
     _statusOptions,
+    _statusCategory,
     _statusFieldType: statusKey ? "select" : null,
     _raw: row,
   };
@@ -365,14 +386,21 @@ export function sortSubItemsByParentContext(subItems, parent) {
     if (pri === "urgent" || pri === "high") s += 2;
     else if (pri === "medium") s += 1;
 
-    const status = (sub.status || "").toString().toLowerCase();
-    if (
-      status.includes("waiting on vendor") ||
-      status.includes("quality check") ||
-      status.includes("awaiting po") ||
-      status.includes("waiting on deposit")
-    ) s += 2;
-    if (status === "paused") s -= 3;
+    // Schema-driven hold state: any status whose category is "on_hold"
+    // (Waiting on Vendor, Waiting on Purchasing, Quality Check, etc.) is
+    // an external-dependency easy to forget — boost. Falls back to a
+    // keyword scan for un-categorized status options.
+    if (sub._statusCategory === "on_hold") s += 2;
+    else if (!sub._statusCategory) {
+      const status = (sub.status || "").toString().toLowerCase();
+      if (
+        status.includes("waiting on vendor") ||
+        status.includes("quality check") ||
+        status.includes("awaiting po") ||
+        status.includes("waiting on deposit")
+      ) s += 2;
+    }
+    if ((sub.status || "").toString().toLowerCase() === "paused") s -= 3;
 
     return s;
   }
