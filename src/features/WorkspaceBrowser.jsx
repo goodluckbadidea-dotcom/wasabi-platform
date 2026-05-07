@@ -618,8 +618,10 @@ export default function WorkspaceBrowser() {
   // ── Styles ──
   const styles = {
     wrapper: {
+      // Transparent so the app's bgGradient (set on the root) shows through
+      // — keeps the right-pane visually consistent across all views.
       display: "flex", flexDirection: "column", height: "100%",
-      overflow: "auto", background: C.dark, fontFamily: FONT,
+      overflow: "auto", background: "transparent", fontFamily: FONT,
     },
     header: {
       // No top padding — the global breadcrumb wrapper in App.jsx provides

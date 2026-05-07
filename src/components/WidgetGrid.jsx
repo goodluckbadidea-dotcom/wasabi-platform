@@ -197,7 +197,8 @@ export default function WidgetGrid({
     <div style={{
       flex: 1,
       overflowY: "auto",
-      backgroundColor: C.dark,
+      // Transparent so the app's bgGradient shows through the dashboard canvas.
+      backgroundColor: "transparent",
       padding: "16px 20px",
       position: "relative",
     }}>
