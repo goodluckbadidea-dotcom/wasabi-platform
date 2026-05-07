@@ -120,7 +120,7 @@ function SourceBadge({ sourceName }) {
   );
 }
 
-function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping, dateChipColors }) {
+function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping, dateChipColors, isExpanded, onToggleExpand }) {
   const [hovered, setHovered] = useState(false);
   const barColor = getTaskBarColor(task, colorMapping);
   const overdue = task.due && isOverdue(task.due);
@@ -129,6 +129,7 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping, dateChip
   const overdueBg = overdue && barColor
     ? barColor + (isDark ? "18" : "14")
     : null;
+  const hasSubs = (task.subItems?.length || 0) > 0;
 
   return (
     <div
@@ -162,13 +163,36 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping, dateChip
         }} />
       )}
 
+      {/* Disclosure chevron (only when sub-items exist) */}
+      {hasSubs && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleExpand?.(); }}
+          aria-label={isExpanded ? "Collapse sub-items" : "Expand sub-items"}
+          aria-expanded={!!isExpanded}
+          style={{
+            background: "none", border: "none", cursor: "pointer",
+            padding: 0, marginLeft: barColor ? 2 : 0, flexShrink: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: 16, height: 16,
+            color: C.darkMuted,
+            transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)",
+            transition: "transform 0.15s ease",
+            outline: "none",
+          }}
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <path d="M3.5 2L6.5 5L3.5 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
+
       {/* Title */}
       <span style={{
         flex: 1, fontSize: 13, fontFamily: FONT, color: C.darkText,
         textDecoration: task.done ? "line-through" : "none",
         whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
         minWidth: 0,
-        paddingLeft: barColor ? 4 : 0,
+        paddingLeft: barColor && !hasSubs ? 4 : 0,
       }}>
         {task.title}
       </span>
@@ -198,12 +222,73 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping, dateChip
   );
 }
 
+// ── Sub-item row (rendered indented beneath an expanded parent) ──
+function SubItemRow({ subItem, onTaskClick, colorMapping, dateChipColors }) {
+  const [hovered, setHovered] = useState(false);
+  const barColor = getTaskBarColor(subItem, colorMapping);
+  const overdue = subItem.due && isOverdue(subItem.due);
+
+  return (
+    <div
+      onClick={() => onTaskClick?.(subItem)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "7px 14px 7px 38px",
+        marginBottom: 2,
+        borderRadius: RADIUS.md,
+        cursor: "pointer",
+        transition: "background 0.15s ease",
+        background: hovered ? C.darkSurf2 : "transparent",
+        opacity: subItem.done ? 0.5 : 1,
+        position: "relative",
+      }}
+    >
+      {/* Tree-line connector + small color dot */}
+      <div style={{
+        position: "absolute",
+        left: 22, top: 0, bottom: 0,
+        width: 1, background: C.darkBorder, opacity: 0.6,
+      }} />
+      <div style={{
+        flexShrink: 0,
+        width: 6, height: 6, borderRadius: "50%",
+        background: barColor || C.darkMuted,
+        opacity: barColor ? 0.9 : 0.4,
+      }} />
+      <span style={{
+        flex: 1, fontSize: 12, fontFamily: FONT,
+        color: overdue ? C.darkText : C.darkMuted,
+        textDecoration: subItem.done ? "line-through" : "none",
+        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        minWidth: 0,
+      }}>
+        {subItem.title}
+      </span>
+      <DueBadge due={subItem.due} dateChipColors={dateChipColors} />
+    </div>
+  );
+}
+
 export default function TaskList({ userTasks, aiTasks, aiLoading, aiRefreshing, dismissedIds, onToggleTask, onToggleAI, onAddTask, onDeleteTask, onTaskClick, colorMapping, dateChipColors, snoozedTasks = [], onUnsnooze, readOnly = false }) {
   const [inputValue, setInputValue] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
   const [showSnoozed, setShowSnoozed] = useState(false);
+  const [expandedIds, setExpandedIds] = useState(() => new Set());
   const inputRef = useRef(null);
   const prevAIIdsRef = useRef(new Set());
+
+  const toggleExpand = useCallback((id) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   const handleSubmit = useCallback((e) => {
     e.preventDefault();
@@ -345,7 +430,22 @@ export default function TaskList({ userTasks, aiTasks, aiLoading, aiRefreshing, 
                     onTaskClick={onTaskClick}
                     colorMapping={colorMapping}
                     dateChipColors={dateChipColors}
+                    isExpanded={expandedIds.has(task.id)}
+                    onToggleExpand={() => toggleExpand(task.id)}
                   />
+                  {expandedIds.has(task.id) && task.subItems?.length > 0 && (
+                    <div style={{ animation: "fadeSlideIn 0.2s ease both" }}>
+                      {task.subItems.map((sub) => (
+                        <SubItemRow
+                          key={sub.id}
+                          subItem={sub}
+                          onTaskClick={onTaskClick}
+                          colorMapping={colorMapping}
+                          dateChipColors={dateChipColors}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))
             )}
