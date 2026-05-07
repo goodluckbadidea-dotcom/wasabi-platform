@@ -316,6 +316,78 @@ export function normalizeD1Task(row, columns, parentCellMap = {}) {
 }
 
 /**
+ * Sort a parent task's sub-items by parent-aware urgency heuristic.
+ *
+ * Higher score = more urgent. Signals:
+ *   - Sub overdue (own date past today) → strong boost
+ *   - Sub due in ≤2 days → boost
+ *   - Sub due in ≤7 days → small boost
+ *   - Parent overdue or due-soon → cascading-urgency boost on every
+ *     incomplete sub (sub is on the parent's critical path)
+ *   - Status priority: urgent/high → boost, medium → small boost
+ *   - Hold states (waiting on vendor / quality check / awaiting po /
+ *     waiting on deposit) → boost (outside dependency, easy to forget)
+ *   - "Paused" status → de-boost (intentional pause)
+ *
+ * Tie-breaker: most recently edited first (lastEditedTime → createdAt).
+ */
+export function sortSubItemsByParentContext(subItems, parent) {
+  const today = (() => {
+    const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime();
+  })();
+  const DAY_MS = 86400000;
+
+  let parentNearestMs = null;
+  if (parent?.nearestDate) {
+    const d = parseDate(parent.nearestDate);
+    if (!isNaN(d)) parentNearestMs = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  }
+  const parentOverdue = parentNearestMs !== null && parentNearestMs < today;
+  const parentDueSoon = parentNearestMs !== null
+    && !parentOverdue
+    && parentNearestMs - today <= 2 * DAY_MS;
+
+  function scoreFor(sub) {
+    let s = 0;
+    if (sub.nearestDate) {
+      const d = parseDate(sub.nearestDate);
+      if (!isNaN(d)) {
+        const subMs = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+        const delta = subMs - today;
+        if (delta < 0) s += 10;
+        else if (delta <= 2 * DAY_MS) s += 6;
+        else if (delta <= 7 * DAY_MS) s += 3;
+      }
+    }
+    if (parentOverdue || parentDueSoon) s += 4;
+
+    const pri = (sub.priority || "").toString().toLowerCase();
+    if (pri === "urgent" || pri === "high") s += 2;
+    else if (pri === "medium") s += 1;
+
+    const status = (sub.status || "").toString().toLowerCase();
+    if (
+      status.includes("waiting on vendor") ||
+      status.includes("quality check") ||
+      status.includes("awaiting po") ||
+      status.includes("waiting on deposit")
+    ) s += 2;
+    if (status === "paused") s -= 3;
+
+    return s;
+  }
+
+  const scored = subItems.map((s) => ({ s, score: scoreFor(s) }));
+  scored.sort((a, b) => {
+    if (a.score !== b.score) return b.score - a.score;
+    const ta = new Date(a.s.lastEditedTime || a.s.createdAt || 0).getTime();
+    const tb = new Date(b.s.lastEditedTime || b.s.createdAt || 0).getTime();
+    return tb - ta;
+  });
+  return scored.map((x) => x.s);
+}
+
+/**
  * Normalize a Notion page into a uniform task object.
  */
 export function normalizeNotionTask(page, schema, dbName, terminalStatuses, dbId) {

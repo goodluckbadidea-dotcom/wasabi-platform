@@ -16,9 +16,10 @@ import {
   normalizeD1Task, getCached, setCache, getStaleCache, parseDate,
   shouldIncludeTask, isSmartOverdue,
   persistInteraction, mergeInteractionAdjustments, loadInteractionLedger,
+  sortSubItemsByParentContext,
 } from "./taskHelpers.js";
 
-const CACHE_KEY_PREFIX = "wasabi_ai_tasks_v11"; // v11: raised limits, sub-items excluded, updated_at sort
+const CACHE_KEY_PREFIX = "wasabi_ai_tasks_v12"; // v12: sub-items grouped under parents (subItems[])
 const INSIGHT_CACHE_KEY = "wasabi_insight";
 const CACHE_TTL = 30 * 60 * 1000; // 30 minutes — stale-while-revalidate shows cached data instantly
 const MAX_DATABASES = 25;
@@ -428,7 +429,7 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
     try {
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (k && (k.startsWith("wasabi_ai_tasks_v8") || k.startsWith("wasabi_ai_tasks_v9"))) { localStorage.removeItem(k); i--; }
+        if (k && (k.startsWith("wasabi_ai_tasks_v8") || k.startsWith("wasabi_ai_tasks_v9") || k.startsWith("wasabi_ai_tasks_v10") || k.startsWith("wasabi_ai_tasks_v11"))) { localStorage.removeItem(k); i--; }
       }
     } catch {}
 
@@ -515,8 +516,9 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
             `D1 schema for "${c.pageName}"`
           );
           const columns = schemaRes.columns || [];
+          const subColumns = schemaRes.sub_columns || [];
           if (isTaskLikeD1Table(columns, c.pageName)) {
-            return { ...c, columns };
+            return { ...c, columns, subColumns };
           }
         } catch (err) {
           console.warn(`[AICurated] Schema detection failed for "${c.pageName}":`, err.message);
@@ -550,10 +552,12 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
       const fetchPromises = taskDbs.map(async (db) => {
         try {
           const result = await withRetry(
-            // topLevelOnly: sub-items handled separately elsewhere; they'd
-            // consume slots against MAX_ITEMS_PER_DB and render as "Untitled"
-            // noise because parent-table columns don't match sub-column cells.
-            () => listRows(db.tableId, { limit: MAX_ITEMS_PER_DB, topLevelOnly: true }),
+            // Pulls parents AND sub-items in one call. Partitioned client-side
+            // by parent_row_id; sub-items are normalized against db.subColumns
+            // (parent-table columns won't match sub-cell keys) and attached
+            // to their parent's subItems[] rather than appearing as standalone
+            // rows in the curated list.
+            () => listRows(db.tableId, { limit: MAX_ITEMS_PER_DB }),
             `D1 rows for "${db.pageName}"`
           );
           const rows = result.rows || [];
@@ -565,16 +569,47 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
             const tb = new Date(b.updated_at || b.created_at || 0).getTime();
             return tb - ta;
           });
-          // parentCellMap still built for normalizeD1Task's inherited-field
-          // lookup; topLevelOnly filter means it's now always empty, but the
-          // param is kept for API compatibility.
-          const parentCellMap = {};
-          const tasks = [];
+          // Partition: parents (no parent_row_id) vs sub-items (grouped by parent_row_id).
+          const parentRows = [];
+          const subRowsByParent = new Map();
           for (const row of rows) {
+            if (row.parent_row_id) {
+              const arr = subRowsByParent.get(row.parent_row_id) || [];
+              arr.push(row);
+              subRowsByParent.set(row.parent_row_id, arr);
+            } else {
+              parentRows.push(row);
+            }
+          }
+          // parentCellMap powers normalizeD1Task's inherited-field lookup
+          // (sub-items inherit parent priority/dates when sub doesn't have its own).
+          const parentCellMap = {};
+          for (const row of parentRows) parentCellMap[row.id] = row.cells || {};
+
+          const tasks = [];
+          for (const row of parentRows) {
             const task = normalizeD1Task(row, db.columns, parentCellMap);
             task.sourceName = db.pageName;
             task.source = `d1:${db.tableId}`;
-            if (!task.done) tasks.push(task);
+            if (task.done) continue;
+
+            const subRows = subRowsByParent.get(row.id) || [];
+            const subTasks = [];
+            if (subRows.length && db.subColumns?.length) {
+              for (const sub of subRows) {
+                const subTask = normalizeD1Task(sub, db.subColumns, parentCellMap);
+                subTask.sourceName = db.pageName;
+                subTask.source = `d1:${db.tableId}`;
+                subTask._parentRowId = sub.parent_row_id;
+                subTask._parentTitle = task.title;
+                if (!subTask.done) subTasks.push(subTask);
+              }
+            }
+            task.subItems = subTasks.length
+              ? sortSubItemsByParentContext(subTasks, task)
+              : [];
+
+            tasks.push(task);
           }
           return { tasks, source: `d1:${db.tableId}` };
         } catch (err) {
