@@ -622,7 +622,10 @@ export default function WorkspaceBrowser() {
       overflow: "auto", background: C.dark, fontFamily: FONT,
     },
     header: {
-      padding: "24px 28px 0", flexShrink: 0,
+      // No top padding — the global breadcrumb wrapper in App.jsx provides
+      // the consistent 16px top spacing so this view's breadcrumb aligns
+      // exactly with the breadcrumb shown for PageShell routes.
+      padding: "0 28px 0", flexShrink: 0,
     },
     breadcrumb: {
       display: "flex", alignItems: "center", gap: 4,

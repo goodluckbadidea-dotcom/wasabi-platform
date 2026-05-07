@@ -653,9 +653,11 @@ function AppContent() {
               }}
             >
               {/* Breadcrumb — pulled out of TopHeader so the path stays inside
-                  the right pane. The component self-hides for built-in routes
-                  (Dashboard, Workspaces, etc.) and on narrow viewports. */}
-              <div style={{ flexShrink: 0, padding: "0 20px" }}>
+                  the right pane. Padding matches WorkspaceBrowser's internal
+                  breadcrumb position so transitioning between routes doesn't
+                  jump the breadcrumb's Y/X position. The component self-hides
+                  on built-in routes and on narrow viewports. */}
+              <div style={{ flexShrink: 0, padding: "16px 28px 0" }}>
                 <Breadcrumb />
               </div>
               {renderRightPane()}
