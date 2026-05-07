@@ -302,7 +302,7 @@ export function isDocumentPage(pageConfig) {
 /**
  * Convert D1 page_configs row → frontend page config object.
  */
-function d1ToFrontend(d1Page) {
+export function d1ToFrontend(d1Page) {
   const config = d1Page.config || {};
   const pt = d1Page.page_type;
   const type = (pt === "folder" || pt === "workspace") ? "folder"

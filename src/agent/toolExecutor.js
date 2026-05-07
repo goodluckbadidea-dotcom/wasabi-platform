@@ -8,7 +8,7 @@ import { detectSchema, autoDetectViews, schemaToText, suggestViewMappings } from
 import { writeKB, searchKB, kbResultsToText } from "./memory.js";
 import { extractProperties, getPageTitle } from "../notion/properties.js";
 import * as api from "../lib/api.js";
-import { savePageConfig } from "../config/pageConfig.js";
+import { savePageConfig, d1ToFrontend } from "../config/pageConfig.js";
 import { fetchSheetData } from "../sheets/sheetClient.js";
 import { fetchBoardItems, fetchBoardColumns } from "../monday/client.js";
 import { mondayColumnsToSchema, mondayItemToPage } from "../monday/schema.js";
@@ -506,10 +506,12 @@ function runSanityChecks(result, outputs) {
 
 // ─── Source Resolution Helpers ───
 
-/** Fetch and cache page config for an ID. Returns full config or null. */
+/** Fetch page config for an ID. Returns full config (config blob flattened
+ *  onto the top level, matching the rest of the frontend's shape) or null. */
 async function getFullPageConfig(id) {
   try {
-    return await api.getPageConfig(id);
+    const cfg = await api.getPageConfig(id);
+    return cfg ? d1ToFrontend(cfg) : null;
   } catch {
     return null;
   }
