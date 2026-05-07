@@ -8,6 +8,7 @@ import { S } from "../design/styles.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { fetchDataSource, updateRecord, createRecord, deleteRecords, resolveSourceType } from "../lib/dataSource.js";
 import { configureSyncNotionDB, syncPull } from "../lib/api.js";
+import { fetchSheetData } from "../sheets/sheetClient.js";
 // savePageConfig is handled internally by updatePageConfig (PagesContext)
 import ViewRenderer from "../views/ViewRenderer.jsx";
 import SubPageNav from "./SubPageNav.jsx";
@@ -103,8 +104,54 @@ export default function PageShell({
 
   // ── Data fetching ──
   const fetchData = useCallback(async () => {
-    if (isDocumentPage || isLinkedSheetPage) {
+    if (isDocumentPage) {
       setLoading(false);
+      return;
+    }
+    // Linked Sheet pages: fetch a lightweight summary so activePageData is
+    // populated for the AI chat panel. The LinkedSheet view fetches its own
+    // (richer) copy independently — that path includes formatting + images,
+    // which we deliberately strip here since the AI's context budget should
+    // hold values, not formatting metadata.
+    if (isLinkedSheetPage) {
+      try {
+        const sheetView = pageConfig.views?.find((v) => v.type === "linked_sheet");
+        const sheetUrl = sheetView?.config?.sheetUrl || pageConfig.sheetUrl;
+        if (!sheetUrl) {
+          setData([]);
+          setSchema(null);
+          setError(null);
+          return;
+        }
+        const sheet = await fetchSheetData(sheetUrl);
+        const cols = sheet?.columns || [];
+        const rows = sheet?.rows || [];
+        // Convert to row objects keyed by column name (same shape D1/Notion produces).
+        const dataObjs = rows.map((r, i) => {
+          const obj = { _row: i + 2 };
+          cols.forEach((c, ci) => {
+            const v = r[ci];
+            if (v !== undefined && v !== null && v !== "") obj[c] = v;
+          });
+          return obj;
+        });
+        // Synthesize a minimal schema so buildDataSummary has something to work with.
+        // Treat the first column as the title; the rest as plain text fields.
+        const synthesizedSchema = {
+          title: cols[0] ? { name: cols[0] } : null,
+          richTexts: cols.slice(1).map((c) => ({ name: c })),
+          numbers: [], dates: [], statuses: [], selects: [],
+        };
+        setData(dataObjs);
+        setSchema(synthesizedSchema);
+        setSchemas(null);
+        setError(null);
+      } catch (err) {
+        console.error("Failed to fetch linked sheet data for AI context:", err);
+        setError(null); // Non-fatal — the LinkedSheet view will still render
+      } finally {
+        setLoading(false);
+      }
       return;
     }
     if (sourceType === "notion" && !user?.workerUrl) {
