@@ -275,20 +275,42 @@ export async function updateRecord(pageConfig, recordId, fieldName, propPayload,
     // parent columns only. When caller didn't say (legacy undefined),
     // try parent then sub as a last-resort fallback.
     let col = null;
+    let activeCols = null;
     if (isSubItem === true) {
+      activeCols = subCols;
       col = subCols.find((c) => c.name === fieldName);
     } else if (isSubItem === false) {
+      activeCols = parentCols;
       col = parentCols.find((c) => c.name === fieldName);
     } else {
-      col = parentCols.find((c) => c.name === fieldName) || subCols.find((c) => c.name === fieldName);
+      col = parentCols.find((c) => c.name === fieldName);
+      if (col) {
+        activeCols = parentCols;
+      } else {
+        col = subCols.find((c) => c.name === fieldName);
+        activeCols = subCols;
+      }
     }
     if (!col) {
       const scope = isSubItem === true ? "sub-item columns" : isSubItem === false ? "parent columns" : "parent or sub-item columns";
       throw new Error(`Column "${fieldName}" not found in ${scope} for table "${tableId}"`);
     }
 
+    // Resolve effective type for extraction. Mirrors createRecord's logic:
+    // d1SchemaToClassified marks col.type === "title" OR (idx === 0 && no
+    // explicit title) as the title field, and buildProp produces title-format
+    // props for it. extractRawValue must use "title" too — if it sees the raw
+    // col.type ("text" for D1 tables that don't have a literal "title" type),
+    // it reads prop.rich_text (which doesn't exist on a title payload) and
+    // silently saves "". This was the root cause of "rename doesn't persist."
+    const idx = activeCols.indexOf(col);
+    const hasExplicitTitle = activeCols.some((c) => c.type === "title");
+    const effectiveType = (col.type === "title" || (idx === 0 && !hasExplicitTitle))
+      ? "title"
+      : col.type;
+
     // Extract raw value from Notion-format property payload
-    const rawValue = extractRawValue(propPayload, col.type);
+    const rawValue = extractRawValue(propPayload, effectiveType);
     // Build update with base_versions for conflict detection
     const update = { cells: { [col.id]: rawValue }, merge_cells: true };
     if (cellVersions && cellVersions[col.id] !== undefined) {
