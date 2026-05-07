@@ -435,7 +435,7 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
         setChatStatus("");
       }
     },
-    [chatLoading, user, identity, platformIds, pages, activePageConfig, toolExecutor, modelOverride, handleToolApproval]
+    [chatLoading, user, identity, platformIds, pages, activePageConfig, activePageData, toolExecutor, modelOverride, handleToolApproval]
   );
 
   const handleChatChoice = useCallback(
