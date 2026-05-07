@@ -23,6 +23,7 @@ import LoginScreen from "./core/LoginScreen.jsx";
 import TopHeader from "./core/TopHeader.jsx";
 import Navigation from "./core/Navigation.jsx";
 import SplitPane from "./core/SplitPane.jsx";
+import Breadcrumb from "./components/Breadcrumb.jsx";
 // Retry wrapper for dynamic imports — handles stale chunk errors after deploy
 function lazyWithRetry(importFn) {
   return React.lazy(() =>
@@ -651,6 +652,12 @@ function AppContent() {
                 opacity: 1,
               }}
             >
+              {/* Breadcrumb — pulled out of TopHeader so the path stays inside
+                  the right pane. The component self-hides for built-in routes
+                  (Dashboard, Workspaces, etc.) and on narrow viewports. */}
+              <div style={{ flexShrink: 0, padding: "0 20px" }}>
+                <Breadcrumb />
+              </div>
               {renderRightPane()}
             </div>
           }

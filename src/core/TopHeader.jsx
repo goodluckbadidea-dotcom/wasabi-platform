@@ -9,7 +9,6 @@ import { useNeurons } from "../neurons/NeuronsContext.jsx";
 import { usePages } from "../context/PagesContext.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { isAdmin } from "../lib/roles.js";
-import Breadcrumb from "../components/Breadcrumb.jsx";
 import { useViewport } from "../context/ViewportContext.jsx";
 import { focusRing } from "../design/interactions.js";
 import { IconGear } from "../design/icons.jsx";
@@ -63,7 +62,7 @@ export default function TopHeader() {
         zIndex: Z.header,
       }}
     >
-      {/* Left: Wordmark + Breadcrumb */}
+      {/* Left: Wordmark only — breadcrumb moved into the right pane (Phase 2 polish) */}
       <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0, flex: 1 }}>
         <span
           style={{
@@ -81,12 +80,6 @@ export default function TopHeader() {
         >
           Wasabi
         </span>
-
-        {/* Separator */}
-        <div style={{ width: 1, height: 16, background: C.edgeLine, flexShrink: 0 }} />
-
-        {/* Breadcrumb */}
-        <Breadcrumb />
       </div>
 
       {/* Save status indicator */}
