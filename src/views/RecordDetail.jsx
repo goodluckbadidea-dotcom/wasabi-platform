@@ -428,6 +428,11 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [pendingChanges, setPendingChanges] = useState({});
+  // Mirror pendingChanges in a ref so handleSave can read the freshest value
+  // even when an in-flight edit's blur queued a state update that hasn't yet
+  // re-rendered before the Done click handler runs.
+  const pendingChangesRef = useRef({});
+  useEffect(() => { pendingChangesRef.current = pendingChanges; }, [pendingChanges]);
   const [activeTab, setActiveTab] = useState("properties");
   const collab = useCollaboration();
   // Stable ref for collab actions — avoids re-firing effects on every presence update
@@ -501,11 +506,17 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
     if (collab && page?.id) collab.startTyping(page.id, fieldName);
   }, [collab, page?.id]);
 
-  // Commit an edit
+  // Commit an edit. Mirror to the ref synchronously so a Done click that
+  // immediately follows the blur reads the freshest pendingChanges even
+  // before React re-renders.
   const commitEdit = useCallback((fieldName, type, value) => {
     const propPayload = buildProp(type, value);
     if (propPayload) {
-      setPendingChanges((prev) => ({ ...prev, [fieldName]: { type, value, payload: propPayload } }));
+      pendingChangesRef.current = {
+        ...pendingChangesRef.current,
+        [fieldName]: { type, value, payload: propPayload },
+      };
+      setPendingChanges(pendingChangesRef.current);
     }
     setEditingField(null);
     setEditValue(null);
@@ -514,7 +525,16 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
 
   // Save all pending changes
   const handleSave = useCallback(async () => {
-    if (Object.keys(pendingChanges).length === 0) {
+    // Force any in-flight input edit to commit before reading the queue:
+    // mousedown on the Done button blurs the active input, which fires
+    // commitEdit synchronously. By the time we get here, pendingChangesRef
+    // is up to date even if a re-render hasn't run yet.
+    if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+
+    const changes = pendingChangesRef.current;
+    if (Object.keys(changes).length === 0) {
       onClose();
       return;
     }
@@ -522,9 +542,10 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
     setSaving(true);
     try {
       // Call onUpdate per field — PageShell expects (pageId, fieldName, propPayload)
-      for (const [fieldName, change] of Object.entries(pendingChanges)) {
+      for (const [fieldName, change] of Object.entries(changes)) {
         await onUpdate(page.id, fieldName, change.payload);
       }
+      pendingChangesRef.current = {};
       setPendingChanges({});
       onClose();
     } catch (err) {
@@ -533,7 +554,7 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
     } finally {
       setSaving(false);
     }
-  }, [pendingChanges, page.id, onUpdate, onClose]);
+  }, [page.id, onUpdate, onClose]);
 
   // Get schema field info
   const getSchemaField = useCallback((fieldName, type) => {
