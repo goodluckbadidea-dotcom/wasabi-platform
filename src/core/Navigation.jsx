@@ -17,7 +17,6 @@ import {
 import { getGoogleStatus, getGmailSummary, getCalendarSummary, getMicrosoftStatus, getOutlookSummary, getFigmaStatus, getUnreadNotificationCount, listRows } from "../lib/api.js";
 import { useUserSync } from "../context/UserSyncContext.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
-import WasabiOrb from "./WasabiOrb.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
 import CreateMenu from "./CreateMenu.jsx";
 import ContextMenu from "./ContextMenu.jsx";
@@ -680,51 +679,9 @@ export default function Navigation({
               {!collapsed && <span style={bottomLabelStyle(activePage === "calendar")}>Calendar</span>}
             </button>
 
-            {/* Tasks (left-pane resident) */}
-            <button
-              onClick={() => focusLeftPane("tasks")}
-              title="Tasks"
-              style={bottomBtnStyle(activeLeftPane === "tasks")}
-              onMouseEnter={(e) => { if (activeLeftPane !== "tasks") e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activeLeftPane !== "tasks") e.currentTarget.style.background = "transparent"; }}
-            >
-              <svg width={iconSize(activeLeftPane === "tasks")} height={iconSize(activeLeftPane === "tasks")} viewBox="0 0 16 16" fill="none">
-                <circle cx="8" cy="8" r="6" stroke={activeLeftPane === "tasks" ? C.accent : navInactiveColor} strokeWidth="1.3" fill="none" />
-                <path d="M5 8L7 10L11 6" stroke={activeLeftPane === "tasks" ? C.accent : navInactiveColor} strokeWidth="1.3" strokeLinecap="round" />
-              </svg>
-              {!collapsed && <span style={bottomLabelStyle(activeLeftPane === "tasks")}>Tasks</span>}
-            </button>
-
-            {/* Wasabi Chat (left-pane resident) — hidden for viewers */}
-            {identity?.role !== "viewer" && (
-              <button
-                onClick={() => focusLeftPane("chat")}
-                title="Wasabi Chat"
-                style={bottomBtnStyle(activeLeftPane === "chat")}
-                onMouseEnter={(e) => { if (activeLeftPane !== "chat") e.currentTarget.style.background = C.darkSurf2; }}
-                onMouseLeave={(e) => { if (activeLeftPane !== "chat") e.currentTarget.style.background = "transparent"; }}
-              >
-                <WasabiOrb size={iconSize(activeLeftPane === "chat")} />
-                {!collapsed && <span style={bottomLabelStyle(activeLeftPane === "chat")}>Chat</span>}
-              </button>
-            )}
-
-            {/* Notes (left-pane resident) */}
-            <button
-              onClick={() => focusLeftPane("notes")}
-              title="Notes"
-              style={bottomBtnStyle(activeLeftPane === "notes")}
-              onMouseEnter={(e) => { if (activeLeftPane !== "notes") e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activeLeftPane !== "notes") e.currentTarget.style.background = "transparent"; }}
-            >
-              <svg width={iconSize(activeLeftPane === "notes")} height={iconSize(activeLeftPane === "notes")} viewBox="0 0 16 16" fill="none">
-                <rect x="3" y="2" width="10" height="12" rx="1.5" stroke={activeLeftPane === "notes" ? C.accent : navInactiveColor} strokeWidth="1.3" fill="none" />
-                <line x1="5.5" y1="5.5" x2="10.5" y2="5.5" stroke={activeLeftPane === "notes" ? C.accent : navInactiveColor} strokeWidth="1" />
-                <line x1="5.5" y1="8" x2="10.5" y2="8" stroke={activeLeftPane === "notes" ? C.accent : navInactiveColor} strokeWidth="1" />
-                <line x1="5.5" y1="10.5" x2="8.5" y2="10.5" stroke={activeLeftPane === "notes" ? C.accent : navInactiveColor} strokeWidth="1" />
-              </svg>
-              {!collapsed && <span style={bottomLabelStyle(activeLeftPane === "notes")}>Notes</span>}
-            </button>
+            {/* Tasks / Notes / Wasabi-chat live below the divider, grouped
+                with the animated flame as left-pane residents. See bottom
+                of this rail. */}
 
             {/* Unified Inbox (only when Gmail granted OR Microsoft connected — Sheets-only Google users don't see this) */}
             {(gmailGranted || microsoftConnected) && (
@@ -823,8 +780,50 @@ export default function Navigation({
                 The user pill dropdown also exposes Settings if the gear icon
                 isn't preferred. */}
 
-            {/* Wasabi flame — kept as a tactile entry point that focuses the
-                left pane on chat. Hidden for viewers (chat is editor+admin only). */}
+            {/* ── Divider: right-pane items above, left-pane residents below ── */}
+            <div
+              style={{
+                height: 1,
+                margin: collapsed ? "8px 8px" : "10px 6px",
+                background: `linear-gradient(90deg, transparent, ${C.darkBorder}, transparent)`,
+                flexShrink: 0,
+              }}
+            />
+
+            {/* Tasks (left-pane resident) */}
+            <button
+              onClick={() => focusLeftPane("tasks")}
+              title="Tasks"
+              style={bottomBtnStyle(activeLeftPane === "tasks")}
+              onMouseEnter={(e) => { if (activeLeftPane !== "tasks") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activeLeftPane !== "tasks") e.currentTarget.style.background = "transparent"; }}
+            >
+              <svg width={iconSize(activeLeftPane === "tasks")} height={iconSize(activeLeftPane === "tasks")} viewBox="0 0 16 16" fill="none">
+                <circle cx="8" cy="8" r="6" stroke={activeLeftPane === "tasks" ? C.accent : navInactiveColor} strokeWidth="1.3" fill="none" />
+                <path d="M5 8L7 10L11 6" stroke={activeLeftPane === "tasks" ? C.accent : navInactiveColor} strokeWidth="1.3" strokeLinecap="round" />
+              </svg>
+              {!collapsed && <span style={bottomLabelStyle(activeLeftPane === "tasks")}>Tasks</span>}
+            </button>
+
+            {/* Notes (left-pane resident) */}
+            <button
+              onClick={() => focusLeftPane("notes")}
+              title="Notes"
+              style={bottomBtnStyle(activeLeftPane === "notes")}
+              onMouseEnter={(e) => { if (activeLeftPane !== "notes") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activeLeftPane !== "notes") e.currentTarget.style.background = "transparent"; }}
+            >
+              <svg width={iconSize(activeLeftPane === "notes")} height={iconSize(activeLeftPane === "notes")} viewBox="0 0 16 16" fill="none">
+                <rect x="3" y="2" width="10" height="12" rx="1.5" stroke={activeLeftPane === "notes" ? C.accent : navInactiveColor} strokeWidth="1.3" fill="none" />
+                <line x1="5.5" y1="5.5" x2="10.5" y2="5.5" stroke={activeLeftPane === "notes" ? C.accent : navInactiveColor} strokeWidth="1" />
+                <line x1="5.5" y1="8" x2="10.5" y2="8" stroke={activeLeftPane === "notes" ? C.accent : navInactiveColor} strokeWidth="1" />
+                <line x1="5.5" y1="10.5" x2="8.5" y2="10.5" stroke={activeLeftPane === "notes" ? C.accent : navInactiveColor} strokeWidth="1" />
+              </svg>
+              {!collapsed && <span style={bottomLabelStyle(activeLeftPane === "notes")}>Notes</span>}
+            </button>
+
+            {/* Wasabi flame — the chat entry point. Hidden for viewers
+                (chat is editor+admin only). */}
             {identity?.role !== "viewer" && (
               <button
                 onClick={() => focusLeftPane("chat")}
