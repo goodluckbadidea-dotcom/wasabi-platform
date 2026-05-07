@@ -19,7 +19,7 @@
 
 ### What Was Actually Built (vs. Plan)
 
-- **Separate OutlookView** instead of unified EmailView — Outlook inbox is its own sidebar page (`activePage === "outlook"`), parallel to GmailView rather than merged. A unified view is the Phase 5 goal.
+- **Separate OutlookView** instead of unified EmailView — Outlook inbox is its own sidebar page (`activeRightPane === "outlook"`), parallel to GmailView rather than merged. A unified view is the Phase 5 goal.
 - **CalendarView merged** — Outlook Calendar events DO appear in the same CalendarView as Google. Events are normalized to Google's `{ start: { dateTime } }` shape before merge.
 - **Login SSO flow** — "Sign in with Microsoft" button on LoginScreen. Uses `microsoft-oauth-login` postMessage. Wasabi user matched or created by email.
 - **Link flow** — Separate `mode=link` popup flow in ConnectionsTab for users who already have a password account.

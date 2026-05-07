@@ -60,7 +60,7 @@ The `AuthGate` component ensures PagesProvider and NavigationProvider never moun
 **Key state (merged from sub-providers):**
 - `workerConnection` — { workerUrl, secret } for the Cloudflare Worker
 - `pages` — full page config array
-- `activePage` — current route identifier
+- `activeRightPane` — current route identifier
 - Feature flags and connection status
 
 **Key methods:**
@@ -127,7 +127,7 @@ Manages the array of page configurations and provides CRUD operations.
 **Key state:**
 - `pages` — array of all PageConfig objects
 - `pagesLoaded` — boolean, `true` after D1 sync completes (not just localStorage cache). Used by `useTasksTable` to avoid running against stale data.
-- `activePage` — currently selected page ID or system route string
+- `activeRightPane` — currently selected page ID or system route string
 - `pageTree` — nested hierarchy computed from pages
 - `folders` — computed list of folder-type pages
 - `saveStatus` — "idle" | "saving" | "saved" | "error"
@@ -149,7 +149,7 @@ Save operations display toast feedback via ToastContext (success/error messages)
 Manages current navigation state: which page is active, which folder is selected, and sidebar UI state.
 
 **Key state:**
-- `activePage` — current page ID or system route string
+- `activeRightPane` — current page ID or system route string
 - `activeFolder` — current folder ID
 - `sidebarCollapsed` — boolean
 - `searchQuery` — sidebar search text
@@ -157,7 +157,7 @@ Manages current navigation state: which page is active, which folder is selected
 - `pendingRecordId` — record ID to auto-open after navigation (used by notification click-through; cleared after use by PageShell)
 
 **Key methods:**
-- `setActivePage(id)` — navigate to a page or system route
+- `setActiveRightPane(id)` — navigate to a page or system route
 - `setActiveFolder(id)` — select folder context
 - `setPendingRecordId(id)` — set a record to open after next page navigation (used by NotificationFeed)
 - `clearPendingRecordId()` — clear after PageShell consumes it
@@ -420,7 +420,7 @@ Device A: user navigates to page
   → Worker broadcasts via UserRoom DO
   → Device B receives nav_update
   → onNavUpdate callback fires
-  → NavigationContext.setActivePage(pageId)
+  → NavigationContext.setActiveRightPane(pageId)
 ```
 
 ### AI Task Curation (Stale-While-Revalidate)

@@ -572,7 +572,7 @@ TopHeader (WASABI wordmark · save status · Refresh · Neurons · Theme · Sett
     ├─ Left pane: TasksView | WasabiPanel (embedded chat) | NotesView
     │   chosen by activeLeftPane = "tasks" | "chat" | "notes"
     └─ Right pane: Dashboard | CalendarView | UnifiedInbox | PageShell | WorkspaceBrowser | etc.
-        chosen by activePage (everything that isn't a left-pane resident)
+        chosen by activeRightPane (everything that isn't a left-pane resident)
         Breadcrumb renders at the top of the right pane (16px 28px 0 padding).
 ```
 
@@ -581,17 +581,17 @@ TopHeader (WASABI wordmark · save status · Refresh · Neurons · Theme · Sett
 | Key | Type | Default | localStorage |
 |-----|------|---------|--------------|
 | `activeLeftPane` | `"tasks" \| "chat" \| "notes"` | `"tasks"` | `wasabi_active_left_pane` |
-| `activePage` | `string \| null` | `null` | `wasabi_active_page` (right-pane content) |
+| `activeRightPane` | `string \| null` | `null` | `wasabi_active_page` (right-pane content) |
 | `splitRatio` | `number` (0..1) | `0.4` | `wasabi_split_ratio` |
 | `leftPaneCollapsed` | `boolean` | `false` | `wasabi_left_pane_collapsed` |
 
 ### Migration shim
 
-Pre-Phase-2 users had `activePage` storing `"tasks"`/`"notes"`/etc. for the
+Pre-Phase-2 users had `activeRightPane` storing `"tasks"`/`"notes"`/etc. for the
 default landing view. On first Phase 2 load, gated by the
 `wasabi_phase2_migrated_v1` flag, those values are lifted into
-`activeLeftPane` and `activePage` is set to `"dashboard"` so returning users
-don't land blank. Any other `activePage` value (a workspace page, etc.)
+`activeLeftPane` and `activeRightPane` is set to `"dashboard"` so returning users
+don't land blank. Any other `activeRightPane` value (a workspace page, etc.)
 is left as-is on the right pane; `activeLeftPane` defaults to `"tasks"`.
 
 ### Responsive behavior (SplitPane)
@@ -604,7 +604,7 @@ is left as-is on the right pane; `activeLeftPane` defaults to `"tasks"`.
 
 ### Settings location
 
-The Settings page lives on the right pane (`activePage === "system"`). The
+The Settings page lives on the right pane (`activeRightPane === "system"`). The
 entry point is the gear icon (`IconGear`) next to the user pill in
 TopHeader. Admin-only, same gating as the pre-Phase-2 left-nav button.
 

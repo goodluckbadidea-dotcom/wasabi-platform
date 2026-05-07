@@ -160,6 +160,28 @@ RecordDetail's `handleSave` passed all pending changes as a single batch object 
 
 **Second fix (2026-04-01):** Table.jsx and RecordDetailPortals.jsx still had wrapper functions expecting the old batch signature `(pageId, propertiesObject)`. The wrapper ran `Object.entries()` on a string (the field name), silently corrupting all saves from RecordDetail — not just date ranges. Fixed by passing `onUpdate` directly (no wrapper). Affected views: Table, Kanban, Calendar, CardGrid.
 
+### Title Field Save Wiped to Empty (Resolved 2026-05-07)
+
+`dataSource.updateRecord` called `extractRawValue(propPayload, col.type)`
+without the title-detection logic that's been in `createRecord` for a
+while. For D1 tables where the title column is stored with `col.type =
+"text"` (not a literal `"title"` type), `buildProp("title", value)` emits
+a `{ title: [...] }` payload but `extractRawValue` switched on `"text"`
+and read `prop.rich_text` (which doesn't exist on a title payload),
+returning `""`. Net effect: every rename of an implicit-title column
+silently saved an empty string, so the row title appeared blank after
+save. Fix mirrors `createRecord`'s logic — when `col.type === "title"`
+OR (`idx === 0` && no explicit title in `activeCols`), use `"title"` as
+the effective type for extraction. Commit `593358c`.
+
+A defensive change was also landed in `RecordDetail.handleSave` (commit
+`65ab281`): force-blur the active element before reading
+`pendingChanges`, and read from a `pendingChangesRef` mirrored
+synchronously inside `commitEdit`. This wasn't the root cause but
+prevents a parallel stale-closure race where the blur's
+`setPendingChanges` could be in-flight when `handleSave` reads the
+queue.
+
 ### DateEditor Enter Key (Resolved 2026-04-01)
 
 The DateEditor component in RecordDetail used React state (`start`, `end`) in `onKeyDown` handlers, but `setState` from `onChange` is async — pressing Enter could read stale values. Fixed by using refs (`startRef`, `endRef`) updated synchronously alongside state, and a shared `commit()` function used by both Enter handlers and the Set button.

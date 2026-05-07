@@ -679,7 +679,7 @@ Notifications are **user-scoped** — every user (including admins) sees only no
 
 When a user clicks "Go To Task" on a notification that has `record_id` and `page_config_id`:
 1. `NavigationContext.pendingRecordId` is set to the target record ID
-2. `setActivePage(pageConfigId)` navigates to the database page
+2. `setActiveRightPane(pageConfigId)` navigates to the database page
 3. `PageShell` mounts, detects `pendingRecordId`, finds the matching row in data
 4. Opens `RecordDetail` drawer for that record automatically
 5. Clears `pendingRecordId`
@@ -1101,7 +1101,7 @@ Brings Microsoft 365 to full Gmail parity in the AI surface. Worker handlers for
 **Coexistence:** Does NOT replace `OutlookView` or `GmailView`. Per CLAUDE.md "never delete working code", existing single-provider views are preserved. Graham can decide later whether to retire them.
 
 **Wiring:**
-- `src/App.jsx`: lazy import `UnifiedInboxView`, route `activePage === "inbox-unified"`.
+- `src/App.jsx`: lazy import `UnifiedInboxView`, route `activeRightPane === "inbox-unified"`.
 - `src/core/Navigation.jsx`: new "Inbox" button shown when EITHER provider is connected. Combined unread badge (`unreadCount + outlookUnreadCount`). Placed above per-provider buttons. SYSTEM_PAGES set updated.
 
 ### 5B — Provider Tagging on Calendar Events
@@ -1122,7 +1122,7 @@ Brings Microsoft 365 to full Gmail parity in the AI surface. Worker handlers for
 After Phase 5A shipped the Unified Inbox alongside `OutlookView` / `GmailView`, the navigation showed three nearly-identical email surfaces. Retired the single-provider buttons:
 
 - `Navigation.jsx` no longer renders separate Outlook or Gmail buttons. The unified "Inbox" button is the only mail surface, shown when EITHER provider is connected.
-- `App.jsx` removed the lazy imports for `GmailView` and `OutlookView`. The route handler now treats `activePage === "gmail" || "outlook" || "inbox-unified"` as redirects to `UnifiedInboxView`, so any saved localStorage state pointing at the old surfaces still works.
+- `App.jsx` removed the lazy imports for `GmailView` and `OutlookView`. The route handler now treats `activeRightPane === "gmail" || "outlook" || "inbox-unified"` as redirects to `UnifiedInboxView`, so any saved localStorage state pointing at the old surfaces still works.
 - The `OutlookView.jsx` and `GmailView.jsx` files are intentionally retained on disk per CLAUDE.md "never delete working code." If we ever want to re-enable per-provider views, restore the imports + route blocks in two minutes.
 
 ---

@@ -79,13 +79,13 @@ PlatformProvider is a composition layer that internally nests AuthProvider, **Au
 
 ## Routing: State-Based, No React Router
 
-Wasabi does not use react-router or any URL-based routing library. Navigation is controlled by the `activePage` string stored in NavigationContext.
+Wasabi does not use react-router or any URL-based routing library. Navigation is controlled by the `activeRightPane` string stored in NavigationContext.
 
 ### Route Identifiers
 
-The `activePage` value is either a system string or a page UUID:
+The `activeRightPane` value is either a system string or a page UUID:
 
-| activePage value | Component | Description |
+| activeRightPane value | Component | Description |
 |-----------------|-----------|-------------|
 | `"tasks"` or `null` | TasksView | Home: personal tasks + calendar |
 | `"notes"` | NotesView | Notes scratchpad |
@@ -105,18 +105,18 @@ The `activePage` value is either a system string or a page UUID:
 
 ### renderContent() Switch
 
-In `AppContent`, the `renderContent()` function matches `activePage` against known string identifiers. If no string matches, it looks up the value as a page UUID in the `pages` array and renders `<PageShell>`. If nothing matches, it falls back to `<TasksView>`.
+In `AppContent`, the `renderContent()` function matches `activeRightPane` against known string identifiers. If no string matches, it looks up the value as a page UUID in the `pages` array and renders `<PageShell>`. If nothing matches, it falls back to `<TasksView>`.
 
 ```javascript
 const renderContent = () => {
-  if (activePage === "system") return <SystemManager />;
-  if (activePage === "dashboard") return <DashboardView />;
-  if (activePage === "gmail" || activePage === "outlook" || activePage === "inbox-unified") {
+  if (activeRightPane === "system") return <SystemManager />;
+  if (activeRightPane === "dashboard") return <DashboardView />;
+  if (activeRightPane === "gmail" || activeRightPane === "outlook" || activeRightPane === "inbox-unified") {
     return <UnifiedInboxView />;  // 2026-05-04: legacy gmail/outlook values redirect here
   }
   // ... other system routes ...
 
-  const pageConfig = pages.find(p => p.id === activePage);
+  const pageConfig = pages.find(p => p.id === activeRightPane);
   if (pageConfig) return <PageShell pageConfig={pageConfig} />;
 
   return <TasksView />;  // fallback
@@ -127,9 +127,9 @@ const renderContent = () => {
 
 ```
 User clicks sidebar item
-  → setActivePage(id) via NavigationContext
+  → setActiveRightPane(id) via NavigationContext
   → AppContent re-renders
-  → renderContent() matches activePage value
+  → renderContent() matches activeRightPane value
   → Component renders with contentSwap animation
 ```
 
@@ -217,7 +217,7 @@ The sidebar lists user pages, folders, and system navigation items (Tasks, Dashb
 
 ### Content Area
 
-The remaining horizontal space (flex: 1) renders the output of `renderContent()` — whichever component matches the current `activePage`.
+The remaining horizontal space (flex: 1) renders the output of `renderContent()` — whichever component matches the current `activeRightPane`.
 
 ---
 
@@ -327,7 +327,7 @@ Registered in AppContent via `useKeyboardShortcuts()`:
 | `AuditLogTab.jsx` | Activity audit log |
 | `components/` | Shared sub-components |
 
-Accessed via `activePage === "system"`. Admin-only for most tabs.
+Accessed via `activeRightPane === "system"`. Admin-only for most tabs.
 
 ---
 
