@@ -3,6 +3,7 @@
 
 import { D1_SCHEMA, D1_INDEXES, RELATIONSHIP_TYPE_SEEDS } from '../schema.js';
 import { rebuildProjections } from './relationshipProjections.js';
+import { propagateOwnersToAncestors } from './tables.js';
 
 // ─── Route Handlers ───
 
@@ -195,6 +196,38 @@ async function handleInit(env, jsonResponse) {
       }
     } catch (err) {
       console.error('[relationships] initial backfill failed:', err.message || err);
+    }
+
+    // One-shot backfill: union sub-item owners into each ancestor's owners.
+    // Matches the live propagation in handleUpdateRow / handleCreateRows so
+    // existing data lines up with the new write-time behavior. Self-disabling
+    // via a connections-table flag — re-runs go through manual deletion of
+    // the flag if the data drifts.
+    try {
+      const flag = await env.DB.prepare(
+        "SELECT value FROM connections WHERE key = 'parent_owner_backfill'"
+      ).first();
+      if (flag?.value !== 'done') {
+        const subRows = await env.DB.prepare(
+          "SELECT id, table_id, parent_row_id, owner_user_id FROM table_rows WHERE parent_row_id IS NOT NULL AND owner_user_id IS NOT NULL AND owner_user_id NOT IN ('default', 'unassigned', '')"
+        ).all();
+        let processed = 0;
+        for (const sub of (subRows.results || [])) {
+          let owners = [];
+          try { owners = JSON.parse(sub.owner_user_id); } catch { owners = [sub.owner_user_id]; }
+          if (!Array.isArray(owners)) owners = [owners];
+          if (owners.length > 0) {
+            await propagateOwnersToAncestors(env, sub.table_id, sub.parent_row_id, owners, sub.id, null);
+            processed++;
+          }
+        }
+        console.log(`[parent_owner] backfill processed ${processed} sub-items`);
+        await env.DB.prepare(
+          "INSERT INTO connections (key, value, metadata, updated_at) VALUES ('parent_owner_backfill', 'done', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, metadata = excluded.metadata, updated_at = datetime('now')"
+        ).bind(JSON.stringify({ processed })).run();
+      }
+    } catch (err) {
+      console.error('[parent_owner] backfill failed:', err.message || err);
     }
 
     // Bootstrap: if no users exist, create a default admin invite

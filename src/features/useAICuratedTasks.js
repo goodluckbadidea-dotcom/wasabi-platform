@@ -19,7 +19,7 @@ import {
   sortSubItemsByParentContext,
 } from "./taskHelpers.js";
 
-const CACHE_KEY_PREFIX = "wasabi_ai_tasks_v14"; // v14: sub-items honor role filter (own/mention/assign)
+const CACHE_KEY_PREFIX = "wasabi_ai_tasks_v15"; // v15: sub-item owner auto-propagates to parent (server-side)
 const INSIGHT_CACHE_KEY = "wasabi_insight";
 const CACHE_TTL = 30 * 60 * 1000; // 30 minutes — stale-while-revalidate shows cached data instantly
 const MAX_DATABASES = 25;
@@ -30,32 +30,22 @@ function cacheKeyForUser(userId) {
   return userId ? `${CACHE_KEY_PREFIX}_${userId}` : CACHE_KEY_PREFIX;
 }
 
-// Role-based task filter — non-admins only see owned/mentioned/assigned/unowned tasks
+// Role-based task filter — non-admins only see owned/mentioned/assigned/unowned tasks.
 // Unowned tasks (owner_user_id='default' from Notion sync) are visible to everyone.
 // Tasks explicitly assigned to OTHER users are hidden from non-admins.
 //
-// Sub-items influence visibility two ways:
-//   1. Parent is promoted if any sub-item has a DIRECT user relationship
-//      (owned/mentioned/assigned). An "unowned sub-item" is NOT enough to
-//      promote — that's too permissive (would surface every parent that
-//      happens to have any blank-owner child).
-//   2. After the parent passes, its subItems[] is pruned by the same
-//      per-row rule applied to parents (own / mentioned / assigned /
-//      unowned-visible-to-all). Done in pruneSubItems() below.
-function hasDirectRelationship(t) {
-  return !!(t._isOwned || t._isMentioned || t._isAssigned);
-}
+// Sub-items use the same per-row rule applied via pruneSubItems() below.
+// Sub-item ownership is propagated server-side to each ancestor at write
+// time (see worker/handlers/tables.js propagateOwnersToAncestors), so a
+// user assigned to a sub-item is also an owner of every parent above —
+// no client-side parent promotion needed.
 function isVisibleForNonAdmin(t) {
   if (!t._ownerUserIds || t._ownerUserIds.length === 0) return true;
-  return hasDirectRelationship(t);
+  return !!(t._isOwned || t._isMentioned || t._isAssigned);
 }
 function applyRoleFilter(tasks, identity) {
   if (identity?.role === "admin") return tasks;
-  return tasks.filter((t) => {
-    if (isVisibleForNonAdmin(t)) return true;
-    // Promote parent if any sub-item directly involves this user
-    return !!(t.subItems?.some(hasDirectRelationship));
-  });
+  return tasks.filter(isVisibleForNonAdmin);
 }
 function pruneSubItems(tasks, identity) {
   if (identity?.role === "admin") return;
@@ -452,7 +442,7 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
     try {
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (k && (k.startsWith("wasabi_ai_tasks_v8") || k.startsWith("wasabi_ai_tasks_v9") || k.startsWith("wasabi_ai_tasks_v10") || k.startsWith("wasabi_ai_tasks_v11") || k.startsWith("wasabi_ai_tasks_v12") || k.startsWith("wasabi_ai_tasks_v13"))) { localStorage.removeItem(k); i--; }
+        if (k && (k.startsWith("wasabi_ai_tasks_v8") || k.startsWith("wasabi_ai_tasks_v9") || k.startsWith("wasabi_ai_tasks_v10") || k.startsWith("wasabi_ai_tasks_v11") || k.startsWith("wasabi_ai_tasks_v12") || k.startsWith("wasabi_ai_tasks_v13") || k.startsWith("wasabi_ai_tasks_v14"))) { localStorage.removeItem(k); i--; }
       }
     } catch {}
 

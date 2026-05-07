@@ -11,6 +11,67 @@ import {
   getRelationColumns, resolveRecordPageId,
 } from './relationshipProjections.js';
 
+// ─── Parent owner propagation ───
+// When a sub-item gains an owner, walk up the parent chain and add any
+// new owners to each ancestor's owner_user_id. Removal of owners from a
+// sub does NOT propagate (per design — they may own the parent for other
+// reasons). Best-effort: never breaks the caller if propagation fails.
+//
+// Multi-level chains: every ancestor up to the root receives the new
+// owners. The visited-set guard short-circuits accidental cycles.
+//
+// Race safety: read-modify-write on parent.owner_user_id has a small
+// window where two concurrent updates could overlap. Both compute a
+// union, so the worst case is a redundant write — final state is still
+// the correct super-set.
+export async function propagateOwnersToAncestors(env, tableId, parentRowId, addedOwners, originRowId, user) {
+  if (!parentRowId || !addedOwners?.length) return;
+  let currentId = parentRowId;
+  const visited = new Set();
+  while (currentId && !visited.has(currentId)) {
+    visited.add(currentId);
+    const parent = await env.DB.prepare(
+      "SELECT owner_user_id, parent_row_id FROM table_rows WHERE id = ? AND table_id = ?"
+    ).bind(currentId, tableId).first();
+    if (!parent) break;
+
+    let parentOwners = [];
+    const raw = parent.owner_user_id;
+    if (raw && raw !== "default" && raw !== "unassigned") {
+      try { parentOwners = JSON.parse(raw); } catch { parentOwners = [raw]; }
+      if (!Array.isArray(parentOwners)) parentOwners = [parentOwners];
+    }
+
+    const ownerSet = new Set(parentOwners);
+    const added = [];
+    for (const o of addedOwners) {
+      if (o && !ownerSet.has(o)) { ownerSet.add(o); added.push(o); }
+    }
+
+    if (added.length > 0) {
+      await env.DB.prepare(
+        "UPDATE table_rows SET owner_user_id = ?, sync_dirty = 1, updated_at = datetime('now') WHERE id = ? AND table_id = ?"
+      ).bind(JSON.stringify([...ownerSet]), currentId, tableId).run();
+
+      // Audit (best-effort, separate insert to avoid breaking the propagation
+      // chain if the audit_log write fails for any reason).
+      try {
+        await env.DB.prepare(
+          "INSERT INTO audit_log (id, user_id, user_name, action, resource_type, resource_id, details) VALUES (?, ?, ?, 'auto_assign_parent_owner', 'row', ?, ?)"
+        ).bind(
+          crypto.randomUUID(),
+          user?.sub || "system",
+          user?.name || "",
+          currentId,
+          JSON.stringify({ added_owners: added, origin_row_id: originRowId, reason: "sub-item ownership propagation" })
+        ).run();
+      } catch (_) { /* audit best-effort */ }
+    }
+
+    currentId = parent.parent_row_id;
+  }
+}
+
 // ─── Table Schema Handlers ───
 
 async function handleGetSchema(env, id, jsonResponse) {
@@ -171,6 +232,21 @@ async function handleCreateRows(env, tableId, body, user, jsonResponse) {
       }
     } catch (err) { console.error("[relationships] handleCreateRows part_of projection failed:", err.message || err); }
 
+    // Auto-assign parent owners: each new sub-item is owned by its creator
+    // (see ownerId above). Propagate that creator into each ancestor so the
+    // parent surfaces in the creator's curated task list immediately.
+    if (user?.sub) {
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row.parent_row_id) continue;
+        try {
+          await propagateOwnersToAncestors(env, tableId, row.parent_row_id, [user.sub], created[i], user);
+        } catch (err) {
+          console.error("[parent_owner] create propagation failed:", err.message || err);
+        }
+      }
+    }
+
     return jsonResponse({ ok: true, ids: created }, 201);
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
@@ -292,6 +368,24 @@ async function handleUpdateRow(env, tableId, rowId, body, user, jsonResponse) {
     await env.DB.prepare(
       `UPDATE table_rows SET ${sets.join(", ")} WHERE id = ? AND table_id = ?`
     ).bind(...binds).run();
+
+    // Auto-assign parent owners: when this row is a sub-item and gained
+    // owners, union the new owner set into each ancestor's owners. Skips
+    // when the body sets "unassigned" (removal does NOT propagate). Best-
+    // effort — wrapped to never break the row update.
+    if (body.owner_user_id !== undefined && existing?.parent_row_id) {
+      try {
+        const ov = body.owner_user_id;
+        const newSubOwners = (ov && ov !== "unassigned")
+          ? (Array.isArray(ov) ? ov : [ov])
+          : [];
+        if (newSubOwners.length > 0) {
+          await propagateOwnersToAncestors(env, tableId, existing.parent_row_id, newSubOwners, rowId, user);
+        }
+      } catch (err) {
+        console.error("[parent_owner] update propagation failed:", err.message || err);
+      }
+    }
 
     // Invalidate data summary cache
     invalidateSummaryCache(env, tableId).catch(() => {});
