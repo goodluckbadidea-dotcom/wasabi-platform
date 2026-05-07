@@ -398,6 +398,27 @@ function compressTask(task) {
     else if (task._interactionAdjustment > 3) obj.formulaSuggestion = `boost ${pct}%`;
   }
   if (task._interactionBreakdown) obj.interactionBreakdown = task._interactionBreakdown;
+  // Sub-item rollup signals — surface cascading risk so Claude can boost
+  // parents whose children are in trouble. Only attached when the task
+  // actually has sub-items (keeps the prompt lean for leaf tasks).
+  if (task.subItems?.length) {
+    obj.subItemCount = task.subItems.length;
+    let overdueCount = 0;
+    let onHoldCount = 0;
+    for (const s of task.subItems) {
+      const d = s.due || s.nearestDate;
+      if (d) {
+        const parsed = parseDate(d);
+        if (!isNaN(parsed)) {
+          const today = new Date(); today.setHours(0, 0, 0, 0);
+          if (parsed.getTime() < today.getTime() && !s.done) overdueCount++;
+        }
+      }
+      if (s._statusCategory === "on_hold") onHoldCount++;
+    }
+    if (overdueCount > 0) obj.overdueSubItemCount = overdueCount;
+    if (onHoldCount > 0) obj.onHoldSubItemCount = onHoldCount;
+  }
   return obj;
 }
 
@@ -1031,6 +1052,9 @@ Each task includes:
 - nearestDateField: which field nearestDate came from
 - isOverdue: true if this date passed and the task wasn't updated since
 - isStale: true if the task hasn't been touched relative to how close its deadline is
+- subItemCount: total sub-items under this task (only present if > 0)
+- overdueSubItemCount: how many sub-items are past their dates and not done
+- onHoldSubItemCount: how many sub-items are waiting on external dependencies
 ${userContext}
 Today is ${today}.
 
@@ -1065,6 +1089,8 @@ Priority rules:
 - In-progress items approaching dates (score 2-3)
 - Tasks owned by or assigned to this user get a STRONG boost (+2) — ownership is a primary signal
 - Tasks with neuronSiblingUrgent=true belong to a campaign where another task is already overdue — boost score by +1 (cascading urgency)
+- Tasks with overdueSubItemCount > 0 — boost score by +1 (child failures roll up; parent is on the critical path). If overdueSubItemCount equals subItemCount, this is a strong signal — boost +2.
+- Tasks with onHoldSubItemCount > 0 — moderate boost (+0.5) — external dependencies underneath need check-ins
 - interactionGap="commented but status unchanged" — this user acknowledged the task but didn't progress it. BOOST score +1 (needs follow-through)
 - lastInteraction="comment" with no status_change — task is not resolved, should resurface
 - lastInteraction="status_change" — user progressed this, lower priority

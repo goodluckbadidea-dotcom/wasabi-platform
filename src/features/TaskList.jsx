@@ -120,6 +120,35 @@ function SourceBadge({ sourceName }) {
   );
 }
 
+// ── Sub-item rollup chip (count + overdue indicator) ──
+function SubItemRollupChip({ subItems, dateChipColors }) {
+  if (!subItems?.length) return null;
+  const total = subItems.length;
+  const overdueCount = subItems.filter((s) => {
+    const d = s.due || s.nearestDate;
+    return d && isOverdue(d) && !s.done;
+  }).length;
+  const hasOverdue = overdueCount > 0;
+  const mapping = dateChipColors || DATE_TIER_DEFAULTS;
+  const paletteIdx = hasOverdue ? (mapping.Overdue ?? DATE_TIER_DEFAULTS.Overdue ?? 9) : null;
+  const entry = paletteIdx !== null ? (VIEW_PALETTE[paletteIdx] || VIEW_PALETTE[0]) : null;
+  const textColor = entry ? (isLightColor(entry.hex) ? "#1a1a1a" : "#fff") : C.darkMuted;
+  return (
+    <span
+      title={hasOverdue ? `${overdueCount} of ${total} sub-items overdue` : `${total} sub-item${total !== 1 ? "s" : ""}`}
+      style={{
+        fontSize: 11, fontFamily: FONT, flexShrink: 0, fontWeight: 500,
+        padding: "2px 7px", borderRadius: RADIUS.pill,
+        background: entry ? entry.hex : C.darkSurf2,
+        color: textColor,
+        letterSpacing: "0.02em",
+      }}
+    >
+      {hasOverdue ? `${overdueCount}/${total}` : total}
+    </span>
+  );
+}
+
 function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping, dateChipColors, isExpanded, onToggleExpand }) {
   const [hovered, setHovered] = useState(false);
   const barColor = getTaskBarColor(task, colorMapping);
@@ -198,6 +227,7 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping, dateChip
       </span>
 
       {/* Badges */}
+      <SubItemRollupChip subItems={task.subItems} dateChipColors={dateChipColors} />
       <DueBadge due={task.due} dateChipColors={dateChipColors} />
       <SourceBadge sourceName={task.sourceName} />
 
