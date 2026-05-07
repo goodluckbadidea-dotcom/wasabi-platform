@@ -33,7 +33,7 @@ export default function Navigation({
   onSetViewForPage,
 }) {
   const {
-    user, pages, activePage, setActivePage,
+    user, pages, activeRightPane, setActiveRightPane,
     updatePageConfig, removePage, addPage,
     activeFolder, setActiveFolder,
     identity,
@@ -193,7 +193,7 @@ export default function Navigation({
   }, []);
 
   // Active view index (from App.jsx viewStates)
-  const activeViewIndex = viewStates?.[activePage] ?? 0;
+  const activeViewIndex = viewStates?.[activeRightPane] ?? 0;
 
   const SIDEBAR_W = collapsed ? (isTouch ? 68 : 62) : 220;
 
@@ -287,12 +287,12 @@ export default function Navigation({
       if (type === "workspace" || type === "folder") {
         setActiveFolder(id);
       } else {
-        setActivePage(id);
+        setActiveRightPane(id);
       }
     } catch (err) {
       console.error("[Navigation] Failed to create:", err);
     }
-  }, [addPage, pages, activeFolder, setActiveFolder, setActivePage, onCreatePage]);
+  }, [addPage, pages, activeFolder, setActiveFolder, setActiveRightPane, onCreatePage]);
 
   // -- Rename --
   const handleRename = useCallback((node, newName) => {
@@ -327,13 +327,13 @@ export default function Navigation({
     if (pt === "workspace") {
       // Workspaces: expand in sidebar AND show settings in main content
       setActiveFolder(pageId);
-      setActivePage(pageId);
+      setActiveRightPane(pageId);
     } else if (page.type === "folder") {
       setActiveFolder(pageId);
     } else {
-      setActivePage(pageId);
+      setActiveRightPane(pageId);
     }
-  }, [pages, setActivePage, setActiveFolder]);
+  }, [pages, setActiveRightPane, setActiveFolder]);
 
   // -- Context menu --
   const handleContextMenu = useCallback((e, node) => {
@@ -524,7 +524,7 @@ export default function Navigation({
                   .map((p) => (
                     <button
                       key={p.id}
-                      onClick={() => { setActivePage(p.id); setSearchQuery(""); }}
+                      onClick={() => { setActiveRightPane(p.id); setSearchQuery(""); }}
                       style={{
                         background: "none", border: "none", cursor: "pointer",
                         display: "flex", alignItems: "center", gap: 8,
@@ -554,7 +554,7 @@ export default function Navigation({
                     {dbResults.map((r) => (
                       <button
                         key={`${r.tableId}-${r.rowId}`}
-                        onClick={() => { setActivePage(r.pageId); setSearchQuery(""); }}
+                        onClick={() => { setActiveRightPane(r.pageId); setSearchQuery(""); }}
                         style={{
                           background: "none", border: "none", cursor: "pointer",
                           display: "flex", flexDirection: "column", gap: 1,
@@ -612,16 +612,16 @@ export default function Navigation({
             {/* Workspaces — also highlighted when viewing a real page opened from workspaces */}
             {(() => {
               // Note: "tasks" and "notes" intentionally dropped — those are
-              // left-pane routes now and never appear in activePage post-Phase 2.
+              // left-pane routes now and never appear in activeRightPane post-Phase 2.
               const SYSTEM_PAGES = new Set(["system", "wasabi", "inbox", "inbox-unified", "automations", "functions", "build", "knowledge-base", "dashboard", "workspaces", "calendar", "gmail", "outlook", "notifications", "knowledge"]);
-              const isWsActive = activePage === "workspaces" ||
-                (activePage && !SYSTEM_PAGES.has(activePage) && pages.some(p => p.id === activePage));
+              const isWsActive = activeRightPane === "workspaces" ||
+                (activeRightPane && !SYSTEM_PAGES.has(activeRightPane) && pages.some(p => p.id === activeRightPane));
               return (
                 <button
                   onClick={() => {
                     // If viewing a page, return to the folder containing it
-                    if (activePage && activePage !== "workspaces" && !SYSTEM_PAGES.has(activePage)) {
-                      const pageConfig = pages.find((p) => p.id === activePage);
+                    if (activeRightPane && activeRightPane !== "workspaces" && !SYSTEM_PAGES.has(activeRightPane)) {
+                      const pageConfig = pages.find((p) => p.id === activeRightPane);
                       if (pageConfig?.parentId) {
                         const byId = {};
                         for (const p of pages) byId[p.id] = p;
@@ -637,7 +637,7 @@ export default function Navigation({
                         setTargetFolderPath(folderPath);
                       }
                     }
-                    setActivePage("workspaces");
+                    setActiveRightPane("workspaces");
                   }}
                   title="Workspaces"
                   style={bottomBtnStyle(isWsActive)}
@@ -652,31 +652,31 @@ export default function Navigation({
 
             {/* Dashboard */}
             <button
-              onClick={() => { setActivePage("dashboard"); setActiveFolder(null); }}
+              onClick={() => { setActiveRightPane("dashboard"); setActiveFolder(null); }}
               title="Dashboard"
-              style={bottomBtnStyle(activePage === "dashboard")}
-              onMouseEnter={(e) => { if (activePage !== "dashboard") e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activePage !== "dashboard") e.currentTarget.style.background = "transparent"; }}
+              style={bottomBtnStyle(activeRightPane === "dashboard")}
+              onMouseEnter={(e) => { if (activeRightPane !== "dashboard") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activeRightPane !== "dashboard") e.currentTarget.style.background = "transparent"; }}
             >
-              <svg width={iconSize(activePage === "dashboard")} height={iconSize(activePage === "dashboard")} viewBox="0 0 16 16" fill="none">
-                <rect x="1" y="1" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? C.accent : navInactiveColor} strokeWidth="1.3" fill="none" />
-                <rect x="9" y="1" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? C.accent : navInactiveColor} strokeWidth="1.3" fill="none" />
-                <rect x="1" y="9" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? C.accent : navInactiveColor} strokeWidth="1.3" fill="none" />
-                <rect x="9" y="9" width="6" height="6" rx="1.5" stroke={activePage === "dashboard" ? C.accent : navInactiveColor} strokeWidth="1.3" fill="none" />
+              <svg width={iconSize(activeRightPane === "dashboard")} height={iconSize(activeRightPane === "dashboard")} viewBox="0 0 16 16" fill="none">
+                <rect x="1" y="1" width="6" height="6" rx="1.5" stroke={activeRightPane === "dashboard" ? C.accent : navInactiveColor} strokeWidth="1.3" fill="none" />
+                <rect x="9" y="1" width="6" height="6" rx="1.5" stroke={activeRightPane === "dashboard" ? C.accent : navInactiveColor} strokeWidth="1.3" fill="none" />
+                <rect x="1" y="9" width="6" height="6" rx="1.5" stroke={activeRightPane === "dashboard" ? C.accent : navInactiveColor} strokeWidth="1.3" fill="none" />
+                <rect x="9" y="9" width="6" height="6" rx="1.5" stroke={activeRightPane === "dashboard" ? C.accent : navInactiveColor} strokeWidth="1.3" fill="none" />
               </svg>
-              {!collapsed && <span style={bottomLabelStyle(activePage === "dashboard")}>Dashboard</span>}
+              {!collapsed && <span style={bottomLabelStyle(activeRightPane === "dashboard")}>Dashboard</span>}
             </button>
 
             {/* Calendar (right-pane destination) */}
             <button
-              onClick={() => { setActivePage("calendar"); setActiveFolder(null); }}
+              onClick={() => { setActiveRightPane("calendar"); setActiveFolder(null); }}
               title="Calendar"
-              style={bottomBtnStyle(activePage === "calendar")}
-              onMouseEnter={(e) => { if (activePage !== "calendar") e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activePage !== "calendar") e.currentTarget.style.background = "transparent"; }}
+              style={bottomBtnStyle(activeRightPane === "calendar")}
+              onMouseEnter={(e) => { if (activeRightPane !== "calendar") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activeRightPane !== "calendar") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconCalendar size={iconSize(activePage === "calendar")} color={activePage === "calendar" ? C.accent : navInactiveColor} />
-              {!collapsed && <span style={bottomLabelStyle(activePage === "calendar")}>Calendar</span>}
+              <IconCalendar size={iconSize(activeRightPane === "calendar")} color={activeRightPane === "calendar" ? C.accent : navInactiveColor} />
+              {!collapsed && <span style={bottomLabelStyle(activeRightPane === "calendar")}>Calendar</span>}
             </button>
 
             {/* Tasks / Notes / Wasabi-chat live below the divider, grouped
@@ -686,14 +686,14 @@ export default function Navigation({
             {/* Unified Inbox (only when Gmail granted OR Microsoft connected — Sheets-only Google users don't see this) */}
             {(gmailGranted || microsoftConnected) && (
               <button
-                onClick={() => setActivePage("inbox-unified")}
+                onClick={() => setActiveRightPane("inbox-unified")}
                 title="Inbox (Gmail + Outlook)"
-                style={bottomBtnStyle(activePage === "inbox-unified")}
-                onMouseEnter={(e) => { if (activePage !== "inbox-unified") e.currentTarget.style.background = C.darkSurf2; }}
-                onMouseLeave={(e) => { if (activePage !== "inbox-unified") e.currentTarget.style.background = "transparent"; }}
+                style={bottomBtnStyle(activeRightPane === "inbox-unified")}
+                onMouseEnter={(e) => { if (activeRightPane !== "inbox-unified") e.currentTarget.style.background = C.darkSurf2; }}
+                onMouseLeave={(e) => { if (activeRightPane !== "inbox-unified") e.currentTarget.style.background = "transparent"; }}
               >
                 <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                  <IconMail size={iconSize(activePage === "inbox-unified")} color={activePage === "inbox-unified" ? C.accent : navInactiveColor} />
+                  <IconMail size={iconSize(activeRightPane === "inbox-unified")} color={activeRightPane === "inbox-unified" ? C.accent : navInactiveColor} />
                   {(unreadCount + outlookUnreadCount) > 0 && (
                     <span style={{
                       position: "absolute", top: -5, right: -8,
@@ -707,7 +707,7 @@ export default function Navigation({
                     </span>
                   )}
                 </div>
-                {!collapsed && <span style={bottomLabelStyle(activePage === "inbox-unified")}>Inbox</span>}
+                {!collapsed && <span style={bottomLabelStyle(activeRightPane === "inbox-unified")}>Inbox</span>}
               </button>
             )}
 
@@ -717,32 +717,32 @@ export default function Navigation({
             {/* Figma (only when connected) */}
             {figmaConnected && (
               <button
-                onClick={() => setActivePage("figma")}
+                onClick={() => setActiveRightPane("figma")}
                 title="Figma"
-                style={bottomBtnStyle(activePage === "figma")}
-                onMouseEnter={(e) => { if (activePage !== "figma") e.currentTarget.style.background = C.darkSurf2; }}
-                onMouseLeave={(e) => { if (activePage !== "figma") e.currentTarget.style.background = "transparent"; }}
+                style={bottomBtnStyle(activeRightPane === "figma")}
+                onMouseEnter={(e) => { if (activeRightPane !== "figma") e.currentTarget.style.background = C.darkSurf2; }}
+                onMouseLeave={(e) => { if (activeRightPane !== "figma") e.currentTarget.style.background = "transparent"; }}
               >
-                <svg width={iconSize(activePage === "figma")} height={iconSize(activePage === "figma")} viewBox="0 0 24 24" fill="none">
-                  <path d="M8 24c2.2 0 4-1.8 4-4v-4H8c-2.2 0-4 1.8-4 4s1.8 4 4 4z" fill={activePage === "figma" ? "#0ACF83" : (C.darkMuted + "99")} />
-                  <path d="M4 12c0-2.2 1.8-4 4-4h4v8H8c-2.2 0-4-1.8-4-4z" fill={activePage === "figma" ? "#A259FF" : (C.darkMuted + "88")} />
-                  <path d="M4 4c0-2.2 1.8-4 4-4h4v8H8C5.8 8 4 6.2 4 4z" fill={activePage === "figma" ? "#F24E1E" : (C.darkMuted + "77")} />
-                  <path d="M12 0h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4V0z" fill={activePage === "figma" ? "#FF7262" : (C.darkMuted + "88")} />
-                  <path d="M20 12c0 2.2-1.8 4-4 4s-4-1.8-4-4 1.8-4 4-4 4 1.8 4 4z" fill={activePage === "figma" ? "#1ABCFE" : (C.darkMuted + "99")} />
+                <svg width={iconSize(activeRightPane === "figma")} height={iconSize(activeRightPane === "figma")} viewBox="0 0 24 24" fill="none">
+                  <path d="M8 24c2.2 0 4-1.8 4-4v-4H8c-2.2 0-4 1.8-4 4s1.8 4 4 4z" fill={activeRightPane === "figma" ? "#0ACF83" : (C.darkMuted + "99")} />
+                  <path d="M4 12c0-2.2 1.8-4 4-4h4v8H8c-2.2 0-4-1.8-4-4z" fill={activeRightPane === "figma" ? "#A259FF" : (C.darkMuted + "88")} />
+                  <path d="M4 4c0-2.2 1.8-4 4-4h4v8H8C5.8 8 4 6.2 4 4z" fill={activeRightPane === "figma" ? "#F24E1E" : (C.darkMuted + "77")} />
+                  <path d="M12 0h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4V0z" fill={activeRightPane === "figma" ? "#FF7262" : (C.darkMuted + "88")} />
+                  <path d="M20 12c0 2.2-1.8 4-4 4s-4-1.8-4-4 1.8-4 4-4 4 1.8 4 4z" fill={activeRightPane === "figma" ? "#1ABCFE" : (C.darkMuted + "99")} />
                 </svg>
-                {!collapsed && <span style={bottomLabelStyle(activePage === "figma")}>Figma</span>}
+                {!collapsed && <span style={bottomLabelStyle(activeRightPane === "figma")}>Figma</span>}
               </button>
             )}
 
             {/* Notifications */}
             <button
-              onClick={() => { setActivePage("notifications"); setNotifUnreadCount(0); }}
+              onClick={() => { setActiveRightPane("notifications"); setNotifUnreadCount(0); }}
               title="Notifications"
-              style={{ ...bottomBtnStyle(activePage === "notifications"), position: "relative" }}
-              onMouseEnter={(e) => { if (activePage !== "notifications") e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activePage !== "notifications") e.currentTarget.style.background = "transparent"; }}
+              style={{ ...bottomBtnStyle(activeRightPane === "notifications"), position: "relative" }}
+              onMouseEnter={(e) => { if (activeRightPane !== "notifications") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activeRightPane !== "notifications") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconBell size={iconSize(activePage === "notifications")} color={activePage === "notifications" ? C.accent : navInactiveColor} />
+              <IconBell size={iconSize(activeRightPane === "notifications")} color={activeRightPane === "notifications" ? C.accent : navInactiveColor} />
               {notifUnreadCount > 0 && (
                 <span style={{
                   position: "absolute",
@@ -760,19 +760,19 @@ export default function Navigation({
                   {notifUnreadCount > 99 ? "99+" : notifUnreadCount}
                 </span>
               )}
-              {!collapsed && <span style={bottomLabelStyle(activePage === "notifications")}>Notifications</span>}
+              {!collapsed && <span style={bottomLabelStyle(activeRightPane === "notifications")}>Notifications</span>}
             </button>
 
             {/* Knowledge Base */}
             <button
-              onClick={() => { setActivePage("knowledge"); setActiveFolder(null); }}
+              onClick={() => { setActiveRightPane("knowledge"); setActiveFolder(null); }}
               title="Knowledge Base"
-              style={bottomBtnStyle(activePage === "knowledge")}
-              onMouseEnter={(e) => { if (activePage !== "knowledge") e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activePage !== "knowledge") e.currentTarget.style.background = "transparent"; }}
+              style={bottomBtnStyle(activeRightPane === "knowledge")}
+              onMouseEnter={(e) => { if (activeRightPane !== "knowledge") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activeRightPane !== "knowledge") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconBrain size={iconSize(activePage === "knowledge")} color={activePage === "knowledge" ? C.accent : navInactiveColor} />
-              {!collapsed && <span style={bottomLabelStyle(activePage === "knowledge")}>Knowledge Base</span>}
+              <IconBrain size={iconSize(activeRightPane === "knowledge")} color={activeRightPane === "knowledge" ? C.accent : navInactiveColor} />
+              {!collapsed && <span style={bottomLabelStyle(activeRightPane === "knowledge")}>Knowledge Base</span>}
             </button>
 
             {/* Settings — moved to TopHeader (gear icon next to user pill).

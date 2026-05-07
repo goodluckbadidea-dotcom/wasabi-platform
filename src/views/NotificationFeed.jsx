@@ -419,7 +419,7 @@ function PreferencesPanel({ prefs, onUpdate, onClose }) {
 }
 
 export default function NotificationFeed() {
-  const { user, pages, setActivePage, navigateToRecord, identity } = usePlatform();
+  const { user, pages, setActiveRightPane, navigateToRecord, identity } = usePlatform();
   const { openDrawer } = useRecordDrawer();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -508,13 +508,13 @@ export default function NotificationFeed() {
       if (notif.record_id) {
         navigateToRecord(matchedPage.id, notif.record_id);
       } else {
-        setActivePage(matchedPage.id);
+        setActiveRightPane(matchedPage.id);
       }
       return;
     }
 
     console.warn("[NotificationFeed] Could not find page for notification:", notif.id, { page_config_id: notif.page_config_id, page_name: notif.page_name, record_id: notif.record_id });
-  }, [pages, setActivePage, navigateToRecord, markAsRead]);
+  }, [pages, setActiveRightPane, navigateToRecord, markAsRead]);
 
   const handleReply = useCallback(async (notif, text) => {
     const userId = identity?.id || "default";

@@ -27,24 +27,24 @@ function Chevron() {
 }
 
 export default function Breadcrumb() {
-  const { activePage, pages, setActivePage } = usePlatform();
+  const { activeRightPane, pages, setActiveRightPane } = usePlatform();
   const { setTargetFolderPath } = useNavigation();
   const { isNarrow, isTablet } = useViewport();
   const segments = useMemo(() => {
     // No active page → Home
-    if (!activePage) return [];
+    if (!activeRightPane) return [];
 
     // Special pages (system, automations, inbox, etc.)
-    if (SPECIAL_PAGES[activePage]) {
-      return [{ label: SPECIAL_PAGES[activePage], id: activePage, isCurrent: true }];
+    if (SPECIAL_PAGES[activeRightPane]) {
+      return [{ label: SPECIAL_PAGES[activeRightPane], id: activeRightPane, isCurrent: true }];
     }
 
     // Built-in pages don't show breadcrumbs
     const BUILTIN_PAGES = new Set(["workspaces", "tasks", "notes", "gmail", "notifications", "knowledge", "dashboard"]);
-    if (BUILTIN_PAGES.has(activePage)) return [];
+    if (BUILTIN_PAGES.has(activeRightPane)) return [];
 
     // Find page config
-    const pageConfig = pages.find((p) => p.id === activePage);
+    const pageConfig = pages.find((p) => p.id === activeRightPane);
     if (!pageConfig) return [];
 
     // Walk up parentId chain to build breadcrumb
@@ -60,7 +60,7 @@ export default function Breadcrumb() {
       chain.unshift({
         label: current.name || "Untitled",
         id: current.id,
-        isCurrent: current.id === activePage,
+        isCurrent: current.id === activeRightPane,
         isFolder: current.type === "folder",
       });
       current = current.parentId ? byId[current.parentId] : null;
@@ -72,7 +72,7 @@ export default function Breadcrumb() {
     }
 
     return chain;
-  }, [activePage, pages]);
+  }, [activeRightPane, pages]);
 
   if (segments.length === 0 || isNarrow) return null;
 
@@ -106,9 +106,9 @@ export default function Breadcrumb() {
                   cur = cur.parentId ? byId[cur.parentId] : null;
                 }
                 setTargetFolderPath(folderPath);
-                setActivePage("workspaces");
+                setActiveRightPane("workspaces");
               } else {
-                setActivePage(seg.id);
+                setActiveRightPane(seg.id);
               }
             }}
             style={{

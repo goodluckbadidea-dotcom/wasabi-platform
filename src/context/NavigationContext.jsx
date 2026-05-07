@@ -23,7 +23,7 @@ export function NavigationProvider({ children }) {
   const { pages } = usePages();
   const { identity } = useAuth();
 
-  // ── Phase 2 migration: convert pre-split-pane activePage values to the
+  // ── Phase 2 migration: convert pre-split-pane activeRightPane values to the
   // new dual-pane state. Runs once per browser, gated by a flag so
   // returning users land cleanly. Mirrors the App.jsx zen→functional
   // names migration pattern.
@@ -46,25 +46,25 @@ export function NavigationProvider({ children }) {
     } catch {}
   })();
 
-  const [activePage, setActivePageRaw] = useState(() => loadJSON("wasabi_active_page", null));
+  const [activeRightPane, setActiveRightPaneRaw] = useState(() => loadJSON("wasabi_active_page", null));
   const [activeFolder, setActiveFolder] = useState(() => loadJSON("wasabi_active_folder", null));
   const [expandedNodes, setExpandedNodes] = useState(new Set());
 
   // ── Dual-pane state (Phase 2) ──
   // Left pane is always one of "tasks" | "chat" | "notes". Right pane is
-  // anything else routed via activePage. The two are independent — clicking
+  // anything else routed via activeRightPane. The two are independent — clicking
   // a left-pane nav item only updates activeLeftPane; clicking a right-pane
-  // nav item only updates activePage.
+  // nav item only updates activeRightPane.
   const [activeLeftPane, setActiveLeftPane] = useState(() => loadJSON("wasabi_active_left_pane", "tasks"));
   const [splitRatio, setSplitRatio] = useState(() => loadJSON("wasabi_split_ratio", 0.4));
   const [leftPaneCollapsed, setLeftPaneCollapsed] = useState(() => loadJSON("wasabi_left_pane_collapsed", false));
 
   // ── Guarded setter: rejects system-internal pages at the gate ──
   const SYSTEM_PAGE_TYPES = new Set(["color-defaults", "color-view-config"]);
-  const setActivePage = useCallback((pageId) => {
+  const setActiveRightPane = useCallback((pageId) => {
     // Allow null, special string IDs ("tasks", "workspaces", "gmail", etc.)
     if (pageId === null || (typeof pageId === "string" && !/^[0-9a-f]{8}-/.test(pageId))) {
-      setActivePageRaw(pageId);
+      setActiveRightPaneRaw(pageId);
       return;
     }
     // Block system-internal pages (User Tasks, color configs, etc.)
@@ -73,7 +73,7 @@ export function NavigationProvider({ children }) {
       console.warn("[NavigationContext] Blocked navigation to system page:", target.name || pageId);
       return;
     }
-    setActivePageRaw(pageId);
+    setActiveRightPaneRaw(pageId);
   }, [pages]);
 
   // Navigation signal for breadcrumb → WorkspaceBrowser path sync
@@ -83,8 +83,8 @@ export function NavigationProvider({ children }) {
   const pendingRecordIdRef = useRef(null);
   const navigateToRecord = useCallback((pageId, recordId) => {
     pendingRecordIdRef.current = recordId;
-    setActivePage(pageId);
-  }, [setActivePage]);
+    setActiveRightPane(pageId);
+  }, [setActiveRightPane]);
   const consumePendingRecordId = useCallback(() => {
     const id = pendingRecordIdRef.current;
     pendingRecordIdRef.current = null;
@@ -92,7 +92,7 @@ export function NavigationProvider({ children }) {
   }, []);
 
   // ── Persist to localStorage ──
-  useEffect(() => { saveJSON("wasabi_active_page", activePage); }, [activePage]);
+  useEffect(() => { saveJSON("wasabi_active_page", activeRightPane); }, [activeRightPane]);
   useEffect(() => { saveJSON("wasabi_active_folder", activeFolder); }, [activeFolder]);
   useEffect(() => { saveJSON("wasabi_active_left_pane", activeLeftPane); }, [activeLeftPane]);
   useEffect(() => { saveJSON("wasabi_split_ratio", splitRatio); }, [splitRatio]);
@@ -100,18 +100,18 @@ export function NavigationProvider({ children }) {
   // Clean up vestigial localStorage key (no longer used)
   useEffect(() => { try { localStorage.removeItem("wasabi_expanded_nodes"); } catch {} }, []);
 
-  // ── Evict stale system page from activePage once pages load ──
+  // ── Evict stale system page from activeRightPane once pages load ──
   const hasEvicted = useRef(false);
   useEffect(() => {
-    if (hasEvicted.current || pages.length === 0 || !activePage) return;
+    if (hasEvicted.current || pages.length === 0 || !activeRightPane) return;
     hasEvicted.current = true;
-    const target = pages.find((p) => p.id === activePage);
+    const target = pages.find((p) => p.id === activeRightPane);
     if (target && (target._systemInternal || SYSTEM_PAGE_TYPES.has(target.page_type) || (target.name && (target.name.startsWith("User Tasks") || target.name.startsWith("Zen Tasks"))))) {
-      console.warn("[NavigationContext] Evicting system page from activePage:", target.name);
-      setActivePageRaw(null);
+      console.warn("[NavigationContext] Evicting system page from activeRightPane:", target.name);
+      setActiveRightPaneRaw(null);
       saveJSON("wasabi_active_page", null);
     }
-  }, [pages, activePage]);
+  }, [pages, activeRightPane]);
 
   // ── Restore per-user state from D1 on login ──
   const hasRestoredUserState = useRef(false);
@@ -125,7 +125,7 @@ export function NavigationProvider({ children }) {
           const SYSTEM_PAGE_TYPES = new Set(["color-defaults", "color-view-config"]);
           const target = pages.find((p) => p.id === state.last_page);
           if (target && (target._systemInternal || SYSTEM_PAGE_TYPES.has(target.page_type) || (target.name && (target.name.startsWith("User Tasks") || target.name.startsWith("Zen Tasks"))))) return;
-          setActivePage(state.last_page);
+          setActiveRightPane(state.last_page);
           saveJSON("wasabi_active_page", state.last_page);
         }
       })
@@ -140,17 +140,17 @@ export function NavigationProvider({ children }) {
   // ── Debounced save to D1 on page navigation ──
   const saveTimerRef = useRef(null);
   useEffect(() => {
-    if (!identity?.id || !activePage) return;
+    if (!identity?.id || !activeRightPane) return;
     // Don't persist system-internal pages as last_page
     const SYSTEM_PAGE_TYPES = new Set(["color-defaults", "color-view-config"]);
-    const target = pages.find((p) => p.id === activePage);
+    const target = pages.find((p) => p.id === activeRightPane);
     if (target && (target._systemInternal || SYSTEM_PAGE_TYPES.has(target.page_type) || (target.name && (target.name.startsWith("User Tasks") || target.name.startsWith("Zen Tasks"))))) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      putUserState({ last_page: activePage }).catch(err => console.warn("[NavigationContext] putUserState:", err.message || err));
+      putUserState({ last_page: activeRightPane }).catch(err => console.warn("[NavigationContext] putUserState:", err.message || err));
     }, 500);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [activePage, identity]);
+  }, [activeRightPane, identity]);
 
   // ── Auto-expand workspaces on first load ──
   const hasAutoExpanded = useRef(false);
@@ -177,8 +177,8 @@ export function NavigationProvider({ children }) {
   }, []);
 
   const value = {
-    activePage,
-    setActivePage,
+    activeRightPane,
+    setActiveRightPane,
     activeFolder,
     setActiveFolder,
     expandedNodes,

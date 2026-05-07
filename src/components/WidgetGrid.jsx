@@ -37,7 +37,7 @@ export default function WidgetGrid({
   onWidgetPickerOpenChange,
   hideTopControls = false,
 }) {
-  const { setActivePage } = usePlatform();
+  const { setActiveRightPane } = usePlatform();
   const viewPrefs = useViewPrefs();
 
   // Hybrid state: controlled when parent passes the prop, else internal.
@@ -147,7 +147,7 @@ export default function WidgetGrid({
     if (widget.type === "shortcut") {
       return (
         <div
-          onClick={() => widget.pageId && setActivePage(widget.pageId)}
+          onClick={() => widget.pageId && setActiveRightPane(widget.pageId)}
           style={{
             display: "flex", alignItems: "center", justifyContent: "center",
             height: "100%", cursor: widget.pageId ? "pointer" : "default",

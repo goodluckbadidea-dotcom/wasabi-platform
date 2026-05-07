@@ -45,7 +45,7 @@ function formatRelative(iso) {
 
 // ── Main Component ──
 export default function FigmaView() {
-  const { setActivePage } = useNavigation();
+  const { setActiveRightPane } = useNavigation();
 
   // Project state
   const [projects, setProjects] = useState([]);
@@ -340,7 +340,7 @@ export default function FigmaView() {
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               {importResult.pageId && (
                 <button
-                  onClick={() => setActivePage(importResult.pageId)}
+                  onClick={() => setActiveRightPane(importResult.pageId)}
                   style={{
                     background: C.accent, color: "#fff", border: "none",
                     borderRadius: RADIUS.sm, padding: "3px 10px", fontSize: 11,

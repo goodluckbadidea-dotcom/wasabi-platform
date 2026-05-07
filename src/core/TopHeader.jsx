@@ -18,7 +18,7 @@ export default function TopHeader() {
   const { themeName, toggleMode } = useTheme();
   const { overlayActive, toggleOverlay, selection } = useNeurons();
   const { saveStatus } = usePages();
-  const { identity, logout, setActivePage } = usePlatform();
+  const { identity, logout, setActiveRightPane } = usePlatform();
   const { isNarrow, isTablet } = useViewport();
   const compact = isNarrow || isTablet;
 
@@ -242,7 +242,7 @@ export default function TopHeader() {
             multi-user is active — same gating as the old left-nav button. */}
         {identity?.role === "admin" && (
           <button
-            onClick={() => setActivePage("system")}
+            onClick={() => setActiveRightPane("system")}
             title="Settings"
             aria-label="Open settings"
             {...focusRing()}
@@ -355,7 +355,7 @@ export default function TopHeader() {
               }}>
                 {/* Settings */}
                 <button
-                  onClick={() => { setActivePage("system"); setDropdownOpen(false); }}
+                  onClick={() => { setActiveRightPane("system"); setDropdownOpen(false); }}
                   style={dropdownItemStyle}
                   onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
@@ -366,7 +366,7 @@ export default function TopHeader() {
                 {/* User Management (admin only) */}
                 {isAdmin(identity) && (
                   <button
-                    onClick={() => { setActivePage("system"); setDropdownOpen(false); }}
+                    onClick={() => { setActiveRightPane("system"); setDropdownOpen(false); }}
                     style={dropdownItemStyle}
                     onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}

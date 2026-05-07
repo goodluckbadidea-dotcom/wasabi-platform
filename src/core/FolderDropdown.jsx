@@ -21,7 +21,7 @@ function containsActiveFolder(folder, activeFolderId) {
 }
 
 // ── Recursive folder tree renderer ──
-function FolderTreeItem({ folder, depth, activeFolder, activePage, onSelect, onRename, onDelete, collapsed }) {
+function FolderTreeItem({ folder, depth, activeFolder, activeRightPane, onSelect, onRename, onDelete, collapsed }) {
   const isActive = activeFolder === folder.id;
   const color = getFolderColor(folder);
   const indent = depth * 18;
@@ -329,7 +329,7 @@ function FolderTreeItem({ folder, depth, activeFolder, activePage, onSelect, onR
           folder={child}
           depth={depth + 1}
           activeFolder={activeFolder}
-          activePage={activePage}
+          activeRightPane={activeRightPane}
           onSelect={onSelect}
           onRename={onRename}
           onDelete={onDelete}
@@ -352,7 +352,7 @@ function findFolderInTree(tree, folderId) {
 
 export default function FolderDropdown({
   activeFolder,
-  activePage,
+  activeRightPane,
   onSelectFolder,
   onSelectDashboard,
   onCreateFolder,
@@ -382,7 +382,7 @@ export default function FolderDropdown({
   }, [open]);
 
   // Determine pill label — search at any depth
-  const isDashboard = activePage === "dashboard";
+  const isDashboard = activeRightPane === "dashboard";
   const activeObj = activeFolder
     ? findFolderInTree(pageTree, activeFolder)
     : null;
@@ -570,7 +570,7 @@ export default function FolderDropdown({
                   folder={folder}
                   depth={0}
                   activeFolder={activeFolder}
-                  activePage={activePage}
+                  activeRightPane={activeRightPane}
                   onSelect={(id) => {
                     onSelectFolder?.(id);
                     setOpen(false);

@@ -57,18 +57,18 @@ export function usePlatform() {
     pagesCtx.addPage(pageConfig);
     if (pageConfig.type === "folder") {
       nav.setActiveFolder(pageConfig.id);
-      nav.setActivePage(null);
+      nav.setActiveRightPane(null);
     } else {
-      nav.setActivePage(pageConfig.id);
+      nav.setActiveRightPane(pageConfig.id);
     }
-  }, [pagesCtx.addPage, nav.setActivePage, nav.setActiveFolder]);
+  }, [pagesCtx.addPage, nav.setActiveRightPane, nav.setActiveFolder]);
 
   // Combined removePage: removes from pages + clears nav
   const removePage = useCallback((id) => {
     pagesCtx.removePage(id);
-    nav.setActivePage((curr) => (curr === id ? null : curr));
+    nav.setActiveRightPane((curr) => (curr === id ? null : curr));
     nav.setActiveFolder((curr) => (curr === id ? null : curr));
-  }, [pagesCtx.removePage, nav.setActivePage, nav.setActiveFolder]);
+  }, [pagesCtx.removePage, nav.setActiveRightPane, nav.setActiveFolder]);
 
   return {
     // Auth
@@ -111,8 +111,8 @@ export function usePlatform() {
     globalDashboard: pagesCtx.globalDashboard,
 
     // Navigation
-    activePage: nav.activePage,
-    setActivePage: nav.setActivePage,
+    activeRightPane: nav.activeRightPane,
+    setActiveRightPane: nav.setActiveRightPane,
     activeFolder: nav.activeFolder,
     setActiveFolder: nav.setActiveFolder,
     expandedNodes: nav.expandedNodes,

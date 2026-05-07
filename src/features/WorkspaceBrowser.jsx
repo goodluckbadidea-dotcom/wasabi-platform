@@ -217,7 +217,7 @@ function OverflowMenu({ item, onDelete, onMove, folders, onClose, anchorRect }) 
 }
 
 export default function WorkspaceBrowser() {
-  const { pageTree, pages, setActivePage, setActiveFolder, removePage, updatePageConfig } = usePlatform();
+  const { pageTree, pages, setActiveRightPane, setActiveFolder, removePage, updatePageConfig } = usePlatform();
   const { targetFolderPath, setTargetFolderPath } = useNavigation();
   const { openDrawer } = useRecordDrawer();
 
@@ -326,9 +326,9 @@ export default function WorkspaceBrowser() {
   }, []);
 
   const handleOpenPage = useCallback((page) => {
-    setActivePage(page.id);
+    setActiveRightPane(page.id);
     if (page.parentId) setActiveFolder(page.parentId);
-  }, [setActivePage, setActiveFolder]);
+  }, [setActiveRightPane, setActiveFolder]);
 
   const handleOpenSettings = useCallback((e, item) => {
     e.stopPropagation();

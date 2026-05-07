@@ -36,14 +36,14 @@ const SYSTEM_ITEMS = [
   { id: "new-page", label: "New Page", icon: IconPlus, type: "system" },
 ];
 
-// Left-pane entries (Phase 2). Activate via setActiveLeftPane, not setActivePage.
+// Left-pane entries (Phase 2). Activate via setActiveLeftPane, not setActiveRightPane.
 const LEFT_PANE_ITEMS = [
   { id: "tasks", label: "Tasks", icon: IconForm, type: "left-pane" },
   { id: "chat", label: "Wasabi Chat", icon: IconBolt, type: "left-pane" },
   { id: "notes", label: "Notes", icon: IconPage, type: "left-pane" },
 ];
 
-export default function CommandPalette({ open, onClose, pages = [], setActivePage, setActiveLeftPane, onAddPage }) {
+export default function CommandPalette({ open, onClose, pages = [], setActiveRightPane, setActiveLeftPane, onAddPage }) {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef(null);
@@ -109,16 +109,16 @@ export default function CommandPalette({ open, onClose, pages = [], setActivePag
     if (item.type === "left-pane") {
       setActiveLeftPane?.(item.id);
     } else if (item.type === "page") {
-      setActivePage(item.id);
+      setActiveRightPane(item.id);
     } else if (item.id === "system") {
-      setActivePage("system");
+      setActiveRightPane("system");
     } else if (item.id === "automations") {
-      setActivePage("automations");
+      setActiveRightPane("automations");
     } else if (item.id === "new-page") {
       onAddPage();
     }
     onClose();
-  }, [setActivePage, setActiveLeftPane, onAddPage, onClose]);
+  }, [setActiveRightPane, setActiveLeftPane, onAddPage, onClose]);
 
   // Keyboard navigation
   const handleKeyDown = useCallback((e) => {

@@ -113,8 +113,8 @@ function AppContent() {
     user,
     platformIds,
     pages,
-    activePage,
-    setActivePage,
+    activeRightPane,
+    setActiveRightPane,
     activeFolder,
     setActiveFolder,
     getFolderPages,
@@ -173,26 +173,26 @@ function AppContent() {
   useEffect(() => {
     if (!userSync?.onNavUpdate) return;
     return userSync.onNavUpdate((pageId, folderId) => {
-      if (pageId && pageId !== activePage) {
+      if (pageId && pageId !== activeRightPane) {
         isRemoteNavRef.current = true;
-        setActivePage(pageId);
+        setActiveRightPane(pageId);
         if (folderId) setActiveFolder(folderId);
       }
     });
-  }, [userSync, activePage, setActivePage, setActiveFolder]);
+  }, [userSync, activeRightPane, setActiveRightPane, setActiveFolder]);
 
   // Broadcast nav changes to other devices (skip system-internal pages)
   useEffect(() => {
-    if (!userSync?.sendNavUpdate || !activePage) return;
+    if (!userSync?.sendNavUpdate || !activeRightPane) return;
     if (isRemoteNavRef.current) {
       isRemoteNavRef.current = false;
       return;
     }
     // Don't broadcast system page IDs — receiving devices would get stuck
-    const target = pages.find((p) => p.id === activePage);
+    const target = pages.find((p) => p.id === activeRightPane);
     if (target && (target._systemInternal || target.name?.startsWith("User Tasks") || target.name?.startsWith("Zen Tasks"))) return;
-    userSync.sendNavUpdate(activePage, activeFolder);
-  }, [activePage, activeFolder, userSync, pages]);
+    userSync.sendNavUpdate(activeRightPane, activeFolder);
+  }, [activeRightPane, activeFolder, userSync, pages]);
 
   // Handle session revocation (logout from another device)
   useEffect(() => {
@@ -205,13 +205,13 @@ function AppContent() {
   }, [userSync]);
 
   // ── Clear page controls when navigating away ──
-  const prevActivePage = useRef(activePage);
+  const prevActiveRightPane = useRef(activeRightPane);
   useEffect(() => {
-    if (prevActivePage.current !== activePage) {
+    if (prevActiveRightPane.current !== activeRightPane) {
       setActivePageData(null);
-      prevActivePage.current = activePage;
+      prevActiveRightPane.current = activeRightPane;
     }
-  }, [activePage]);
+  }, [activeRightPane]);
 
   // ── Automation Engine ──
   const engineRef = useRef(null);
@@ -257,8 +257,8 @@ function AppContent() {
 
   const handleAddPage = useCallback(() => {
     setBuilderTemplate(null);
-    setActivePage("wasabi");
-  }, [setActivePage]);
+    setActiveRightPane("wasabi");
+  }, [setActiveRightPane]);
 
   // ── Keyboard Shortcuts ──
   useKeyboardShortcuts([
@@ -288,7 +288,7 @@ function AppContent() {
     {
       shortcut: "mod+i",
       description: "Inbox",
-      handler: () => setActivePage("inbox"),
+      handler: () => setActiveRightPane("inbox"),
     },
     {
       shortcut: "mod+j",
@@ -298,15 +298,15 @@ function AppContent() {
     {
       shortcut: "mod+h",
       description: "Home",
-      handler: () => setActivePage(null),
+      handler: () => setActiveRightPane(null),
     },
     {
       shortcut: "mod+up",
       description: "Previous page",
       handler: () => {
         const folderPages = activeFolder ? getFolderPages(activeFolder) : pages.filter((p) => p.type !== "folder");
-        const idx = folderPages.findIndex((p) => p.id === activePage);
-        if (idx > 0) setActivePage(folderPages[idx - 1].id);
+        const idx = folderPages.findIndex((p) => p.id === activeRightPane);
+        if (idx > 0) setActiveRightPane(folderPages[idx - 1].id);
       },
     },
     {
@@ -314,29 +314,29 @@ function AppContent() {
       description: "Next page",
       handler: () => {
         const folderPages = activeFolder ? getFolderPages(activeFolder) : pages.filter((p) => p.type !== "folder");
-        const idx = folderPages.findIndex((p) => p.id === activePage);
-        if (idx < folderPages.length - 1) setActivePage(folderPages[idx + 1].id);
+        const idx = folderPages.findIndex((p) => p.id === activeRightPane);
+        if (idx < folderPages.length - 1) setActiveRightPane(folderPages[idx + 1].id);
       },
     },
-  ], [handleAddPage, focusChatInLeftPane, activePage, pages, activeFolder, getFolderPages, toggleNeurons, setActivePage, identity]);
+  ], [handleAddPage, focusChatInLeftPane, activeRightPane, pages, activeFolder, getFolderPages, toggleNeurons, setActiveRightPane, identity]);
 
   // Auth gate is now in PlatformContext (AuthGate component).
   // AppContent only renders when isAuthenticated is true.
 
   // Find active page config
-  const activePageConfig = pages.find((p) => p.id === activePage);
+  const activePageConfig = pages.find((p) => p.id === activeRightPane);
 
   // Get/set active view for current page
   const activeViewIndex = activePageConfig
     ? viewStates[activePageConfig.id] ?? 0
-    : activePage === "automations"
+    : activeRightPane === "automations"
     ? viewStates["automations"] ?? 0
     : 0;
 
   const setActiveView = (idx) => {
     if (activePageConfig) {
       setViewStates((prev) => ({ ...prev, [activePageConfig.id]: idx }));
-    } else if (activePage === "automations") {
+    } else if (activeRightPane === "automations") {
       setViewStates((prev) => ({ ...prev, automations: idx }));
     }
   };
@@ -412,11 +412,11 @@ function AppContent() {
   // ── Right pane: workspace content (everything else) ──
   const renderRightPane = () => {
     // System settings
-    if (activePage === "system") {
+    if (activeRightPane === "system") {
       return <SystemManager />;
     }
     // Page builder (create new page)
-    if (activePage === "wasabi") {
+    if (activeRightPane === "wasabi") {
       return (
         <PageBuilder
           initialTemplate={builderTemplate}
@@ -426,7 +426,7 @@ function AppContent() {
       );
     }
     // Calendar (standalone right-pane destination, lifted out of TasksView)
-    if (activePage === "calendar") {
+    if (activeRightPane === "calendar") {
       return (
         <ErrorBoundary fallbackLabel="Calendar">
           <React.Suspense fallback={
@@ -440,7 +440,7 @@ function AppContent() {
       );
     }
     // Dashboard
-    if (activePage === "dashboard") {
+    if (activeRightPane === "dashboard") {
       return (
         <ErrorBoundary fallbackLabel="Dashboard">
           <React.Suspense fallback={
@@ -454,7 +454,7 @@ function AppContent() {
       );
     }
     // Legacy "gmail" / "outlook" routes redirect to the unified inbox.
-    if (activePage === "gmail" || activePage === "outlook" || activePage === "inbox-unified") {
+    if (activeRightPane === "gmail" || activeRightPane === "outlook" || activeRightPane === "inbox-unified") {
       return (
         <ErrorBoundary fallbackLabel="Inbox">
           <React.Suspense fallback={
@@ -468,7 +468,7 @@ function AppContent() {
       );
     }
     // Figma
-    if (activePage === "figma") {
+    if (activeRightPane === "figma") {
       return (
         <ErrorBoundary fallbackLabel="Figma">
           <React.Suspense fallback={
@@ -482,7 +482,7 @@ function AppContent() {
       );
     }
     // Workspaces browser
-    if (activePage === "workspaces") {
+    if (activeRightPane === "workspaces") {
       return (
         <ErrorBoundary fallbackLabel="Workspaces">
           <React.Suspense fallback={
@@ -496,7 +496,7 @@ function AppContent() {
       );
     }
     // Knowledge Hub
-    if (activePage === "knowledge") {
+    if (activeRightPane === "knowledge") {
       return (
         <ErrorBoundary fallbackLabel="Knowledge Hub">
           <React.Suspense fallback={
@@ -510,7 +510,7 @@ function AppContent() {
       );
     }
     // Notifications
-    if (activePage === "notifications") {
+    if (activeRightPane === "notifications") {
       return <NotificationFeed />;
     }
     // Workspace settings page
@@ -524,7 +524,7 @@ function AppContent() {
     }
     // Folders redirect to workspaces browser
     if (activePageConfig && activePageConfig.type === "folder") {
-      setActivePage("workspaces");
+      setActiveRightPane("workspaces");
       return null;
     }
     // Dashboard pages → render WidgetGrid directly
@@ -582,8 +582,8 @@ function AppContent() {
           open={commandPaletteOpen}
           onClose={() => setCommandPaletteOpen(false)}
           pages={pages}
-          activePage={activePage}
-          setActivePage={(id) => { setActivePage(id); setCommandPaletteOpen(false); }}
+          activeRightPane={activeRightPane}
+          setActiveRightPane={(id) => { setActiveRightPane(id); setCommandPaletteOpen(false); }}
           setActiveLeftPane={(p) => { setActiveLeftPane(p); if (leftPaneCollapsed) setLeftPaneCollapsed(false); setCommandPaletteOpen(false); }}
           onAddPage={() => { handleAddPage(); setCommandPaletteOpen(false); }}
         />
@@ -641,7 +641,7 @@ function AppContent() {
           }
           rightContent={
             <div
-              key={`${activePage || "__home__"}-${themeName}`}
+              key={`${activeRightPane || "__home__"}-${themeName}`}
               style={{
                 flex: 1,
                 display: "flex",
