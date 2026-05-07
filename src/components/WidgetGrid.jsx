@@ -25,12 +25,37 @@ function defaultHeight(type) {
   return Math.max(floor, Math.round(vh * ratio));
 }
 
-export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
+export default function WidgetGrid({
+  widgets = [],
+  onUpdateWidgets,
+  // Optional controlled props — when provided, the parent owns edit/picker
+  // state and renders the toggle buttons itself (e.g. DashboardView lifts the
+  // Edit button into its section header).
+  editModeProp,
+  onEditModeChange,
+  widgetPickerOpenProp,
+  onWidgetPickerOpenChange,
+  hideTopControls = false,
+}) {
   const { setActivePage } = usePlatform();
   const viewPrefs = useViewPrefs();
 
-  const [editMode, setEditMode] = useState(false);
-  const [widgetPickerOpen, setWidgetPickerOpen] = useState(false);
+  // Hybrid state: controlled when parent passes the prop, else internal.
+  const [editModeInternal, setEditModeInternal] = useState(false);
+  const [widgetPickerOpenInternal, setWidgetPickerOpenInternal] = useState(false);
+  const editMode = editModeProp !== undefined ? editModeProp : editModeInternal;
+  const setEditMode = useCallback((next) => {
+    const value = typeof next === "function" ? next(editMode) : next;
+    if (onEditModeChange) onEditModeChange(value);
+    if (editModeProp === undefined) setEditModeInternal(value);
+  }, [editMode, editModeProp, onEditModeChange]);
+  const widgetPickerOpen = widgetPickerOpenProp !== undefined ? widgetPickerOpenProp : widgetPickerOpenInternal;
+  const setWidgetPickerOpen = useCallback((next) => {
+    const value = typeof next === "function" ? next(widgetPickerOpen) : next;
+    if (onWidgetPickerOpenChange) onWidgetPickerOpenChange(value);
+    if (widgetPickerOpenProp === undefined) setWidgetPickerOpenInternal(value);
+  }, [widgetPickerOpen, widgetPickerOpenProp, onWidgetPickerOpenChange]);
+
   const [dragIdx, setDragIdx] = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
 
@@ -176,47 +201,49 @@ export default function WidgetGrid({ widgets = [], onUpdateWidgets }) {
       padding: "16px 20px",
       position: "relative",
     }}>
-      {/* ── Top controls ── */}
-      <div style={{
-        display: "flex", justifyContent: "flex-end", gap: 8,
-        marginBottom: 16, position: "sticky", top: 0, zIndex: 50,
-      }}>
-        <button
-          onClick={() => {
-            setEditMode((m) => !m);
-            if (editMode) setWidgetPickerOpen(false);
-          }}
-          style={{
-            background: editMode ? C.accent : C.darkSurf2,
-            color: editMode ? "#fff" : C.darkMuted,
-            border: `1px solid ${editMode ? C.accent : C.darkBorder}`,
-            borderRadius: RADIUS.md, padding: "6px 14px",
-            fontSize: 11, fontFamily: FONT, fontWeight: 600,
-            cursor: "pointer", display: "flex", alignItems: "center",
-            gap: 5, boxShadow: SHADOW.card,
-          }}
-        >
-          <IconEdit size={11} color={editMode ? "#fff" : C.darkMuted} />
-          {editMode ? "Done" : "Edit"}
-        </button>
-
-        {editMode && (
+      {/* ── Top controls ── (hidden when parent renders them in its header) */}
+      {!hideTopControls && (
+        <div style={{
+          display: "flex", justifyContent: "flex-end", gap: 8,
+          marginBottom: 16, position: "sticky", top: 0, zIndex: 50,
+        }}>
           <button
-            onClick={() => setWidgetPickerOpen(true)}
+            onClick={() => {
+              setEditMode((m) => !m);
+              if (editMode) setWidgetPickerOpen(false);
+            }}
             style={{
-              background: C.darkSurf2, color: C.darkMuted,
-              border: `1px solid ${C.darkBorder}`,
+              background: editMode ? C.accent : C.darkSurf2,
+              color: editMode ? "#fff" : C.darkMuted,
+              border: `1px solid ${editMode ? C.accent : C.darkBorder}`,
               borderRadius: RADIUS.md, padding: "6px 14px",
               fontSize: 11, fontFamily: FONT, fontWeight: 600,
               cursor: "pointer", display: "flex", alignItems: "center",
               gap: 5, boxShadow: SHADOW.card,
             }}
           >
-            <IconPlus size={10} color={C.darkMuted} />
-            Add Widget
+            <IconEdit size={11} color={editMode ? "#fff" : C.darkMuted} />
+            {editMode ? "Done" : "Edit"}
           </button>
-        )}
-      </div>
+
+          {editMode && (
+            <button
+              onClick={() => setWidgetPickerOpen(true)}
+              style={{
+                background: C.darkSurf2, color: C.darkMuted,
+                border: `1px solid ${C.darkBorder}`,
+                borderRadius: RADIUS.md, padding: "6px 14px",
+                fontSize: 11, fontFamily: FONT, fontWeight: 600,
+                cursor: "pointer", display: "flex", alignItems: "center",
+                gap: 5, boxShadow: SHADOW.card,
+              }}
+            >
+              <IconPlus size={10} color={C.darkMuted} />
+              Add Widget
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── Grid ── */}
       {widgets.length > 0 ? (

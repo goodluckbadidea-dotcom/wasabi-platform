@@ -4,8 +4,9 @@
 // Users can pin views, shortcuts, text blocks, and plugin widgets.
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
-import { C, FONT, FONT_DISPLAY, RADIUS } from "../design/tokens.js";
+import { C, FONT, FONT_DISPLAY, RADIUS, SHADOW } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
+import { IconEdit, IconPlus } from "../design/icons.jsx";
 import WidgetGrid from "../components/WidgetGrid.jsx";
 import RecordDrawer from "./RecordDrawer.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
@@ -34,6 +35,10 @@ export default function DashboardView() {
   const userSync = useUserSync();
   const key = storageKey(identity?.id);
   const [widgets, setWidgets] = useState(() => loadWidgetsLocal(key));
+  // Lifted from WidgetGrid so the Edit / Add Widget controls can render in
+  // the section header instead of a floating bar inside the grid.
+  const [editMode, setEditMode] = useState(false);
+  const [widgetPickerOpen, setWidgetPickerOpen] = useState(false);
   const saveTimerRef = useRef(null);
   const hasLoadedFromD1 = useRef(false);
   const prevIdentityId = useRef(identity?.id);
@@ -121,6 +126,48 @@ export default function DashboardView() {
           </svg>
           Dashboard
         </div>
+
+        {/* Edit / Add-widget controls — lifted out of WidgetGrid into the
+            section header so they sit alongside the title. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {editMode && (
+            <button
+              onClick={() => setWidgetPickerOpen(true)}
+              style={{
+                background: C.darkSurf2, color: C.darkMuted,
+                border: `1px solid ${C.darkBorder}`,
+                borderRadius: RADIUS.md, padding: "6px 14px",
+                fontSize: 11, fontFamily: FONT, fontWeight: 600,
+                cursor: "pointer", display: "flex", alignItems: "center",
+                gap: 5, boxShadow: SHADOW.card,
+              }}
+            >
+              <IconPlus size={10} color={C.darkMuted} />
+              Add Widget
+            </button>
+          )}
+          <button
+            onClick={() => {
+              setEditMode((m) => {
+                const next = !m;
+                if (!next) setWidgetPickerOpen(false);
+                return next;
+              });
+            }}
+            style={{
+              background: editMode ? C.accent : C.darkSurf2,
+              color: editMode ? "#fff" : C.darkMuted,
+              border: `1px solid ${editMode ? C.accent : C.darkBorder}`,
+              borderRadius: RADIUS.md, padding: "6px 14px",
+              fontSize: 11, fontFamily: FONT, fontWeight: 600,
+              cursor: "pointer", display: "flex", alignItems: "center",
+              gap: 5, boxShadow: SHADOW.card,
+            }}
+          >
+            <IconEdit size={11} color={editMode ? "#fff" : C.darkMuted} />
+            {editMode ? "Done" : "Edit"}
+          </button>
+        </div>
       </div>
 
       {/* Widget canvas */}
@@ -128,6 +175,11 @@ export default function DashboardView() {
         <WidgetGrid
           widgets={widgets}
           onUpdateWidgets={handleUpdateWidgets}
+          editModeProp={editMode}
+          onEditModeChange={setEditMode}
+          widgetPickerOpenProp={widgetPickerOpen}
+          onWidgetPickerOpenChange={setWidgetPickerOpen}
+          hideTopControls
         />
       </div>
 
