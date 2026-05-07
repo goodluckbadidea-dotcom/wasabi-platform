@@ -1865,7 +1865,11 @@ export default {
         // Google Sheets via OAuth API path: returns formatting + inline images.
         // Only kicks in when the caller is authenticated AND has the "sheets"
         // grant. Per-user data — bypass the shared CDN cache.
+        let apiAttempted = false;
+        let apiError = null;
+        let apiStatus = null;
         if (sheetType === "google_sheets" && user?.sub) {
+          apiAttempted = true;
           const apiResult = await fetchGoogleSheetViaApi(env, user.sub, spreadsheetId, gid);
           if (!apiResult._error) {
             return jsonResponse({
@@ -1874,6 +1878,9 @@ export default {
               sheetType,
             });
           }
+          apiError = apiResult._error;
+          apiStatus = apiResult.status;
+          console.log("[sheets/fetch] API path failed, falling back to CSV:", apiError, "status:", apiStatus);
           // Fall through to CSV on 401 (no sheets grant) — preserves backward
           // compatibility for users who haven't granted Sheets yet. Other
           // errors (404, 500) bubble up as the CSV path can't recover from them
@@ -1896,7 +1903,18 @@ export default {
         const csvText = await csvRes.text();
 
         const { columns, rows } = parseCSV(csvText);
-        const result = { columns, rows: rows.slice(0, 10000), cachedAt: Date.now(), sheetType, truncated: rows.length > 10000, source: "csv" };
+        const result = {
+          columns, rows: rows.slice(0, 10000),
+          cachedAt: Date.now(), sheetType,
+          truncated: rows.length > 10000, source: "csv",
+          // Diagnostic: surface API-path error to the client when fallback occurs.
+          apiAttempted, apiError, apiStatus,
+        };
+
+        // Don't cache fallback responses — apiError state shouldn't be sticky.
+        if (apiAttempted) {
+          return jsonResponse(result);
+        }
 
         const response = jsonResponse(result);
         const cachedResponse = new Response(response.body, response);
