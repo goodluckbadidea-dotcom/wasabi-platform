@@ -161,10 +161,13 @@ const KEYFRAMES = `
   to   { opacity: 1; }
 }
 
+/* contentSwap — opacity-only. A non-none transform on the wrapper creates
+   a new CSS containing block; position:fixed popups inside (context
+   menus, dropdowns) get offset relative to the wrapper instead of the
+   viewport. Opacity-only keeps the fade without that side effect. */
 @keyframes contentSwap {
-  0%   { opacity: 0; transform: translateY(8px) scale(0.995); }
-  60%  { opacity: 1; transform: translateY(-1px) scale(1.002); }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
 }
 
 @keyframes scrollReveal {
