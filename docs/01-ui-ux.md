@@ -547,3 +547,91 @@ Color resolution follows a priority chain: per-view mapping, global defaults, No
 9. **Use interaction helpers** — `{...hoverBg()}` and `{...focusRing()}` for consistent interactive states
 10. **Use StateIndicators** — `SkeletonLoader`, `EmptyState`, `ErrorState` for loading/empty/error states
 11. **Use ToastContext** — `showToast()` for user feedback on operations
+
+---
+
+## App Shell Layout (Phase 2, 2026-05-07)
+
+The app shell is a dual-pane layout. A personal context surface lives on
+the left at all times; workspace content lives on the right. The two panes
+are independent — clicking a left-pane nav item only updates the left,
+clicking a right-pane nav item only updates the right.
+
+### Structure
+
+```
+TopHeader (WASABI wordmark · save status · Refresh · Neurons · Theme · Settings gear · User pill)
+├─ Navigation rail (icon bar, expandable)
+│   ├─ Top: search / collapse toggle
+│   ├─ Insight surface or DB search results
+│   └─ Bottom: feature nav, divided into two groups
+│       ├─ Right-pane group: Workspaces, Dashboard, Calendar, Inbox, Figma, Notifications, Knowledge Base
+│       ├─ — gradient divider —
+│       └─ Left-pane group: Tasks, Notes, animated Wasabi flame (chat)
+└─ SplitPane
+    ├─ Left pane: TasksView | WasabiPanel (embedded chat) | NotesView
+    │   chosen by activeLeftPane = "tasks" | "chat" | "notes"
+    └─ Right pane: Dashboard | CalendarView | UnifiedInbox | PageShell | WorkspaceBrowser | etc.
+        chosen by activePage (everything that isn't a left-pane resident)
+        Breadcrumb renders at the top of the right pane (16px 28px 0 padding).
+```
+
+### State (NavigationContext.jsx)
+
+| Key | Type | Default | localStorage |
+|-----|------|---------|--------------|
+| `activeLeftPane` | `"tasks" \| "chat" \| "notes"` | `"tasks"` | `wasabi_active_left_pane` |
+| `activePage` | `string \| null` | `null` | `wasabi_active_page` (right-pane content) |
+| `splitRatio` | `number` (0..1) | `0.4` | `wasabi_split_ratio` |
+| `leftPaneCollapsed` | `boolean` | `false` | `wasabi_left_pane_collapsed` |
+
+### Migration shim
+
+Pre-Phase-2 users had `activePage` storing `"tasks"`/`"notes"`/etc. for the
+default landing view. On first Phase 2 load, gated by the
+`wasabi_phase2_migrated_v1` flag, those values are lifted into
+`activeLeftPane` and `activePage` is set to `"dashboard"` so returning users
+don't land blank. Any other `activePage` value (a workspace page, etc.)
+is left as-is on the right pane; `activeLeftPane` defaults to `"tasks"`.
+
+### Responsive behavior (SplitPane)
+
+| Viewport | Behavior |
+|----------|----------|
+| `width > BP.tablet` | Inline split. Draggable divider. Min 280 px each side. |
+| `BP.mobile < width ≤ BP.tablet` | Inline split, same rules. |
+| `width ≤ BP.mobile` (portrait) | Drawer mode. Right pane fills the canvas. Left pane defaults collapsed; expands as a drawer overlay (Z.panel) with backdrop. Floating toggle pill at left edge for tap-to-open. |
+
+### Settings location
+
+The Settings page lives on the right pane (`activePage === "system"`). The
+entry point is the gear icon (`IconGear`) next to the user pill in
+TopHeader. Admin-only, same gating as the pre-Phase-2 left-nav button.
+
+### Chat surface
+
+There is exactly one chat surface: `core/WasabiPanel.jsx` rendered with
+the `embedded` prop in the left pane when `activeLeftPane === "chat"`.
+The slide-out mode (no `embedded` prop) is dead code that's kept on disk
+per the "never delete working code" rule but no longer mounts. The
+keyboard shortcut Cmd+. and `KnowledgeHub`'s "Open in Chat" both call
+`focusChatInLeftPane` which sets `activeLeftPane = "chat"` and uncollapses
+the left pane if needed.
+
+### Breadcrumb
+
+Renders at the top of the right pane via `<Breadcrumb />` in App.jsx
+(padding `16px 28px 0`). Self-hides for built-in routes (Dashboard, Tasks,
+Notes, etc.) and on narrow viewports. WorkspaceBrowser's own internal
+breadcrumb (with back arrow + drag-drop folder reorganization) sits in
+the same Y/X position; its header had its top padding stripped to align
+with the global breadcrumb slot.
+
+### Animation note
+
+The `contentSwap` keyframe used for pane content swaps is opacity-only.
+Originally it used `transform: translateY/scale`, but a non-`none`
+transform creates a CSS containing block, which broke `position: fixed`
+popups inside (context menus, dropdowns) by offsetting them relative to
+the wrapper instead of the viewport. Always prefer opacity-only animations
+on wrappers that contain fixed-position popups.
