@@ -19,7 +19,7 @@ import {
   sortSubItemsByParentContext,
 } from "./taskHelpers.js";
 
-const CACHE_KEY_PREFIX = "wasabi_ai_tasks_v13"; // v13: schema-category done detection (terminal-status fix)
+const CACHE_KEY_PREFIX = "wasabi_ai_tasks_v14"; // v14: sub-items honor role filter (own/mention/assign)
 const INSIGHT_CACHE_KEY = "wasabi_insight";
 const CACHE_TTL = 30 * 60 * 1000; // 30 minutes — stale-while-revalidate shows cached data instantly
 const MAX_DATABASES = 25;
@@ -33,14 +33,37 @@ function cacheKeyForUser(userId) {
 // Role-based task filter — non-admins only see owned/mentioned/assigned/unowned tasks
 // Unowned tasks (owner_user_id='default' from Notion sync) are visible to everyone.
 // Tasks explicitly assigned to OTHER users are hidden from non-admins.
+//
+// Sub-items influence visibility two ways:
+//   1. Parent is promoted if any sub-item has a DIRECT user relationship
+//      (owned/mentioned/assigned). An "unowned sub-item" is NOT enough to
+//      promote — that's too permissive (would surface every parent that
+//      happens to have any blank-owner child).
+//   2. After the parent passes, its subItems[] is pruned by the same
+//      per-row rule applied to parents (own / mentioned / assigned /
+//      unowned-visible-to-all). Done in pruneSubItems() below.
+function hasDirectRelationship(t) {
+  return !!(t._isOwned || t._isMentioned || t._isAssigned);
+}
+function isVisibleForNonAdmin(t) {
+  if (!t._ownerUserIds || t._ownerUserIds.length === 0) return true;
+  return hasDirectRelationship(t);
+}
 function applyRoleFilter(tasks, identity) {
   if (identity?.role === "admin") return tasks;
   return tasks.filter((t) => {
-    // Unowned tasks (no explicit owner) — visible to all
-    if (!t._ownerUserIds || t._ownerUserIds.length === 0) return true;
-    // Owned/mentioned/assigned — visible
-    return t._isOwned || t._isMentioned || t._isAssigned;
+    if (isVisibleForNonAdmin(t)) return true;
+    // Promote parent if any sub-item directly involves this user
+    return !!(t.subItems?.some(hasDirectRelationship));
   });
+}
+function pruneSubItems(tasks, identity) {
+  if (identity?.role === "admin") return;
+  for (const t of tasks) {
+    if (t.subItems?.length) {
+      t.subItems = t.subItems.filter(isVisibleForNonAdmin);
+    }
+  }
 }
 
 // ── Local heuristic adjustments (instant, no AI call) ──
@@ -429,7 +452,7 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
     try {
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (k && (k.startsWith("wasabi_ai_tasks_v8") || k.startsWith("wasabi_ai_tasks_v9") || k.startsWith("wasabi_ai_tasks_v10") || k.startsWith("wasabi_ai_tasks_v11") || k.startsWith("wasabi_ai_tasks_v12"))) { localStorage.removeItem(k); i--; }
+        if (k && (k.startsWith("wasabi_ai_tasks_v8") || k.startsWith("wasabi_ai_tasks_v9") || k.startsWith("wasabi_ai_tasks_v10") || k.startsWith("wasabi_ai_tasks_v11") || k.startsWith("wasabi_ai_tasks_v12") || k.startsWith("wasabi_ai_tasks_v13"))) { localStorage.removeItem(k); i--; }
       }
     } catch {}
 
@@ -743,20 +766,19 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
 
       // Step 2.7b: Cheap per-user flags (ownership, assignment, mention).
       // These must be set BEFORE the role filter so it can decide what survives.
+      // Applied to parents AND each parent's subItems[] — sub-items use the
+      // same role rule as parents (see applyRoleFilter / pruneSubItems above).
       if (identity?.id) {
         const userName = identity.display_name?.toLowerCase() || "";
         const userId = identity.id;
-        for (const task of allTasks) {
-          // Ownership: owner_user_id array includes current user
+        const setUserFlags = (task) => {
           if (task._ownerUserIds && Array.isArray(task._ownerUserIds)) {
             task._isOwned = task._ownerUserIds.includes(userId);
           }
-          // Assignment: display-name substring match in assignee/owner text field
           const assignee = (task.assignee || task.owner || task.assigned || "").toLowerCase();
           if (assignee && assignee.includes(userName)) {
             task._isAssigned = true;
           }
-          // Assignment via people-column user ID match (array of {name, id})
           if (!task._isAssigned && task._fieldMap) {
             const assigneeKey = task._fieldMap.assignee;
             const rawAssignee = assigneeKey && task._raw?.cells?.[assigneeKey];
@@ -764,9 +786,14 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
               task._isAssigned = true;
             }
           }
-          // Mention: record_id appears in user's mention notifications
           if (mentionedRecordIds.has(task.id)) {
             task._isMentioned = true;
+          }
+        };
+        for (const task of allTasks) {
+          setUserFlags(task);
+          if (task.subItems?.length) {
+            for (const sub of task.subItems) setUserFlags(sub);
           }
         }
       }
@@ -776,6 +803,10 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
       // Non-admins: only owned/mentioned/unowned survive. Admins see everything.
       const isAdmin = identity?.role === "admin";
       let filteredTasks = applyRoleFilter(allTasks, identity);
+      // Sub-items inherit the same per-row visibility rule as parents:
+      // own / mentioned / assigned / unowned-default. Without this prune,
+      // surviving parents would carry sub-items belonging to other users.
+      pruneSubItems(filteredTasks, identity);
 
       // Step 2.76: Snooze filtering — remove snoozed tasks from active list
       try {
