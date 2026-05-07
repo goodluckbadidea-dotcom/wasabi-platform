@@ -163,6 +163,28 @@ Assembles the full system prompt in order:
 13. **"How to Answer Common Questions" guidance (2026-05-04)** — explicit tool-selection rules for the AI. See below.
 14. Current page context: schema + data summary
 
+### Linked Sheet AI Access (2026-05-07)
+
+Three layered fixes restored AI awareness of Linked Sheet pages, which previously rendered "0 records" in the chat panel even with 59 visible rows on screen:
+
+1. **`PageShell.fetchData` now fetches sheet data for AI context.** Previously short-circuited on `isLinkedSheetPage` with `setLoading(false); return;`. Now calls `fetchSheetData(sheetUrl)`, converts rows to `{ [colName]: val }` objects (matching the D1/Notion shape), synthesizes a minimal schema (`{ title: cols[0], richTexts: cols.slice(1), … }`), and pushes both up to App via `onPageDataReady`. The `LinkedSheet` view continues to fetch its own richer copy independently for formatting + image rendering — the duplicate fetch is the cost of keeping the two paths cleanly separated.
+
+2. **`WasabiPanel.handleChatSend` stale-closure fix.** Its `useCallback` deps array was missing `activePageData` even though the function body reads `activePageData?.schema` and `activePageData?.data` for the data summary. Pre-existing since 2026-03-11; only surfaced for linked sheets because the slow async fetch widens the race window between `activePageConfig` updating and `activePageData` becoming non-null. For D1 tables the gap was masked because the AI naturally calls `query_database` and gets real rows.
+
+3. **`getFullPageConfig` shape mismatch in `src/agent/toolExecutor.js`.** The worker's `/pages/:id` endpoint returns the raw page_configs row with `views` / `databaseIds` / `sheetUrl` etc. nested inside a `config` JSON blob. Every other frontend caller goes through `d1ToFrontend` (in `src/config/pageConfig.js`) which spreads `config` onto the top level, but the agent's `getFullPageConfig` was returning the raw shape. So `fetchLinkedSheetRows` always read `pageConfig.views` (undefined) and returned `[]`. Exported `d1ToFrontend` and routed `getFullPageConfig` through it. The flatten fix also silently unblocked the AI on `linked_notion` and `linked_monday` pages where the same `databaseIds` / `mondayBoardId` lookups had been failing.
+
+### Sub-Item Awareness in Task Ranking (2026-05-07)
+
+`compressTask` in `src/features/useAICuratedTasks.js` now emits sub-item rollup signals on parents that have any sub-items (only attached when `> 0`, to keep the prompt lean for leaf tasks):
+
+| Field | Meaning |
+|-------|---------|
+| `subItemCount` | Total sub-items under this task |
+| `overdueSubItemCount` | Sub-items past their nearest date and not done |
+| `onHoldSubItemCount` | Sub-items whose status category is `on_hold` |
+
+Prompt updates: signals listed under "Each task includes:" plus two new priority rules — `overdueSubItemCount > 0` boosts the parent's score by +1 (cascading risk; child failures roll up), with a stronger +2 boost when the entire sub-list is overdue. `onHoldSubItemCount > 0` adds a moderate +0.5 (external dependencies underneath need check-ins).
+
 ### "How to Answer Common Questions" Section (2026-05-04)
 
 Added to `_buildPrompt`. Tells the AI explicitly which tools to reach for in common scenarios:

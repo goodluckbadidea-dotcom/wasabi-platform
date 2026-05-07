@@ -104,6 +104,10 @@ Dialogs and modals have ARIA attributes (`role="dialog"`, `aria-modal="true"`, `
 
 The initial auth check on page load uses a boot state machine (`idle → booting → ready | error`) to prevent duplicate init attempts. However, there is no `AbortController` to cancel in-flight requests if the component unmounts during the bootstrap sequence. In practice this is benign (the request completes or fails silently), but it is technically a race condition.
 
+### Sub-Item Owner Propagation Race Window (2026-05-07)
+
+`propagateOwnersToAncestors` in `worker/handlers/tables.js` does a read-modify-write on the parent's `owner_user_id` JSON array. D1 has no real transactions, so two concurrent writes to sibling sub-items both reading the same parent state will each compute and write a union. The worst case is a redundant write — the final state is still the correct super-set, since both writes are unions of the same base plus a different new owner. Idempotent on no-op cases (visited-set guards cycles in multi-level chains). Not a data-integrity risk, but worth knowing if you see "duplicate" audit_log entries for the same parent within milliseconds.
+
 ### Auth Gate Architecture
 
 The auth gate lives in `PlatformContext.jsx` as the `AuthGate` component, positioned between `AuthProvider` and `PagesProvider`/`NavigationProvider`. This ensures data-fetching providers never mount before authentication completes. Components rendered by AuthGate (currently only `LoginScreen`) must use `useAuth()` directly — they **cannot** use `usePlatform()`, `usePages()`, or `useNavigation()` because those providers are not mounted yet. If new pre-auth components are added in the future, they must follow this same constraint.

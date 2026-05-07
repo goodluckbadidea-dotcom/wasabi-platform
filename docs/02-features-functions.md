@@ -43,10 +43,10 @@ Personal productivity surface. User-scoped data. All components lazy-loaded.
 | File | Purpose |
 |------|---------|
 | `RecordDrawerContext.jsx` | Context provider for drawer open/close state |
-| `TaskList.jsx` | Task rows, quick-add input, section grouping |
+| `TaskList.jsx` | Task rows, quick-add input, section grouping. Per-task expansion state (`expandedIds` Set + `toggleExpand`). `TaskRow` renders a chevron between the color bar and title when `task.subItems.length > 0`; click toggles inline expand. Expanded parents render their `subItems[]` as `SubItemRow` components — indented 38px, 12px text, status-color dot in place of the parent's color bar, tree-line connector, click opens the sub-item's RecordDrawer. `SubItemRollupChip` between title and DueBadge shows the sub count; flips to the Overdue palette + "X/Y" label when any sub is overdue (matches DueBadge's `dateChipColors` mapping). Manual ("My Tasks") rows render flat — sub-item UI only appears in the AI-curated section. (2026-05-07) |
 | `taskHelpers.js` | Task utility functions, cache helpers (`getCached`, `setCache`, `getStaleCache`), interaction tracking (`persistInteraction`, `mergeInteractionAdjustments`, `loadInteractionLedger`) |
 | `useTasksTable.js` | Hook for D1 task CRUD. Auto-provisions per-user "User Tasks" table on first use. Gates on `pagesLoaded` to avoid running against stale localStorage cache. Trusts saved `zen_tasks_table_id` from D1 user_state. |
-| `useAICuratedTasks.js` | Hook for AI-curated tasks: scans D1 databases, enriches with signals, calls Claude Haiku for prioritization. Features: stale-while-revalidate caching (2hr TTL, cache key v11), event-driven invalidation via dirty flags, interaction-based deprioritization with time decay (user-scoped), D1-backed snooze, interaction-aware Claude prompt with formula suggestions, pipeline-aware date reasoning, people column matching, cross-user cache invalidation. **Scan pipeline (2026-04-17):** single `listNotifications` query for @mention detection (replaces per-task comment fan-out), role pre-filter before expensive enrichment, viewers skip enrichment entirely, consolidated single `listTaskInteractions` fetch per source, whitespace-normalized title matching for Claude response. Sub-items excluded from scan via `listRows({ topLevelOnly: true })`. Limits: MAX_DATABASES=25, MAX_ITEMS_PER_DB=1000. Client-side sort by `updated_at DESC` so newer activity surfaces first. |
+| `useAICuratedTasks.js` | Hook for AI-curated tasks: scans D1 databases, enriches with signals, calls Claude Haiku for prioritization. Features: stale-while-revalidate caching (2hr TTL, cache key v15), event-driven invalidation via dirty flags, interaction-based deprioritization with time decay (user-scoped), D1-backed snooze, interaction-aware Claude prompt with formula suggestions, pipeline-aware date reasoning, people column matching, cross-user cache invalidation. **Scan pipeline (2026-04-17):** single `listNotifications` query for @mention detection (replaces per-task comment fan-out), role pre-filter before expensive enrichment, viewers skip enrichment entirely, consolidated single `listTaskInteractions` fetch per source, whitespace-normalized title matching for Claude response. **Sub-items end-to-end (2026-05-07):** `topLevelOnly` removed; rows partition client-side by `parent_row_id`; sub-items normalize against `db.subColumns` and attach to each parent's `subItems[]` (sorted via `sortSubItemsByParentContext` — parent-aware heuristic, no Claude call). Per-user flag pass + `pruneSubItems` apply the same role rule to sub-items. `compressTask` emits `subItemCount` / `overdueSubItemCount` / `onHoldSubItemCount` so Claude factors child state into parent ranking. Limits: MAX_DATABASES=25, MAX_ITEMS_PER_DB=1000. Client-side sort by `updated_at DESC` so newer activity surfaces first. |
 | `useDismissedTasks.js` | Hook for dismissed task tracking (session-scoped, sessionStorage) |
 | `useInsight.js` | Hook for AI-generated insights (sidebar insight, 7-day cache, user-scoped via userId param) |
 | `calendar/` | Calendar sub-components (DayColumn, WeekListView, MonthGrid) |
@@ -69,16 +69,22 @@ The AI task curation system scans all D1 databases for task-like records, enrich
 Mount → Show cached data instantly (stale-while-revalidate)
   → If cache stale (>30min) or dirty flag set → background rescan:
     1. Scan page configs for task-like databases (scoring heuristic, max 25)
-    2. Fetch top-level rows only from each (max 1000 per DB, sub-items excluded)
+    2. Fetch all rows from each (max 1000 per DB, parents + sub-items in one call)
        → Sort client-side by updated_at DESC (newer activity first)
+       → Partition by parent_row_id; normalize sub-items via db.subColumns;
+         attach as parent.subItems[] sorted by sortSubItemsByParentContext
     3. Fetch per source: activity, interactions (single combined call)
     4. Single listNotifications query → mentionedRecordIds Set
-    5. Set cheap per-user flags on all tasks (ownership, assignment, mention)
+    5. Set cheap per-user flags on all tasks AND each parent's sub-items
+       (ownership, assignment, mention)
     6. ROLE PRE-FILTER → drop tasks the user can't see BEFORE expensive work
+       → pruneSubItems() applies the same per-row rule to each surviving
+         parent's subItems[]
     7. Fetch active snoozes from D1 → filter snoozed tasks out
     8. [Non-viewers only] record views, neuron enrichment, interaction history,
        interaction breakdown (viewers skip — they fall through to date-sort)
-    9. Call Claude Haiku with enriched data + formula suggestions
+    9. Call Claude Haiku with enriched data + formula suggestions + sub-item
+       rollup signals (subItemCount, overdueSubItemCount, onHoldSubItemCount)
     10. Whitespace-normalize titles when matching Claude response back
     11. Merge interaction adjustments → cache → display
 ```
@@ -87,7 +93,7 @@ Mount → Show cached data instantly (stale-while-revalidate)
 
 ### Caching Strategy (Stale-While-Revalidate)
 
-- **Cache key:** `wasabi_ai_tasks_v11_{userId}` in localStorage (v11: raised limits, sub-items excluded, updated_at sort)
+- **Cache key:** `wasabi_ai_tasks_v15_{userId}` in localStorage. History: v11 raised limits / sub-items excluded (2026-04-17), v12 sub-items grouped under parents (2026-05-07), v13 schema-category-aware done detection, v14 sub-items honor role filter, v15 server-side parent-owner propagation. Cleanup loop purges v8–v14 on next mount.
 - **Cache TTL:** 30 minutes (background rescan trigger, not hard expiry)
 - **On mount:** `getStaleCache()` returns data regardless of age → instant display
 - **Background refresh:** `refreshing` state shows subtle indicator, not loading spinner
@@ -148,6 +154,17 @@ The Claude prompt includes pipeline reasoning instructions for tasks with multip
 ### Cross-User Task Cache Invalidation
 
 When a record is saved with a status/done field change OR an `owner_user_id` change (task reassignment), the worker broadcasts `task_cache_invalidate` to ALL active UserRoom Durable Objects. This ensures all users' task caches refresh when tasks are reassigned or progressed, not just the saving user's cache.
+
+### Sub-Item Owner Propagation (server-side, 2026-05-07)
+
+When a sub-item gains an owner — via `handleUpdateRow` (owner column edit) or `handleCreateRows` (creator becomes owner) — the worker walks up the `parent_row_id` chain and unions the new owner into each ancestor's `owner_user_id`. Implementation: `propagateOwnersToAncestors(env, tableId, parentRowId, addedOwners, originRowId, user)` in `worker/handlers/tables.js`. Each propagation writes an `audit_log` entry with `action='auto_assign_parent_owner'` and `details.added_owners` so users can see why they have parent access.
+
+- **Additive only.** Removing an owner from a sub does NOT propagate — they may own the parent for other reasons.
+- **Comment @mentions do NOT propagate** as ownership — a mention is a notification, not an assignment.
+- **Multi-level chains supported.** Walks the full ancestor chain; visited-set guards against cycles.
+- **Race-safe.** Read-modify-write produces correct supersets even under concurrent writes.
+- **One-shot backfill in `worker/handlers/init.js`** runs on first `/init` after deploy. Self-disabling via `connections.parent_owner_backfill='done'` flag — same pattern as `relationships_initial_rebuild`. Re-run by manual deletion of the flag.
+- **Frontend impact:** `applyRoleFilter` in `useAICuratedTasks.js` no longer needs a "promote parent if any sub-item involves user" band-aid — parents always carry sub-item owners after propagation. `pruneSubItems` still runs to filter each parent's `subItems[]` by the same per-row rule.
 
 ---
 
