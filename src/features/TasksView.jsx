@@ -1,7 +1,7 @@
 // ─── Tasks View ───
-// Main orchestrator for the To-Do split view.
-// Left 40%: AI-curated to-do list + quick-add.
-// Right 60%: Today's schedule / calendar.
+// Tasks-only panel — lives in the left pane of the dual-pane app shell.
+// The standalone Calendar lives separately as a right-pane destination
+// (see App.jsx routing for "calendar"). Phase 2 stripped the inner split.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { C, FONT, FONT_DISPLAY, RADIUS } from "../design/tokens.js";
@@ -11,7 +11,6 @@ import useTasksTable from "./useTasksTable.js";
 import useAICuratedTasks from "./useAICuratedTasks.js";
 import useDismissedTasks from "./useDismissedTasks.js";
 import TaskList from "./TaskList.jsx";
-import CalendarView from "./CalendarView.jsx";
 import RecordDrawer from "./RecordDrawer.jsx";
 import { useRecordDrawer } from "./RecordDrawerContext.jsx";
 import { ErrorBoundary } from "../core/ErrorBoundary.jsx";
@@ -52,10 +51,11 @@ export default function TasksView() {
   } = useAICuratedTasks({ dismissedIds, completedCount, userTasksTableId: tableId });
 
   const { openDrawer, onSaved, onDeleted } = useRecordDrawer();
-  const calendarRefreshRef = useRef(null);
   const [showSettings, setShowSettings] = useState(false);
 
-  // Subscribe to drawer save/delete events (works regardless of which view rendered the drawer)
+  // Subscribe to drawer save/delete events. Calendar-related event refreshes
+  // now happen inside the standalone CalendarView (post-Phase 2). Tasks
+  // listening here only refreshes the task list.
   useEffect(() => {
     const unsubSave = onSaved((type, data) => {
       if (type === "task") {
@@ -68,11 +68,9 @@ export default function TasksView() {
           markDirty(); // background rescan via dirty flag (not immediate full refresh)
         }
       }
-      if (type === "event") calendarRefreshRef.current?.();
     });
     const unsubDelete = onDeleted((type) => {
       if (type === "task") { refreshTasks(); markDirty(); }
-      if (type === "event") calendarRefreshRef.current?.();
     });
     return () => { unsubSave(); unsubDelete(); };
   }, [onSaved, onDeleted, refreshTasks, markDirty, debouncedRefresh, dismiss]);
@@ -125,13 +123,8 @@ export default function TasksView() {
     refreshTasks();
   }, [refreshTasks]);
 
-  const handleEventUpdated = useCallback(() => {
-    calendarRefreshRef.current?.();
-  }, []);
-
-  const handleEventDeleted = useCallback(() => {
-    calendarRefreshRef.current?.();
-  }, []);
+  // Calendar event handlers no longer hooked here — events flow through the
+  // standalone CalendarView's own subscription path post-Phase 2.
 
   // ── Combined refresh ──
   const handleRefresh = useCallback(() => {
@@ -169,14 +162,13 @@ export default function TasksView() {
       flex: 1, display: "flex", overflow: "hidden",
       background: "transparent",
     }}>
-      {/* Left panel: To-Do List (40%) */}
+      {/* Tasks panel — fills the entire left pane (Calendar split removed in Phase 2). */}
       <div style={{
-        flex: "0 0 40%",
+        flex: 1,
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
         background: C.darkSurf,
-        borderRight: `1px solid ${C.darkBorder}`,
       }}>
         {/* Panel header */}
         <div style={{
@@ -292,24 +284,11 @@ export default function TasksView() {
         )}
       </div>
 
-      {/* Right panel: Today's Schedule (60%) */}
-      <div style={{
-        flex: "0 0 60%",
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-      }}>
-        <ErrorBoundary fallbackLabel="Calendar">
-          <CalendarView allTasks={allTasks} refreshRef={calendarRefreshRef} />
-        </ErrorBoundary>
-      </div>
-
-      {/* Sashimi drawer for task/event editing */}
+      {/* Sashimi drawer for task editing (calendar event editing now flows
+          through the standalone CalendarView). */}
       <RecordDrawer
         onTaskUpdated={handleTaskUpdated}
         onTaskDeleted={handleTaskDeleted}
-        onEventUpdated={handleEventUpdated}
-        onEventDeleted={handleEventDeleted}
         onRecordInteraction={recordInteraction}
         onSnooze={snooze}
       />

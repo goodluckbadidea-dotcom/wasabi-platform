@@ -12,6 +12,7 @@ import { isAdmin } from "../lib/roles.js";
 import Breadcrumb from "../components/Breadcrumb.jsx";
 import { useViewport } from "../context/ViewportContext.jsx";
 import { focusRing } from "../design/interactions.js";
+import { IconGear } from "../design/icons.jsx";
 
 export default function TopHeader() {
   const dropdownItemStyle = getDropdownItemStyle();
@@ -243,6 +244,36 @@ export default function TopHeader() {
           <span style={{ width: 12, height: 12, borderRadius: "50%", background: C.accent, flexShrink: 0 }} />
           {!compact && (themeName.charAt(0).toUpperCase() + themeName.slice(1))}
         </button>
+
+        {/* Settings gear (moved out of left nav in Phase 2). Admin only when
+            multi-user is active — same gating as the old left-nav button. */}
+        {identity?.role === "admin" && (
+          <button
+            onClick={() => setActivePage("system")}
+            title="Settings"
+            aria-label="Open settings"
+            {...focusRing()}
+            style={{
+              background: "transparent",
+              border: "none",
+              borderRadius: RADIUS.pill,
+              padding: 8,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "opacity 0.15s",
+              opacity: 0.5,
+              outline: "none",
+              minWidth: 32, minHeight: 32,
+              color: C.darkMuted,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
+          >
+            <IconGear size={16} color="currentColor" />
+          </button>
+        )}
 
         {/* User identity pill */}
         {identity && (

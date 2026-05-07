@@ -17,6 +17,7 @@ import {
 import { getGoogleStatus, getGmailSummary, getCalendarSummary, getMicrosoftStatus, getOutlookSummary, getFigmaStatus, getUnreadNotificationCount, listRows } from "../lib/api.js";
 import { useUserSync } from "../context/UserSyncContext.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
+import WasabiOrb from "./WasabiOrb.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
 import CreateMenu from "./CreateMenu.jsx";
 import ContextMenu from "./ContextMenu.jsx";
@@ -27,8 +28,6 @@ export default function Navigation({
   collapsed,
   onToggleCollapse,
   onExpandSidebar,
-  wasabiPanelOpen,
-  onToggleWasabiPanel,
   isThinking,
   onCreatePage,
   viewStates,
@@ -39,7 +38,13 @@ export default function Navigation({
     updatePageConfig, removePage, addPage,
     activeFolder, setActiveFolder,
     identity,
+    activeLeftPane, setActiveLeftPane,
+    leftPaneCollapsed, setLeftPaneCollapsed,
   } = usePlatform();
+  const focusLeftPane = useCallback((p) => {
+    setActiveLeftPane(p);
+    if (leftPaneCollapsed) setLeftPaneCollapsed(false);
+  }, [setActiveLeftPane, leftPaneCollapsed, setLeftPaneCollapsed]);
   const { setTargetFolderPath } = useNavigation();
   const { isTouch } = useViewport();
   const userSync = useUserSync();
@@ -607,7 +612,9 @@ export default function Navigation({
 
             {/* Workspaces — also highlighted when viewing a real page opened from workspaces */}
             {(() => {
-              const SYSTEM_PAGES = new Set(["system", "wasabi", "inbox", "inbox-unified", "automations", "functions", "build", "knowledge-base", "dashboard", "workspaces", "tasks", "notes", "gmail", "outlook", "notifications", "knowledge"]);
+              // Note: "tasks" and "notes" intentionally dropped — those are
+              // left-pane routes now and never appear in activePage post-Phase 2.
+              const SYSTEM_PAGES = new Set(["system", "wasabi", "inbox", "inbox-unified", "automations", "functions", "build", "knowledge-base", "dashboard", "workspaces", "calendar", "gmail", "outlook", "notifications", "knowledge"]);
               const isWsActive = activePage === "workspaces" ||
                 (activePage && !SYSTEM_PAGES.has(activePage) && pages.some(p => p.id === activePage));
               return (
@@ -661,33 +668,62 @@ export default function Navigation({
               {!collapsed && <span style={bottomLabelStyle(activePage === "dashboard")}>Dashboard</span>}
             </button>
 
-            {/* To-Do / Calendar (default landing) */}
+            {/* Calendar (right-pane destination) */}
             <button
-              onClick={() => { setActivePage("tasks"); setActiveFolder(null); }}
-              title="To-Do & Calendar"
-              style={bottomBtnStyle(activePage === "tasks" || activePage === null)}
-              onMouseEnter={(e) => { if (activePage !== "tasks" && activePage !== null) e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activePage !== "tasks" && activePage !== null) e.currentTarget.style.background = "transparent"; }}
+              onClick={() => { setActivePage("calendar"); setActiveFolder(null); }}
+              title="Calendar"
+              style={bottomBtnStyle(activePage === "calendar")}
+              onMouseEnter={(e) => { if (activePage !== "calendar") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activePage !== "calendar") e.currentTarget.style.background = "transparent"; }}
             >
-              <IconCalendar size={iconSize(activePage === "tasks" || activePage === null)} color={(activePage === "tasks" || activePage === null) ? C.accent : navInactiveColor} />
-              {!collapsed && <span style={bottomLabelStyle(activePage === "tasks" || activePage === null)}>To-Do & Calendar</span>}
+              <IconCalendar size={iconSize(activePage === "calendar")} color={activePage === "calendar" ? C.accent : navInactiveColor} />
+              {!collapsed && <span style={bottomLabelStyle(activePage === "calendar")}>Calendar</span>}
             </button>
 
-            {/* Notes */}
+            {/* Tasks (left-pane resident) */}
             <button
-              onClick={() => setActivePage("notes")}
-              title="Notes"
-              style={bottomBtnStyle(activePage === "notes")}
-              onMouseEnter={(e) => { if (activePage !== "notes") e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { if (activePage !== "notes") e.currentTarget.style.background = "transparent"; }}
+              onClick={() => focusLeftPane("tasks")}
+              title="Tasks"
+              style={bottomBtnStyle(activeLeftPane === "tasks")}
+              onMouseEnter={(e) => { if (activeLeftPane !== "tasks") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activeLeftPane !== "tasks") e.currentTarget.style.background = "transparent"; }}
             >
-              <svg width={iconSize(activePage === "notes")} height={iconSize(activePage === "notes")} viewBox="0 0 16 16" fill="none">
-                <rect x="3" y="2" width="10" height="12" rx="1.5" stroke={activePage === "notes" ? C.accent : navInactiveColor} strokeWidth="1.3" fill="none" />
-                <line x1="5.5" y1="5.5" x2="10.5" y2="5.5" stroke={activePage === "notes" ? C.accent : navInactiveColor} strokeWidth="1" />
-                <line x1="5.5" y1="8" x2="10.5" y2="8" stroke={activePage === "notes" ? C.accent : navInactiveColor} strokeWidth="1" />
-                <line x1="5.5" y1="10.5" x2="8.5" y2="10.5" stroke={activePage === "notes" ? C.accent : navInactiveColor} strokeWidth="1" />
+              <svg width={iconSize(activeLeftPane === "tasks")} height={iconSize(activeLeftPane === "tasks")} viewBox="0 0 16 16" fill="none">
+                <circle cx="8" cy="8" r="6" stroke={activeLeftPane === "tasks" ? C.accent : navInactiveColor} strokeWidth="1.3" fill="none" />
+                <path d="M5 8L7 10L11 6" stroke={activeLeftPane === "tasks" ? C.accent : navInactiveColor} strokeWidth="1.3" strokeLinecap="round" />
               </svg>
-              {!collapsed && <span style={bottomLabelStyle(activePage === "notes")}>Notes</span>}
+              {!collapsed && <span style={bottomLabelStyle(activeLeftPane === "tasks")}>Tasks</span>}
+            </button>
+
+            {/* Wasabi Chat (left-pane resident) — hidden for viewers */}
+            {identity?.role !== "viewer" && (
+              <button
+                onClick={() => focusLeftPane("chat")}
+                title="Wasabi Chat"
+                style={bottomBtnStyle(activeLeftPane === "chat")}
+                onMouseEnter={(e) => { if (activeLeftPane !== "chat") e.currentTarget.style.background = C.darkSurf2; }}
+                onMouseLeave={(e) => { if (activeLeftPane !== "chat") e.currentTarget.style.background = "transparent"; }}
+              >
+                <WasabiOrb size={iconSize(activeLeftPane === "chat")} />
+                {!collapsed && <span style={bottomLabelStyle(activeLeftPane === "chat")}>Chat</span>}
+              </button>
+            )}
+
+            {/* Notes (left-pane resident) */}
+            <button
+              onClick={() => focusLeftPane("notes")}
+              title="Notes"
+              style={bottomBtnStyle(activeLeftPane === "notes")}
+              onMouseEnter={(e) => { if (activeLeftPane !== "notes") e.currentTarget.style.background = C.darkSurf2; }}
+              onMouseLeave={(e) => { if (activeLeftPane !== "notes") e.currentTarget.style.background = "transparent"; }}
+            >
+              <svg width={iconSize(activeLeftPane === "notes")} height={iconSize(activeLeftPane === "notes")} viewBox="0 0 16 16" fill="none">
+                <rect x="3" y="2" width="10" height="12" rx="1.5" stroke={activeLeftPane === "notes" ? C.accent : navInactiveColor} strokeWidth="1.3" fill="none" />
+                <line x1="5.5" y1="5.5" x2="10.5" y2="5.5" stroke={activeLeftPane === "notes" ? C.accent : navInactiveColor} strokeWidth="1" />
+                <line x1="5.5" y1="8" x2="10.5" y2="8" stroke={activeLeftPane === "notes" ? C.accent : navInactiveColor} strokeWidth="1" />
+                <line x1="5.5" y1="10.5" x2="8.5" y2="10.5" stroke={activeLeftPane === "notes" ? C.accent : navInactiveColor} strokeWidth="1" />
+              </svg>
+              {!collapsed && <span style={bottomLabelStyle(activeLeftPane === "notes")}>Notes</span>}
             </button>
 
             {/* Unified Inbox (only when Gmail granted OR Microsoft connected — Sheets-only Google users don't see this) */}
@@ -782,26 +818,20 @@ export default function Navigation({
               {!collapsed && <span style={bottomLabelStyle(activePage === "knowledge")}>Knowledge Base</span>}
             </button>
 
-            {/* Settings (admin only when multi-user is active) */}
-            {identity?.role === "admin" && (
-              <button
-                onClick={() => setActivePage("system")}
-                title="Settings"
-                style={bottomBtnStyle(activePage === "system")}
-                onMouseEnter={(e) => { if (activePage !== "system") e.currentTarget.style.background = C.darkSurf2; }}
-                onMouseLeave={(e) => { if (activePage !== "system") e.currentTarget.style.background = "transparent"; }}
-              >
-                <IconGear size={iconSize(activePage === "system")} color={activePage === "system" ? C.accent : navInactiveColor} />
-                {!collapsed && <span style={bottomLabelStyle(activePage === "system")}>Settings</span>}
-              </button>
-            )}
+            {/* Settings — moved to TopHeader (gear icon next to user pill).
+                Phase 2 removed the inline button to free space in the rail.
+                The user pill dropdown also exposes Settings if the gear icon
+                isn't preferred. */}
 
-            {/* Wasabi flame — hidden for viewers (chat is editor+admin only) */}
-            {!wasabiPanelOpen && identity?.role !== "viewer" && (
+            {/* Wasabi flame — kept as a tactile entry point that focuses the
+                left pane on chat. Hidden for viewers (chat is editor+admin only). */}
+            {identity?.role !== "viewer" && (
               <button
-                onClick={onToggleWasabiPanel}
+                onClick={() => focusLeftPane("chat")}
                 style={{
-                  background: "none", border: "none", cursor: "pointer",
+                  background: activeLeftPane === "chat" ? C.darkSurf2 : "none",
+                  boxShadow: activeLeftPane === "chat" ? `inset 0 1px 0 rgba(255,255,255,0.07), 0 1px 3px rgba(0,0,0,0.15)` : "none",
+                  border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center",
                   gap: collapsed ? 0 : 10,
                   padding: collapsed ? "10px 8px" : "10px 14px",
@@ -811,15 +841,15 @@ export default function Navigation({
                   justifyContent: collapsed ? "center" : "flex-start",
                   marginTop: 2,
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                title="Open Wasabi"
+                onMouseEnter={(e) => { if (activeLeftPane !== "chat") e.currentTarget.style.background = C.darkSurf2; }}
+                onMouseLeave={(e) => { if (activeLeftPane !== "chat") e.currentTarget.style.background = "transparent"; }}
+                title="Open Wasabi Chat"
               >
                 <WasabiFlame size={collapsed ? 28 : 34} isThinking={isThinking} />
                 {!collapsed && (
                   <span style={{
                     fontFamily: "'Outfit',sans-serif", fontSize: 12, fontWeight: 500,
-                    color: navInactiveColor, letterSpacing: "0.02em",
+                    color: activeLeftPane === "chat" ? C.accent : navInactiveColor, letterSpacing: "0.02em",
                   }}>
                     Wasabi
                   </span>

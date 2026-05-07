@@ -23,9 +23,41 @@ export function NavigationProvider({ children }) {
   const { pages } = usePages();
   const { identity } = useAuth();
 
+  // ── Phase 2 migration: convert pre-split-pane activePage values to the
+  // new dual-pane state. Runs once per browser, gated by a flag so
+  // returning users land cleanly. Mirrors the App.jsx zen→functional
+  // names migration pattern.
+  (() => {
+    try {
+      if (localStorage.getItem("wasabi_phase2_migrated_v1")) return;
+      const prev = loadJSON("wasabi_active_page", null);
+      // "tasks" / "notes" / null all defaulted to TasksView before; lift them
+      // to the left pane and set the right pane to Dashboard so the user
+      // doesn't land on a blank screen.
+      if (prev === "tasks" || prev === "notes" || prev === null) {
+        const leftPane = prev === "notes" ? "notes" : "tasks";
+        saveJSON("wasabi_active_left_pane", leftPane);
+        saveJSON("wasabi_active_page", "dashboard");
+      } else {
+        // Any other route stays as the right pane; left pane defaults to tasks.
+        saveJSON("wasabi_active_left_pane", "tasks");
+      }
+      localStorage.setItem("wasabi_phase2_migrated_v1", "1");
+    } catch {}
+  })();
+
   const [activePage, setActivePageRaw] = useState(() => loadJSON("wasabi_active_page", null));
   const [activeFolder, setActiveFolder] = useState(() => loadJSON("wasabi_active_folder", null));
   const [expandedNodes, setExpandedNodes] = useState(new Set());
+
+  // ── Dual-pane state (Phase 2) ──
+  // Left pane is always one of "tasks" | "chat" | "notes". Right pane is
+  // anything else routed via activePage. The two are independent — clicking
+  // a left-pane nav item only updates activeLeftPane; clicking a right-pane
+  // nav item only updates activePage.
+  const [activeLeftPane, setActiveLeftPane] = useState(() => loadJSON("wasabi_active_left_pane", "tasks"));
+  const [splitRatio, setSplitRatio] = useState(() => loadJSON("wasabi_split_ratio", 0.4));
+  const [leftPaneCollapsed, setLeftPaneCollapsed] = useState(() => loadJSON("wasabi_left_pane_collapsed", false));
 
   // ── Guarded setter: rejects system-internal pages at the gate ──
   const SYSTEM_PAGE_TYPES = new Set(["color-defaults", "color-view-config"]);
@@ -62,6 +94,9 @@ export function NavigationProvider({ children }) {
   // ── Persist to localStorage ──
   useEffect(() => { saveJSON("wasabi_active_page", activePage); }, [activePage]);
   useEffect(() => { saveJSON("wasabi_active_folder", activeFolder); }, [activeFolder]);
+  useEffect(() => { saveJSON("wasabi_active_left_pane", activeLeftPane); }, [activeLeftPane]);
+  useEffect(() => { saveJSON("wasabi_split_ratio", splitRatio); }, [splitRatio]);
+  useEffect(() => { saveJSON("wasabi_left_pane_collapsed", leftPaneCollapsed); }, [leftPaneCollapsed]);
   // Clean up vestigial localStorage key (no longer used)
   useEffect(() => { try { localStorage.removeItem("wasabi_expanded_nodes"); } catch {} }, []);
 
@@ -152,6 +187,13 @@ export function NavigationProvider({ children }) {
     setTargetFolderPath,
     navigateToRecord,
     consumePendingRecordId,
+    // Dual-pane state
+    activeLeftPane,
+    setActiveLeftPane,
+    splitRatio,
+    setSplitRatio,
+    leftPaneCollapsed,
+    setLeftPaneCollapsed,
   };
 
   return <NavigationContext.Provider value={value}>{children}</NavigationContext.Provider>;

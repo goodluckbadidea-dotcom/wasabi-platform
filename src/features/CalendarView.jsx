@@ -12,6 +12,9 @@ import { getGoogleStatus, listCalendarEvents, getMicrosoftStatus, listOutlookEve
 import { isSameDay, getWeekRange, getMonthRange, getListViewRange, formatWeekDateHeader, formatMonthHeader } from "./taskHelpers.js";
 import { useRecordDrawer } from "./RecordDrawerContext.jsx";
 import { useColorMapping } from "../context/ColorMappingContext.jsx";
+import useTasksTable from "./useTasksTable.js";
+import useAICuratedTasks from "./useAICuratedTasks.js";
+import useDismissedTasks from "./useDismissedTasks.js";
 import DayColumn from "./calendar/DayColumn.jsx";
 import WeekListView from "./calendar/WeekListView.jsx";
 import MonthGrid from "./calendar/MonthGrid.jsx";
@@ -41,7 +44,23 @@ function saveHiddenCalendars(set) {
   localStorage.setItem(HIDDEN_KEY, JSON.stringify([...set]));
 }
 
-export default function CalendarView({ allTasks, refreshRef }) {
+export default function CalendarView({ allTasks: allTasksProp, refreshRef }) {
+  // Internal task fetch — runs unconditionally so React's rules-of-hooks
+  // stay happy. When a parent passes `allTasksProp`, we use that instead;
+  // the hooks' own caching means the cost of calling them in parallel with
+  // a parent like TasksView is negligible (same cache keys → no duplicate
+  // network work).
+  const { tasks: ownUserTasks, tableId: ownTableId } = useTasksTable();
+  const { dismissedIds: ownDismissed, completedCount: ownCompleted } = useDismissedTasks();
+  const { aiTasks: ownAITasks } = useAICuratedTasks({
+    dismissedIds: ownDismissed,
+    completedCount: ownCompleted,
+    userTasksTableId: ownTableId,
+  });
+  const allTasks = allTasksProp ?? [
+    ...(ownUserTasks || []),
+    ...(ownAITasks || []),
+  ];
   const { openDrawer } = useRecordDrawer();
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [viewMode, setViewMode] = useState("day"); // "day" | "week" | "month"

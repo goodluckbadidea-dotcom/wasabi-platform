@@ -36,7 +36,14 @@ const SYSTEM_ITEMS = [
   { id: "new-page", label: "New Page", icon: IconPlus, type: "system" },
 ];
 
-export default function CommandPalette({ open, onClose, pages = [], setActivePage, onAddPage }) {
+// Left-pane entries (Phase 2). Activate via setActiveLeftPane, not setActivePage.
+const LEFT_PANE_ITEMS = [
+  { id: "tasks", label: "Tasks", icon: IconForm, type: "left-pane" },
+  { id: "chat", label: "Wasabi Chat", icon: IconBolt, type: "left-pane" },
+  { id: "notes", label: "Notes", icon: IconPage, type: "left-pane" },
+];
+
+export default function CommandPalette({ open, onClose, pages = [], setActivePage, setActiveLeftPane, onAddPage }) {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef(null);
@@ -63,6 +70,12 @@ export default function CommandPalette({ open, onClose, pages = [], setActivePag
       const label = page.name || page.id;
       if (q && !label.toLowerCase().includes(q)) continue;
       items.push({ id: page.id, label, icon: IconPage, type: "page", pageIcon: page.icon });
+    }
+
+    // Left-pane items (Tasks / Wasabi Chat / Notes)
+    for (const lp of LEFT_PANE_ITEMS) {
+      if (q && !lp.label.toLowerCase().includes(q)) continue;
+      items.push(lp);
     }
 
     // System
@@ -93,7 +106,9 @@ export default function CommandPalette({ open, onClose, pages = [], setActivePag
   // Execute selected item
   const executeItem = useCallback((item) => {
     if (!item) return;
-    if (item.type === "page") {
+    if (item.type === "left-pane") {
+      setActiveLeftPane?.(item.id);
+    } else if (item.type === "page") {
       setActivePage(item.id);
     } else if (item.id === "system") {
       setActivePage("system");
@@ -103,7 +118,7 @@ export default function CommandPalette({ open, onClose, pages = [], setActivePag
       onAddPage();
     }
     onClose();
-  }, [setActivePage, onAddPage, onClose]);
+  }, [setActivePage, setActiveLeftPane, onAddPage, onClose]);
 
   // Keyboard navigation
   const handleKeyDown = useCallback((e) => {

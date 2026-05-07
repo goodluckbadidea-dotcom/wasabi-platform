@@ -22,6 +22,7 @@ import { C, Z } from "./design/tokens.js";
 import LoginScreen from "./core/LoginScreen.jsx";
 import TopHeader from "./core/TopHeader.jsx";
 import Navigation from "./core/Navigation.jsx";
+import SplitPane from "./core/SplitPane.jsx";
 // Retry wrapper for dynamic imports — handles stale chunk errors after deploy
 function lazyWithRetry(importFn) {
   return React.lazy(() =>
@@ -64,6 +65,7 @@ import { IconGear } from "./design/icons.jsx";
 const TasksView = lazyWithRetry(() => import("./features/TasksView.jsx"));
 const NotesView = lazyWithRetry(() => import("./features/NotesView.jsx"));
 const DashboardView = lazyWithRetry(() => import("./features/DashboardView.jsx"));
+const CalendarView = lazyWithRetry(() => import("./features/CalendarView.jsx"));
 // GmailView and OutlookView lazy imports removed 2026-05-04 — UnifiedInboxView replaces both.
 // The .jsx files are retained on disk in case they need to be re-enabled.
 const UnifiedInboxView = lazyWithRetry(() => import("./features/UnifiedInboxView.jsx"));
@@ -120,6 +122,13 @@ function AppContent() {
     identity,
     multiUserEnabled,
     identityLoading,
+    // Dual-pane state (Phase 2)
+    activeLeftPane,
+    setActiveLeftPane,
+    splitRatio,
+    setSplitRatio,
+    leftPaneCollapsed,
+    setLeftPaneCollapsed,
   } = usePlatform();
 
   const { theme, themeName } = useTheme();
@@ -128,9 +137,6 @@ function AppContent() {
   // ── UI State (persisted to localStorage) ──
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { const v = localStorage.getItem("wasabi_sidebar_collapsed"); return v !== null ? JSON.parse(v) : true; } catch { return true; }
-  });
-  const [wasabiPanelOpen, setWasabiPanelOpen] = useState(() => {
-    try { const v = localStorage.getItem("wasabi_panel_open"); return v !== null ? JSON.parse(v) : false; } catch { return false; }
   });
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [viewStates, setViewStates] = useState(() => {
@@ -150,8 +156,13 @@ function AppContent() {
 
   // ── Persist UI state to localStorage ──
   useEffect(() => { try { localStorage.setItem("wasabi_sidebar_collapsed", JSON.stringify(sidebarCollapsed)); } catch {} }, [sidebarCollapsed]);
-  useEffect(() => { try { localStorage.setItem("wasabi_panel_open", JSON.stringify(wasabiPanelOpen)); } catch {} }, [wasabiPanelOpen]);
   useEffect(() => { try { localStorage.setItem("wasabi_view_states", JSON.stringify(viewStates)); } catch {} }, [viewStates]);
+
+  // Helper: bring chat into the left pane and ensure it's visible.
+  const focusChatInLeftPane = useCallback(() => {
+    setActiveLeftPane("chat");
+    if (leftPaneCollapsed) setLeftPaneCollapsed(false);
+  }, [setActiveLeftPane, leftPaneCollapsed, setLeftPaneCollapsed]);
 
   // ── Multi-device sync: navigation + session revocation ──
   const userSync = useUserSync();
@@ -267,24 +278,16 @@ function AppContent() {
     },
     {
       shortcut: "mod+.",
-      description: "Toggle Wasabi panel",
+      description: "Open Wasabi Chat (left pane)",
       handler: () => {
         if (identity?.role === "viewer") return;
-        setWasabiPanelOpen((o) => !o);
+        focusChatInLeftPane();
       },
     },
     {
       shortcut: "mod+i",
       description: "Inbox",
       handler: () => setActivePage("inbox"),
-    },
-    {
-      shortcut: "escape",
-      description: "Close Wasabi panel",
-      handler: () => {
-        if (wasabiPanelOpen) setWasabiPanelOpen(false);
-      },
-      when: () => wasabiPanelOpen,
     },
     {
       shortcut: "mod+j",
@@ -314,7 +317,7 @@ function AppContent() {
         if (idx < folderPages.length - 1) setActivePage(folderPages[idx + 1].id);
       },
     },
-  ], [handleAddPage, wasabiPanelOpen, activePage, pages, activeFolder, getFolderPages, toggleNeurons, setActivePage]);
+  ], [handleAddPage, focusChatInLeftPane, activePage, pages, activeFolder, getFolderPages, toggleNeurons, setActivePage, identity]);
 
   // Auth gate is now in PlatformContext (AuthGate component).
   // AppContent only renders when isAuthenticated is true.
@@ -339,13 +342,74 @@ function AppContent() {
 
   // Sidebar width for gradient bridge line positioning
   const sidebarW = sidebarCollapsed ? 54 : 220;
-  const panelW = wasabiPanelOpen ? 320 : 0;
 
   // Orb icon for chat avatars
   const WasabiFlameIcon = <WasabiOrb size={28} />;
 
-  // Determine main content
-  const renderContent = () => {
+  // ── Left pane: Tasks / Wasabi Chat / Notes (personal context surface) ──
+  const renderLeftPane = () => {
+    if (activeLeftPane === "chat") {
+      // Viewers can't access chat — fall through to tasks instead.
+      if (identity?.role === "viewer") {
+        return (
+          <ErrorBoundary fallbackLabel="Tasks">
+            <React.Suspense fallback={
+              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
+                Loading...
+              </div>
+            }>
+              <TasksView />
+            </React.Suspense>
+          </ErrorBoundary>
+        );
+      }
+      return (
+        <ErrorBoundary fallbackLabel="Wasabi Chat">
+          <React.Suspense fallback={
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
+              Loading...
+            </div>
+          }>
+            <WasabiPanel
+              embedded
+              activePageConfig={activePageConfig}
+              activePageData={activePageData}
+              pendingChatMessage={pendingChatMessage}
+              onClearPendingMessage={() => setPendingChatMessage(null)}
+            />
+          </React.Suspense>
+        </ErrorBoundary>
+      );
+    }
+    if (activeLeftPane === "notes") {
+      return (
+        <ErrorBoundary fallbackLabel="Notes">
+          <React.Suspense fallback={
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 12 }}>
+              Loading...
+            </div>
+          }>
+            <NotesView />
+          </React.Suspense>
+        </ErrorBoundary>
+      );
+    }
+    // Default: tasks
+    return (
+      <ErrorBoundary fallbackLabel="Tasks">
+        <React.Suspense fallback={
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
+            Loading...
+          </div>
+        }>
+          <TasksView />
+        </React.Suspense>
+      </ErrorBoundary>
+    );
+  };
+
+  // ── Right pane: workspace content (everything else) ──
+  const renderRightPane = () => {
     // System settings
     if (activePage === "system") {
       return <SystemManager />;
@@ -360,16 +424,16 @@ function AppContent() {
         />
       );
     }
-    // Notes scratchpad
-    if (activePage === "notes") {
+    // Calendar (standalone right-pane destination, lifted out of TasksView)
+    if (activePage === "calendar") {
       return (
-        <ErrorBoundary fallbackLabel="Notes">
+        <ErrorBoundary fallbackLabel="Calendar">
           <React.Suspense fallback={
-            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 12 }}>
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
               Loading...
             </div>
           }>
-            <NotesView />
+            <CalendarView />
           </React.Suspense>
         </ErrorBoundary>
       );
@@ -389,7 +453,6 @@ function AppContent() {
       );
     }
     // Legacy "gmail" / "outlook" routes redirect to the unified inbox.
-    // Old saved-state references (e.g. localStorage.activePage) won't break.
     if (activePage === "gmail" || activePage === "outlook" || activePage === "inbox-unified") {
       return (
         <ErrorBoundary fallbackLabel="Inbox">
@@ -431,7 +494,7 @@ function AppContent() {
         </ErrorBoundary>
       );
     }
-    // Knowledge Hub (KB, Automations, Functions, Build)
+    // Knowledge Hub
     if (activePage === "knowledge") {
       return (
         <ErrorBoundary fallbackLabel="Knowledge Hub">
@@ -440,7 +503,7 @@ function AppContent() {
               Loading...
             </div>
           }>
-            <KnowledgeHub onOpenChat={(msg) => { setPendingChatMessage(msg); setWasabiPanelOpen(true); }} />
+            <KnowledgeHub onOpenChat={(msg) => { setPendingChatMessage(msg); focusChatInLeftPane(); }} />
           </React.Suspense>
         </ErrorBoundary>
       );
@@ -485,15 +548,15 @@ function AppContent() {
         />
       );
     }
-    // Default: Tasks split view (To-Do + Calendar)
+    // Default for an empty/unknown right-pane route → Dashboard.
     return (
-      <ErrorBoundary fallbackLabel="Tasks">
+      <ErrorBoundary fallbackLabel="Dashboard">
         <React.Suspense fallback={
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
             Loading...
           </div>
         }>
-          <TasksView />
+          <DashboardView key={identity?.id || "default"} />
         </React.Suspense>
       </ErrorBoundary>
     );
@@ -520,6 +583,7 @@ function AppContent() {
           pages={pages}
           activePage={activePage}
           setActivePage={(id) => { setActivePage(id); setCommandPaletteOpen(false); }}
+          setActiveLeftPane={(p) => { setActiveLeftPane(p); if (leftPaneCollapsed) setLeftPaneCollapsed(false); setCommandPaletteOpen(false); }}
           onAddPage={() => { handleAddPage(); setCommandPaletteOpen(false); }}
         />
       )}
@@ -531,7 +595,7 @@ function AppContent() {
       <NeuronOverlay />
       <NeuronLines />
 
-      {/* ── Main Row: [Wasabi Panel] [Sidebar] [Content] ── */}
+      {/* ── Main Row: [Sidebar] [SplitPane(left, right)] ── */}
       <div
         style={{
           flex: 1,
@@ -540,88 +604,57 @@ function AppContent() {
           position: "relative",
         }}
       >
-        {/* Wasabi Panel (inline on desktop, overlay on narrow viewports) — viewers hidden */}
-        {wasabiPanelOpen && !isNarrow && identity?.role !== "viewer" && (
-          <div style={{
-            animation: ANIM.snapInLeft(0.02),
-            display: "flex",
-            flexShrink: 0,
-            borderRight: `1px solid ${C.edgeLine}`,
-          }}>
-            <React.Suspense fallback={null}>
-              <WasabiPanel
-                onClose={() => setWasabiPanelOpen(false)}
-                activePageConfig={activePageConfig}
-                activePageData={activePageData}
-                pendingChatMessage={pendingChatMessage}
-                onClearPendingMessage={() => setPendingChatMessage(null)}
-              />
-            </React.Suspense>
-          </div>
-        )}
-        {wasabiPanelOpen && isNarrow && identity?.role !== "viewer" && (
-          <>
-            {/* Backdrop */}
-            <div
-              onClick={() => setWasabiPanelOpen(false)}
-              style={{
-                position: "fixed", inset: 0,
-                background: C.overlayBg,
-                zIndex: Z.panel,
-                animation: ANIM.backdropFade,
-              }}
-            />
-            {/* Overlay panel */}
-            <div style={{
-              position: "fixed", top: 0, left: 0, bottom: 0,
-              width: "min(320px, 85vw)",
-              zIndex: Z.panel + 1,
-              display: "flex",
-              paddingTop: "env(safe-area-inset-top, 0px)",
-              paddingBottom: "env(safe-area-inset-bottom, 0px)",
-              animation: ANIM.drawerSlideLeft,
-            }}>
-              <React.Suspense fallback={null}>
-                <ChatPanel
-                  onClose={() => setWasabiPanelOpen(false)}
-                  activePageConfig={activePageConfig}
-                  activePageData={activePageData}
-                  pendingChatMessage={pendingChatMessage}
-                  onClearPendingMessage={() => setPendingChatMessage(null)}
-                />
-              </React.Suspense>
-            </div>
-          </>
-        )}
-
         {/* Left Sidebar */}
         <Navigation
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
           onExpandSidebar={() => setSidebarCollapsed(false)}
-          wasabiPanelOpen={wasabiPanelOpen}
-          onToggleWasabiPanel={() => setWasabiPanelOpen((o) => !o)}
           isThinking={false}
           onCreatePage={handleAddPage}
           viewStates={viewStates}
           onSetViewForPage={(pageId, viewIdx) => setViewStates((prev) => ({ ...prev, [pageId]: viewIdx }))}
         />
 
-        {/* Main Content */}
-        <div
-          key={`${activePage || "__home__"}-${themeName}`}
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-            minWidth: 0,
-            animation: ANIM.contentSwap(),
-            opacity: 1,
-          }}
-        >
-          {renderContent()}
-        </div>
+        {/* Dual-pane content shell */}
+        <SplitPane
+          isNarrow={isNarrow}
+          ratio={splitRatio}
+          onRatioChange={setSplitRatio}
+          leftCollapsed={leftPaneCollapsed}
+          onLeftCollapsedChange={setLeftPaneCollapsed}
+          leftContent={
+            <div
+              key={`${activeLeftPane}-${themeName}`}
+              style={{
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+                minWidth: 0,
+                animation: ANIM.contentSwap(),
+                opacity: 1,
+              }}
+            >
+              {renderLeftPane()}
+            </div>
+          }
+          rightContent={
+            <div
+              key={`${activePage || "__home__"}-${themeName}`}
+              style={{
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+                minWidth: 0,
+                animation: ANIM.contentSwap(),
+                opacity: 1,
+              }}
+            >
+              {renderRightPane()}
+            </div>
+          }
+        />
       </div>
     </div>
   );

@@ -119,6 +119,14 @@ export function usePlatform() {
     toggleExpand: nav.toggleExpand,
     navigateToRecord: nav.navigateToRecord,
 
+    // Dual-pane state (Phase 2)
+    activeLeftPane: nav.activeLeftPane,
+    setActiveLeftPane: nav.setActiveLeftPane,
+    splitRatio: nav.splitRatio,
+    setSplitRatio: nav.setSplitRatio,
+    leftPaneCollapsed: nav.leftPaneCollapsed,
+    setLeftPaneCollapsed: nav.setLeftPaneCollapsed,
+
     // Batch queue
     batchQueue: pagesCtx.batchQueue,
     addToQueue: pagesCtx.addToQueue,
