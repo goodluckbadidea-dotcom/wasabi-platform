@@ -1,8 +1,10 @@
 // ─── Wasabi Platform App Shell ───
 // Root component: auth gate → layout → routing
-// Layout: TopHeader + [WasabiPanel | Sidebar | Content]
-// Top header: WASABI wordmark + page-level controls (right side).
-// Sidebar: Icon-bar navigation, expandable.
+// Layout: [SplitPane(left, right)] + BottomBar
+// BottomBar (2026-05-08): horizontal dock at the bottom; replaces the
+// old TopHeader chrome and the vertical Navigation sidebar.
+// Panels are full-bleed top — no top chrome strip.
+// Maximize/minimize per panel via panelMode in NavigationContext.
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { PlatformProvider, usePlatform } from "./context/PlatformContext.jsx";
@@ -20,10 +22,11 @@ import { S } from "./design/styles.js";
 import { C, Z } from "./design/tokens.js";
 
 import LoginScreen from "./core/LoginScreen.jsx";
-import TopHeader from "./core/TopHeader.jsx";
-import Navigation from "./core/Navigation.jsx";
+// TopHeader and Navigation are retained on disk per CLAUDE.md but are
+// no longer mounted — BottomBar replaces both as of 2026-05-08.
+import BottomBar from "./core/BottomBar.jsx";
+import SearchModal from "./core/SearchModal.jsx";
 import SplitPane from "./core/SplitPane.jsx";
-import Breadcrumb from "./components/Breadcrumb.jsx";
 // Retry wrapper for dynamic imports — handles stale chunk errors after deploy
 function lazyWithRetry(importFn) {
   return React.lazy(() =>
@@ -61,7 +64,7 @@ import CommandPalette from "./core/CommandPalette.jsx";
 import NeuronOverlay from "./neurons/NeuronOverlay.jsx";
 import NeuronLines from "./neurons/NeuronLines.jsx";
 import { useNeurons } from "./neurons/NeuronsContext.jsx";
-import { IconGear } from "./design/icons.jsx";
+import { IconExpand, IconCollapse } from "./design/icons.jsx";
 
 const TasksView = lazyWithRetry(() => import("./features/TasksView.jsx"));
 const NotesView = lazyWithRetry(() => import("./features/NotesView.jsx"));
@@ -128,18 +131,16 @@ function AppContent() {
     setActiveLeftPane,
     splitRatio,
     setSplitRatio,
-    leftPaneCollapsed,
-    setLeftPaneCollapsed,
+    panelMode,
+    setPanelMode,
   } = usePlatform();
 
   const { theme, themeName } = useTheme();
   const { toggleOverlay: toggleNeurons } = useNeurons();
 
   // ── UI State (persisted to localStorage) ──
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    try { const v = localStorage.getItem("wasabi_sidebar_collapsed"); return v !== null ? JSON.parse(v) : true; } catch { return true; }
-  });
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [viewStates, setViewStates] = useState(() => {
     try { const v = localStorage.getItem("wasabi_view_states"); return v ? JSON.parse(v) : {}; } catch { return {}; }
   });
@@ -150,20 +151,14 @@ function AppContent() {
   // ── Viewport detection (shared context) ──
   const { isNarrow, isTablet } = useViewport();
 
-  // Auto-collapse sidebar when viewport shrinks to phone size
-  useEffect(() => {
-    if (isNarrow) setSidebarCollapsed(true);
-  }, [isNarrow]);
-
   // ── Persist UI state to localStorage ──
-  useEffect(() => { try { localStorage.setItem("wasabi_sidebar_collapsed", JSON.stringify(sidebarCollapsed)); } catch {} }, [sidebarCollapsed]);
   useEffect(() => { try { localStorage.setItem("wasabi_view_states", JSON.stringify(viewStates)); } catch {} }, [viewStates]);
 
   // Helper: bring chat into the left pane and ensure it's visible.
   const focusChatInLeftPane = useCallback(() => {
     setActiveLeftPane("chat");
-    if (leftPaneCollapsed) setLeftPaneCollapsed(false);
-  }, [setActiveLeftPane, leftPaneCollapsed, setLeftPaneCollapsed]);
+    if (panelMode === "right-max") setPanelMode("split");
+  }, [setActiveLeftPane, panelMode, setPanelMode]);
 
   // ── Multi-device sync: navigation + session revocation ──
   const userSync = useUserSync();
@@ -274,8 +269,8 @@ function AppContent() {
     },
     {
       shortcut: "mod+b",
-      description: "Toggle sidebar",
-      handler: () => setSidebarCollapsed((c) => !c),
+      description: "Toggle search modal",
+      handler: () => setSearchOpen((o) => !o),
     },
     {
       shortcut: "mod+.",
@@ -318,7 +313,7 @@ function AppContent() {
         if (idx < folderPages.length - 1) setActiveRightPane(folderPages[idx + 1].id);
       },
     },
-  ], [handleAddPage, focusChatInLeftPane, activeRightPane, pages, activeFolder, getFolderPages, toggleNeurons, setActiveRightPane, identity]);
+  ], [handleAddPage, focusChatInLeftPane, activeRightPane, pages, activeFolder, getFolderPages, toggleNeurons, setActiveRightPane, identity, setSearchOpen]);
 
   // Auth gate is now in PlatformContext (AuthGate component).
   // AppContent only renders when isAuthenticated is true.
@@ -341,11 +336,16 @@ function AppContent() {
     }
   };
 
-  // Sidebar width for gradient bridge line positioning
-  const sidebarW = sidebarCollapsed ? 54 : 220;
-
   // Orb icon for chat avatars
   const WasabiFlameIcon = <WasabiOrb size={28} />;
+
+  // ── Panel maximize/minimize toggle (floating button per panel) ──
+  const toggleLeftMax = useCallback(() => {
+    setPanelMode(panelMode === "left-max" ? "split" : "left-max");
+  }, [panelMode, setPanelMode]);
+  const toggleRightMax = useCallback(() => {
+    setPanelMode(panelMode === "right-max" ? "split" : "right-max");
+  }, [panelMode, setPanelMode]);
 
   // ── Left pane: Tasks / Wasabi Chat / Notes (personal context surface) ──
   const renderLeftPane = () => {
@@ -584,45 +584,37 @@ function AppContent() {
           pages={pages}
           activeRightPane={activeRightPane}
           setActiveRightPane={(id) => { setActiveRightPane(id); setCommandPaletteOpen(false); }}
-          setActiveLeftPane={(p) => { setActiveLeftPane(p); if (leftPaneCollapsed) setLeftPaneCollapsed(false); setCommandPaletteOpen(false); }}
+          setActiveLeftPane={(p) => { setActiveLeftPane(p); if (panelMode === "right-max") setPanelMode("split"); setCommandPaletteOpen(false); }}
           onAddPage={() => { handleAddPage(); setCommandPaletteOpen(false); }}
         />
       )}
 
-      {/* ── Top Header Bar ── */}
-      <TopHeader />
+      {/* ── Search Modal (opened by ⌘B and the bottom-bar search button) ── */}
+      <SearchModal
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+      />
 
       {/* ── Neuron Overlay (glass pane for selection mode) ── */}
       <NeuronOverlay />
       <NeuronLines />
 
-      {/* ── Main Row: [Sidebar] [SplitPane(left, right)] ── */}
+      {/* ── Main canvas: full-bleed SplitPane (top header removed) ── */}
       <div
         style={{
           flex: 1,
           display: "flex",
           overflow: "hidden",
           position: "relative",
+          paddingTop: "env(safe-area-inset-top, 0px)",
         }}
       >
-        {/* Left Sidebar */}
-        <Navigation
-          collapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
-          onExpandSidebar={() => setSidebarCollapsed(false)}
-          isThinking={false}
-          onCreatePage={handleAddPage}
-          viewStates={viewStates}
-          onSetViewForPage={(pageId, viewIdx) => setViewStates((prev) => ({ ...prev, [pageId]: viewIdx }))}
-        />
-
-        {/* Dual-pane content shell */}
         <SplitPane
           isNarrow={isNarrow}
           ratio={splitRatio}
           onRatioChange={setSplitRatio}
-          leftCollapsed={leftPaneCollapsed}
-          onLeftCollapsedChange={setLeftPaneCollapsed}
+          panelMode={panelMode}
+          onPanelModeChange={setPanelMode}
           leftContent={
             <div
               key={`${activeLeftPane}-${themeName}`}
@@ -634,8 +626,19 @@ function AppContent() {
                 minWidth: 0,
                 animation: ANIM.contentSwap(),
                 opacity: 1,
+                position: "relative",
               }}
             >
+              {/* Floating maximize/minimize toggle — top-right of left pane.
+                  Hidden on narrow viewports (drawer mode) where the SplitPane
+                  drawer toggle pill handles open/close. */}
+              {!isNarrow && (
+                <PanelMaxButton
+                  side="left"
+                  isMaxed={panelMode === "left-max"}
+                  onToggle={toggleLeftMax}
+                />
+              )}
               {renderLeftPane()}
             </div>
           }
@@ -650,22 +653,70 @@ function AppContent() {
                 minWidth: 0,
                 animation: ANIM.contentSwap(),
                 opacity: 1,
+                position: "relative",
               }}
             >
-              {/* Breadcrumb — pulled out of TopHeader so the path stays inside
-                  the right pane. Padding matches WorkspaceBrowser's internal
-                  breadcrumb position so transitioning between routes doesn't
-                  jump the breadcrumb's Y/X position. The component self-hides
-                  on built-in routes and on narrow viewports. */}
-              <div style={{ flexShrink: 0, padding: "16px 28px 0" }}>
-                <Breadcrumb />
-              </div>
+              {!isNarrow && (
+                <PanelMaxButton
+                  side="right"
+                  isMaxed={panelMode === "right-max"}
+                  onToggle={toggleRightMax}
+                />
+              )}
               {renderRightPane()}
             </div>
           }
         />
       </div>
+
+      {/* ── Bottom navigation bar (replaces TopHeader + Sidebar) ── */}
+      <BottomBar
+        isThinking={false}
+        onCreatePage={handleAddPage}
+        onSearchClick={() => setSearchOpen(true)}
+      />
     </div>
+  );
+}
+
+// ─── PanelMaxButton ───
+// Small floating button at the top-right corner of each panel for
+// maximize/minimize. Sits absolutely-positioned so it overlays the
+// feature's own internal header without requiring per-feature edits.
+function PanelMaxButton({ side, isMaxed, onToggle }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      onClick={onToggle}
+      title={isMaxed ? "Restore split view" : `Maximize ${side === "left" ? "left" : "right"} panel`}
+      aria-label={isMaxed ? "Restore split view" : `Maximize ${side} panel`}
+      style={{
+        position: "absolute",
+        top: 12,
+        right: 14,
+        width: 30,
+        height: 30,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: hover ? C.darkSurf2 : "transparent",
+        border: `1px solid ${hover ? C.darkBorder : "transparent"}`,
+        borderRadius: 8,
+        cursor: "pointer",
+        transition: "background 0.15s, border-color 0.15s, opacity 0.15s",
+        opacity: hover ? 1 : 0.55,
+        outline: "none",
+        zIndex: Z.sticky,
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      {isMaxed ? (
+        <IconCollapse size={15} color={C.darkMuted} />
+      ) : (
+        <IconExpand size={15} color={C.darkMuted} />
+      )}
+    </button>
   );
 }
 

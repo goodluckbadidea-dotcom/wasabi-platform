@@ -126,6 +126,9 @@ export function usePlatform() {
     setSplitRatio: nav.setSplitRatio,
     leftPaneCollapsed: nav.leftPaneCollapsed,
     setLeftPaneCollapsed: nav.setLeftPaneCollapsed,
+    // Panel maximize mode (2026-05-08)
+    panelMode: nav.panelMode,
+    setPanelMode: nav.setPanelMode,
 
     // Batch queue
     batchQueue: pagesCtx.batchQueue,

@@ -55,16 +55,38 @@ export function NavigationProvider({ children }) {
   // anything else routed via activeRightPane. The two are independent — clicking
   // a left-pane nav item only updates activeLeftPane; clicking a right-pane
   // nav item only updates activeRightPane.
-  const [activeLeftPane, setActiveLeftPane] = useState(() => loadJSON("wasabi_active_left_pane", "tasks"));
+  const [activeLeftPaneRaw, setActiveLeftPaneRaw] = useState(() => loadJSON("wasabi_active_left_pane", "tasks"));
   const [splitRatio, setSplitRatio] = useState(() => loadJSON("wasabi_split_ratio", 0.4));
-  const [leftPaneCollapsed, setLeftPaneCollapsed] = useState(() => loadJSON("wasabi_left_pane_collapsed", false));
+
+  // ── Panel mode (2026-05-08) ──
+  // "split"      — both panes visible (default)
+  // "left-max"   — left pane fills the viewport, right hidden
+  // "right-max"  — right pane fills the viewport, left hidden
+  // Clicking a nav item for the OTHER pane snaps back to "split"; clicking
+  // a nav item for the currently-maximized pane preserves the mode.
+  // Migrates from the old `wasabi_left_pane_collapsed` boolean — `true`
+  // there meant "right pane fills" (= "right-max" here).
+  const [panelMode, setPanelModeRaw] = useState(() => {
+    const stored = loadJSON("wasabi_panel_mode", null);
+    if (stored === "split" || stored === "left-max" || stored === "right-max") return stored;
+    // Legacy migration
+    const legacyCollapsed = loadJSON("wasabi_left_pane_collapsed", false);
+    return legacyCollapsed ? "right-max" : "split";
+  });
+  const setPanelMode = useCallback((mode) => {
+    if (mode !== "split" && mode !== "left-max" && mode !== "right-max") return;
+    setPanelModeRaw(mode);
+  }, []);
 
   // ── Guarded setter: rejects system-internal pages at the gate ──
+  // Also handles cross-side maximize reset: clicking a right-pane item
+  // while the LEFT pane is maximized snaps the layout back to "split".
   const SYSTEM_PAGE_TYPES = new Set(["color-defaults", "color-view-config"]);
   const setActiveRightPane = useCallback((pageId) => {
     // Allow null, special string IDs ("tasks", "workspaces", "gmail", etc.)
     if (pageId === null || (typeof pageId === "string" && !/^[0-9a-f]{8}-/.test(pageId))) {
       setActiveRightPaneRaw(pageId);
+      if (panelMode === "left-max") setPanelModeRaw("split");
       return;
     }
     // Block system-internal pages (User Tasks, color configs, etc.)
@@ -74,7 +96,15 @@ export function NavigationProvider({ children }) {
       return;
     }
     setActiveRightPaneRaw(pageId);
-  }, [pages]);
+    if (panelMode === "left-max") setPanelModeRaw("split");
+  }, [pages, panelMode]);
+
+  // Wrap activeLeftPane setter so cross-side clicks snap "right-max" → "split".
+  const setActiveLeftPane = useCallback((pane) => {
+    setActiveLeftPaneRaw(pane);
+    if (panelMode === "right-max") setPanelModeRaw("split");
+  }, [panelMode]);
+  const activeLeftPane = activeLeftPaneRaw;
 
   // Navigation signal for breadcrumb → WorkspaceBrowser path sync
   const [targetFolderPath, setTargetFolderPath] = useState(null);
@@ -96,8 +126,8 @@ export function NavigationProvider({ children }) {
   useEffect(() => { saveJSON("wasabi_active_folder", activeFolder); }, [activeFolder]);
   useEffect(() => { saveJSON("wasabi_active_left_pane", activeLeftPane); }, [activeLeftPane]);
   useEffect(() => { saveJSON("wasabi_split_ratio", splitRatio); }, [splitRatio]);
-  useEffect(() => { saveJSON("wasabi_left_pane_collapsed", leftPaneCollapsed); }, [leftPaneCollapsed]);
-  // Clean up vestigial localStorage key (no longer used)
+  useEffect(() => { saveJSON("wasabi_panel_mode", panelMode); }, [panelMode]);
+  // Clean up vestigial localStorage keys (no longer used)
   useEffect(() => { try { localStorage.removeItem("wasabi_expanded_nodes"); } catch {} }, []);
 
   // ── Evict stale system page from activeRightPane once pages load ──
@@ -176,6 +206,15 @@ export function NavigationProvider({ children }) {
     });
   }, []);
 
+  // Backwards-compat shims for callers that still expect `leftPaneCollapsed`
+  // and `setLeftPaneCollapsed`. Maps `true` ↔ "right-max", `false` ↔ "split".
+  // Does NOT cover the new "left-max" state — those callers must use panelMode.
+  const leftPaneCollapsed = panelMode === "right-max";
+  const setLeftPaneCollapsed = useCallback((collapsed) => {
+    if (collapsed) setPanelModeRaw("right-max");
+    else if (panelMode === "right-max") setPanelModeRaw("split");
+  }, [panelMode]);
+
   const value = {
     activeRightPane,
     setActiveRightPane,
@@ -194,6 +233,9 @@ export function NavigationProvider({ children }) {
     setSplitRatio,
     leftPaneCollapsed,
     setLeftPaneCollapsed,
+    // Panel maximize mode (2026-05-08)
+    panelMode,
+    setPanelMode,
   };
 
   return <NavigationContext.Provider value={value}>{children}</NavigationContext.Provider>;

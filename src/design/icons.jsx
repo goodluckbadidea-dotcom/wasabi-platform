@@ -491,6 +491,19 @@ export function IconExpand({ size = 20, color = d, ...rest }) {
   );
 }
 
+// Inverse of IconExpand — arrows pointing inward toward the center.
+// Used by the panel maximize/minimize toggle when a panel is currently maximized.
+export function IconCollapse({ size = 20, color = d, ...rest }) {
+  return (
+    <Icon size={size} {...rest}>
+      <polyline points="20 9 14 9 14 3" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <polyline points="4 15 10 15 10 21" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <line x1="14" y1="9" x2="21" y2="2" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="3" y1="22" x2="10" y2="15" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+    </Icon>
+  );
+}
+
 // ─── Node Editor Icons ───
 
 export function IconPlay({ size = 20, color = d, ...rest }) {

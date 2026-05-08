@@ -24,6 +24,7 @@ import { buildDataSummary, getTokenBudget, findWorkspaceAncestor } from "../agen
 import { fetchGoogleContext } from "../google/googleContext.js";
 import { fetchMicrosoftContext } from "../microsoft/microsoftContext.js";
 import * as api from "../lib/api.js";
+import useInsight from "../features/useInsight.js";
 // Legacy Notion imports removed — notifications now stored in D1
 import { timeAgo } from "../utils/helpers.js";
 import { downloadCSV, printPDF } from "../utils/reportExport.js";
@@ -36,6 +37,11 @@ const MAX_WIDTH = 640;
 export default function WasabiPanel({ onClose, isThinking, activePageConfig, activePageData, pendingChatMessage, onClearPendingMessage, embedded = false }) {
   const { user, identity, platformIds, pages, addPage } =
     usePlatform();
+
+  // AI insight — surfaced as a banner above the chat when the panel is
+  // embedded in the left pane. Used to live in the old sidebar; moved
+  // here so the user still sees it when chat is open.
+  const insight = useInsight(identity?.id);
 
   // Editor-or-admin tool set — editors lose destructive/admin-shaped tools.
   const wasabiTools = useMemo(() => getWasabiToolsForRole(identity?.role), [identity?.role]);
@@ -474,6 +480,47 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
         transition: isDragging && !embedded ? "none" : embedded ? undefined : TRANSITION.panelResize,
       }}
     >
+      {/* ── Embedded header strip — small banner that surfaces the AI
+            insight inside the left pane. The full header (Wasabi
+            wordmark + model toggle + close) only renders when the
+            panel is detached. ── */}
+      {embedded && insight && (
+        <div
+          style={{
+            flexShrink: 0,
+            padding: "12px 16px 10px",
+            background: C.dark,
+            borderBottom: `1px solid ${C.darkBorder}`,
+          }}
+        >
+          <div style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 10,
+          }}>
+            <WasabiFlame size={20} isThinking={isThinking} />
+            <div
+              style={{
+                flex: 1,
+                fontSize: 12,
+                lineHeight: 1.55,
+                fontFamily: FONT,
+                color: C.darkText + "CC",
+                fontStyle: "italic",
+                opacity: 0.9,
+                display: "-webkit-box",
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}
+              title={insight}
+            >
+              {insight}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Header (hidden when embedded in SashimiChatPanel) ── */}
       {!embedded && (
       <div
