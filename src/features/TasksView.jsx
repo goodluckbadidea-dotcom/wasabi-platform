@@ -16,6 +16,7 @@ import { useRecordDrawer } from "./RecordDrawerContext.jsx";
 import { ErrorBoundary } from "../core/ErrorBoundary.jsx";
 import { useColorMapping } from "../context/ColorMappingContext.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
+import PanelHeader, { HeaderIconButton } from "../core/PanelHeader.jsx";
 const ViewSettingsPanel = React.lazy(() => import("../components/ViewSettingsPanel.jsx").catch(() =>
   new Promise(r => setTimeout(r, 200)).then(() => import("../components/ViewSettingsPanel.jsx"))
 ));
@@ -170,65 +171,27 @@ export default function TasksView() {
         overflow: "hidden",
         background: C.darkSurf,
       }}>
-        {/* Panel header */}
-        <div style={{
-          flexShrink: 0, height: 48, padding: "0 20px",
-          borderBottom: `1px solid ${C.darkBorder}`,
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-        }}>
-          <div style={{
-            fontSize: 18, fontWeight: 600, fontFamily: FONT_DISPLAY, color: C.darkText,
-            display: "flex", alignItems: "center", gap: 10,
-            animation: ANIM.snapUp(0.03),
-          }}>
+        {/* Panel header (shared across all features) */}
+        <PanelHeader
+          side="left"
+          title="Tasks"
+          icon={
             <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
               <circle cx="8" cy="8" r="6" stroke={C.accent} strokeWidth="1.3" fill="none" />
               <path d="M5 8L7 10L11 6" stroke={C.accent} strokeWidth="1.3" strokeLinecap="round" />
             </svg>
-            Tasks
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            {/* View settings */}
-            <button
-              onClick={() => setShowSettings(true)}
-              title="View settings"
-              style={{
-                background: "none", border: "none", cursor: "pointer",
-                padding: 8, display: "flex", opacity: 0.5,
-                outline: "none", borderRadius: RADIUS.md,
-                transition: "opacity 0.15s",
-                minWidth: 32, minHeight: 32,
-                alignItems: "center", justifyContent: "center",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
-            >
-              <IconEdit size={14} color={C.darkMuted} />
-            </button>
-
-            {/* Refresh button */}
-            <button
-              onClick={handleRefresh}
-              title="Refresh tasks"
-              style={{
-                background: "none", border: "none", cursor: "pointer",
-                padding: 8, display: "flex", opacity: 0.5,
-                outline: "none", borderRadius: RADIUS.md,
-                transition: "opacity 0.15s",
-                minWidth: 32, minHeight: 32,
-                alignItems: "center", justifyContent: "center",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
-            >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                <path d="M14 2v5h-5" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M12.5 10A5.5 5.5 0 1 1 13 6" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" />
-              </svg>
-            </button>
-          </div>
-        </div>
+          }
+        >
+          <HeaderIconButton onClick={() => setShowSettings(true)} title="View settings">
+            <IconEdit size={14} color={C.darkMuted} />
+          </HeaderIconButton>
+          <HeaderIconButton onClick={handleRefresh} title="Refresh tasks">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path d="M14 2v5h-5" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M12.5 10A5.5 5.5 0 1 1 13 6" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" />
+            </svg>
+          </HeaderIconButton>
+        </PanelHeader>
 
         {/* Task list content */}
         <ErrorBoundary fallbackLabel="Task List">

@@ -15,6 +15,7 @@ import {
   IconWarning, IconRefresh, IconClipboard,
 } from "../design/icons.jsx";
 import MentionInput from "../components/MentionInput.jsx";
+import PanelHeader from "../core/PanelHeader.jsx";
 
 const TABS = ["Unread", "All"];
 
@@ -570,51 +571,49 @@ export default function NotificationFeed() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", fontFamily: FONT }}>
-      {/* Header */}
-      <div style={{ flexShrink: 0, padding: "16px 32px 0", borderBottom: `1px solid ${C.edgeLine}` }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, animation: ANIM.snapUp(0.03) }}>
-          <IconBell size={22} color={C.accent} />
-          <span style={{ fontSize: 18, fontWeight: 600, color: C.darkText, fontFamily: FONT_DISPLAY }}>Inbox</span>
-          <div style={{ flex: 1 }} />
-          {/* Preferences toggle */}
-          <button onClick={() => setShowPrefs((v) => !v)}
-            style={{
-              background: showPrefs ? C.darkSurf2 : "transparent",
-              border: `1px solid ${showPrefs ? C.accent : C.darkBorder}`,
-              borderRadius: RADIUS.md, padding: "4px 8px", cursor: "pointer",
-              transition: "all 0.15s", display: "flex", alignItems: "center",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; }}
-            onMouseLeave={(e) => { if (!showPrefs) e.currentTarget.style.borderColor = C.darkBorder; }}
-            title="Notification preferences"
-          >
-            <IconGear size={14} color={showPrefs ? C.accent : C.darkMuted} />
-          </button>
-          {unreadCount > 0 && (
-            <button onClick={markAllRead}
-              style={{
-                background: "transparent", border: `1px solid ${C.darkBorder}`,
-                borderRadius: RADIUS.md, padding: "4px 10px", fontSize: 10,
-                fontFamily: FONT, color: C.darkMuted, cursor: "pointer",
-                transition: "border-color 0.15s",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
-            >Mark all read</button>
-          )}
-          <button onClick={() => { setLoading(true); setRecentlyRead(new Set()); fetchNotifications(); }}
+      {/* Shared panel header */}
+      <PanelHeader
+        side="right"
+        title="Inbox"
+        icon={<IconBell size={20} color={C.accent} />}
+      >
+        {/* Preferences toggle */}
+        <button onClick={() => setShowPrefs((v) => !v)}
+          style={{
+            background: showPrefs ? C.darkSurf2 : "transparent",
+            border: `1px solid ${showPrefs ? C.accent : C.darkBorder}`,
+            borderRadius: RADIUS.md, padding: "4px 8px", cursor: "pointer",
+            transition: "all 0.15s", display: "flex", alignItems: "center",
+            marginRight: 4,
+          }}
+          title="Notification preferences"
+        >
+          <IconGear size={14} color={showPrefs ? C.accent : C.darkMuted} />
+        </button>
+        {unreadCount > 0 && (
+          <button onClick={markAllRead}
             style={{
               background: "transparent", border: `1px solid ${C.darkBorder}`,
               borderRadius: RADIUS.md, padding: "4px 10px", fontSize: 10,
               fontFamily: FONT, color: C.darkMuted, cursor: "pointer",
-              transition: "border-color 0.15s",
+              marginRight: 4,
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; }}
-          >Refresh</button>
-        </div>
+          >Mark all read</button>
+        )}
+        <button onClick={() => { setLoading(true); setRecentlyRead(new Set()); fetchNotifications(); }}
+          style={{
+            background: "transparent", border: `1px solid ${C.darkBorder}`,
+            borderRadius: RADIUS.md, padding: "4px 10px", fontSize: 10,
+            fontFamily: FONT, color: C.darkMuted, cursor: "pointer",
+            marginRight: 2,
+          }}
+        >Refresh</button>
+      </PanelHeader>
+
+      {/* Tabs row */}
+      <div style={{ flexShrink: 0, padding: "12px 32px 12px", borderBottom: `1px solid ${C.edgeLine}` }}>
         <div style={{
-          display: "flex", gap: 3, marginBottom: 12,
+          display: "flex", gap: 3,
           background: C.darkSurf, borderRadius: RADIUS.pill, padding: 3, width: "fit-content",
         }}>
           {TABS.map((tab) => (

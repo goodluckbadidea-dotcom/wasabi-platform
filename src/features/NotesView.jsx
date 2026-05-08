@@ -10,6 +10,7 @@ import { usePlatform } from "../context/PlatformContext.jsx";
 import { getDocument, saveDocument } from "../lib/api.js";
 import { createStandaloneDocConfig, savePageConfig } from "../config/pageConfig.js";
 import DocumentEditor from "../views/DocumentEditor.jsx";
+import PanelHeader, { HeaderIconButton } from "../core/PanelHeader.jsx";
 
 const DOC_ID = "scratchpad";
 
@@ -86,77 +87,53 @@ export default function NotesView() {
       flex: 1, display: "flex", flexDirection: "column",
       overflow: "hidden", background: "transparent",
     }}>
-      {/* ── Header ── */}
-      <div style={{
-        flexShrink: 0, padding: "14px 20px 12px",
-        borderBottom: `1px solid ${C.darkBorder}`,
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-      }}>
-        <div style={{
-          fontSize: 18, fontWeight: 600, fontFamily: FONT_DISPLAY, color: C.darkText,
-          display: "flex", alignItems: "center", gap: 10,
-          animation: ANIM.snapUp(0.03),
-        }}>
+      {/* ── Shared panel header ── */}
+      <PanelHeader
+        side="left"
+        title="Notes"
+        icon={
           <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
             <rect x="3" y="2" width="10" height="12" rx="1.5" stroke={C.accent} strokeWidth="1.3" fill="none" />
             <line x1="5.5" y1="5.5" x2="10.5" y2="5.5" stroke={C.accent} strokeWidth="1" />
             <line x1="5.5" y1="8" x2="10.5" y2="8" stroke={C.accent} strokeWidth="1" />
             <line x1="5.5" y1="10.5" x2="8.5" y2="10.5" stroke={C.accent} strokeWidth="1" />
           </svg>
-          Notes
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          {/* Save To button */}
-          <button
-            onClick={() => {
-              setSaveToOpen((v) => !v);
-              setSaveToName("");
-              setSaveToFolder("");
-              setSaveToStatus(null);
-            }}
-            title="Save note to workspace"
-            style={{
-              background: saveToOpen ? C.accent + "22" : "transparent",
-              border: `1px solid ${saveToOpen ? C.accent + "44" : C.darkBorder}`,
-              borderRadius: RADIUS.pill,
-              padding: "6px 12px",
-              fontSize: 11, fontFamily: FONT,
-              minHeight: 30,
-              color: saveToOpen ? C.accent : C.darkMuted,
-              cursor: "pointer", outline: "none",
-              display: "flex", alignItems: "center", gap: 4,
-              transition: "all 0.15s",
-            }}
-          >
-            <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-              <path d="M2 10V2h5.5L10 4.5V10H2z" stroke="currentColor" strokeWidth="1.2" fill="none" />
-              <path d="M4 2v3h4" stroke="currentColor" strokeWidth="1" fill="none" />
-            </svg>
-            Save to
-          </button>
-
-          {/* Clear button */}
-          <button
-            onClick={handleClear}
-            title="Clear note"
-            style={{
-              background: "none", border: "none", cursor: "pointer",
-              padding: 8, display: "flex", opacity: 0.4,
-              outline: "none", borderRadius: RADIUS.md,
-              transition: "opacity 0.15s",
-              minWidth: 30, minHeight: 30,
-              alignItems: "center", justifyContent: "center",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.8"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.4"; }}
-          >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-              <path d="M4 4l8 8M12 4l-8 8" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
-      </div>
+        }
+      >
+        <button
+          onClick={() => {
+            setSaveToOpen((v) => !v);
+            setSaveToName("");
+            setSaveToFolder("");
+            setSaveToStatus(null);
+          }}
+          title="Save note to workspace"
+          style={{
+            background: saveToOpen ? C.accent + "22" : "transparent",
+            border: `1px solid ${saveToOpen ? C.accent + "44" : C.darkBorder}`,
+            borderRadius: RADIUS.pill,
+            padding: "5px 11px",
+            fontSize: 11, fontFamily: FONT,
+            minHeight: 28,
+            color: saveToOpen ? C.accent : C.darkMuted,
+            cursor: "pointer", outline: "none",
+            display: "flex", alignItems: "center", gap: 4,
+            transition: "all 0.15s",
+            marginRight: 2,
+          }}
+        >
+          <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+            <path d="M2 10V2h5.5L10 4.5V10H2z" stroke="currentColor" strokeWidth="1.2" fill="none" />
+            <path d="M4 2v3h4" stroke="currentColor" strokeWidth="1" fill="none" />
+          </svg>
+          Save to
+        </button>
+        <HeaderIconButton onClick={handleClear} title="Clear note">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+            <path d="M4 4l8 8M12 4l-8 8" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
+        </HeaderIconButton>
+      </PanelHeader>
 
       {/* ── Save To panel (inline below header) ── */}
       {saveToOpen && (

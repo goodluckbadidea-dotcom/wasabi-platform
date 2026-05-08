@@ -15,7 +15,9 @@ import SubPageNav from "./SubPageNav.jsx";
 import DatabaseBrowser from "./DatabaseBrowser.jsx";
 import ViewTypePicker from "./ViewTypePicker.jsx";
 import { ViewSkeleton } from "./ErrorBoundary.jsx";
-import { IconWarning, IconPlus, IconClose } from "../design/icons.jsx";
+import { IconWarning, IconPlus, IconClose, IconGlobe } from "../design/icons.jsx";
+import PanelHeader from "./PanelHeader.jsx";
+import Breadcrumb from "../components/Breadcrumb.jsx";
 import { ANIM } from "../design/animations.js";
 import SyncPanel from "../components/SyncPanel.jsx";
 import ViewSettingsPanel from "../components/ViewSettingsPanel.jsx";
@@ -518,6 +520,12 @@ export default function PageShell({
   // ── Normal view rendering ──
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Shared panel header — breadcrumb shows the navigation path */}
+      <PanelHeader
+        side="right"
+        icon={<IconGlobe size={20} color={C.accent} />}
+        customTitle={<Breadcrumb />}
+      />
       {/* View tabs */}
       <SubPageNav
         views={views}

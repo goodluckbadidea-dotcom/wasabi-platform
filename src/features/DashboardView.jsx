@@ -12,6 +12,7 @@ import RecordDrawer from "./RecordDrawer.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { useUserSync } from "../context/UserSyncContext.jsx";
 import { getUserDashboard, putUserDashboard } from "../lib/api.js";
+import PanelHeader from "../core/PanelHeader.jsx";
 
 function storageKey(userId) {
   return userId ? `wasabi-dashboard-widgets:${userId}` : "wasabi-dashboard-widgets:default";
@@ -107,68 +108,57 @@ export default function DashboardView() {
       flex: 1, display: "flex", flexDirection: "column",
       overflow: "hidden", background: "transparent",
     }}>
-      {/* Header */}
-      <div style={{
-        flexShrink: 0, padding: "14px 20px 12px",
-        borderBottom: `1px solid ${C.darkBorder}`,
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-      }}>
-        <div style={{
-          fontSize: 18, fontWeight: 600, fontFamily: FONT_DISPLAY, color: C.darkText,
-          display: "flex", alignItems: "center", gap: 10,
-          animation: ANIM.snapUp(0.03),
-        }}>
+      {/* Shared panel header */}
+      <PanelHeader
+        side="right"
+        title="Dashboard"
+        icon={
           <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
             <rect x="1" y="1" width="6" height="6" rx="1.5" stroke={C.accent} strokeWidth="1.3" fill="none" />
             <rect x="9" y="1" width="6" height="6" rx="1.5" stroke={C.accent} strokeWidth="1.3" fill="none" />
             <rect x="1" y="9" width="6" height="6" rx="1.5" stroke={C.accent} strokeWidth="1.3" fill="none" />
             <rect x="9" y="9" width="6" height="6" rx="1.5" stroke={C.accent} strokeWidth="1.3" fill="none" />
           </svg>
-          Dashboard
-        </div>
-
-        {/* Edit / Add-widget controls — lifted out of WidgetGrid into the
-            section header so they sit alongside the title. */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {editMode && (
-            <button
-              onClick={() => setWidgetPickerOpen(true)}
-              style={{
-                background: C.darkSurf2, color: C.darkMuted,
-                border: `1px solid ${C.darkBorder}`,
-                borderRadius: RADIUS.md, padding: "6px 14px",
-                fontSize: 11, fontFamily: FONT, fontWeight: 600,
-                cursor: "pointer", display: "flex", alignItems: "center",
-                gap: 5, boxShadow: SHADOW.card,
-              }}
-            >
-              <IconPlus size={10} color={C.darkMuted} />
-              Add Widget
-            </button>
-          )}
+        }
+      >
+        {editMode && (
           <button
-            onClick={() => {
-              setEditMode((m) => {
-                const next = !m;
-                if (!next) setWidgetPickerOpen(false);
-                return next;
-              });
-            }}
+            onClick={() => setWidgetPickerOpen(true)}
             style={{
-              background: editMode ? C.accent : C.darkSurf2,
-              color: editMode ? "#fff" : C.darkMuted,
-              border: `1px solid ${editMode ? C.accent : C.darkBorder}`,
-              borderRadius: RADIUS.md, padding: "6px 14px",
+              background: C.darkSurf2, color: C.darkMuted,
+              border: `1px solid ${C.darkBorder}`,
+              borderRadius: RADIUS.md, padding: "5px 12px",
               fontSize: 11, fontFamily: FONT, fontWeight: 600,
               cursor: "pointer", display: "flex", alignItems: "center",
-              gap: 5, boxShadow: SHADOW.card,
+              gap: 5, marginRight: 4,
             }}
           >
-            <IconEdit size={11} color={editMode ? "#fff" : C.darkMuted} />
-            {editMode ? "Done" : "Edit"}
+            <IconPlus size={10} color={C.darkMuted} />
+            Add Widget
           </button>
-        </div>
-      </div>
+        )}
+        <button
+          onClick={() => {
+            setEditMode((m) => {
+              const next = !m;
+              if (!next) setWidgetPickerOpen(false);
+              return next;
+            });
+          }}
+          style={{
+            background: editMode ? C.accent : C.darkSurf2,
+            color: editMode ? "#fff" : C.darkMuted,
+            border: `1px solid ${editMode ? C.accent : C.darkBorder}`,
+            borderRadius: RADIUS.md, padding: "5px 12px",
+            fontSize: 11, fontFamily: FONT, fontWeight: 600,
+            cursor: "pointer", display: "flex", alignItems: "center",
+            gap: 5, marginRight: 2,
+          }}
+        >
+          <IconEdit size={11} color={editMode ? "#fff" : C.darkMuted} />
+          {editMode ? "Done" : "Edit"}
+        </button>
+      </PanelHeader>
 
       {/* Widget canvas */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden", animation: ANIM.contentSwap() }}>

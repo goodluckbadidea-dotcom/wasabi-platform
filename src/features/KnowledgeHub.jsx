@@ -5,6 +5,8 @@
 import React, { useState } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { ErrorBoundary } from "../core/ErrorBoundary.jsx";
+import PanelHeader from "../core/PanelHeader.jsx";
+import { IconBrain } from "../design/icons.jsx";
 
 function lazyRetry(fn) {
   return React.lazy(() => fn().catch(() =>
@@ -37,6 +39,11 @@ export default function KnowledgeHub({ onOpenChat }) {
       display: "flex", flexDirection: "column", height: "100%",
       overflow: "hidden", background: "transparent", fontFamily: FONT,
     }}>
+      <PanelHeader
+        side="right"
+        title="Knowledge Base"
+        icon={<IconBrain size={20} color={C.accent} />}
+      />
       {/* ── Tab bar ── */}
       <div style={{
         display: "flex", gap: 0, flexShrink: 0,

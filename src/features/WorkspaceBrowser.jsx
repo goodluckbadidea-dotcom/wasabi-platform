@@ -12,6 +12,7 @@ import { IconFolder, IconSearch, IconChevronRight, IconGlobe, IconGear, IconTras
 import { useRecordDrawer } from "./RecordDrawerContext.jsx";
 import RecordDrawer from "./RecordDrawer.jsx";
 import { deletePageConfig, reorderPages, updatePageConfig as apiUpdatePage } from "../lib/api.js";
+import PanelHeader from "../core/PanelHeader.jsx";
 
 // ── Card hover helpers ──
 function applyHover(e) {
@@ -624,10 +625,10 @@ export default function WorkspaceBrowser() {
       overflow: "auto", background: "transparent", fontFamily: FONT,
     },
     header: {
-      // No top padding — the global breadcrumb wrapper in App.jsx provides
-      // the consistent 16px top spacing so this view's breadcrumb aligns
-      // exactly with the breadcrumb shown for PageShell routes.
-      padding: "0 28px 0", flexShrink: 0,
+      // Inner header — under the shared PanelHeader strip. Holds the
+      // drill-down breadcrumb (which doubles as drop targets) and the
+      // search row.
+      padding: "16px 28px 0", flexShrink: 0,
     },
     breadcrumb: {
       display: "flex", alignItems: "center", gap: 4,
@@ -700,6 +701,11 @@ export default function WorkspaceBrowser() {
 
   return (
     <div style={styles.wrapper}>
+      <PanelHeader
+        side="right"
+        title="Workspaces"
+        icon={<IconGlobe size={20} color={C.accent} />}
+      />
       <div style={styles.header}>
         {/* ── Breadcrumb (also drop targets) ── */}
         <div style={styles.breadcrumb}>

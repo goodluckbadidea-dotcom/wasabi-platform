@@ -7,7 +7,8 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { C, FONT, RADIUS, VIEW_PALETTE } from "../design/tokens.js";
 import { DAY_NAMES, MONTH_NAMES } from "../utils/helpers.js";
-import { IconEdit } from "../design/icons.jsx";
+import { IconEdit, IconCalendar } from "../design/icons.jsx";
+import PanelHeader from "../core/PanelHeader.jsx";
 import { getGoogleStatus, listCalendarEvents, getMicrosoftStatus, listOutlookEvents } from "../lib/api.js";
 import { isSameDay, getWeekRange, getMonthRange, getListViewRange, formatWeekDateHeader, formatMonthHeader } from "./taskHelpers.js";
 import { useRecordDrawer } from "./RecordDrawerContext.jsx";
@@ -298,7 +299,12 @@ export default function CalendarView({ allTasks: allTasksProp, refreshRef }) {
       display: "flex", flexDirection: "column",
       height: "100%", overflow: "hidden",
     }}>
-      {/* ── Header ── */}
+      <PanelHeader
+        side="right"
+        title="Calendar"
+        icon={<IconCalendar size={20} color={C.accent} />}
+      />
+      {/* ── Calendar toolbar (nav, view modes, filters, etc.) ── */}
       <div style={{
         flexShrink: 0, height: 48, padding: "0 20px",
         borderBottom: `1px solid ${C.darkBorder}`,

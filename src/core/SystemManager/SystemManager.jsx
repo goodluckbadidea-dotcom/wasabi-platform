@@ -8,6 +8,7 @@ import { ANIM } from "../../design/animations.js";
 import { usePlatform } from "../../context/PlatformContext.jsx";
 import { IconGear } from "../../design/icons.jsx";
 import { isAdmin } from "../../lib/roles.js";
+import PanelHeader from "../PanelHeader.jsx";
 
 import OverviewTab from "./OverviewTab.jsx";
 import ConnectionsTab from "./ConnectionsTab.jsx";
@@ -48,35 +49,20 @@ export default function SystemManager() {
         overflow: "hidden",
       }}
     >
+      {/* Shared panel header */}
+      <PanelHeader
+        side="right"
+        title="System"
+        icon={<IconGear size={20} color={C.accent} />}
+      />
       {/* ── Tab bar ── */}
       <div
         style={{
           flexShrink: 0,
-          padding: "16px 32px 0",
+          padding: "12px 32px 0",
           borderBottom: `1px solid ${C.darkBorder}`,
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            marginBottom: 12,
-            animation: ANIM.snapUp(0.03),
-          }}
-        >
-          <IconGear size={22} color={C.accent} />
-          <span
-            style={{
-              fontSize: 18,
-              fontWeight: 600,
-              color: C.darkText,
-              fontFamily: FONT,
-            }}
-          >
-            System
-          </span>
-        </div>
         <div
           style={{
             display: "flex",

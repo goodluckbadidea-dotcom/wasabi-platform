@@ -10,6 +10,7 @@ import { TRANSITION } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { IconClose, IconChat, IconSend, IconPaperclip } from "../design/icons.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
+import PanelHeader from "./PanelHeader.jsx";
 import WasabiOrb from "./WasabiOrb.jsx";
 import ChatUI from "./ChatUI.jsx";
 import { runAgent, runAgentMultiPhase, extractQuestions, trimHistory } from "../agent/runAgent.js";
@@ -480,34 +481,51 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
         transition: isDragging && !embedded ? "none" : embedded ? undefined : TRANSITION.panelResize,
       }}
     >
-      {/* ── Embedded header strip — small banner that surfaces the AI
-            insight inside the left pane. The full header (Wasabi
-            wordmark + model toggle + close) only renders when the
-            panel is detached. ── */}
-      {embedded && insight && (
-        <div
-          style={{
-            flexShrink: 0,
-            padding: "12px 16px 10px",
-            background: C.dark,
-            borderBottom: `1px solid ${C.darkBorder}`,
-          }}
-        >
-          <div style={{
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 10,
-          }}>
-            <WasabiFlame size={20} isThinking={isThinking} />
+      {/* ── Embedded panel header — uses the shared PanelHeader so the
+            chat panel sits visually flush with Tasks / Notes when on
+            the left pane. The AI insight, when present, sits below as
+            a thin banner. ── */}
+      {embedded && (
+        <>
+          <PanelHeader
+            side="left"
+            title="Wasabi"
+            icon={<WasabiFlame size={20} isThinking={isThinking} />}
+          >
+            <button
+              onClick={() => {
+                const next = modelOverride === null ? "sonnet" : modelOverride === "sonnet" ? "haiku" : null;
+                setModelOverride(next);
+              }}
+              style={{
+                background: modelOverride ? (modelOverride === "sonnet" ? C.accent + "22" : C.darkSurf2) : "transparent",
+                border: `1px solid ${modelOverride ? (modelOverride === "sonnet" ? C.accent + "44" : C.darkBorder) : C.darkBorder}`,
+                borderRadius: 999,
+                padding: "3px 9px",
+                fontSize: 10,
+                color: modelOverride === "sonnet" ? C.accent : C.darkMuted,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                lineHeight: 1.4,
+                marginRight: 4,
+              }}
+              title={modelOverride === null ? "Auto model (click to pin Sonnet)" : modelOverride === "sonnet" ? "Pinned to Sonnet (click for Haiku)" : "Pinned to Haiku (click for Auto)"}
+            >
+              {modelOverride === null ? "Auto" : modelOverride === "sonnet" ? "Sonnet" : "Haiku"}
+            </button>
+          </PanelHeader>
+          {insight && (
             <div
               style={{
-                flex: 1,
+                flexShrink: 0,
+                padding: "10px 16px",
+                background: C.dark,
+                borderBottom: `1px solid ${C.darkBorder}`,
                 fontSize: 12,
                 lineHeight: 1.55,
                 fontFamily: FONT,
                 color: C.darkText + "CC",
                 fontStyle: "italic",
-                opacity: 0.9,
                 display: "-webkit-box",
                 WebkitLineClamp: 3,
                 WebkitBoxOrient: "vertical",
@@ -517,8 +535,8 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
             >
               {insight}
             </div>
-          </div>
-        </div>
+          )}
+        </>
       )}
 
       {/* ── Header (hidden when embedded in SashimiChatPanel) ── */}

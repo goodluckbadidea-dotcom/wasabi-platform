@@ -8,6 +8,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { C, FONT, FONT_DISPLAY, RADIUS, Z } from "../design/tokens.js";
 import { ANIM, TRANSITION } from "../design/animations.js";
 import { formatEmailDate, truncate } from "../utils/helpers.js";
+import PanelHeader, { HeaderIconButton } from "../core/PanelHeader.jsx";
 import {
   getGoogleStatus,
   getMicrosoftStatus,
@@ -474,47 +475,43 @@ export default function UnifiedInboxView() {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "transparent" }}>
-      {/* Header */}
-      <div style={{ flexShrink: 0, padding: "14px 20px 8px", borderBottom: `1px solid ${C.darkBorder}` }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <div style={{ fontSize: 18, fontWeight: 600, fontFamily: FONT_DISPLAY, color: C.darkText, display: "flex", alignItems: "center", gap: 10 }}>
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <rect x="1.5" y="3.5" width="15" height="11" rx="1.5" stroke={C.accent} strokeWidth="1.4" fill="none" />
-              <path d="M2 5L9 10L16 5" stroke={C.accent} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            Inbox
-          </div>
-          <div style={{ display: "flex", gap: 6 }}>
-            <button
-              onClick={() => setCompose({})}
-              style={{
-                background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
-                border: "none", cursor: "pointer", color: "#fff",
-                padding: "7px 14px", borderRadius: RADIUS.pill,
-                fontSize: 12, fontWeight: 600, fontFamily: FONT, outline: "none",
-                display: "flex", alignItems: "center", gap: 6, minHeight: 32,
-              }}
-            >
-              <svg width="12" height="12" viewBox="0 0 10 10" fill="none">
-                <path d="M5 1V9M1 5H9" stroke="#fff" strokeWidth="1.3" strokeLinecap="round" />
-              </svg>
-              Compose
-            </button>
-            <button
-              onClick={() => fetchMessages(searchQuery)}
-              title="Refresh"
-              style={{ background: "transparent", border: "none", cursor: "pointer", padding: 6, opacity: 0.5 }}
-              onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
-            >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                <path d="M14 2v5h-5" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M12.5 10A5.5 5.5 0 1 1 13 6" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" />
-              </svg>
-            </button>
-          </div>
-        </div>
+      {/* Shared panel header */}
+      <PanelHeader
+        side="right"
+        title="Inbox"
+        icon={
+          <svg width="20" height="20" viewBox="0 0 18 18" fill="none">
+            <rect x="1.5" y="3.5" width="15" height="11" rx="1.5" stroke={C.accent} strokeWidth="1.4" fill="none" />
+            <path d="M2 5L9 10L16 5" stroke={C.accent} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        }
+      >
+        <button
+          onClick={() => setCompose({})}
+          style={{
+            background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
+            border: "none", cursor: "pointer", color: "#fff",
+            padding: "5px 12px", borderRadius: RADIUS.pill,
+            fontSize: 11, fontWeight: 600, fontFamily: FONT, outline: "none",
+            display: "flex", alignItems: "center", gap: 5, minHeight: 28,
+            marginRight: 4,
+          }}
+        >
+          <svg width="11" height="11" viewBox="0 0 10 10" fill="none">
+            <path d="M5 1V9M1 5H9" stroke="#fff" strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
+          Compose
+        </button>
+        <HeaderIconButton onClick={() => fetchMessages(searchQuery)} title="Refresh">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path d="M14 2v5h-5" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M12.5 10A5.5 5.5 0 1 1 13 6" stroke={C.darkMuted} strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
+        </HeaderIconButton>
+      </PanelHeader>
 
+      {/* Search + filters row */}
+      <div style={{ flexShrink: 0, padding: "12px 20px 12px", borderBottom: `1px solid ${C.darkBorder}` }}>
         {/* Search */}
         <div style={{ position: "relative", marginBottom: 8 }}>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none"

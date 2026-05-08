@@ -27,7 +27,6 @@ import LoginScreen from "./core/LoginScreen.jsx";
 import BottomBar from "./core/BottomBar.jsx";
 import SearchModal from "./core/SearchModal.jsx";
 import SplitPane from "./core/SplitPane.jsx";
-import Breadcrumb from "./components/Breadcrumb.jsx";
 // Retry wrapper for dynamic imports — handles stale chunk errors after deploy
 function lazyWithRetry(importFn) {
   return React.lazy(() =>
@@ -65,7 +64,6 @@ import CommandPalette from "./core/CommandPalette.jsx";
 import NeuronOverlay from "./neurons/NeuronOverlay.jsx";
 import NeuronLines from "./neurons/NeuronLines.jsx";
 import { useNeurons } from "./neurons/NeuronsContext.jsx";
-import { IconExpand, IconCollapse } from "./design/icons.jsx";
 
 const TasksView = lazyWithRetry(() => import("./features/TasksView.jsx"));
 const NotesView = lazyWithRetry(() => import("./features/NotesView.jsx"));
@@ -339,14 +337,6 @@ function AppContent() {
 
   // Orb icon for chat avatars
   const WasabiFlameIcon = <WasabiOrb size={28} />;
-
-  // ── Panel maximize/minimize toggle (floating button per panel) ──
-  const toggleLeftMax = useCallback(() => {
-    setPanelMode(panelMode === "left-max" ? "split" : "left-max");
-  }, [panelMode, setPanelMode]);
-  const toggleRightMax = useCallback(() => {
-    setPanelMode(panelMode === "right-max" ? "split" : "right-max");
-  }, [panelMode, setPanelMode]);
 
   // ── Left pane: Tasks / Wasabi Chat / Notes (personal context surface) ──
   const renderLeftPane = () => {
@@ -627,23 +617,12 @@ function AppContent() {
                 minWidth: 0,
                 animation: ANIM.contentSwap(),
                 opacity: 1,
-                position: "relative",
               }}
             >
-              {/* Chrome strip — empty content (left pane uses each
-                  feature's own internal title), but matches the right
-                  pane's height so the two panels feel aligned. The
-                  maximize toggle lives at the right edge so it never
-                  overlaps with feature header buttons. */}
-              {!isNarrow && (
-                <div style={paneChromeStripStyle}>
-                  <PanelMaxButton
-                    side="left"
-                    isMaxed={panelMode === "left-max"}
-                    onToggle={toggleLeftMax}
-                  />
-                </div>
-              )}
+              {/* Each feature renders its own PanelHeader internally
+                  (icon + title + actions + maximize button) so headers
+                  are visually cohesive across both panes. App.jsx no
+                  longer wraps the panel with extra chrome. */}
               {renderLeftPane()}
             </div>
           }
@@ -658,24 +637,8 @@ function AppContent() {
                 minWidth: 0,
                 animation: ANIM.contentSwap(),
                 opacity: 1,
-                position: "relative",
               }}
             >
-              {/* Chrome strip — breadcrumb on the left, maximize toggle
-                  on the right. Persists across all right-pane routes so
-                  navigation back from a database page is one click. */}
-              {!isNarrow && (
-                <div style={paneChromeStripStyle}>
-                  <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
-                    <Breadcrumb />
-                  </div>
-                  <PanelMaxButton
-                    side="right"
-                    isMaxed={panelMode === "right-max"}
-                    onToggle={toggleRightMax}
-                  />
-                </div>
-              )}
               {renderRightPane()}
             </div>
           }
@@ -692,55 +655,9 @@ function AppContent() {
   );
 }
 
-// Chrome strip at the top of each pane — holds the breadcrumb (right
-// pane) and the maximize button (both panes). Both panes use the same
-// strip so their content vertically aligns.
-const paneChromeStripStyle = {
-  flexShrink: 0,
-  display: "flex",
-  alignItems: "center",
-  gap: 12,
-  padding: "20px 18px 8px 28px",
-  minHeight: 52,
-};
-
-// ─── PanelMaxButton ───
-// Inline button rendered inside each pane's chrome strip. Hover state
-// surfaces a subtle background so it reads as chrome, not feature
-// content.
-function PanelMaxButton({ side, isMaxed, onToggle }) {
-  const [hover, setHover] = useState(false);
-  return (
-    <button
-      onClick={onToggle}
-      title={isMaxed ? "Restore split view" : `Maximize ${side === "left" ? "left" : "right"} panel`}
-      aria-label={isMaxed ? "Restore split view" : `Maximize ${side} panel`}
-      style={{
-        flexShrink: 0,
-        width: 30,
-        height: 30,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: hover ? C.darkSurf2 : "transparent",
-        border: `1px solid ${hover ? C.darkBorder : "transparent"}`,
-        borderRadius: 8,
-        cursor: "pointer",
-        transition: "background 0.15s, border-color 0.15s, opacity 0.15s",
-        opacity: hover ? 1 : 0.55,
-        outline: "none",
-      }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-    >
-      {isMaxed ? (
-        <IconCollapse size={15} color={C.darkMuted} />
-      ) : (
-        <IconExpand size={15} color={C.darkMuted} />
-      )}
-    </button>
-  );
-}
+// PanelMaxButton + chrome strip removed — the maximize toggle now
+// lives inside each feature's PanelHeader (src/core/PanelHeader.jsx).
+// See PanelHeader for the per-pane render.
 
 export default function App() {
   return (

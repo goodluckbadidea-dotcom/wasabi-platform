@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { getFigmaProjects, getFigmaFiles, getFigmaFile, importFigmaFiles } from "../lib/api.js";
 import { useNavigation } from "../context/NavigationContext.jsx";
+import PanelHeader from "../core/PanelHeader.jsx";
 
 // ── Figma icon (geometric logo) ──
 function FigmaIcon({ size = 18 }) {
@@ -200,9 +201,15 @@ export default function FigmaView() {
   // ── Render ──
   return (
     <div style={{
-      flex: 1, display: "flex", fontFamily: FONT,
+      flex: 1, display: "flex", flexDirection: "column", fontFamily: FONT,
       color: C.darkText, overflow: "hidden", height: "100%",
     }}>
+      <PanelHeader
+        side="right"
+        title="Figma"
+        icon={<FigmaIcon size={18} />}
+      />
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0 }}>
       {/* ── Project Sidebar ── */}
       <div style={{
         width: 220, flexShrink: 0, borderRight: `1px solid ${C.darkBorder}`,
@@ -560,6 +567,7 @@ export default function FigmaView() {
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   );
