@@ -630,24 +630,20 @@ export default function WorkspaceBrowser() {
       // search row.
       padding: "16px 28px 0", flexShrink: 0,
     },
-    breadcrumb: {
-      display: "flex", alignItems: "center", gap: 4,
-      marginBottom: 16, flexWrap: "wrap",
-    },
-    breadcrumbSegment: (isLast, isDropTarget) => ({
-      fontSize: 13, fontWeight: isLast ? 600 : 400, fontFamily: FONT,
+    headerCrumbSegment: (isLast, isDropTarget) => ({
+      fontSize: 14, fontWeight: isLast ? 600 : 500, fontFamily: FONT,
       color: isDropTarget ? C.accent : (isLast ? C.darkText : C.darkMuted),
       cursor: isLast && !dragItem ? "default" : "pointer",
       background: isDropTarget ? "rgba(76,175,80,0.12)" : "none",
-      border: "none", padding: "2px 8px",
+      border: "none", padding: "4px 8px",
       borderRadius: RADIUS.sm, transition: "all 0.15s",
       outline: isDropTarget ? `2px solid ${C.accent}` : "none",
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      maxWidth: 220,
+      flexShrink: 0,
     }),
-    backBtn: {
-      background: "none", border: "none", cursor: "pointer",
-      padding: "4px 6px", borderRadius: RADIUS.sm,
-      display: "flex", alignItems: "center", transition: "background 0.15s",
-    },
     searchRow: {
       display: "flex", alignItems: "center", gap: 8,
       marginBottom: 20, position: "relative",
@@ -703,54 +699,40 @@ export default function WorkspaceBrowser() {
     <div style={styles.wrapper}>
       <PanelHeader
         side="right"
-        title="Workspaces"
         icon={<IconGlobe size={20} color={C.accent} />}
+        customTitle={
+          <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, overflow: "hidden", flexWrap: "nowrap" }}>
+            <button
+              style={styles.headerCrumbSegment(path.length === 0, dropBreadcrumb === -1)}
+              onClick={() => handleBreadcrumb(-1)}
+              onMouseEnter={(e) => { if (path.length > 0 && !dragItem) e.currentTarget.style.color = C.accent; }}
+              onMouseLeave={(e) => { if (path.length > 0 && !dragItem) e.currentTarget.style.color = path.length === 0 ? C.darkText : C.darkMuted; }}
+              onDragOver={(e) => handleBreadcrumbDragOver(e, -1)}
+              onDragLeave={handleBreadcrumbDragLeave}
+              onDrop={(e) => handleBreadcrumbDrop(e, -1)}
+            >
+              Workspaces
+            </button>
+            {path.map((segment, i) => (
+              <React.Fragment key={segment.id}>
+                <IconChevronRight size={10} color={C.darkMuted} />
+                <button
+                  style={styles.headerCrumbSegment(i === path.length - 1, dropBreadcrumb === i)}
+                  onClick={() => handleBreadcrumb(i)}
+                  onMouseEnter={(e) => { if (i < path.length - 1 && !dragItem) e.currentTarget.style.color = C.accent; }}
+                  onMouseLeave={(e) => { if (i < path.length - 1 && !dragItem) e.currentTarget.style.color = i === path.length - 1 ? C.darkText : C.darkMuted; }}
+                  onDragOver={(e) => handleBreadcrumbDragOver(e, i)}
+                  onDragLeave={handleBreadcrumbDragLeave}
+                  onDrop={(e) => handleBreadcrumbDrop(e, i)}
+                >
+                  {segment.name}
+                </button>
+              </React.Fragment>
+            ))}
+          </div>
+        }
       />
       <div style={styles.header}>
-        {/* ── Breadcrumb (also drop targets) ── */}
-        <div style={styles.breadcrumb}>
-          {path.length > 0 && (
-            <button
-              style={styles.backBtn}
-              onClick={() => handleBreadcrumb(path.length - 2)}
-              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-              title="Go back"
-            >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                <path d="M10 3L5 8l5 5" stroke={C.darkMuted} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          )}
-          <button
-            style={styles.breadcrumbSegment(path.length === 0, dropBreadcrumb === -1)}
-            onClick={() => handleBreadcrumb(-1)}
-            onMouseEnter={(e) => { if (path.length > 0 && !dragItem) e.currentTarget.style.color = C.accent; }}
-            onMouseLeave={(e) => { if (path.length > 0 && !dragItem) e.currentTarget.style.color = C.darkMuted; }}
-            onDragOver={(e) => handleBreadcrumbDragOver(e, -1)}
-            onDragLeave={handleBreadcrumbDragLeave}
-            onDrop={(e) => handleBreadcrumbDrop(e, -1)}
-          >
-            Workspaces
-          </button>
-          {path.map((segment, i) => (
-            <React.Fragment key={segment.id}>
-              <IconChevronRight size={10} color={C.darkMuted} />
-              <button
-                style={styles.breadcrumbSegment(i === path.length - 1, dropBreadcrumb === i)}
-                onClick={() => handleBreadcrumb(i)}
-                onMouseEnter={(e) => { if (i < path.length - 1 && !dragItem) e.currentTarget.style.color = C.accent; }}
-                onMouseLeave={(e) => { if (i < path.length - 1 && !dragItem) e.currentTarget.style.color = C.darkMuted; }}
-                onDragOver={(e) => handleBreadcrumbDragOver(e, i)}
-                onDragLeave={handleBreadcrumbDragLeave}
-                onDrop={(e) => handleBreadcrumbDrop(e, i)}
-              >
-                {segment.name}
-              </button>
-            </React.Fragment>
-          ))}
-        </div>
-
         {/* ── Search ── */}
         <div style={styles.searchRow}>
           <div style={{ position: "relative", flex: 1 }}>
