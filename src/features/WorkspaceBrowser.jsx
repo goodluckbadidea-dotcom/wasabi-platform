@@ -105,7 +105,7 @@ function ConfirmDialog({ title, message, warning, onConfirm, onCancel }) {
 }
 
 // ── Overflow Menu (positioned relative to trigger) ──
-function OverflowMenu({ item, onDelete, onMove, folders, onClose, anchorRect }) {
+function OverflowMenu({ item, onDelete, onMove, onRename, folders, onClose, tileRect }) {
   const ref = useRef(null);
   const [showMoveSub, setShowMoveSub] = useState(false);
 
@@ -124,8 +124,23 @@ function OverflowMenu({ item, onDelete, onMove, folders, onClose, anchorRect }) 
     };
   }, [onClose]);
 
-  const top = anchorRect ? anchorRect.bottom + 4 : 0;
-  const left = anchorRect ? anchorRect.right - 140 : 0;
+  // Position the menu just outside the tile (right of, falling back to
+  // below) so it never visually covers the tile content.
+  const MENU_W = 180;
+  const GAP = 8;
+  let top = 0;
+  let left = 0;
+  if (tileRect) {
+    const fitsRight = tileRect.right + GAP + MENU_W <= window.innerWidth - 8;
+    if (fitsRight) {
+      top = tileRect.top;
+      left = tileRect.right + GAP;
+    } else {
+      // Fall back to below the tile, right-aligned with its right edge
+      top = tileRect.bottom + GAP;
+      left = Math.max(8, tileRect.right - MENU_W);
+    }
+  }
 
   // Build move targets: Root + all folders/workspaces (excluding the item itself and its current parent)
   const moveTargets = [
@@ -143,13 +158,29 @@ function OverflowMenu({ item, onDelete, onMove, folders, onClose, anchorRect }) 
     <div
       ref={ref}
       style={{
-        position: "fixed", top, left, zIndex: Z.workspace - 1, minWidth: 140,
+        position: "fixed", top, left, zIndex: Z.workspace - 1, width: MENU_W,
         background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
         borderRadius: RADIUS.lg, padding: "4px 0",
         boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
         fontFamily: FONT, animation: ANIM.settleIn(0),
       }}
     >
+      {/* Rename */}
+      <button
+        onClick={() => { onRename(item); onClose(); }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+        style={{ ...btnStyle, color: C.darkText }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke={C.darkMuted} strokeWidth="1.5" fill="none" />
+        </svg>
+        Rename
+      </button>
+
+      {/* Separator */}
+      <div style={{ height: 1, background: C.darkBorder, margin: "2px 8px" }} />
+
       {/* Move to */}
       <button
         onClick={() => setShowMoveSub((v) => !v)}
@@ -231,7 +262,7 @@ export default function WorkspaceBrowser() {
 
   // Overflow menu state
   const [menuItem, setMenuItem] = useState(null);
-  const [menuAnchor, setMenuAnchor] = useState(null);
+  const [menuTileRect, setMenuTileRect] = useState(null);
   const menuJustOpened = useRef(false);
 
   // Delete confirm state
@@ -350,8 +381,11 @@ export default function WorkspaceBrowser() {
   const handleOverflowClick = useCallback((e, item) => {
     e.stopPropagation();
     e.preventDefault();
-    const rect = e.currentTarget.getBoundingClientRect();
-    setMenuAnchor({ top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right });
+    // Capture the TILE rect (not the button) so the menu can render
+    // outside the tile rather than covering it.
+    const tile = e.currentTarget.closest("[data-tile-card]") || e.currentTarget;
+    const rect = tile.getBoundingClientRect();
+    setMenuTileRect({ top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right });
     setMenuItem(item);
     menuJustOpened.current = true;
     setTimeout(() => { menuJustOpened.current = false; }, 100);
@@ -359,8 +393,17 @@ export default function WorkspaceBrowser() {
 
   const closeMenu = useCallback(() => {
     setMenuItem(null);
-    setMenuAnchor(null);
+    setMenuTileRect(null);
   }, []);
+
+  // ── Rename flow ──
+  const handleRename = useCallback((item) => {
+    const next = window.prompt("Rename", item.name || "");
+    if (next == null) return;
+    const trimmed = next.trim();
+    if (!trimmed || trimmed === item.name) return;
+    updatePageConfig(item.id, { name: trimmed });
+  }, [updatePageConfig]);
 
   // ── Delete flow ──
   const handleDeleteRequest = useCallback((item) => {
@@ -781,6 +824,7 @@ export default function WorkspaceBrowser() {
           {displayItems.map((item, i) => (
             <div
               key={item.id}
+              data-tile-card="true"
               draggable
               onDragStart={(e) => handleDragStart(e, item)}
               onDragEnd={handleDragEnd}
@@ -883,9 +927,10 @@ export default function WorkspaceBrowser() {
       {menuItem && (
         <OverflowMenu
           item={menuItem}
-          anchorRect={menuAnchor}
+          tileRect={menuTileRect}
           onDelete={handleDeleteRequest}
           onMove={handleMove}
+          onRename={handleRename}
           folders={allFolders}
           onClose={closeMenu}
         />
