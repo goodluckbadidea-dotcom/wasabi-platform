@@ -27,6 +27,7 @@ import LoginScreen from "./core/LoginScreen.jsx";
 import BottomBar from "./core/BottomBar.jsx";
 import SearchModal from "./core/SearchModal.jsx";
 import SplitPane from "./core/SplitPane.jsx";
+import Breadcrumb from "./components/Breadcrumb.jsx";
 // Retry wrapper for dynamic imports — handles stale chunk errors after deploy
 function lazyWithRetry(importFn) {
   return React.lazy(() =>
@@ -629,15 +630,19 @@ function AppContent() {
                 position: "relative",
               }}
             >
-              {/* Floating maximize/minimize toggle — top-right of left pane.
-                  Hidden on narrow viewports (drawer mode) where the SplitPane
-                  drawer toggle pill handles open/close. */}
+              {/* Chrome strip — empty content (left pane uses each
+                  feature's own internal title), but matches the right
+                  pane's height so the two panels feel aligned. The
+                  maximize toggle lives at the right edge so it never
+                  overlaps with feature header buttons. */}
               {!isNarrow && (
-                <PanelMaxButton
-                  side="left"
-                  isMaxed={panelMode === "left-max"}
-                  onToggle={toggleLeftMax}
-                />
+                <div style={paneChromeStripStyle}>
+                  <PanelMaxButton
+                    side="left"
+                    isMaxed={panelMode === "left-max"}
+                    onToggle={toggleLeftMax}
+                  />
+                </div>
               )}
               {renderLeftPane()}
             </div>
@@ -656,12 +661,20 @@ function AppContent() {
                 position: "relative",
               }}
             >
+              {/* Chrome strip — breadcrumb on the left, maximize toggle
+                  on the right. Persists across all right-pane routes so
+                  navigation back from a database page is one click. */}
               {!isNarrow && (
-                <PanelMaxButton
-                  side="right"
-                  isMaxed={panelMode === "right-max"}
-                  onToggle={toggleRightMax}
-                />
+                <div style={paneChromeStripStyle}>
+                  <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
+                    <Breadcrumb />
+                  </div>
+                  <PanelMaxButton
+                    side="right"
+                    isMaxed={panelMode === "right-max"}
+                    onToggle={toggleRightMax}
+                  />
+                </div>
               )}
               {renderRightPane()}
             </div>
@@ -679,10 +692,22 @@ function AppContent() {
   );
 }
 
+// Chrome strip at the top of each pane — holds the breadcrumb (right
+// pane) and the maximize button (both panes). Both panes use the same
+// strip so their content vertically aligns.
+const paneChromeStripStyle = {
+  flexShrink: 0,
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  padding: "20px 18px 8px 28px",
+  minHeight: 52,
+};
+
 // ─── PanelMaxButton ───
-// Small floating button at the top-right corner of each panel for
-// maximize/minimize. Sits absolutely-positioned so it overlays the
-// feature's own internal header without requiring per-feature edits.
+// Inline button rendered inside each pane's chrome strip. Hover state
+// surfaces a subtle background so it reads as chrome, not feature
+// content.
 function PanelMaxButton({ side, isMaxed, onToggle }) {
   const [hover, setHover] = useState(false);
   return (
@@ -691,9 +716,7 @@ function PanelMaxButton({ side, isMaxed, onToggle }) {
       title={isMaxed ? "Restore split view" : `Maximize ${side === "left" ? "left" : "right"} panel`}
       aria-label={isMaxed ? "Restore split view" : `Maximize ${side} panel`}
       style={{
-        position: "absolute",
-        top: 12,
-        right: 14,
+        flexShrink: 0,
         width: 30,
         height: 30,
         display: "flex",
@@ -706,7 +729,6 @@ function PanelMaxButton({ side, isMaxed, onToggle }) {
         transition: "background 0.15s, border-color 0.15s, opacity 0.15s",
         opacity: hover ? 1 : 0.55,
         outline: "none",
-        zIndex: Z.sticky,
       }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
