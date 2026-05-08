@@ -38,8 +38,8 @@ import {
 import WasabiFlame from "./WasabiFlame.jsx";
 import CreateMenu from "./CreateMenu.jsx";
 
-const BAR_HEIGHT = 56;
-const ITEM_GAP = 4;
+const BAR_HEIGHT = 68;
+const ITEM_GAP = 10;
 const DIVIDER_W = 1;
 
 export default function BottomBar({ isThinking, onCreatePage, onSearchClick }) {
@@ -241,8 +241,8 @@ export default function BottomBar({ isThinking, onCreatePage, onSearchClick }) {
     alignItems: "center",
     justifyContent: "center",
     padding: 0,
-    width: isTouch ? 44 : 40,
-    height: isTouch ? 44 : 40,
+    width: isTouch ? 50 : 46,
+    height: isTouch ? 50 : 46,
     borderRadius: RADIUS.lg,
     transition: "background 0.15s, box-shadow 0.15s",
     outline: "none",
@@ -251,7 +251,7 @@ export default function BottomBar({ isThinking, onCreatePage, onSearchClick }) {
   });
 
   const iconColor = (isActive) => isActive ? C.accent : inactiveColor;
-  const ICON = 20;
+  const ICON = 22;
 
   // Workspace highlight rule: Workspaces icon is also lit when viewing a user-built page.
   const SYSTEM_PAGES = new Set(["system", "wasabi", "inbox", "inbox-unified", "automations", "functions", "build", "knowledge-base", "dashboard", "workspaces", "calendar", "gmail", "outlook", "notifications", "knowledge"]);
@@ -328,9 +328,6 @@ export default function BottomBar({ isThinking, onCreatePage, onSearchClick }) {
         </svg>
       </button>
 
-      {/* ─ Create ─ */}
-      <CreateMenu onCreateItem={handleCreateItem} collapsed={true} />
-
       {/* ─ Left-pane group: Tasks / Notes / Wasabi ─ */}
       {/* Tasks */}
       <button
@@ -377,7 +374,7 @@ export default function BottomBar({ isThinking, onCreatePage, onSearchClick }) {
           onMouseEnter={(e) => { if (activeLeftPane !== "chat") e.currentTarget.style.background = C.darkSurf2; }}
           onMouseLeave={(e) => { if (activeLeftPane !== "chat") e.currentTarget.style.background = "transparent"; }}
         >
-          <WasabiFlame size={32} isThinking={isThinking} />
+          <WasabiFlame size={36} isThinking={isThinking} />
         </button>
       )}
 
@@ -509,8 +506,11 @@ export default function BottomBar({ isThinking, onCreatePage, onSearchClick }) {
         <IconBrain size={ICON} color={iconColor(activeRightPane === "knowledge")} />
       </button>
 
-      {/* ─ Spacer pushes chrome to the right ─ */}
+      {/* ─ Spacer pushes the create button + chrome to the right ─ */}
       <div style={{ flex: 1, minWidth: 8 }} />
+
+      {/* ─ Create (moved to right side) ─ */}
+      <CreateMenu onCreateItem={handleCreateItem} collapsed={true} />
 
       {/* Save status indicator */}
       {saveStatus !== "idle" && (
@@ -612,17 +612,17 @@ export default function BottomBar({ isThinking, onCreatePage, onSearchClick }) {
               background: dropdownOpen ? C.accent + "22" : "transparent",
               border: `1px solid ${dropdownOpen ? C.accent : C.darkBorder}`,
               borderRadius: RADIUS.pill,
-              padding: "5px 12px 5px 6px",
+              padding: "6px 14px 6px 7px",
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
-              gap: 8,
+              gap: 9,
               transition: "background 0.15s, border-color 0.15s",
               color: C.darkMuted,
-              fontSize: 12,
+              fontSize: 13,
               fontFamily: FONT,
               fontWeight: 500,
-              minHeight: 36,
+              minHeight: 42,
               outline: "none",
             }}
             onMouseEnter={(e) => {
@@ -639,10 +639,10 @@ export default function BottomBar({ isThinking, onCreatePage, onSearchClick }) {
             }}
           >
             <span style={{
-              width: 22, height: 22, borderRadius: "50%",
+              width: 26, height: 26, borderRadius: "50%",
               background: `linear-gradient(135deg, ${C.accent}, ${C.accent}cc)`,
               display: "flex", alignItems: "center", justifyContent: "center",
-              color: "#fff", fontSize: 11, fontWeight: 700,
+              color: "#fff", fontSize: 12, fontWeight: 700,
               flexShrink: 0,
             }}>
               {(identity.display_name || "U").charAt(0).toUpperCase()}
