@@ -333,6 +333,51 @@ export default function TableRow({
     );
   }
 
+  // ── Trailing "+ Add sub-item" row (visible when expanded with ≥1 child,
+  //     and no ghost row currently active). Re-enters handleCreateSubItem
+  //     so adding a second sub-item is reachable from the table view — the
+  //     unified parent-row button only toggles expand once children exist.
+  function renderSubAddRow() {
+    return (
+      <div
+        key={`add-sub-${parentId}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          handleCreateSubItem(parentId);
+        }}
+        style={{
+          ...styles.gridSubRow,
+          gridTemplateColumns: subGtc,
+          minHeight: 30,
+          cursor: "pointer",
+          background: "transparent",
+          transition: "background 0.12s",
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+        title="Add sub-item"
+      >
+        <div style={{ ...styles.gridCell, justifyContent: "center", padding: 0 }}>
+          <IconPlus size={12} color={C.darkMuted} />
+        </div>
+        <div
+          style={{
+            ...styles.gridCell,
+            gridColumn: `2 / span ${subColsList.length + 2}`,
+            padding: "4px 8px",
+            fontSize: 11,
+            fontFamily: FONT,
+            color: C.darkMuted,
+            fontStyle: "italic",
+            borderRight: "none",
+          }}
+        >
+          Add sub-item
+        </div>
+      </div>
+    );
+  }
+
   // ── Render the full group card ──
   return (
     <div
@@ -532,6 +577,7 @@ export default function TableRow({
             );
           })}
           {ghostActiveHere && onCreate && renderSubGhostRow()}
+          {!ghostActiveHere && onCreate && subItemsEnabled && children.length > 0 && renderSubAddRow()}
         </>
       )}
     </div>

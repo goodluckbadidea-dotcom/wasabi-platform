@@ -4,7 +4,7 @@
 // Read-only display for formula, rollup, created_time, last_edited_time, people, relation.
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
-import { C, FONT, RADIUS, SHADOW, getSolidPillColor } from "../design/tokens.js";
+import { C, FONT, RADIUS, SHADOW, Z, getSolidPillColor } from "../design/tokens.js";
 import { useViewport } from "../context/ViewportContext.jsx";
 import { readProp, buildProp } from "../notion/properties.js";
 import { IconClose, IconEdit, IconExpand } from "../design/icons.jsx";
@@ -57,7 +57,7 @@ function getDs() { return {
     position: "fixed",
     inset: 0,
     background: C.overlayBg,
-    zIndex: 100,
+    zIndex: Z.modal,
     display: "flex",
     alignItems: "stretch",
     justifyContent: "flex-end",
