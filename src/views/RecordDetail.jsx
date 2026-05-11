@@ -4,6 +4,7 @@
 // Read-only display for formula, rollup, created_time, last_edited_time, people, relation.
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { C, FONT, RADIUS, SHADOW, Z, getSolidPillColor } from "../design/tokens.js";
 import { useViewport } from "../context/ViewportContext.jsx";
 import { readProp, buildProp } from "../notion/properties.js";
@@ -571,7 +572,12 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
 
   if (!page) return null;
 
-  return (
+  // Portal the overlay to document.body so position:fixed is viewport-anchored,
+  // regardless of any ancestor that may create a containing block (e.g. via
+  // transform, filter, will-change, contain). Without the portal the overlay
+  // can render constrained to the right-pane wrapper and the Save-button
+  // footer ends up hidden under BottomBar.
+  return createPortal((
     <div style={ds.overlay} onClick={onClose} onKeyDown={(e) => e.stopPropagation()}>
       <div style={{ ...ds.drawer, ...(isTablet ? { width: 400 } : {}) }} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
@@ -910,7 +916,7 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
         {activeTab === "files" && <RecordFiles recordId={page.id} pageConfigId={pageConfigId} />}
       </div>
     </div>
-  );
+  ), document.body);
 }
 
 // ── Sub-Items Tab Component ──
