@@ -12,11 +12,16 @@
 //  - Pin positions (`client_meta`) are not visualized — we'd need to draw
 //    on top of the embed iframe which is cross-origin.
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
-import { listFigmaComments, postFigmaComment, deleteFigmaComment } from "../lib/api.js";
+import {
+  listFigmaComments, postFigmaComment, deleteFigmaComment,
+  listFigmaLinksForComment, createFigmaCommentLink, deleteFigmaCommentLink,
+} from "../lib/api.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import MentionInput from "../components/MentionInput.jsx";
+import RecordPickerModal from "../components/RecordPickerModal.jsx";
+import { useNavigation } from "../context/NavigationContext.jsx";
 
 const POLL_MS = 30_000;
 
@@ -103,12 +108,19 @@ function CommentBody({ message }) {
 
 export default function FigmaCommentPanel({ fileKey, fileName = "", onClose }) {
   const { identity } = usePlatform();
+  const nav = useNavigation();
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [draft, setDraft] = useState("");
   const [posting, setPosting] = useState(false);
   const [replyTo, setReplyTo] = useState(null); // top-level comment id we're replying to
+
+  // Link state: which comment is currently being linked (picker target) + cache
+  // of links keyed by commentId. The cache is filled lazily as each comment
+  // is rendered (one batched fetch per panel load).
+  const [linkPickerCommentId, setLinkPickerCommentId] = useState(null);
+  const [linksByComment, setLinksByComment] = useState({}); // { [commentId]: link[] }
 
   const load = useCallback(async (silent = false) => {
     if (!fileKey) return;
@@ -132,6 +144,34 @@ export default function FigmaCommentPanel({ fileKey, fileName = "", onClose }) {
     const t = setInterval(() => load(true), POLL_MS);
     return () => clearInterval(t);
   }, [fileKey, load]);
+
+  // Refresh the links map for the currently-loaded set of comments. Runs after
+  // each comments load. Fetches in parallel; failures are swallowed per comment.
+  const refreshLinks = useCallback(async (commentIds) => {
+    if (!Array.isArray(commentIds) || commentIds.length === 0) {
+      setLinksByComment({});
+      return;
+    }
+    try {
+      const results = await Promise.all(
+        commentIds.map((cid) =>
+          listFigmaLinksForComment(cid).catch(() => ({ links: [] }))
+        )
+      );
+      const next = {};
+      commentIds.forEach((cid, i) => {
+        next[cid] = results[i]?.links || [];
+      });
+      setLinksByComment(next);
+    } catch {
+      // Non-fatal — links section just stays empty.
+    }
+  }, []);
+
+  useEffect(() => {
+    const ids = comments.map((c) => c.id).filter(Boolean);
+    refreshLinks(ids);
+  }, [comments, refreshLinks]);
 
   const handlePost = useCallback(async () => {
     const text = draft.trim();
@@ -157,6 +197,57 @@ export default function FigmaCommentPanel({ fileKey, fileName = "", onClose }) {
       setError(err.message || "Failed to delete comment");
     }
   }, [fileKey, load]);
+
+  // Find a comment object by id (top-level or reply) so the link snapshot can
+  // capture the author + message + timestamp accurately.
+  const findCommentById = useCallback((id) => {
+    for (const c of comments) if (c.id === id) return c;
+    return null;
+  }, [comments]);
+
+  const handleLinkPick = useCallback(async (picked) => {
+    const commentId = linkPickerCommentId;
+    if (!commentId) return;
+    const comment = findCommentById(commentId);
+    setLinkPickerCommentId(null);
+    if (!comment) return;
+    try {
+      await createFigmaCommentLink({
+        figma_file_key: fileKey,
+        figma_file_name: fileName,
+        figma_comment_id: commentId,
+        comment_message: comment.message || "",
+        comment_author: comment.user?.handle || "",
+        comment_created_at: comment.created_at || "",
+        record_id: picked.record_id,
+        page_config_id: picked.page_config_id,
+      });
+      // Re-fetch links for just this comment to update the UI.
+      const res = await listFigmaLinksForComment(commentId).catch(() => ({ links: [] }));
+      setLinksByComment((prev) => ({ ...prev, [commentId]: res.links || [] }));
+    } catch (err) {
+      setError(err.message || "Failed to link comment to record");
+    }
+  }, [linkPickerCommentId, findCommentById, fileKey, fileName]);
+
+  const handleUnlink = useCallback(async (linkId, commentId) => {
+    try {
+      await deleteFigmaCommentLink(linkId);
+      setLinksByComment((prev) => ({
+        ...prev,
+        [commentId]: (prev[commentId] || []).filter((l) => l.id !== linkId),
+      }));
+    } catch (err) {
+      setError(err.message || "Failed to remove link");
+    }
+  }, []);
+
+  const handleOpenRecord = useCallback((link) => {
+    if (nav?.navigateToRecord && link?.page_config_id && link?.record_id) {
+      nav.navigateToRecord(link.page_config_id, link.record_id);
+      onClose?.();
+    }
+  }, [nav, onClose]);
 
   // Best-effort detection of comments authored by the current Wasabi user:
   // we tagged the message with their display name, so look for the prefix.
@@ -257,12 +348,24 @@ export default function FigmaCommentPanel({ fileKey, fileName = "", onClose }) {
                   )}
                 </div>
                 <CommentBody message={thread.message} />
+                <RecordLinkTags
+                  links={linksByComment[thread.id] || []}
+                  onOpen={handleOpenRecord}
+                  onRemove={(id) => handleUnlink(id, thread.id)}
+                />
                 <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
                   <button
                     onClick={() => setReplyTo(thread.id)}
                     style={textBtnStyle()}
                   >
                     Reply
+                  </button>
+                  <button
+                    onClick={() => setLinkPickerCommentId(thread.id)}
+                    style={textBtnStyle()}
+                    title="Link this comment to a Wasabi record"
+                  >
+                    Link to record
                   </button>
                   {isOwnedByMe(thread) && (
                     <button onClick={() => handleDelete(thread.id)} style={textBtnStyle("danger")}>
@@ -285,14 +388,28 @@ export default function FigmaCommentPanel({ fileKey, fileName = "", onClose }) {
                         <span style={{ fontSize: 10, color: C.darkMuted }}>{formatRelative(r.created_at)}</span>
                       </div>
                       <CommentBody message={r.message} />
-                      {isOwnedByMe(r) && (
+                      <RecordLinkTags
+                        links={linksByComment[r.id] || []}
+                        onOpen={handleOpenRecord}
+                        onRemove={(id) => handleUnlink(id, r.id)}
+                      />
+                      <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
                         <button
-                          onClick={() => handleDelete(r.id)}
-                          style={{ ...textBtnStyle("danger"), marginTop: 4 }}
+                          onClick={() => setLinkPickerCommentId(r.id)}
+                          style={textBtnStyle()}
+                          title="Link this reply to a Wasabi record"
                         >
-                          Delete
+                          Link to record
                         </button>
-                      )}
+                        {isOwnedByMe(r) && (
+                          <button
+                            onClick={() => handleDelete(r.id)}
+                            style={textBtnStyle("danger")}
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -365,6 +482,14 @@ export default function FigmaCommentPanel({ fileKey, fileName = "", onClose }) {
           </button>
         </div>
       </div>
+
+      {/* Record picker — opened by "Link to record" on any comment */}
+      <RecordPickerModal
+        open={!!linkPickerCommentId}
+        title="Link this comment to a record"
+        onPick={handleLinkPick}
+        onCancel={() => setLinkPickerCommentId(null)}
+      />
     </div>
   );
 }
@@ -375,4 +500,53 @@ function textBtnStyle(kind) {
     color: kind === "danger" ? C.error : C.darkMuted,
     fontSize: 11, fontFamily: FONT, padding: 0, cursor: "pointer", outline: "none",
   };
+}
+
+// Small inline list of "linked to:" record tags shown under each comment body.
+function RecordLinkTags({ links, onOpen, onRemove }) {
+  if (!links || links.length === 0) return null;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+      {links.map((l) => (
+        <span
+          key={l.id}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 4,
+            padding: "2px 4px 2px 8px", height: 20, lineHeight: 1,
+            background: C.accent + "18", border: `1px solid ${C.accent}33`,
+            borderRadius: RADIUS.pill, color: C.accent,
+            fontSize: 10, fontFamily: FONT, fontWeight: 600,
+            maxWidth: 220, overflow: "hidden",
+          }}
+        >
+          <button
+            onClick={(e) => { e.stopPropagation(); onOpen?.(l); }}
+            title={`Open "${l.record_name || ""}"`}
+            style={{
+              background: "transparent", border: "none", padding: 0,
+              color: "inherit", font: "inherit", cursor: "pointer", outline: "none",
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              maxWidth: 180,
+            }}
+          >
+            ↗ {l.record_name || "record"}
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onRemove?.(l.id); }}
+            title="Remove link"
+            aria-label="Remove link"
+            style={{
+              background: "transparent", border: "none", padding: "0 4px",
+              color: C.accent, font: "inherit", cursor: "pointer", outline: "none",
+              fontSize: 12, lineHeight: 1, opacity: 0.7,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.7"; }}
+          >
+            &times;
+          </button>
+        </span>
+      ))}
+    </div>
+  );
 }

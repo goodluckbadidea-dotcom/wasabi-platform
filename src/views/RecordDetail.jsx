@@ -18,7 +18,8 @@ import FigmaCellPreview from "../components/FigmaCellPreview.jsx";
 import { useCollaboration } from "../context/CollaborationContext.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import PresenceAvatars from "../components/PresenceAvatars.jsx";
-import { listUserDirectory, updateRowOwner, listChildRows, createRows, listRows } from "../lib/api.js";
+import { listUserDirectory, updateRowOwner, listChildRows, createRows, listRows, listFigmaLinksForRecord, deleteFigmaCommentLink } from "../lib/api.js";
+import { useNavigation } from "../context/NavigationContext.jsx";
 import { IconPlus, IconChevronDown } from "../design/icons.jsx";
 import { useRelationships } from "../context/RelationshipsContext.jsx";
 
@@ -913,7 +914,12 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
           />
         )}
 
-        {activeTab === "comments" && <RecordComments recordId={page.id} pageConfigId={pageConfigId} userId={identity?.id} userName={identity?.display_name} userRole={identity?.role} />}
+        {activeTab === "comments" && (
+          <>
+            <FigmaCommentsFromRecord recordId={page.id} />
+            <RecordComments recordId={page.id} pageConfigId={pageConfigId} userId={identity?.id} userName={identity?.display_name} userRole={identity?.role} />
+          </>
+        )}
 
         {/* Files Tab */}
         {activeTab === "files" && <RecordFiles recordId={page.id} pageConfigId={pageConfigId} />}
@@ -1716,6 +1722,150 @@ function DisplayValue({ prop, fieldName, schema, pendingValue, linkedValue }) {
     default:
       return <span style={{ color: C.darkMuted }}>{JSON.stringify(value)}</span>;
   }
+}
+
+// ── "From Figma" section — inbound Figma comments linked to this record ──
+// Shown at the top of the Comments tab. Fetches figma_comment_links rows
+// where record_id matches the open record; renders the snapshot stored on
+// each link (message/author/created_at). Clicking the file name opens the
+// in-app viewer via NavigationContext.
+function FigmaCommentsFromRecord({ recordId }) {
+  const ds = getDs();
+  const nav = useNavigation();
+  const [links, setLinks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const load = useCallback(async () => {
+    if (!recordId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await listFigmaLinksForRecord(recordId);
+      setLinks(res?.links || []);
+    } catch (err) {
+      setError(err?.message || "Failed to load Figma comments");
+    } finally {
+      setLoading(false);
+    }
+  }, [recordId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleUnlink = useCallback(async (linkId) => {
+    try {
+      await deleteFigmaCommentLink(linkId);
+      setLinks((prev) => prev.filter((l) => l.id !== linkId));
+    } catch (err) {
+      setError(err?.message || "Failed to remove link");
+    }
+  }, []);
+
+  // Strip the `[Name via Wasabi]:` prefix off snapshot messages so the body
+  // reads cleanly — same treatment FigmaCommentPanel applies.
+  const renderMessage = (raw) => {
+    const match = /^\[(.+) via Wasabi\]:\s*([\s\S]*)$/.exec(raw || "");
+    if (!match) return <span style={{ whiteSpace: "pre-wrap" }}>{raw || ""}</span>;
+    return (
+      <>
+        <span style={{
+          display: "inline-block", fontSize: 9, fontWeight: 700,
+          textTransform: "uppercase", letterSpacing: "0.06em",
+          padding: "1px 6px", borderRadius: RADIUS.sm,
+          background: C.accent + "22", color: C.accent, marginBottom: 4,
+        }}>
+          {match[1]} via Wasabi
+        </span>
+        <div style={{ whiteSpace: "pre-wrap" }}>{match[2]}</div>
+      </>
+    );
+  };
+
+  if (loading) return null; // Avoid flicker — RecordComments below renders immediately
+  if (error) {
+    return (
+      <div style={{
+        margin: "0 0 12px 0", padding: "8px 10px",
+        background: C.error + "12", color: C.error,
+        borderRadius: RADIUS.md, fontSize: 11,
+      }}>
+        {error}
+      </div>
+    );
+  }
+  if (links.length === 0) return null;
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{
+        fontSize: 10, fontWeight: 700, textTransform: "uppercase",
+        letterSpacing: "0.06em", color: C.darkMuted,
+        marginBottom: 8, display: "flex", alignItems: "center", gap: 6,
+      }}>
+        <IconFigma size={11} />
+        From Figma ({links.length})
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {links.map((l) => (
+          <div
+            key={l.id}
+            style={{
+              padding: "10px 12px", background: C.darkSurf2,
+              border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.md,
+              fontSize: 12, lineHeight: 1.45,
+            }}
+          >
+            <div style={{
+              display: "flex", alignItems: "center", gap: 8,
+              marginBottom: 6, fontSize: 11, color: C.darkMuted,
+            }}>
+              <button
+                onClick={() => nav?.navigateToFigmaFile?.(l.figma_file_key, l.figma_file_name)}
+                title="Open file in app"
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 4,
+                  padding: 0, background: "transparent", border: "none",
+                  color: C.accent, font: "inherit", cursor: "pointer",
+                  outline: "none", fontWeight: 600,
+                }}
+              >
+                <IconFigma size={11} />
+                {l.figma_file_name || "Figma file"}
+              </button>
+              {l.comment_author && (
+                <>
+                  <span>·</span>
+                  <span>{l.comment_author}</span>
+                </>
+              )}
+              {l.comment_created_at && (
+                <>
+                  <span>·</span>
+                  <span>{new Date(l.comment_created_at).toLocaleDateString()}</span>
+                </>
+              )}
+              <span style={{ flex: 1 }} />
+              <button
+                onClick={() => handleUnlink(l.id)}
+                title="Remove this link"
+                aria-label="Remove link"
+                style={{
+                  background: "transparent", border: "none", padding: "0 2px",
+                  color: C.darkMuted, fontSize: 13, lineHeight: 1, cursor: "pointer",
+                  outline: "none",
+                }}
+              >
+                &times;
+              </button>
+            </div>
+            <div style={{ color: C.darkText }}>
+              {renderMessage(l.comment_message)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // ── Figma files display (used inside renderField/DisplayValue) ──

@@ -1127,6 +1127,27 @@ export async function deleteFigmaComment(fileKey, commentId) {
   return apiFetch(`/figma/files/${fileKey}/comments/${commentId}`, { method: "DELETE" });
 }
 
+// ── Figma comment ↔ record links (Phase 3b) ──
+
+export async function listFigmaLinksForRecord(recordId) {
+  return apiFetch(`/figma/comment-links?record_id=${encodeURIComponent(recordId)}`, { method: "GET" });
+}
+
+export async function listFigmaLinksForComment(commentId) {
+  return apiFetch(`/figma/comment-links?comment_id=${encodeURIComponent(commentId)}`, { method: "GET" });
+}
+
+export async function createFigmaCommentLink({ figma_file_key, figma_file_name, figma_comment_id, comment_message, comment_author, comment_created_at, record_id, page_config_id }) {
+  return apiFetch(`/figma/comment-links`, {
+    method: "POST",
+    body: { figma_file_key, figma_file_name, figma_comment_id, comment_message, comment_author, comment_created_at, record_id, page_config_id },
+  });
+}
+
+export async function deleteFigmaCommentLink(linkId) {
+  return apiFetch(`/figma/comment-links/${linkId}`, { method: "DELETE" });
+}
+
 // ─── Auth ───
 
 function getDeviceInfo() {

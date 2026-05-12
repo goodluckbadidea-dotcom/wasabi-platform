@@ -311,3 +311,87 @@ export async function handleFigmaDeleteComment(env, fileKey, commentId, jsonResp
     return jsonResponse({ _error: err.message }, 500);
   }
 }
+
+// ── Comment ↔ record links (Phase 3b) ──
+// Bidirectional: a Figma comment can be linked to a Wasabi record, and the
+// record's drawer surfaces inbound Figma comments. The link snapshots the
+// comment's message/author/created_at so the record view can render
+// without round-tripping Figma on every load (snapshot can be refreshed
+// by deleting and re-linking).
+
+export async function handleFigmaListLinksForRecord(env, recordId, jsonResponse) {
+  try {
+    if (!recordId) return jsonResponse({ _error: 'Missing record id' }, 400);
+    const res = await env.DB.prepare(
+      `SELECT id, figma_file_key, figma_file_name, figma_comment_id,
+              comment_message, comment_author, comment_created_at,
+              record_id, page_config_id, linked_by, linked_at
+       FROM figma_comment_links WHERE record_id = ? ORDER BY linked_at DESC`
+    ).bind(recordId).all();
+    return jsonResponse({ links: res.results || [] });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+export async function handleFigmaListLinksForComment(env, commentId, jsonResponse) {
+  try {
+    if (!commentId) return jsonResponse({ _error: 'Missing comment id' }, 400);
+    const res = await env.DB.prepare(
+      `SELECT id, figma_file_key, figma_file_name, figma_comment_id,
+              record_id, page_config_id, linked_by, linked_at
+       FROM figma_comment_links WHERE figma_comment_id = ? ORDER BY linked_at DESC`
+    ).bind(commentId).all();
+    return jsonResponse({ links: res.results || [] });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+export async function handleFigmaCreateLink(env, body, user, jsonResponse) {
+  try {
+    const {
+      figma_file_key, figma_file_name = '',
+      figma_comment_id, comment_message = '', comment_author = '', comment_created_at = '',
+      record_id, page_config_id,
+    } = body || {};
+    if (!figma_file_key || !figma_comment_id || !record_id || !page_config_id) {
+      return jsonResponse({ _error: 'figma_file_key, figma_comment_id, record_id, page_config_id are required' }, 400);
+    }
+    const id = crypto.randomUUID();
+    try {
+      await env.DB.prepare(
+        `INSERT INTO figma_comment_links
+         (id, figma_file_key, figma_file_name, figma_comment_id,
+          comment_message, comment_author, comment_created_at,
+          record_id, page_config_id, linked_by, linked_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+      ).bind(
+        id, figma_file_key, figma_file_name, figma_comment_id,
+        comment_message, comment_author, comment_created_at,
+        record_id, page_config_id, user?.sub || ''
+      ).run();
+    } catch (err) {
+      // Duplicate (figma_comment_id, record_id) — surface as 409.
+      if (/UNIQUE constraint failed/i.test(err?.message || '')) {
+        return jsonResponse({ _error: 'This comment is already linked to that record' }, 409);
+      }
+      throw err;
+    }
+    return jsonResponse({ ok: true, id });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+export async function handleFigmaDeleteLink(env, linkId, jsonResponse) {
+  try {
+    if (!linkId) return jsonResponse({ _error: 'Missing link id' }, 400);
+    await env.DB.prepare(
+      "DELETE FROM figma_comment_links WHERE id = ?"
+    ).bind(linkId).run();
+    return jsonResponse({ ok: true });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}

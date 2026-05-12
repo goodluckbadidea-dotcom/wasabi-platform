@@ -394,6 +394,30 @@ CREATE INDEX IF NOT EXISTS idx_rel_target_page ON relationships(target_page_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_rel_uniq_active
   ON relationships(source_type, source_id, target_type, target_id, type)
   WHERE deleted_at IS NULL;
+
+-- ─── Figma comment ↔ record links (Phase 3b, 2026-05-11) ───
+-- Joins a Figma comment (lives in Figma's API, not Wasabi) to a Wasabi
+-- record. Snapshot of message/author/created_at is kept so the linked
+-- record's drawer can render the comment without re-fetching Figma.
+-- Snapshot drifts from Figma's source of truth — the link can be deleted
+-- and re-created to refresh.
+CREATE TABLE IF NOT EXISTS figma_comment_links (
+  id TEXT PRIMARY KEY,
+  figma_file_key TEXT NOT NULL,
+  figma_file_name TEXT DEFAULT '',
+  figma_comment_id TEXT NOT NULL,
+  comment_message TEXT DEFAULT '',
+  comment_author TEXT DEFAULT '',
+  comment_created_at TEXT DEFAULT '',
+  record_id TEXT NOT NULL,
+  page_config_id TEXT NOT NULL,
+  linked_by TEXT DEFAULT '',
+  linked_at TEXT DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_fcl_unique
+  ON figma_comment_links(figma_comment_id, record_id);
+CREATE INDEX IF NOT EXISTS idx_fcl_record ON figma_comment_links(record_id);
+CREATE INDEX IF NOT EXISTS idx_fcl_file ON figma_comment_links(figma_file_key);
 `;
 
 // ─── Relationship Type Seed Rows ───

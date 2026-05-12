@@ -25,7 +25,7 @@ import { handleListComments, handleCreateComment, handleDeleteComment } from './
 import { handleGoogleAuthUrl, handleGoogleCallback, handleGoogleStatus, handleGoogleDisconnect, handleGmailSummary, handleGmailSearch, handleGmailGetMessage, handleGmailGetThread, handleGmailUpdateDraft, handleGmailSend, handleGmailCreateDraft, handleGmailModify, handleCalendarSummary, handleCalendarList, handleCalendarListEvents, handleCalendarCreateEvent, handleCalendarUpdateEvent, handleCalendarDeleteEvent, handleCalendarFreeBusy, fetchGoogleSheetViaApi } from './worker/handlers/google.js';
 import { handleMicrosoftAuthUrl, handleMicrosoftCallback, handleMicrosoftStatus, handleMicrosoftDisconnect } from './worker/handlers/microsoft.js';
 import { handleOutlookSummary, handleOutlookSearch, handleOutlookGetMessage, handleOutlookGetThread, handleOutlookSend, handleOutlookModify, handleOutlookCreateDraft, handleOutlookUpdateDraft, handleOutlookFreeBusy, handleOutlookCalendarSummary, handleOutlookListEvents, handleOutlookCreateEvent, handleOutlookUpdateEvent, handleOutlookDeleteEvent } from './worker/handlers/outlook.js';
-import { handleFigmaStatus, handleFigmaProjects, handleFigmaFiles, handleFigmaFile, handleFigmaImport, handleFigmaListComments, handleFigmaPostComment, handleFigmaDeleteComment } from './worker/handlers/figma.js';
+import { handleFigmaStatus, handleFigmaProjects, handleFigmaFiles, handleFigmaFile, handleFigmaImport, handleFigmaListComments, handleFigmaPostComment, handleFigmaDeleteComment, handleFigmaListLinksForRecord, handleFigmaListLinksForComment, handleFigmaCreateLink, handleFigmaDeleteLink } from './worker/handlers/figma.js';
 import { runAutomationTick, checkAutomationTriggers, runNeuronPruneTick } from './worker/automation/engine.js';
 import { runSyncFlushTick, handleSyncConfigure, handleSyncPush, handleSyncPull, handleSyncStatus, handleSyncDelete, handleDisconnect, handleSyncBackup, handleSyncBootstrap, handleSyncFlush, getNotionKeyFromDB, invalidateSummaryCache } from './worker/handlers/notion-sync.js';
 import { handleListPages, handleCreatePage, handleGetSummaryCache, handleSetSummaryCache, handleGetPage, handleUpdatePage, handleReorderPages, handleDeletePage } from './worker/handlers/pages.js';
@@ -382,6 +382,25 @@ export default {
       if (path === "/figma/projects" && request.method === "GET") {
         return await handleFigmaProjects(env, jsonResponse);
       }
+      // /figma/comment-links (Phase 3b) — must come before /figma/files
+      // routes so the path matcher doesn't accidentally swallow it.
+      if (path === "/figma/comment-links" && request.method === "GET") {
+        const recordId = url.searchParams.get("record_id");
+        const commentId = url.searchParams.get("comment_id");
+        if (recordId) return await handleFigmaListLinksForRecord(env, recordId, jsonResponse);
+        if (commentId) return await handleFigmaListLinksForComment(env, commentId, jsonResponse);
+        return jsonResponse({ _error: "record_id or comment_id query param required" }, 400);
+      }
+      if (path === "/figma/comment-links" && request.method === "POST") {
+        if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
+        const body = await request.json().catch(() => ({}));
+        return await handleFigmaCreateLink(env, body, user, jsonResponse);
+      }
+      if (path.startsWith("/figma/comment-links/") && request.method === "DELETE") {
+        const linkId = path.split("/")[3];
+        return await handleFigmaDeleteLink(env, linkId, jsonResponse);
+      }
+
       // /figma/files/:fileKey/comments (Phase 2)
       // MUST come before the catch-all /figma/files GET handler below, which
       // would otherwise match /figma/files/:key/comments and fall through to
