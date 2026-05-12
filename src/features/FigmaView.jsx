@@ -73,6 +73,11 @@ export default function FigmaView() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
 
+  // In-app viewer (Phase 1)
+  const [viewingFile, setViewingFile] = useState(null);
+  const [viewerHintDismissed, setViewerHintDismissed] = useState(false);
+  const [viewerHintVisible, setViewerHintVisible] = useState(false);
+
   // File cache: projectId → { name, files }
   const fileCacheRef = useRef({});
 
@@ -197,6 +202,113 @@ export default function FigmaView() {
   const filteredFiles = search
     ? files.filter((f) => f.name.toLowerCase().includes(search.toLowerCase()))
     : files;
+
+  // ── In-app viewer: escape-to-close ──
+  useEffect(() => {
+    if (!viewingFile) return;
+    const handler = (e) => { if (e.key === "Escape") setViewingFile(null); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [viewingFile]);
+
+  // ── In-app viewer: sign-in hint after 4s ──
+  useEffect(() => {
+    setViewerHintDismissed(false);
+    setViewerHintVisible(false);
+    if (!viewingFile) return;
+    const t = setTimeout(() => setViewerHintVisible(true), 4000);
+    return () => clearTimeout(t);
+  }, [viewingFile]);
+
+  // ── Takeover: in-app viewer ──
+  if (viewingFile) {
+    const embedSrc = `https://www.figma.com/embed?embed_host=wasabi-platform&url=${encodeURIComponent(`https://www.figma.com/file/${viewingFile.key}`)}`;
+    return (
+      <div style={{
+        flex: 1, display: "flex", flexDirection: "column", fontFamily: FONT,
+        color: C.darkText, overflow: "hidden", height: "100%", background: C.dark,
+      }}>
+        {/* Header strip */}
+        <div style={{
+          height: 48, flexShrink: 0, display: "flex", alignItems: "center",
+          gap: 12, padding: "0 16px",
+          borderBottom: `1px solid ${C.darkBorder}`, background: C.darkSurf,
+        }}>
+          <FigmaIcon size={16} />
+          <div style={{
+            flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>
+            {viewingFile.name}
+          </div>
+          <a
+            href={`https://www.figma.com/design/${viewingFile.key}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "6px 12px", fontSize: 12, fontWeight: 500, fontFamily: FONT,
+              background: "transparent", color: C.darkMuted,
+              border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.pill,
+              textDecoration: "none", cursor: "pointer",
+            }}
+            title="Open this file in Figma"
+          >
+            Open in Figma
+          </a>
+          <button
+            onClick={() => setViewingFile(null)}
+            title="Close (Esc)"
+            aria-label="Close in-app viewer"
+            style={{
+              width: 32, height: 32, display: "flex", alignItems: "center",
+              justifyContent: "center", borderRadius: RADIUS.pill,
+              background: "transparent", border: `1px solid ${C.darkBorder}`,
+              color: C.darkMuted, fontSize: 18, lineHeight: 1, cursor: "pointer",
+              outline: "none",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          >
+            &times;
+          </button>
+        </div>
+
+        {/* Sign-in hint banner */}
+        {viewerHintVisible && !viewerHintDismissed && (
+          <div style={{
+            padding: "8px 16px", background: C.accent + "12",
+            borderBottom: `1px solid ${C.accent}33`, fontSize: 11,
+            color: C.darkText, display: "flex", alignItems: "center", gap: 12,
+          }}>
+            <span style={{ flex: 1 }}>
+              Seeing a Figma sign-in screen below? Sign in to Figma in another browser tab, then reload this view.
+            </span>
+            <button
+              onClick={() => setViewerHintDismissed(true)}
+              style={{
+                background: "transparent", border: "none", color: C.darkMuted,
+                fontSize: 16, cursor: "pointer", padding: "0 4px", outline: "none",
+              }}
+              aria-label="Dismiss hint"
+            >
+              &times;
+            </button>
+          </div>
+        )}
+
+        {/* Iframe */}
+        <iframe
+          key={viewingFile.key}
+          src={embedSrc}
+          title={`Figma: ${viewingFile.name}`}
+          allow="clipboard-write; fullscreen"
+          allowFullScreen
+          style={{ flex: 1, width: "100%", border: "none", background: C.dark }}
+        />
+      </div>
+    );
+  }
 
   // ── Render ──
   return (
@@ -518,22 +630,36 @@ export default function FigmaView() {
                 </div>
               </div>
 
-              {/* Open in Figma */}
-              <a
-                href={`https://www.figma.com/design/${selectedFile.key}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: "inline-flex", alignItems: "center", gap: 6,
-                  padding: "7px 14px", fontSize: 12, fontWeight: 600, fontFamily: FONT,
-                  background: C.accent, color: "#fff", borderRadius: RADIUS.pill,
-                  textDecoration: "none", alignSelf: "flex-start",
-                  cursor: "pointer",
-                }}
-              >
-                <FigmaIcon size={13} />
-                Open in Figma
-              </a>
+              {/* Open buttons */}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  onClick={() => setViewingFile(selectedFile)}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                    padding: "7px 14px", fontSize: 12, fontWeight: 600, fontFamily: FONT,
+                    background: C.accent, color: "#fff", borderRadius: RADIUS.pill,
+                    border: "none", cursor: "pointer", outline: "none",
+                  }}
+                  title="View this file inside Wasabi"
+                >
+                  <FigmaIcon size={13} />
+                  Open in App
+                </button>
+                <a
+                  href={`https://www.figma.com/design/${selectedFile.key}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                    padding: "7px 14px", fontSize: 12, fontWeight: 600, fontFamily: FONT,
+                    background: "transparent", color: C.darkText,
+                    border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.pill,
+                    textDecoration: "none", cursor: "pointer",
+                  }}
+                >
+                  Open in Figma
+                </a>
+              </div>
 
               {/* Pages */}
               {loadingDetail && (
