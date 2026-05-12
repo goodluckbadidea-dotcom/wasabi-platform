@@ -47,7 +47,7 @@ Extracted from worker.js during the 2026-04-06 refactor. Each file is a named ES
 | `worker/handlers/google.js` | Google OAuth callback, status, disconnect, token refresh. All token values encrypted at rest. |
 | `worker/handlers/microsoft.js` | Microsoft Entra OAuth: auth URL generation, callback (find/create user by email, issue JWT), status, disconnect, `getMicrosoftAccessToken()` with auto-refresh. |
 | `worker/handlers/outlook.js` | Microsoft Graph API handlers: Outlook mail (summary, search, read, thread, send, modify, draft create/update) and calendar (summary, list, create, update, delete, free/busy). Phase 5C/D (2026-05-04) extended `handleOutlookModify` with archive/trash/flag/unflag actions and added `handleOutlookCreateDraft`, `handleOutlookUpdateDraft`, `handleOutlookFreeBusy`. |
-| `worker/handlers/figma.js` | Figma REST API proxy: status, projects, files, file detail, import. Creates/reuses "Design Assets" page_config with predefined schema. De-duplicates imports by file key. |
+| `worker/handlers/figma.js` | Figma REST API proxy: status, projects, files, file detail, import. Creates/reuses "Design Assets" page_config with predefined schema. De-duplicates imports by file key. **2026-05-11 (Phase 2):** comment endpoints — list / post / delete on `/files/:key/comments`. POST auto-prefixes the user-typed text with `[<display_name> via Wasabi]: ` so the actual Wasabi author is preserved behind the shared PAT identity. After post, extracts `@Name` from the raw text and fires `createNotificationInternal` per matched user (same pipeline as record comments — `notifications` table with `type='mention'`, `source='figma:{file_key}'`). **2026-05-11 (Phase 3b):** comment-link endpoints — list links for a record / list links for a comment / create / delete on `/comment-links`. Snapshot of `comment_message`, `comment_author`, `comment_created_at`, `record_name` stored on the row so the linked record's drawer can render without re-fetching Figma. UNIQUE on `(figma_comment_id, record_id)` returns 409 on duplicate. |
 | `worker/handlers/notion-sync.js` | Notion→D1 sync: pull, push, flush, bootstrap. Lazy-decrypts Notion key if stored as plaintext. |
 | `worker/handlers/pages.js` | Page config CRUD |
 | `worker/handlers/users.js` | User management: list, invite, roles, sessions |
@@ -224,7 +224,8 @@ Personal productivity surface. User-scoped data. Lazy-loaded.
 | `UnifiedInboxView.jsx` | **(Phase 5A, 2026-05-04)** Unified Gmail + Outlook inbox in one surface and the ONLY mail surface as of commit `8dd0445`. Fetches both providers in parallel, normalizes to common shape (`{ key, provider, id, threadId\|conversationId, from, fromName, subject, snippet, date, isRead }`), sorts merged list by date DESC. Provider badges on each message (Gmail red, Outlook MS-blue with 4-square logo). Filter pills: All/Unread + per-provider toggle. Parallel cross-provider search (debounced). **Thread grouping (commit `e845f86`):** `groupThreads(messages)` groups by `g:${threadId}` / `o:${conversationId}` (falls back to message id), each group exposes `messages` (sorted), `latest`, `latestDate`, `isAnyUnread`, `sendersDisplay` (deduped participants with overflow), `messageCount`, `displaySubject` (prefers non-"Re:" form). One row per thread with sender list + count badge + most-recent snippet. Click expand fetches full conversation via `getThread` (Gmail) or `getOutlookThread` (Outlook), renders chronologically (oldest first). Mark-read on expand fans out to all unread messages in the thread via `Promise.all` on the correct provider tools. Reply targets the latest message in the thread. Compose new shows provider toggle when both connected. Exports `ProviderBadge` for reuse. App.jsx route: `inbox-unified` (also accepts legacy `gmail` / `outlook` activeRightPane values as redirects). Navigation.jsx shows the "Inbox" button when EITHER provider is connected (combined unread badge: `unreadCount + outlookUnreadCount`). |
 | `DashboardView.jsx` | Customizable widget dashboard |
 | `EmailThreadDrawer.jsx` | Email thread slide-out viewer |
-| `FigmaView.jsx` | Figma project browser: project sidebar, file thumbnail grid, search/filter, detail panel, multi-select import to Design Assets database |
+| `FigmaView.jsx` | Figma project browser: project sidebar, file thumbnail grid, search/filter, detail panel, multi-select import to Design Assets database. **2026-05-11 (Phase 1):** "Open in App" button takes over the FigmaView area with an iframe at `figma.com/embed?embed_host=wasabi-platform&url=…`. 48 px header strip + escape-to-close + 4 s sign-in hint. **2026-05-11 (Phase 2):** Comments toggle in header → slide-in `<FigmaCommentPanel>`. **2026-05-11 (Phase 2 follow-up):** `consumePendingFigmaFile` effect on mount opens the in-app viewer directly when navigated to via a Figma `@`-mention notification click-through. |
+| `FigmaCommentPanel.jsx` | **NEW 2026-05-11 (Phase 2 + Phase 3b).** 360 px side panel inside the in-app viewer. Lists Figma comments grouped into threads with replies via `parent_id`, polls every 30 s, supports posting, replying, deleting own comments (PAT identity is shared so "own" is detected by the `[<wasabi user> via Wasabi]:` prefix), @-mentioning Wasabi users via `<MentionInput>`, and "Link to record" → `<RecordPickerModal>` for Phase 3b cross-system linking. Comment posts route through worker `POST /figma/files/:key/comments` which auto-prefixes the message worker-side. |
 | `GmailView.jsx` | Gmail inbox, read, compose, reply |
 | `KnowledgeHub.jsx` | Knowledge base browser |
 | `NotesView.jsx` | Personal notes view |
@@ -259,13 +260,16 @@ Personal productivity surface. User-scoped data. Lazy-loaded.
 
 ---
 
-## src/components/ (25 files)
+## src/components/ (28 files)
 
 Shared UI components used across views.
 
 | File | Purpose |
 |------|---------|
 | `Breadcrumb.jsx` | Navigation breadcrumb with clickable ancestors |
+| `FigmaCellPreview.jsx` | **NEW 2026-05-11 (Phase 3a).** Expanded card opened when a `figma_files` pill is clicked. Larger thumbnail + filename + **Open in App** (routes via `navigateToFigmaFile` → Phase 1 in-app viewer) + **Open in Figma** buttons. `z-index: Z.modal + 1`. Stops click propagation at the overlay because React events bubble through the React tree even across `createPortal` — without it, clicking × on the preview bubbled back into RecordDetail's field row `onClick` and reopened the picker. |
+| `FigmaFilePicker.jsx` | **NEW 2026-05-11 (Phase 3a).** Workspace-wide multi-select picker for the `figma_files` cell type. Projects sidebar + thumbnail grid + search. Pre-seeds with the cell's existing selection so adding/removing is incremental. Commits the exact array shape the cell stores (`[{ file_key, file_name, thumbnail_url }, …]`). |
+| `RecordPickerModal.jsx` | **NEW 2026-05-11 (Phase 3b).** Slim two-step record picker (database → row). Used from `FigmaCommentPanel` to attach a Figma comment to a Wasabi record. `z-index: Z.modal + 1` so it stacks above the comment panel. Reusable wherever a workspace-wide record picker is needed. |
 | `ColumnBuilder.jsx` | Column type picker and property config |
 | `ConflictToast.jsx` | Real-time sync conflict resolution UI (design tokens, ARIA, auto-dismiss with per-conflict timing) |
 | `EmptyState.jsx` | Empty state placeholder component (new) |

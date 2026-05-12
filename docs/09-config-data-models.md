@@ -135,7 +135,9 @@ type ColumnType =
   | "rollup"
   | "status"
   | "created_time"
-  | "last_edited_time";
+  | "last_edited_time"
+  | "depends_on"     // view-of-edges (relationships table); cell stores nothing
+  | "figma_files";   // array of { file_key, file_name, thumbnail_url }; Wasabi-native
 
 interface SelectOption {
   name: string;
@@ -671,3 +673,69 @@ type CascadeHint =
 | `task_snoozes` | id (task_id:user_id) | Per-user task snooze state (cross-device) |
 | `relationships` | id (UUID) | Unified relationship edges (Phase 1, 2026-04-24) |
 | `relationship_types` | type (string) | Type registry for relationships subsystem |
+| `figma_comment_links` | id (UUID) | Joins a Figma comment to a Wasabi record. Snapshot of message/author/created_at + record_name. Phase 3b, 2026-05-11. |
+
+---
+
+## FigmaCommentLink (Phase 3b, 2026-05-11)
+
+Joins a Figma comment (lives in Figma's API, not Wasabi) to a Wasabi
+record. The snapshot fields let the linked record's drawer render
+without round-tripping Figma on every open — the snapshot drifts from
+Figma's source of truth, so users delete-and-re-link to refresh.
+
+```typescript
+interface FigmaCommentLink {
+  id: string;                       // UUID primary key
+  figma_file_key: string;           // Figma file the comment lives in
+  figma_file_name: string;          // Denormalized for "From Figma" rendering
+  figma_comment_id: string;         // Figma's comment id
+  comment_message: string;          // Snapshot at link time
+  comment_author: string;           // Figma user handle at link time
+  comment_created_at: string;       // ISO 8601 from Figma
+  record_id: string;                // Wasabi row id
+  record_name: string;              // Wasabi row title at link time (snapshot)
+  page_config_id: string;           // Wasabi page id (database the row lives in)
+  linked_by: string | "";           // user.sub who created the link
+  linked_at: string;                // ISO 8601, defaults to datetime('now')
+}
+```
+
+**Uniqueness:** partial UNIQUE on `(figma_comment_id, record_id)` — the
+same comment can't link to the same record twice. POST returns 409 on
+duplicate.
+
+**Schema versions:**
+- **v7** (initial): table created with the columns above except `record_name`.
+- **v8** (2026-05-11): idempotent `ALTER TABLE figma_comment_links ADD COLUMN record_name TEXT DEFAULT ''`. Links created on v7 keep an empty `record_name` and the source-side pill falls back to the literal word "record" until re-linked.
+
+**Indexes:**
+- `idx_fcl_unique` (UNIQUE) on `(figma_comment_id, record_id)`
+- `idx_fcl_record` on `(record_id)` — drives the "From Figma" read for a record's Comments tab
+- `idx_fcl_file` on `(figma_file_key)`
+
+---
+
+## figma_files cell type (Phase 3a, 2026-05-11)
+
+New `figma_files` column type that lets a record reference one or more
+Figma files. Cell stores a JSON array in the existing `cells` field on
+`table_rows` — no DB migration. Wasabi-native (skipped from Notion sync,
+no Notion equivalent).
+
+```typescript
+// Stored cell value (raw)
+type FigmaFilesCell = Array<{
+  file_key: string;        // Figma file key, source of truth
+  file_name: string;       // Denormalized for instant render
+  thumbnail_url: string;   // Denormalized; Figma's thumbnail URLs are signed/temporary
+}>;
+```
+
+The Notion-shape wrap that `wrapAsNotionProp` / `buildProp` emit is
+`{ type: "figma_files", figma_files: [...] }` — matches the convention
+used by `multi_select` / `people`. `readProp` / `extractRawValue`
+defensive-accept both shapes (raw array or wrapped) so older callers
+don't break.
+
+**Gating:** `COLUMN_TYPES` flags `figma_files` with `requiresFigma: true`. The Add Column dialog pings `/figma/status` once on mount (60 s cached) and filters the type out when no Figma connection is configured.

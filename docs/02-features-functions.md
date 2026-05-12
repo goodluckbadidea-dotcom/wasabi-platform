@@ -30,7 +30,8 @@ Personal productivity surface. User-scoped data. All components lazy-loaded.
 | RecordDrawer | `src/features/RecordDrawer.jsx` | Slide-out record editor (primary edit surface for all views). "Go to Task" button uses `navigateToRecord()` to open RecordDetail drawer after navigating to source database. |
 | WasabiPanel | `src/core/WasabiPanel.jsx` | The Wasabi agent chat panel (only chat surface). Fetches Google + Microsoft 365 context in parallel via `Promise.allSettled` so connected users get email/calendar context in the system prompt. **2026-05-05:** the previous dual-tab `features/ChatPanel.jsx` (Assistant + Agent toggle) was removed; the floating panel now always runs the full agent. Hidden from viewers. Editors get a restricted tool set (no destructive admin tools). |
 | GmailView | `src/features/GmailView.jsx` | Gmail inbox, read, compose, reply |
-| FigmaView | `src/features/FigmaView.jsx` | Browse Figma team projects and files. Project sidebar, file thumbnail grid, search/filter, file detail panel. Multi-select import creates/reuses a "Design Assets" database with status tracking (Draft/In Review/Approved/Archived). De-duplicates by file key. |
+| FigmaView | `src/features/FigmaView.jsx` | Browse Figma team projects and files. Project sidebar, file thumbnail grid, search/filter, file detail panel. Multi-select import creates/reuses a "Design Assets" database with status tracking (Draft/In Review/Approved/Archived). De-duplicates by file key. **2026-05-11 (Phase 1):** "Open in App" button takes over the FigmaView area with an `<iframe src="https://www.figma.com/embed?embed_host=wasabi-platform&url=…">`. 48 px header strip (file icon + name + Open in Figma + Comments toggle + ×). Escape closes. Sign-in hint banner surfaces after 4s. **2026-05-11 (Phase 2):** Comments button in the header opens a 360 px native comment panel (`src/features/FigmaCommentPanel.jsx`) that reads/writes via the workspace Figma PAT — worker prefixes every outgoing message with `[<wasabi user> via Wasabi]: ` so the original author isn't lost behind the shared identity. Polls every 30s while open. No resolve action (Figma's public REST API doesn't expose one). |
+| FigmaCommentPanel | `src/features/FigmaCommentPanel.jsx` | Side panel inside the Phase 1 viewer. Lists comments grouped into threads with replies via `parent_id`, supports posting, replying, deleting own comments, @-mentioning Wasabi users (reuses `<MentionInput>` + the same `extractMentions` → `notifications` pipeline as record comments — see Phase 2 below). Each comment has a "Link to record" action that opens `RecordPickerModal` for cross-system linking (Phase 3b). Strips the `[Name via Wasabi]:` prefix into a small badge so the body reads cleanly. |
 | DashboardView | `src/features/DashboardView.jsx` | Customizable widget dashboard |
 | WorkspaceBrowser | `src/features/WorkspaceBrowser.jsx` | Folder-based page navigation |
 | KnowledgeHub | `src/features/KnowledgeHub.jsx` | Knowledge base browser |
@@ -1255,3 +1256,135 @@ Two superficial UI bugs that made dense content unreadable:
 - `MentionInput.jsx` — added auto-grow effect: on value change in multiline mode, reset textarea height to `auto` then set to `scrollHeight`, capped at `MAX_AUTOGROW_PX = 220` (~10 lines). Past the cap, internal vertical scroll kicks in. Removed the manual resize handle (`resize: "none"`) since the textarea sizes itself. Multiline mode gets `minHeight: 38` so an empty textarea matches the previous single-line input height.
 
 Enter-to-send and Shift+Enter-for-newline behavior preserved.
+
+---
+
+## Figma Integration (2026-05-11)
+
+A four-phase build that turns Figma from a "browse files and import metadata" feature into a workable design-review surface inside Wasabi, plus first-class cross-references between Figma files/comments and Wasabi records.
+
+### Phase 1 — In-app iframe viewer
+
+**File:** `src/features/FigmaView.jsx`
+
+"Open in App" button next to "Open in Figma" in the file detail panel. When clicked, FigmaView early-returns into a full-takeover view:
+- 48 px header strip: Figma icon + file name + Comments button (filled accent pill) + Open in Figma (outline) + close ×
+- `<iframe src="https://www.figma.com/embed?embed_host=wasabi-platform&url=https%3A%2F%2Fwww.figma.com%2Ffile%2F{key}">` fills remaining space
+- Escape key closes (cleans up viewer state)
+- Sign-in hint banner appears 4s after open and is dismissible — the embed authenticates via the viewer's own Figma session, so a "sign in" screen inside the iframe usually means they need to sign in to Figma in another tab
+
+**Auth model:** This is the only Figma surface that requires per-user Figma sign-in. The PAT stored in `connections` powers the file listing and comments, but the iframe renders against the viewer's personal Figma session. Private team files only render if the viewer's Figma account can see them.
+
+### Phase 2 — Native comment panel
+
+**File:** `src/features/FigmaCommentPanel.jsx` (new), `worker/handlers/figma.js`
+
+Toggleable side panel (360 px wide) that slides in to the right of the iframe. Reads/writes Figma comments via the workspace PAT through three worker endpoints:
+- `GET /figma/files/:key/comments` — list (returns flat array with `parent_id` for thread linking)
+- `POST /figma/files/:key/comments` — create (with optional `comment_id` for replies)
+- `DELETE /figma/files/:key/comments/:id` — delete own comments
+
+**Identity workaround:** All worker-side posts use the same PAT, so Figma sees every Wasabi comment as authored by the PAT owner. The worker prefixes every outgoing message with `[<wasabi user> via Wasabi]: ` so the actual author isn't lost. Frontend strips the prefix back into a small "GRAHAM VIA WASABI" badge so the message body reads cleanly.
+
+**Limitations carried over:**
+- No resolve action — Figma's public REST API doesn't expose one. Resolved comments show their state as a read-only badge; users still resolve in Figma proper.
+- No pin positions on canvas — the iframe is cross-origin, can't draw on it. Pin coordinates (`client_meta`) come back from the API but aren't visualized.
+
+**Auto-poll:** Every 30s while the panel is open. Manual refresh button.
+
+### Phase 2 follow-up — @-mentions + click-through
+
+**Files:** `worker/handlers/figma.js`, `src/components/MentionInput.jsx` (existing), `src/context/NavigationContext.jsx`, `src/views/NotificationFeed.jsx`, `src/features/FigmaCommentPanel.jsx`, `src/features/FigmaView.jsx`
+
+Comments use the same `<MentionInput>` and `extractMentions` → `createNotificationInternal` pipeline as record comments:
+
+- After a successful Figma POST, the worker scans the raw user-typed text (not the prefixed message — avoids self-mention from the `[Graham via Wasabi]:` prefix), matches `@Name` against the `users` table, and creates one `mention` notification per matched user (de-duped within a single comment).
+- Notification shape: `type='mention'`, `source='figma:{file_key}'`, `record_name=<file name>`, `page_name='Figma'`.
+- `NavigationContext` gains `pendingFigmaFile` + `navigateToFigmaFile(fileKey, fileName)` / `consumePendingFigmaFile`, mirroring the existing `pendingRecordId` pattern.
+- `NotificationFeed.handleClickThrough` detects `source.startsWith('figma:')` and routes via `navigateToFigmaFile` instead of the record path.
+- `FigmaView` consumes the pending file on mount and opens the in-app viewer directly at the targeted file.
+
+The mention also appears in Figma proper as plain `@Kat …` text — Figma can't link Wasabi user identity natively, by design.
+
+### Phase 3a — Figma cell type
+
+**Files:** `src/views/table/tableHelpers.js`, `src/views/table/AddColumnDialog.jsx`, `src/views/table/CellDisplay.jsx`, `src/components/FigmaFilePicker.jsx` (new), `src/components/FigmaCellPreview.jsx` (new), `src/views/RecordDetail.jsx`, `src/notion/properties.js`, `src/lib/dataSource.js`
+
+New column type `figma_files`. Cell stores a JSON array of `{ file_key, file_name, thumbnail_url }`. No DB migration — existing JSON cells.
+
+**Pieces:**
+- `COLUMN_TYPES` registers `figma_files` with `requiresFigma: true`. `AddColumnDialog` pings `/figma/status` once (60 s cache) and filters `requiresFigma` types out of both parent and sub-column pickers when no Figma connection.
+- `wrapAsNotionProp` / `extractRawValue` / `inferPropKind` / `mapD1Type` round-trip the array as `{ type: 'figma_files', figma_files: [...] }`. `d1SchemaToClassified` adds `schema.figmaFiles` and the resolveColumns ordered list includes it.
+- `buildProp("figma_files", arr)` returns `{ figma_files: [...] }` (Notion-shape wrapper, matching `multi_select` / `people`). `readProp` defensive-accepts both shapes.
+- `FigmaFilePicker` is a workspace-wide multi-select modal: projects sidebar + thumbnail grid, search, pre-seeds with the cell's current selection so adding/removing is incremental. Commits the exact array shape the cell stores.
+- `FigmaCellPreview` is the expanded card shown when a pill is clicked. Large thumbnail + filename + **Open in App** (routes via `navigateToFigmaFile`, lands in Phase 1) and **Open in Figma**. Critically: stops click propagation at the overlay boundary because React events bubble through the React tree even across `createPortal` — without that, clicking × on the preview reopens the editor.
+- Compact pill renderer in `CellDisplay`: 14 px Figma icon + truncated filename in a 22 px pill. Empty cells show "+ Add file" placeholder. The generic null-value branch in `CellDisplay` is skipped for `figma_files` so the empty state stays interactive.
+- `RecordDetail`: `figma_files` added to `EDITABLE_TYPES`. `FigmaFilesDisplay` renders pills in the drawer; `FigmaFilesEditor` wraps the picker as the inline editor. Same pills + same expanded preview as the table view.
+
+**Decisions locked in planning:**
+- Multi-file (array shape, not single).
+- File-only refs (no frame/node pinning) — deferred.
+- Compact pill render (no large thumbnail strip).
+- Click pill → expanded preview with Open buttons (not direct open).
+- Notion sync: skipped — column is Wasabi-native.
+
+### Phase 3b — Comment ↔ record linking
+
+**Files:** `worker/schema.js`, `worker/handlers/figma.js`, `worker/handlers/init.js`, `worker.js`, `src/lib/api.js`, `src/components/RecordPickerModal.jsx` (new), `src/features/FigmaCommentPanel.jsx`, `src/views/RecordDetail.jsx`
+
+Bidirectional surfacing. From the Figma comment panel any comment can be linked to one or more Wasabi records; the linked record's drawer surfaces inbound Figma comments under a "From Figma" section in the Comments tab.
+
+**Storage:** new `figma_comment_links` D1 table (schema v7 → v8 — see Data Models doc). Joins `(file_key, comment_id)` ↔ `(record_id, page_config_id)`, with a snapshot of the comment's `message` / `author` / `created_at` and the linked record's `record_name`. Snapshot drifts from Figma's source of truth; delete-and-re-link refreshes.
+
+**Worker endpoints** (`/figma/comment-links` block, intentionally above the `/figma/files` block to avoid path-prefix shadowing — the catch-all `GET /figma/files` would otherwise swallow `/figma/files/:key/comments` and return "Missing project ID"):
+- `GET /figma/comment-links?record_id=X` — inbound list for a record
+- `GET /figma/comment-links?comment_id=X` — outbound list for a comment
+- `POST /figma/comment-links` — create (409 on UNIQUE conflict for the same comment+record)
+- `DELETE /figma/comment-links/:id`
+
+**`RecordPickerModal`** is a slim two-step picker (database → row) — search by page title, then by row title. Lives at `Z.modal + 1` so it stacks above the FigmaCommentPanel.
+
+**Source side (FigmaCommentPanel):** per-comment "Link to record" action opens the picker. After confirm, a small accent pill row appears under the message body: `↗ [Record Name] ×`. Click record name → navigates to the record via `navigateToRecord` (closes the comment panel). × removes the link.
+
+**Target side (RecordDetail Comments tab):** new `FigmaCommentsFromRecord` section at the top of the Comments tab. One card per inbound link with file name (click → in-app viewer via `navigateToFigmaFile`), author + date, and the snapshot message body (with the `[Name via Wasabi]` prefix surfaced as a small badge). × removes the link.
+
+**Auth on writes:** POST requires a Wasabi user (used to record `linked_by`). Reads are open within the workspace.
+
+### Schema versions
+
+- **v7 (Phase 3b initial):** Added `figma_comment_links` table.
+- **v8 (record_name fix):** Idempotent `ALTER TABLE figma_comment_links ADD COLUMN record_name TEXT DEFAULT ''`. Links created on v7 still have an empty `record_name` and the UI falls back to the literal "record"; re-link to refresh the snapshot.
+
+### Deferred (Phase B — not in this session)
+
+- Frame-level pinning inside `figma_files` cells (file + specific node ref).
+- Hover preview on pills.
+- AI tool exposure — let the agent see/manipulate Figma files and comments.
+- One-time backfill for v7 links missing `record_name`.
+
+---
+
+## Modal Portaling Pattern (2026-05-11)
+
+Every viewport-anchored overlay (`position: fixed; inset: 0`) that's mounted deep inside a view or feature must be portaled to `document.body` via `ReactDOM.createPortal`. Otherwise some ancestor in the React tree creates a CSS containing block for `position: fixed` (transform, filter, backdrop-filter, will-change, contain) and the overlay's `inset: 0` collapses to that ancestor's box instead of the viewport — typically the right-pane wrapper, which ends above the BottomBar. The visible symptom: drawer/modal content (Save buttons, footers) is hidden behind the BottomBar.
+
+**Portaled now:**
+- `src/views/RecordDetail.jsx` (record drawer for table-view records)
+- `src/core/Drawer.jsx` (base for the task/email/event RecordDrawer)
+- `src/core/ConfirmDialog.jsx`
+- `src/views/NewRecordModal.jsx`
+- `src/core/ViewTypePicker.jsx`
+- `src/core/LinkPicker.jsx` (z-index bumped to `Z.modal + 1` as well, since it can open from inside an already-portaled RecordDetail)
+- `src/components/FigmaFilePicker.jsx`, `src/components/FigmaCellPreview.jsx`, `src/components/RecordPickerModal.jsx` (built-portaled from day one)
+
+**Intentionally not portaled:** `CommandPalette`, `SearchModal`, `NeuronOverlay` — mounted at the AppContent root level, no constraining ancestor. `ContextMenu`, `FolderDropdown` popovers, inline dropdowns — anchored to their trigger by design.
+
+**Event bubbling gotcha:** React events bubble through the React tree, not the DOM tree, even for portaled elements. A click inside `FigmaCellPreview` bubbles back up through `FigmaFilesDisplay` → the field row's `onClick` → `startEdit` and reopens the picker. Containers that open via `startEdit` need `stopPropagation` on the portal's outer overlay. The pattern: `onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose?.(); }}`.
+
+---
+
+## Sub-item Trailing Add Row (2026-05-11)
+
+`TableRow.jsx`: when a parent is expanded with one or more children, a faint "+ Add sub-item" row renders at the bottom of the expanded children list. Click → calls the same `handleCreateSubItem(parentId)` as the unified sub-item button, which sets `subItemGhostParent` and reveals the inline ghost row.
+
+**Why this row exists:** the 2026-05-05 unified sub-item button only creates when a parent has zero children; with one or more children, it toggles expand. Before this row, there was no remaining path to add another sub-item from the table view — users had to open RecordDetail → Sub-Items tab. The trailing row restores discoverable add-affordance to the table view itself. Hidden when the ghost row is already active (to avoid duplicate add UI).
