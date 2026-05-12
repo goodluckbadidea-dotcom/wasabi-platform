@@ -9,6 +9,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
+import { IconClose } from "../design/icons.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { getTableSchema, listRows } from "../lib/api.js";
 
@@ -140,13 +141,14 @@ export default function RecordPickerModal({ open, title = "Pick a record", onPic
             onClick={onCancel}
             aria-label="Close picker"
             style={{
-              width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center",
+              width: 26, height: 26, display: "inline-flex", alignItems: "center", justifyContent: "center",
+              padding: 0,
               background: "transparent", border: `1px solid ${C.darkBorder}`,
-              borderRadius: RADIUS.pill, color: C.darkMuted, fontSize: 14, lineHeight: 1,
+              borderRadius: RADIUS.pill, color: C.darkMuted,
               cursor: "pointer", outline: "none",
             }}
           >
-            &times;
+            <IconClose size={11} color={C.darkMuted} />
           </button>
         </div>
 

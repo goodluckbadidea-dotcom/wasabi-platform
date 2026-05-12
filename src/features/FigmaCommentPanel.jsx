@@ -22,6 +22,7 @@ import { usePlatform } from "../context/PlatformContext.jsx";
 import MentionInput from "../components/MentionInput.jsx";
 import RecordPickerModal from "../components/RecordPickerModal.jsx";
 import { useNavigation } from "../context/NavigationContext.jsx";
+import { IconClose } from "../design/icons.jsx";
 
 const POLL_MS = 30_000;
 
@@ -293,15 +294,16 @@ export default function FigmaCommentPanel({ fileKey, fileName = "", onClose }) {
           title="Close panel"
           aria-label="Close comments"
           style={{
-            width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center",
+            width: 26, height: 26, display: "inline-flex", alignItems: "center", justifyContent: "center",
+            padding: 0,
             background: "transparent", border: `1px solid ${C.darkBorder}`,
-            borderRadius: RADIUS.pill, color: C.darkMuted, fontSize: 14, lineHeight: 1,
+            borderRadius: RADIUS.pill, color: C.darkMuted,
             cursor: "pointer", outline: "none",
           }}
           onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
         >
-          &times;
+          <IconClose size={11} color={C.darkMuted} />
         </button>
       </div>
 

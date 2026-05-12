@@ -12,7 +12,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
-import { IconFigma } from "../design/icons.jsx";
+import { IconFigma, IconClose } from "../design/icons.jsx";
 import { getFigmaProjects, getFigmaFiles } from "../lib/api.js";
 
 export default function FigmaFilePicker({
@@ -171,13 +171,14 @@ export default function FigmaFilePicker({
             onClick={onCancel}
             aria-label="Close picker"
             style={{
-              width: 28, height: 28, display: "flex", alignItems: "center",
-              justifyContent: "center", borderRadius: RADIUS.pill,
+              width: 28, height: 28, display: "inline-flex", alignItems: "center",
+              justifyContent: "center", padding: 0,
+              borderRadius: RADIUS.pill,
               background: "transparent", border: `1px solid ${C.darkBorder}`,
-              color: C.darkMuted, fontSize: 16, lineHeight: 1, cursor: "pointer",
+              color: C.darkMuted, cursor: "pointer", outline: "none",
             }}
           >
-            &times;
+            <IconClose size={12} color={C.darkMuted} />
           </button>
         </div>
 

@@ -8,7 +8,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
-import { IconFigma } from "../design/icons.jsx";
+import { IconFigma, IconClose } from "../design/icons.jsx";
 import { useNavigation } from "../context/NavigationContext.jsx";
 
 export default function FigmaCellPreview({ file, onClose }) {
@@ -31,7 +31,14 @@ export default function FigmaCellPreview({ file, onClose }) {
         display: "flex", alignItems: "center", justifyContent: "center",
         fontFamily: FONT,
       }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
+      // React events bubble through the React tree even when the element is
+      // portaled to document.body. Without stopPropagation the click ends up
+      // back in the field row's onClick (RecordDetail.startEdit) and reopens
+      // the picker on every close. Contain all clicks at the overlay.
+      onClick={(e) => {
+        e.stopPropagation();
+        if (e.target === e.currentTarget) onClose?.();
+      }}
     >
       <div
         role="dialog"
@@ -54,16 +61,17 @@ export default function FigmaCellPreview({ file, onClose }) {
             {file.file_name || "Figma file"}
           </div>
           <button
-            onClick={onClose}
+            onClick={(e) => { e.stopPropagation(); onClose?.(); }}
             aria-label="Close preview"
             style={{
-              width: 28, height: 28, display: "flex", alignItems: "center",
-              justifyContent: "center", borderRadius: RADIUS.pill,
+              width: 28, height: 28, display: "inline-flex", alignItems: "center",
+              justifyContent: "center", padding: 0,
+              borderRadius: RADIUS.pill,
               background: "transparent", border: `1px solid ${C.darkBorder}`,
-              color: C.darkMuted, fontSize: 16, lineHeight: 1, cursor: "pointer",
+              color: C.darkMuted, cursor: "pointer", outline: "none",
             }}
           >
-            &times;
+            <IconClose size={12} color={C.darkMuted} />
           </button>
         </div>
 
