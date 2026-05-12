@@ -382,23 +382,10 @@ export default {
       if (path === "/figma/projects" && request.method === "GET") {
         return await handleFigmaProjects(env, jsonResponse);
       }
-      if (path.startsWith("/figma/files") && request.method === "GET") {
-        const parts = path.split("/");
-        if (parts.length === 4) {
-          // /figma/files/:fileKey — get single file metadata
-          return await handleFigmaFile(env, parts[3], jsonResponse);
-        }
-        // /figma/files?project=X — list files in project
-        const projectId = url.searchParams.get("project");
-        return await handleFigmaFiles(env, projectId, jsonResponse);
-      }
-
-      if (path === "/figma/import" && request.method === "POST") {
-        const body = await request.json();
-        return await handleFigmaImport(env, body, user?.sub, jsonResponse);
-      }
-
       // /figma/files/:fileKey/comments (Phase 2)
+      // MUST come before the catch-all /figma/files GET handler below, which
+      // would otherwise match /figma/files/:key/comments and fall through to
+      // "Missing project ID".
       if (path.startsWith("/figma/files/") && path.includes("/comments")) {
         const parts = path.split("/"); // ["", "figma", "files", ":key", "comments", ":id?"]
         const fileKey = parts[3];
@@ -416,6 +403,22 @@ export default {
             return await handleFigmaDeleteComment(env, fileKey, commentId, jsonResponse);
           }
         }
+      }
+
+      if (path.startsWith("/figma/files") && request.method === "GET") {
+        const parts = path.split("/");
+        if (parts.length === 4) {
+          // /figma/files/:fileKey — get single file metadata
+          return await handleFigmaFile(env, parts[3], jsonResponse);
+        }
+        // /figma/files?project=X — list files in project
+        const projectId = url.searchParams.get("project");
+        return await handleFigmaFiles(env, projectId, jsonResponse);
+      }
+
+      if (path === "/figma/import" && request.method === "POST") {
+        const body = await request.json();
+        return await handleFigmaImport(env, body, user?.sub, jsonResponse);
       }
 
       // ─── Microsoft OAuth (per-user) ───

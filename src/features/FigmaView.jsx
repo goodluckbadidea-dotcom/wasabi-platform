@@ -249,16 +249,20 @@ export default function FigmaView() {
             onClick={() => setCommentPanelOpen((v) => !v)}
             style={{
               display: "inline-flex", alignItems: "center", gap: 6,
-              padding: "6px 12px", fontSize: 12, fontWeight: 500, fontFamily: FONT,
-              background: commentPanelOpen ? C.accent + "22" : "transparent",
-              color: commentPanelOpen ? C.accent : C.darkMuted,
-              border: `1px solid ${commentPanelOpen ? C.accent : C.darkBorder}`,
-              borderRadius: RADIUS.pill, cursor: "pointer", outline: "none",
+              padding: "6px 14px", fontSize: 12, fontWeight: 600, fontFamily: FONT,
+              background: C.accent, color: "#fff",
+              border: "none", borderRadius: RADIUS.pill,
+              cursor: "pointer", outline: "none",
+              boxShadow: commentPanelOpen
+                ? `inset 0 0 0 2px ${C.dark}33, 0 1px 2px rgba(0,0,0,0.2)`
+                : "0 1px 2px rgba(0,0,0,0.2)",
+              transition: "box-shadow 0.12s, filter 0.12s",
+              filter: commentPanelOpen ? "brightness(0.9)" : "none",
             }}
             title={commentPanelOpen ? "Hide comments" : "Show comments"}
           >
             <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-              <path d="M2 3h12v8H5l-3 3V3z" stroke="currentColor" strokeWidth="1.3" fill="none" />
+              <path d="M2 3h12v8H5l-3 3V3z" stroke="currentColor" strokeWidth="1.5" fill="none" />
             </svg>
             Comments
           </button>
