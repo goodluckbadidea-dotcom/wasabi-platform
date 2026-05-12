@@ -2028,18 +2028,24 @@ export default {
 
       // ─── Audit Log (admin only) ───
       if (path === "/audit-log" && request.method === "GET") {
-        if (user && user.role !== "admin") {
+        if (!user || user.role !== "admin") {
           return jsonResponse({ _error: "Admin required" }, 403);
         }
-        const limit = Math.min(parseInt(url.searchParams.get("limit") || "100"), 500);
+        const limit = Math.min(parseInt(url.searchParams.get("limit") || "100"), 1000);
         const offset = parseInt(url.searchParams.get("offset") || "0");
         const action = url.searchParams.get("action");
         const resourceType = url.searchParams.get("resource_type");
+        const resourceId = url.searchParams.get("resource_id");
+        const userId = url.searchParams.get("user_id");
+        const since = url.searchParams.get("since");
         let query = "SELECT * FROM audit_log";
         const conditions = [];
         const binds = [];
         if (action) { conditions.push("action = ?"); binds.push(action); }
         if (resourceType) { conditions.push("resource_type = ?"); binds.push(resourceType); }
+        if (resourceId) { conditions.push("resource_id = ?"); binds.push(resourceId); }
+        if (userId) { conditions.push("user_id = ?"); binds.push(userId); }
+        if (since) { conditions.push("created_at > ?"); binds.push(since); }
         if (conditions.length) query += " WHERE " + conditions.join(" AND ");
         query += " ORDER BY created_at DESC LIMIT ? OFFSET ?";
         binds.push(limit, offset);

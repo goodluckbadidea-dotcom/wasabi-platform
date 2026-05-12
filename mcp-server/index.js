@@ -1788,7 +1788,7 @@ server.tool(
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_external_proxy",
-  "Proxy an HTTP request to an external API through the Wasabi worker. Useful for calling endpoints that need server-side fetch (CORS, secrets). The worker enforces an allowlist and rate limits. Requires confirm: true (external side-effects).",
+  "Proxy an HTTP request to an external API through the Wasabi worker. Useful for calling endpoints that need server-side fetch (CORS, secrets). The worker enforces a domain allowlist (stored in connections under key='external_api_whitelist') and per-domain API keys (stored as 'external_api:<hostname>'). Hard 10-second timeout per request. Requires confirm: true (external side-effects).",
   {
     url: z.string().describe("Full external URL to fetch."),
     method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).optional().describe("HTTP method (default GET)."),
@@ -1835,9 +1835,9 @@ server.tool(
           return ok(await wasabiFetch(`/docs/${id}/blocks`, "PATCH", data));
         }
         case "export_notion": {
-          const g = gate(confirm, { method: "POST", path: `/docs/${id}/export/notion`, note: "Pushes the document to Notion." });
+          const g = gate(confirm, { method: "GET", path: `/docs/${id}/export/notion`, note: "Pushes the document to Notion." });
           if (g) return g;
-          return ok(await wasabiFetch(`/docs/${id}/export/notion`, "POST", data));
+          return ok(await wasabiFetch(`/docs/${id}/export/notion`, "GET"));
         }
       }
     } catch (e) { return err(e); }
