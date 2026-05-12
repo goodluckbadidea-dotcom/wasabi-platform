@@ -174,7 +174,7 @@ server.tool(
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_data",
-  "Query, create, update, and delete table rows. Use wasabi_pages or wasabi_context first to find table IDs. Rows have shape { id, table_id, cells: {...}, parent_row_id, sort_order, created_at, updated_at }. PARENT/CHILD HIERARCHY: rows with parent_row_id set are sub-items. Use parent_row_id='null' to list only top-level rows, or a specific row id to list its children. create/update/delete require confirm: true.",
+  "Query, create, update, and delete table rows (simple CRUD + basic filters). Use wasabi_pages or wasabi_context first to find table IDs. Rows have shape { id, table_id, cells: {...}, parent_row_id, sort_order, created_at, updated_at }. PARENT/CHILD HIERARCHY: rows with parent_row_id set are sub-items. Use parent_row_id='null' to list only top-level rows, or a specific row id to list its children. For complex filters/sorts/field projections, use wasabi_sql instead. For aggregations (count/sum/group-by), use wasabi_analytics. create/update/delete require confirm: true.",
   {
     action: z.enum(["list", "query", "create", "update", "delete"]),
     table_id: z.string().describe("The table/database ID"),
@@ -438,15 +438,15 @@ server.tool(
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_notifications",
-  "List, create, and manage notifications. Check unread count or mark all as read. create/update/delete/mark_all_read require confirm: true.",
+  "List, create, manage notifications, and read/update per-user notification preferences (mute, do-not-disturb, channel toggles). create/update/delete/mark_all_read/update_preferences require confirm: true.",
   {
-    action: z.enum(["list", "create", "update", "delete", "mark_all_read", "unread_count"]),
+    action: z.enum(["list", "create", "update", "delete", "mark_all_read", "unread_count", "get_preferences", "update_preferences"]),
     id: z.string().optional().describe("Notification ID"),
-    data: z.string().optional().describe("JSON string of notification data: message, type, source, record_id, target_user_id"),
+    data: z.string().optional().describe("JSON string of notification data (create/update) or preferences (update_preferences)."),
     status: z.string().optional().describe("Filter: unread, read"),
     target_user_id: z.string().optional().describe("Filter notifications by recipient user id (default: workspace-wide; pass 'me' for current user)"),
     limit: z.number().optional(),
-    confirm: z.boolean().optional().describe("Required true for create/update/delete/mark_all_read."),
+    confirm: z.boolean().optional().describe("Required true for create/update/delete/mark_all_read/update_preferences."),
   },
   async ({ action, id, data: rawData, status, target_user_id, limit, confirm }) => {
     const data = parseJSON(rawData);
@@ -480,6 +480,12 @@ server.tool(
           return ok(await wasabiFetch("/d1/notifications/mark-all-read", "POST"));
         }
         case "unread_count": return ok(await wasabiFetch("/d1/notifications/unread-count"));
+        case "get_preferences": return ok(await wasabiFetch("/d1/notifications/preferences"));
+        case "update_preferences": {
+          const g = gate(confirm, { method: "PUT", path: "/d1/notifications/preferences", payload: data });
+          if (g) return g;
+          return ok(await wasabiFetch("/d1/notifications/preferences", "PUT", data));
+        }
       }
     } catch (e) { return err(e); }
   }
@@ -690,7 +696,7 @@ server.tool(
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_dashboard",
-  "Get a workspace snapshot for an at-a-glance briefing: health, pages (with optional row counts), unread notifications, recent task activity. NOTE: for richer context (KB summary, integration status, schemas) use wasabi_context instead. Set include_row_counts=true to fetch row counts per database (slower; one query per table).",
+  "Lightweight workspace briefing: health, pages, unread notifications, recent task activity. Use this for quick status checks. For FULL grounding context on a new conversation (KB summary, integration status, schemas, audit log, users), use wasabi_context instead. Set include_row_counts=true to fetch row counts per database (slower; one query per table).",
   {
     include: z.enum(["all", "health", "pages", "notifications", "activity"]).optional().describe("What to include (default: all)"),
     include_row_counts: z.boolean().optional().describe("Fetch row counts per database (default: false; slow on large workspaces)"),
@@ -807,7 +813,7 @@ server.tool(
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_diff",
-  "Compare current table state with a previous snapshot, or get recently modified rows. Useful for tracking what changed since a given date.",
+  "Per-table row diff: compare to a previous snapshot or fetch recently modified rows since a given date. Scope is ONE table. For workspace-wide change history (who did what across all tables), use wasabi_audit instead.",
   {
     table_id: z.string().describe("Table ID"),
     since: z.string().optional().describe("ISO date string — return rows modified after this time"),
@@ -946,7 +952,7 @@ server.tool(
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_link_external",
-  "Attach external context to a Wasabi record — add a comment or note linking an email, URL, document, or other external reference. Useful for connecting Cowork context to Wasabi data. add_comment/set_note require confirm: true.",
+  "Bridge external context (email threads, URLs, Cowork conversations) into a Wasabi record by attaching a comment or note that references the source. Functionally identical to wasabi_records add_comment/set_note — prefer THIS tool when the content references something OUTSIDE Wasabi (an email, a URL, a Cowork session). Prefer wasabi_records when the content is purely internal (a status update, a question about the row itself). add_comment/set_note require confirm: true.",
   {
     action: z.enum(["add_comment", "set_note", "get_comments", "get_note"]),
     record_id: z.string().describe("Record ID to attach to"),
@@ -986,7 +992,7 @@ server.tool(
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_sql",
-  "Execute powerful queries against Wasabi tables using the query endpoint. Supports complex filters, sorts, and pagination. For advanced data questions that simple list/get can't answer.",
+  "Run complex queries against a single Wasabi table: filter operators (eq/ne/gt/lt/gte/lte/contains/starts_with/in), sorts, pagination, field projection. For simple CRUD use wasabi_data. For aggregations use wasabi_analytics. For workspace-wide keyword search across tables, use wasabi_search.",
   {
     table_id: z.string().describe("Table ID to query"),
     filters: z.string().optional().describe("JSON string of filter object: {\"field\": {\"op\": \"value\"}} where op is eq, ne, gt, lt, gte, lte, contains, starts_with, in"),
@@ -1220,7 +1226,7 @@ server.tool(
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_schedule",
-  "Create or manage scheduled automation rules. Set up recurring tasks like daily inventory checks or weekly reports. create/update/delete require confirm: true.",
+  "DEPRECATED — prefer wasabi_automations with trigger_type='schedule'. This tool is a thin wrapper that hardcodes trigger_type=schedule on create and filters list to schedule rules. Kept for backward compat. create/update/delete require confirm: true.",
   {
     action: z.enum(["list", "create", "update", "delete"]),
     id: z.string().optional().describe("Rule ID for update/delete"),
@@ -1374,7 +1380,7 @@ server.tool(
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_records",
-  "Manage record-level details: notes, comments, badge counts, and view history. Richer than basic row CRUD. Mutating actions (set_note, add_comment, delete_comment, record_view) require confirm: true.",
+  "Manage record-level details: notes, comments, badge counts, view history. Richer than basic row CRUD. Use THIS tool for internal-only comments and notes; use wasabi_link_external when bridging in external context (emails, URLs, Cowork chats). Mutating actions (set_note, add_comment, delete_comment, record_view) require confirm: true.",
   {
     action: z.enum(["get_note", "set_note", "get_comments", "add_comment", "delete_comment", "badge_counts", "view_history", "record_view"]),
     record_id: z.string().optional().describe("Record ID"),
@@ -1888,6 +1894,22 @@ server.tool(
           return ok(await wasabiFetch(`/task-snoozes/${record_id}`, "DELETE"));
         }
       }
+    } catch (e) { return err(e); }
+  }
+);
+
+// ═══════════════════════════════════════════
+// 42. SHEETS (Google Sheets fetch via OAuth or CSV)
+// ═══════════════════════════════════════════
+server.tool(
+  "wasabi_sheets",
+  "Fetch a Google Sheet by URL. Uses the caller's Google OAuth grant when available (preserves formatting + inline images); otherwise falls back to public CSV. Useful for grounding the AI in data that lives in a linked_sheet page or any sheared sheet URL.",
+  {
+    url: z.string().describe("Full Google Sheets URL (https://docs.google.com/spreadsheets/d/...). #gid=... or ?gid=... selects a specific tab."),
+  },
+  async ({ url }) => {
+    try {
+      return ok(await wasabiFetch("/sheets/fetch", "POST", { url }));
     } catch (e) { return err(e); }
   }
 );
