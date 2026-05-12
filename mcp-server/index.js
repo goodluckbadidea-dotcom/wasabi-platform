@@ -901,11 +901,9 @@ server.tool(
   async ({ prompt, context: rawContext }) => {
     const context = parseJSON(rawContext);
     try {
-      const body = {
-        messages: [{ role: "user", content: prompt }],
-      };
+      const body = { prompt };
       if (context) body.context = context;
-      const result = await wasabiFetch("/claude", "POST", body);
+      const result = await wasabiFetch("/agent", "POST", body);
       return ok(result);
     } catch (e) { return err(e); }
   }

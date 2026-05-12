@@ -33,6 +33,7 @@ import { handleGetSchema, handleUpdateSchema, handleListRows, handleCreateRows, 
 import { handleListRelationships, handleCreateRelationship, handleDeleteRelationship, handleRebuildRelationships } from './worker/handlers/relationships.js';
 import { emitProjectedEdge, deleteProjectedEdge, deleteAllProjectedEdgesByTarget, refToFieldId, mapNeuronNodeTypeToEntityType, resolveRecordPageId } from './worker/handlers/relationshipProjections.js';
 import { handleHealth, handleInit, handleFactoryReset } from './worker/handlers/init.js';
+import { handleAgentQuery } from './worker/handlers/agent.js';
 
 
 // ─── Record title resolution ───
@@ -1867,6 +1868,12 @@ export default {
 
         // Non-cacheable: direct pass-through
         return await claudeFetch(claudeKey, body, jsonResponse);
+      }
+
+      // ─── Wasabi Agent (MCP-accessible, context-aware) ───
+      if (path === "/agent" && request.method === "POST") {
+        const claudeKey = await getClaudeKey(request, {}, env);
+        return await handleAgentQuery(request, env, jsonResponse, claudeKey);
       }
 
       // ─── File proxy (download Notion files as base64) ───
