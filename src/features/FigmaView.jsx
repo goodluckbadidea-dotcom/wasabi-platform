@@ -47,7 +47,7 @@ function formatRelative(iso) {
 
 // ── Main Component ──
 export default function FigmaView() {
-  const { setActiveRightPane } = useNavigation();
+  const { setActiveRightPane, consumePendingFigmaFile } = useNavigation();
 
   // Project state
   const [projects, setProjects] = useState([]);
@@ -81,6 +81,17 @@ export default function FigmaView() {
 
   // Comment panel (Phase 2) — persists across files
   const [commentPanelOpen, setCommentPanelOpen] = useState(false);
+
+  // Notification click-through: if NavigationContext stashed a pending file
+  // (from a Figma @-mention notification), open it in the in-app viewer.
+  // Only consume once per mount to avoid loops.
+  useEffect(() => {
+    if (!consumePendingFigmaFile) return;
+    const f = consumePendingFigmaFile();
+    if (f?.fileKey) {
+      setViewingFile({ key: f.fileKey, name: f.fileName || "Figma file" });
+    }
+  }, [consumePendingFigmaFile]);
 
   // File cache: projectId → { name, files }
   const fileCacheRef = useRef({});
@@ -335,6 +346,7 @@ export default function FigmaView() {
           {commentPanelOpen && (
             <FigmaCommentPanel
               fileKey={viewingFile.key}
+              fileName={viewingFile.name}
               onClose={() => setCommentPanelOpen(false)}
             />
           )}

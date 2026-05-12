@@ -420,7 +420,7 @@ function PreferencesPanel({ prefs, onUpdate, onClose }) {
 }
 
 export default function NotificationFeed() {
-  const { user, pages, setActiveRightPane, navigateToRecord, identity } = usePlatform();
+  const { user, pages, setActiveRightPane, navigateToRecord, navigateToFigmaFile, identity } = usePlatform();
   const { openDrawer } = useRecordDrawer();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -486,6 +486,17 @@ export default function NotificationFeed() {
   const handleClickThrough = useCallback((notif) => {
     if (notif.status === "unread") markAsRead(notif.id);
 
+    // Figma @-mention click-through: open the file in the in-app viewer.
+    // `source` is shaped as "figma:{file_key}"; `record_name` holds the
+    // file name for the takeover header.
+    if (typeof notif.source === "string" && notif.source.startsWith("figma:")) {
+      const fileKey = notif.source.slice("figma:".length);
+      if (fileKey && navigateToFigmaFile) {
+        navigateToFigmaFile(fileKey, notif.record_name || "");
+        return;
+      }
+    }
+
     // Try to find the target page by page_config_id
     let matchedPage = null;
     if (notif.page_config_id) {
@@ -515,7 +526,7 @@ export default function NotificationFeed() {
     }
 
     console.warn("[NotificationFeed] Could not find page for notification:", notif.id, { page_config_id: notif.page_config_id, page_name: notif.page_name, record_id: notif.record_id });
-  }, [pages, setActiveRightPane, navigateToRecord, markAsRead]);
+  }, [pages, setActiveRightPane, navigateToRecord, navigateToFigmaFile, markAsRead]);
 
   const handleReply = useCallback(async (notif, text) => {
     const userId = identity?.id || "default";

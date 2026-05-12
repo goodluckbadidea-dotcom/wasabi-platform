@@ -12,10 +12,11 @@
 //  - Pin positions (`client_meta`) are not visualized — we'd need to draw
 //    on top of the embed iframe which is cross-origin.
 
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
 import { listFigmaComments, postFigmaComment, deleteFigmaComment } from "../lib/api.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
+import MentionInput from "../components/MentionInput.jsx";
 
 const POLL_MS = 30_000;
 
@@ -100,7 +101,7 @@ function CommentBody({ message }) {
   );
 }
 
-export default function FigmaCommentPanel({ fileKey, onClose }) {
+export default function FigmaCommentPanel({ fileKey, fileName = "", onClose }) {
   const { identity } = usePlatform();
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -108,7 +109,6 @@ export default function FigmaCommentPanel({ fileKey, onClose }) {
   const [draft, setDraft] = useState("");
   const [posting, setPosting] = useState(false);
   const [replyTo, setReplyTo] = useState(null); // top-level comment id we're replying to
-  const composerRef = useRef(null);
 
   const load = useCallback(async (silent = false) => {
     if (!fileKey) return;
@@ -138,7 +138,7 @@ export default function FigmaCommentPanel({ fileKey, onClose }) {
     if (!text || posting) return;
     setPosting(true);
     try {
-      await postFigmaComment(fileKey, text, replyTo || null);
+      await postFigmaComment(fileKey, text, replyTo || null, fileName);
       setDraft("");
       setReplyTo(null);
       await load(true);
@@ -147,7 +147,7 @@ export default function FigmaCommentPanel({ fileKey, onClose }) {
     } finally {
       setPosting(false);
     }
-  }, [draft, posting, fileKey, replyTo, load]);
+  }, [draft, posting, fileKey, fileName, replyTo, load]);
 
   const handleDelete = useCallback(async (commentId) => {
     try {
@@ -259,10 +259,7 @@ export default function FigmaCommentPanel({ fileKey, onClose }) {
                 <CommentBody message={thread.message} />
                 <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
                   <button
-                    onClick={() => {
-                      setReplyTo(thread.id);
-                      setTimeout(() => composerRef.current?.focus(), 0);
-                    }}
+                    onClick={() => setReplyTo(thread.id)}
                     style={textBtnStyle()}
                   >
                     Reply
@@ -328,24 +325,23 @@ export default function FigmaCommentPanel({ fileKey, onClose }) {
             </button>
           </div>
         )}
-        <textarea
-          ref={composerRef}
+        <MentionInput
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={setDraft}
+          placeholder={replyTo ? "Write a reply… (type @ to mention a teammate)" : "Leave a comment… (type @ to mention a teammate)"}
+          multiline
+          rows={3}
           onKeyDown={(e) => {
             if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
               e.preventDefault();
               handlePost();
             }
           }}
-          placeholder={replyTo ? "Write a reply…" : "Leave a comment on this file…"}
-          rows={3}
           style={{
-            width: "100%", boxSizing: "border-box", resize: "vertical",
             background: C.darkSurf2, color: C.darkText,
             border: `1px solid ${C.darkBorder}`, borderRadius: RADIUS.md,
             padding: "8px 10px", fontSize: 12, fontFamily: FONT, lineHeight: 1.45,
-            outline: "none",
+            outline: "none", resize: "vertical",
           }}
         />
         <div style={{

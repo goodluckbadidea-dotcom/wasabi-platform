@@ -1116,9 +1116,10 @@ export async function listFigmaComments(fileKey) {
   return apiFetch(`/figma/files/${fileKey}/comments`, { method: "GET" });
 }
 
-export async function postFigmaComment(fileKey, message, parentCommentId = null) {
+export async function postFigmaComment(fileKey, message, parentCommentId = null, fileName = "") {
   const body = { message };
   if (parentCommentId) body.comment_id = parentCommentId;
+  if (fileName) body.file_name = fileName;
   return apiFetch(`/figma/files/${fileKey}/comments`, { method: "POST", body });
 }
 

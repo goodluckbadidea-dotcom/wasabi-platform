@@ -2,6 +2,7 @@
 // Proxies Figma REST API calls. API key stored encrypted in D1 connections table.
 
 import { decryptSecret } from '../crypto.js';
+import { createNotificationInternal, extractMentions } from './notifications.js';
 
 const FIGMA_API = 'https://api.figma.com/v1';
 
@@ -245,6 +246,7 @@ export async function handleFigmaPostComment(env, fileKey, body, user, jsonRespo
     if (!raw) return jsonResponse({ _error: 'Message is required' }, 400);
 
     const displayName = user?.name || 'Wasabi user';
+    const fileName = (body?.file_name || '').toString().trim() || 'a Figma file';
     // Avoid double-prefix if the client already added one for some reason.
     const message = /^\[.+ via Wasabi\]:/.test(raw)
       ? raw
@@ -257,6 +259,43 @@ export async function handleFigmaPostComment(env, fileKey, body, user, jsonRespo
       method: 'POST',
       body: payload,
     });
+
+    // Notify any @-mentioned Wasabi users. We scan the raw user-typed text
+    // (not the prefixed message) so the prefix `[Graham via Wasabi]:` can't
+    // accidentally trigger a self-mention. Mirrors the pattern used by
+    // record comments in worker/handlers/records.js.
+    try {
+      const mentions = extractMentions(raw);
+      if (mentions.length > 0) {
+        const usersRes = await env.DB.prepare(
+          "SELECT id, display_name FROM users WHERE deleted_at IS NULL"
+        ).all();
+        const userList = usersRes.results || [];
+        const preview = raw.length > 90 ? raw.slice(0, 87) + '…' : raw;
+        const notified = new Set();
+        for (const mentionName of mentions) {
+          const mentionLower = mentionName.toLowerCase();
+          const matched = userList.find((u) => u.display_name.toLowerCase() === mentionLower);
+          if (!matched) continue;
+          if (notified.has(matched.id)) continue; // de-dupe within a single comment
+          notified.add(matched.id);
+          await createNotificationInternal(env, {
+            message: `${displayName} mentioned you on "${fileName}": "${preview}"`,
+            type: 'mention',
+            source: `figma:${fileKey}`,
+            target_user_id: matched.id,
+            record_id: '',
+            record_name: fileName,
+            page_config_id: '',
+            page_name: 'Figma',
+            actor_name: displayName,
+          });
+        }
+      }
+    } catch (err) {
+      console.error('[handleFigmaPostComment] mention notification failed:', err?.message || err);
+    }
+
     return jsonResponse({ ok: true, comment: data });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);

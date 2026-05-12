@@ -121,6 +121,19 @@ export function NavigationProvider({ children }) {
     return id;
   }, []);
 
+  // Pending Figma file to open in-app after navigating to the Figma feature
+  // (used by notification click-through on a Figma @-mention).
+  const pendingFigmaFileRef = useRef(null);
+  const navigateToFigmaFile = useCallback((fileKey, fileName) => {
+    pendingFigmaFileRef.current = { fileKey, fileName: fileName || "" };
+    setActiveRightPane("figma");
+  }, [setActiveRightPane]);
+  const consumePendingFigmaFile = useCallback(() => {
+    const f = pendingFigmaFileRef.current;
+    pendingFigmaFileRef.current = null;
+    return f;
+  }, []);
+
   // ── Persist to localStorage ──
   useEffect(() => { saveJSON("wasabi_active_page", activeRightPane); }, [activeRightPane]);
   useEffect(() => { saveJSON("wasabi_active_folder", activeFolder); }, [activeFolder]);
@@ -226,6 +239,8 @@ export function NavigationProvider({ children }) {
     setTargetFolderPath,
     navigateToRecord,
     consumePendingRecordId,
+    navigateToFigmaFile,
+    consumePendingFigmaFile,
     // Dual-pane state
     activeLeftPane,
     setActiveLeftPane,
