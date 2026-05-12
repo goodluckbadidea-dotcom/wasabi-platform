@@ -426,6 +426,7 @@ function d1SchemaToClassified(tableId, title, columns) {
     phones: [],
     people: [],
     files: [],
+    figmaFiles: [],
     formulas: [],
     rollups: [],
     createdTime: null,
@@ -492,6 +493,9 @@ function d1SchemaToClassified(tableId, title, columns) {
           break;
         case "files":
           schema.files.push(field);
+          break;
+        case "figma_files":
+          schema.figmaFiles.push(field);
           break;
       }
     }
@@ -647,6 +651,19 @@ function wrapAsNotionProp(value, colType) {
       return { type: "phone_number", phone_number: value || null };
     case "status":
       return { type: "status", status: value ? { name: String(value) } : null };
+    case "figma_files": {
+      // Wasabi-native: array of { file_key, file_name, thumbnail_url }.
+      // Coerce single object → single-element array. Drop entries with no file_key.
+      const arr = Array.isArray(value) ? value : (value ? [value] : []);
+      const normalized = arr
+        .filter((v) => v && typeof v === "object" && v.file_key)
+        .map((v) => ({
+          file_key: String(v.file_key),
+          file_name: String(v.file_name || ""),
+          thumbnail_url: v.thumbnail_url ? String(v.thumbnail_url) : "",
+        }));
+      return { type: "figma_files", figma_files: normalized };
+    }
     default:
       return {
         type: "rich_text",
@@ -699,6 +716,11 @@ function extractRawValue(prop, targetType) {
       return prop.phone_number || null;
     case "status":
       return prop.status?.name || null;
+    case "figma_files": {
+      if (Array.isArray(prop)) return prop;
+      if (Array.isArray(prop.figma_files)) return prop.figma_files;
+      return [];
+    }
     default:
       return null;
   }
@@ -717,6 +739,7 @@ function inferPropKind(prop) {
   if ("email" in prop) return "email";
   if ("phone_number" in prop) return "phone_number";
   if ("status" in prop) return "status";
+  if ("figma_files" in prop) return "figma_files";
   return null;
 }
 
@@ -733,6 +756,7 @@ function mapD1Type(d1Type) {
     phone: "phone_number",
     status: "status",
     depends_on: "depends_on", // view-of-edges; cell stores nothing
+    figma_files: "figma_files", // Wasabi-native: array passed through verbatim
   };
   return map[d1Type] || "rich_text";
 }

@@ -93,6 +93,15 @@ export function readProp(prop) {
       const prefix = prop.unique_id.prefix || "";
       return `${prefix}${prefix ? "-" : ""}${prop.unique_id.number}`;
 
+    // Wasabi-native: array of { file_key, file_name, thumbnail_url }.
+    // Stored as JSON in the cell. No Notion equivalent — passed through.
+    case "figma_files": {
+      if (!prop) return [];
+      if (Array.isArray(prop)) return prop;
+      if (prop.figma_files && Array.isArray(prop.figma_files)) return prop.figma_files;
+      return [];
+    }
+
     default:
       return null;
   }
@@ -159,6 +168,29 @@ export function buildProp(type, value) {
     case "people":
       const pIds = Array.isArray(value) ? value : [value];
       return { people: pIds.map((id) => ({ id })) };
+
+    // Wasabi-native: persist array of { file_key, file_name, thumbnail_url }.
+    // Wrapped in `{ figma_files: [...] }` for parity with the other Notion-shape
+    // props that buildProp emits (multi_select, people, etc.). readProp /
+    // extractRawValue both unwrap this shape back to a plain array.
+    case "figma_files": {
+      let arr;
+      if (Array.isArray(value)) {
+        arr = value;
+      } else if (value && typeof value === "object" && value.file_key) {
+        arr = [value];
+      } else {
+        arr = [];
+      }
+      const normalized = arr
+        .filter((v) => v && v.file_key)
+        .map((v) => ({
+          file_key: String(v.file_key),
+          file_name: String(v.file_name || ""),
+          thumbnail_url: v.thumbnail_url ? String(v.thumbnail_url) : "",
+        }));
+      return { figma_files: normalized };
+    }
 
     default:
       return undefined;

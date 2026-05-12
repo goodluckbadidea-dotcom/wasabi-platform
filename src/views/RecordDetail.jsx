@@ -8,11 +8,13 @@ import { createPortal } from "react-dom";
 import { C, FONT, RADIUS, SHADOW, Z, getSolidPillColor } from "../design/tokens.js";
 import { useViewport } from "../context/ViewportContext.jsx";
 import { readProp, buildProp } from "../notion/properties.js";
-import { IconClose, IconEdit, IconExpand } from "../design/icons.jsx";
+import { IconClose, IconEdit, IconExpand, IconFigma } from "../design/icons.jsx";
 import { timeAgo, formatDate } from "../utils/helpers.js";
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
 import RecordComments from "../components/RecordComments.jsx";
 import RecordFiles from "../components/RecordFiles.jsx";
+import FigmaFilePicker from "../components/FigmaFilePicker.jsx";
+import FigmaCellPreview from "../components/FigmaCellPreview.jsx";
 import { useCollaboration } from "../context/CollaborationContext.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import PresenceAvatars from "../components/PresenceAvatars.jsx";
@@ -49,6 +51,7 @@ const TYPE_LABELS = {
 const EDITABLE_TYPES = new Set([
   "title", "rich_text", "number", "select", "status",
   "multi_select", "date", "checkbox", "url", "email", "phone_number",
+  "figma_files",
 ]);
 
 // ── Styles ──
@@ -1707,9 +1710,66 @@ function DisplayValue({ prop, fieldName, schema, pendingValue, linkedValue }) {
         </>
       );
 
+    case "figma_files":
+      return <FigmaFilesDisplay value={pendingValue ?? value} />;
+
     default:
       return <span style={{ color: C.darkMuted }}>{JSON.stringify(value)}</span>;
   }
+}
+
+// ── Figma files display (used inside renderField/DisplayValue) ──
+function FigmaFilesDisplay({ value }) {
+  const [previewFile, setPreviewFile] = useState(null);
+  const files = Array.isArray(value) ? value : [];
+  if (files.length === 0) {
+    return <span style={{ color: C.darkMuted, fontStyle: "italic", fontSize: 13 }}>No files</span>;
+  }
+  return (
+    <span style={{ display: "inline-flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
+      {files.map((f) => (
+        <button
+          key={f.file_key}
+          onClick={(e) => { e.stopPropagation(); setPreviewFile(f); }}
+          title={f.file_name || "Figma file"}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 5,
+            padding: "2px 8px 2px 6px", height: 22, lineHeight: 1,
+            background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
+            borderRadius: RADIUS.pill, color: C.darkText,
+            fontSize: 11, fontFamily: FONT, fontWeight: 500,
+            cursor: "pointer", outline: "none",
+            maxWidth: 200, overflow: "hidden",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = C.darkBorder; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+        >
+          <IconFigma size={11} />
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {f.file_name || "Untitled"}
+          </span>
+        </button>
+      ))}
+      {previewFile && (
+        <FigmaCellPreview file={previewFile} onClose={() => setPreviewFile(null)} />
+      )}
+    </span>
+  );
+}
+
+// ── Figma files editor (mounts the picker modal) ──
+// Used as the inline editor for figma_files in EditField. Auto-opens the
+// picker on mount and commits the chosen array back through onCommit.
+function FigmaFilesEditor({ value, onCommit, onCancel }) {
+  return (
+    <FigmaFilePicker
+      open
+      existing={Array.isArray(value) ? value : []}
+      onConfirm={(arr) => onCommit(arr)}
+      onCancel={onCancel}
+      title="Pick Figma files for this field"
+    />
+  );
 }
 
 // ── Auto-resizing Textarea ──
@@ -1834,6 +1894,15 @@ function EditField({ fieldName, type, value, schemaField, onCommit, onCancel, on
           onCancel={onCancel}
           multi={false}
           onCreateOption={onCreateOption ? (name) => onCreateOption(fieldName, name) : null}
+        />
+      );
+
+    case "figma_files":
+      return (
+        <FigmaFilesEditor
+          value={value}
+          onCommit={onCommit}
+          onCancel={onCancel}
         />
       );
 

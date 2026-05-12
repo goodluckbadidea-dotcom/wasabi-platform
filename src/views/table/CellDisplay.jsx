@@ -2,12 +2,84 @@
 // Cell type renderers for Table view. Diverges from _CellComponents.jsx:
 // uses getSolidPillColor for richer color mapping, resolved relation titles.
 
-import React from "react";
-import { C, RADIUS, getSolidPillColor } from "../../design/tokens.js";
+import React, { useState } from "react";
+import { C, RADIUS, FONT, getSolidPillColor } from "../../design/tokens.js";
 import { getFieldOptions, getOptionNames } from "../_viewHelpers.js";
 import { formatDate, truncate } from "../../utils/helpers.js";
 import { pillStyle, toggleStyle, multiPillWrap } from "./tableStyles.js";
-import { IconConnect } from "../../design/icons.jsx";
+import { IconConnect, IconFigma } from "../../design/icons.jsx";
+import FigmaCellPreview from "../../components/FigmaCellPreview.jsx";
+
+// ─── figma_files pill renderer ───
+// Compact pills (icon + truncated name). Click a pill → expanded preview
+// with Open buttons. Click empty space (or "+ Add" when at least one file
+// exists) → opens the picker via the cell editor (onClick callback).
+function FigmaFilesPills({ files, onAdd }) {
+  const [previewFile, setPreviewFile] = useState(null);
+  const empty = !files || files.length === 0;
+  return (
+    <span style={{ display: "inline-flex", flexWrap: "wrap", alignItems: "center", gap: 4 }}>
+      {empty ? (
+        <span
+          style={{
+            color: C.darkMuted, fontSize: 12, fontStyle: "italic",
+            cursor: onAdd ? "pointer" : "default",
+          }}
+          onClick={onAdd}
+        >
+          + Add file
+        </span>
+      ) : (
+        <>
+          {files.map((f) => (
+            <button
+              key={f.file_key}
+              onClick={(e) => { e.stopPropagation(); setPreviewFile(f); }}
+              title={f.file_name || "Figma file"}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 5,
+                padding: "2px 8px 2px 6px", height: 22, lineHeight: 1,
+                background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
+                borderRadius: RADIUS.pill, color: C.darkText,
+                fontSize: 11, fontFamily: FONT, fontWeight: 500,
+                cursor: "pointer", outline: "none",
+                maxWidth: 180, overflow: "hidden",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = C.darkBorder; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+            >
+              <IconFigma size={11} />
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {f.file_name || "Untitled"}
+              </span>
+            </button>
+          ))}
+          {onAdd && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onAdd(); }}
+              title="Add file"
+              aria-label="Add Figma file"
+              style={{
+                width: 20, height: 20, padding: 0,
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                background: "transparent", border: `1px dashed ${C.darkBorder}`,
+                borderRadius: "50%", color: C.darkMuted,
+                fontSize: 12, lineHeight: 1, cursor: "pointer", outline: "none",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.color = C.accent; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.darkBorder; e.currentTarget.style.color = C.darkMuted; }}
+            >
+              +
+            </button>
+          )}
+        </>
+      )}
+      {previewFile && (
+        <FigmaCellPreview file={previewFile} onClose={() => setPreviewFile(null)} />
+      )}
+    </span>
+  );
+}
 
 // Cell type renderers — keyed by Notion property type.
 // Each receives { value, fieldName, schema, onClick, relationTitles }.
@@ -56,6 +128,7 @@ export const CELL_RENDERERS = {
     );
   },
   number: ({ value, onClick }) => <span style={{ cursor: onClick ? "pointer" : "default", fontVariantNumeric: "tabular-nums" }} onClick={onClick}>{value}</span>,
+  figma_files: ({ value, onClick }) => <FigmaFilesPills files={Array.isArray(value) ? value : []} onAdd={onClick} />,
   last_edited_time: ({ value }) => <span style={{ fontSize: 12, color: C.darkMuted, fontVariantNumeric: "tabular-nums" }}>{formatDate(String(value), { short: true })}</span>,
   created_time: ({ value }) => <span style={{ fontSize: 12, color: C.darkMuted, fontVariantNumeric: "tabular-nums" }}>{formatDate(String(value), { short: true })}</span>,
 };
@@ -123,8 +196,10 @@ export default function CellDisplay({ value, type, fieldName, schema, onClick, r
   const isLinked = !!linkInfo;
   const displayValue = isLinked ? coerceLinkedValue(linkedValue, type) : value;
 
-  // Empty-state rendering
-  if (displayValue === null || displayValue === undefined || displayValue === "") {
+  // Empty-state rendering — except figma_files, which renders its own "+ Add"
+  // affordance (still inside the renderer) so the empty state is interactive.
+  const isFigmaFiles = type === "figma_files";
+  if (!isFigmaFiles && (displayValue === null || displayValue === undefined || displayValue === "")) {
     const placeholder = isLinked && linkInfo?.stale ? "(source missing)" : "--";
     const empty = (
       <span style={{ color: C.darkMuted, fontSize: 12, fontStyle: "italic", cursor: onClick ? "pointer" : "default" }} onClick={onClick}>

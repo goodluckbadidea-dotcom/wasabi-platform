@@ -790,3 +790,18 @@ export function IconSubItems({ size = 20, color = d, ...rest }) {
     </Icon>
   );
 }
+
+// ─── Figma geometric logo ───
+// Five-shape glyph in Figma's official palette. Used by FigmaView, the
+// figma_files cell type, and anywhere we need to mark "this is a Figma file".
+export function IconFigma({ size = 16, ...rest }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...rest}>
+      <path d="M8 24c2.2 0 4-1.8 4-4v-4H8c-2.2 0-4 1.8-4 4s1.8 4 4 4z" fill="#0ACF83" />
+      <path d="M4 12c0-2.2 1.8-4 4-4h4v8H8c-2.2 0-4-1.8-4-4z" fill="#A259FF" />
+      <path d="M4 4c0-2.2 1.8-4 4-4h4v8H8C5.8 8 4 6.2 4 4z" fill="#F24E1E" />
+      <path d="M12 0h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4V0z" fill="#FF7262" />
+      <path d="M20 12c0 2.2-1.8 4-4 4s-4-1.8-4-4 1.8-4 4-4 4 1.8 4 4z" fill="#1ABCFE" />
+    </svg>
+  );
+}

@@ -2,11 +2,45 @@
 // Modal dialogs for adding parent columns and sub-item columns.
 // Rendered via createPortal.
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { C, FONT, RADIUS, SHADOW } from "../../design/tokens.js";
 import { getInputFieldStyle } from "./tableStyles.js";
 import { COLUMN_TYPES } from "./tableHelpers.js";
+import { getFigmaStatus } from "../../lib/api.js";
+
+// Module-level cache so we don't re-check on every dialog mount.
+let _figmaConnectedCache = null;
+let _figmaCacheTime = 0;
+const FIGMA_CACHE_TTL = 60_000;
+function useFigmaConnected() {
+  const [connected, setConnected] = useState(_figmaConnectedCache ?? false);
+  useEffect(() => {
+    const now = Date.now();
+    if (_figmaConnectedCache !== null && now - _figmaCacheTime < FIGMA_CACHE_TTL) {
+      setConnected(_figmaConnectedCache);
+      return;
+    }
+    let cancelled = false;
+    getFigmaStatus().then((r) => {
+      if (cancelled) return;
+      _figmaConnectedCache = !!r?.connected;
+      _figmaCacheTime = Date.now();
+      setConnected(_figmaConnectedCache);
+    }).catch(() => {
+      if (cancelled) return;
+      _figmaConnectedCache = false;
+      _figmaCacheTime = Date.now();
+      setConnected(false);
+    });
+    return () => { cancelled = true; };
+  }, []);
+  return connected;
+}
+
+function filterTypes(types, figmaConnected) {
+  return types.filter((t) => !t.requiresFigma || figmaConnected);
+}
 
 /**
  * Add parent column dialog — name input, type grid, relation DB search.
@@ -19,6 +53,8 @@ export function AddColumnDialog({
   onRelationDbSelect, onSyncedChange, onSyncedNameChange, onDbSearchQueryChange, onSearchDbs,
 }) {
   const inputFieldStyle = getInputFieldStyle();
+  const figmaConnected = useFigmaConnected();
+  const availableTypes = filterTypes(COLUMN_TYPES, figmaConnected);
   if (!open) return null;
 
   const canAdd = name.trim() && !(type === "relation" && (!relationDb || (synced && !syncedName.trim())));
@@ -57,7 +93,7 @@ export function AddColumnDialog({
         <div style={{ marginBottom: 12 }}>
           <label style={{ fontSize: 11, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 4 }}>Column Type</label>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
-            {COLUMN_TYPES.map((t) => {
+            {availableTypes.map((t) => {
               const isSelected = type === t.value;
               return (
                 <div
@@ -177,6 +213,8 @@ export function AddColumnDialog({
  * Add sub-item column dialog — simpler version without relation support.
  */
 export function AddSubColumnDialog({ open, name, type, onNameChange, onTypeChange, onSubmit, onClose }) {
+  const figmaConnected = useFigmaConnected();
+  const availableTypes = filterTypes(COLUMN_TYPES, figmaConnected).filter(t => t.value !== "relation");
   if (!open) return null;
   return createPortal(
     <>
@@ -209,7 +247,7 @@ export function AddSubColumnDialog({ open, name, type, onNameChange, onTypeChang
         <div style={{ marginBottom: 20 }}>
           <label style={{ fontSize: 11, fontWeight: 600, color: C.darkMuted, textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 4 }}>Type</label>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-            {COLUMN_TYPES.filter(t => t.value !== "relation").map((t) => (
+            {availableTypes.map((t) => (
               <button
                 key={t.value}
                 onClick={() => onTypeChange(t.value)}

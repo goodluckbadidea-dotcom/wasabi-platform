@@ -3,7 +3,7 @@
 
 import {
   IconChevronDown, IconArrowDown, IconCalendar, IconCheckSquare,
-  IconLink, IconMail, IconPhone, IconStatusDot, IconUser,
+  IconLink, IconMail, IconPhone, IconStatusDot, IconUser, IconFigma,
 } from "../../design/icons.jsx";
 import { getFieldType } from "../_viewHelpers.js";
 
@@ -37,6 +37,10 @@ export const COLUMN_TYPES = [
   // Display reads from the relationships table; click opens RecordDetail's
   // Dependencies tab where the picker lives.
   { value: "depends_on", label: "Depends on", text: null, Icon: IconLink },
+  // figma_files: cell stores an array of { file_key, file_name, thumbnail_url }.
+  // Renders as compact pills; click → expanded preview with Open buttons.
+  // Hidden from the type picker if no Figma connection (gated in AddColumnDialog).
+  { value: "figma_files", label: "Figma Files", text: null, Icon: IconFigma, requiresFigma: true },
 ];
 
 // ─── Type Icon Lookup (returns { text, Icon } or null) ───
@@ -47,6 +51,7 @@ TYPE_ICON_MAP["title"] = { text: "AA", Icon: null };
 TYPE_ICON_MAP["phone_number"] = { text: null, Icon: IconPhone };
 TYPE_ICON_MAP["last_edited_time"] = { text: null, Icon: IconCalendar };
 TYPE_ICON_MAP["created_time"] = { text: null, Icon: IconCalendar };
+TYPE_ICON_MAP["figma_files"] = { text: null, Icon: IconFigma };
 
 export function mapD1TypeForUI(d1Type) { return D1_TO_NOTION_TYPE[d1Type] || d1Type; }
 export function getTypeIcon(schema, fieldName) { return TYPE_ICON_MAP[getFieldType(schema, fieldName)] || null; }
@@ -181,6 +186,7 @@ export function resolveColumns(schema, configColumns, fieldMappings) {
       ...schema.people,
       ...schema.relations,
       ...schema.files,
+      ...(schema.figmaFiles || []),
       ...schema.formulas,
       ...schema.rollups,
     ];
