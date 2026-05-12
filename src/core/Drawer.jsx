@@ -3,6 +3,7 @@
 // Supports exit animation: plays slide-out before unmounting.
 
 import React, { useEffect, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import { C, RADIUS } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { ANIM, injectAnimations } from "../design/animations.js";
@@ -54,7 +55,11 @@ export default function Drawer({
     ? (side === "right" ? ANIM.slideOutRight : ANIM.slideOutLeft)
     : (side === "right" ? ANIM.drawerSlide : ANIM.drawerSlideLeft);
 
-  return (
+  // Portal the overlay to document.body so position:fixed is viewport-anchored
+  // regardless of any ancestor that creates a containing block (transform,
+  // filter, will-change, contain, etc.). Without this the drawer renders
+  // constrained to whichever pane/wrapper it was mounted inside.
+  return createPortal((
     <div
       style={{
         ...S.overlay,
@@ -113,5 +118,5 @@ export default function Drawer({
         </div>
       </div>
     </div>
-  );
+  ), document.body);
 }

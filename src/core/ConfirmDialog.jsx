@@ -4,6 +4,7 @@
 // Supports exit animation before unmounting.
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { focusRing } from "../design/interactions.js";
@@ -38,7 +39,9 @@ export default function ConfirmDialog({
     return () => window.removeEventListener("keydown", handler);
   }, [onCancel, handleClose]);
 
-  return (
+  // Portal to document.body so position:fixed is viewport-anchored regardless
+  // of any ancestor that creates a CSS containing block.
+  return createPortal((
     <div
       onClick={() => handleClose(onCancel)}
       style={{
@@ -148,5 +151,5 @@ export default function ConfirmDialog({
         </div>
       </div>
     </div>
-  );
+  ), document.body);
 }

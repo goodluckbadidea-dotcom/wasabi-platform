@@ -4,6 +4,7 @@
 // On select: returns { type, label } to parent.
 
 import React, { useRef, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
 import {
   IconTable, IconKanban, IconCalendar, IconTimeline,
@@ -44,7 +45,9 @@ export default function ViewTypePicker({ onSelect, onClose }) {
     return () => document.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  return (
+  // Portal to document.body so position:fixed is viewport-anchored regardless
+  // of any ancestor that creates a CSS containing block.
+  return createPortal((
     <div
       ref={ref}
       style={{
@@ -149,5 +152,5 @@ export default function ViewTypePicker({ onSelect, onClose }) {
         </div>
       </div>
     </div>
-  );
+  ), document.body);
 }

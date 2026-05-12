@@ -3,6 +3,7 @@
 // Used by all views (Table, Gantt, Calendar, CardGrid, Kanban).
 
 import React, { useState, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { C, FONT, RADIUS, SHADOW, getSolidPillColor } from "../design/tokens.js";
 import { buildProp } from "../notion/properties.js";
 import { IconClose } from "../design/icons.jsx";
@@ -103,7 +104,9 @@ export default function NewRecordModal({ schema, onClose, onCreate, databaseId, 
     }
   }, [values, fields, titleField, onCreate, databaseId, onClose]);
 
-  return (
+  // Portal to document.body so position:fixed is viewport-anchored regardless
+  // of any ancestor that creates a CSS containing block.
+  return createPortal((
     <div style={ms.overlay} onClick={onClose} onKeyDown={(e) => e.stopPropagation()}>
       <div style={ms.modal} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="new-record-title" tabIndex={-1}>
         {/* Header */}
@@ -165,7 +168,7 @@ export default function NewRecordModal({ schema, onClose, onCreate, databaseId, 
         </div>
       </div>
     </div>
-  );
+  ), document.body);
 }
 
 function FieldRow({ field, value, options, onChange, isTitle }) {
