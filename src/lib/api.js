@@ -1112,6 +1112,20 @@ export async function importFigmaFiles(files) {
   return apiFetch("/figma/import", { method: "POST", body: { files } });
 }
 
+export async function listFigmaComments(fileKey) {
+  return apiFetch(`/figma/files/${fileKey}/comments`, { method: "GET" });
+}
+
+export async function postFigmaComment(fileKey, message, parentCommentId = null) {
+  const body = { message };
+  if (parentCommentId) body.comment_id = parentCommentId;
+  return apiFetch(`/figma/files/${fileKey}/comments`, { method: "POST", body });
+}
+
+export async function deleteFigmaComment(fileKey, commentId) {
+  return apiFetch(`/figma/files/${fileKey}/comments/${commentId}`, { method: "DELETE" });
+}
+
 // ─── Auth ───
 
 function getDeviceInfo() {

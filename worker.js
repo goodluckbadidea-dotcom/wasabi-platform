@@ -25,7 +25,7 @@ import { handleListComments, handleCreateComment, handleDeleteComment } from './
 import { handleGoogleAuthUrl, handleGoogleCallback, handleGoogleStatus, handleGoogleDisconnect, handleGmailSummary, handleGmailSearch, handleGmailGetMessage, handleGmailGetThread, handleGmailUpdateDraft, handleGmailSend, handleGmailCreateDraft, handleGmailModify, handleCalendarSummary, handleCalendarList, handleCalendarListEvents, handleCalendarCreateEvent, handleCalendarUpdateEvent, handleCalendarDeleteEvent, handleCalendarFreeBusy, fetchGoogleSheetViaApi } from './worker/handlers/google.js';
 import { handleMicrosoftAuthUrl, handleMicrosoftCallback, handleMicrosoftStatus, handleMicrosoftDisconnect } from './worker/handlers/microsoft.js';
 import { handleOutlookSummary, handleOutlookSearch, handleOutlookGetMessage, handleOutlookGetThread, handleOutlookSend, handleOutlookModify, handleOutlookCreateDraft, handleOutlookUpdateDraft, handleOutlookFreeBusy, handleOutlookCalendarSummary, handleOutlookListEvents, handleOutlookCreateEvent, handleOutlookUpdateEvent, handleOutlookDeleteEvent } from './worker/handlers/outlook.js';
-import { handleFigmaStatus, handleFigmaProjects, handleFigmaFiles, handleFigmaFile, handleFigmaImport } from './worker/handlers/figma.js';
+import { handleFigmaStatus, handleFigmaProjects, handleFigmaFiles, handleFigmaFile, handleFigmaImport, handleFigmaListComments, handleFigmaPostComment, handleFigmaDeleteComment } from './worker/handlers/figma.js';
 import { runAutomationTick, checkAutomationTriggers, runNeuronPruneTick } from './worker/automation/engine.js';
 import { runSyncFlushTick, handleSyncConfigure, handleSyncPush, handleSyncPull, handleSyncStatus, handleSyncDelete, handleDisconnect, handleSyncBackup, handleSyncBootstrap, handleSyncFlush, getNotionKeyFromDB, invalidateSummaryCache } from './worker/handlers/notion-sync.js';
 import { handleListPages, handleCreatePage, handleGetSummaryCache, handleSetSummaryCache, handleGetPage, handleUpdatePage, handleReorderPages, handleDeletePage } from './worker/handlers/pages.js';
@@ -396,6 +396,26 @@ export default {
       if (path === "/figma/import" && request.method === "POST") {
         const body = await request.json();
         return await handleFigmaImport(env, body, user?.sub, jsonResponse);
+      }
+
+      // /figma/files/:fileKey/comments (Phase 2)
+      if (path.startsWith("/figma/files/") && path.includes("/comments")) {
+        const parts = path.split("/"); // ["", "figma", "files", ":key", "comments", ":id?"]
+        const fileKey = parts[3];
+        const commentId = parts[5];
+        if (fileKey && parts[4] === "comments") {
+          if (!commentId && request.method === "GET") {
+            return await handleFigmaListComments(env, fileKey, jsonResponse);
+          }
+          if (!commentId && request.method === "POST") {
+            if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
+            const body = await request.json().catch(() => ({}));
+            return await handleFigmaPostComment(env, fileKey, body, user, jsonResponse);
+          }
+          if (commentId && request.method === "DELETE") {
+            return await handleFigmaDeleteComment(env, fileKey, commentId, jsonResponse);
+          }
+        }
       }
 
       // ─── Microsoft OAuth (per-user) ───

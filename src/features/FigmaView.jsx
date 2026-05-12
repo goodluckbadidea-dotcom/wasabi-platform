@@ -6,6 +6,7 @@ import { C, FONT, RADIUS, SHADOW } from "../design/tokens.js";
 import { getFigmaProjects, getFigmaFiles, getFigmaFile, importFigmaFiles } from "../lib/api.js";
 import { useNavigation } from "../context/NavigationContext.jsx";
 import PanelHeader from "../core/PanelHeader.jsx";
+import FigmaCommentPanel from "./FigmaCommentPanel.jsx";
 
 // ── Figma icon (geometric logo) ──
 function FigmaIcon({ size = 18 }) {
@@ -77,6 +78,9 @@ export default function FigmaView() {
   const [viewingFile, setViewingFile] = useState(null);
   const [viewerHintDismissed, setViewerHintDismissed] = useState(false);
   const [viewerHintVisible, setViewerHintVisible] = useState(false);
+
+  // Comment panel (Phase 2) — persists across files
+  const [commentPanelOpen, setCommentPanelOpen] = useState(false);
 
   // File cache: projectId → { name, files }
   const fileCacheRef = useRef({});
@@ -241,6 +245,23 @@ export default function FigmaView() {
           }}>
             {viewingFile.name}
           </div>
+          <button
+            onClick={() => setCommentPanelOpen((v) => !v)}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "6px 12px", fontSize: 12, fontWeight: 500, fontFamily: FONT,
+              background: commentPanelOpen ? C.accent + "22" : "transparent",
+              color: commentPanelOpen ? C.accent : C.darkMuted,
+              border: `1px solid ${commentPanelOpen ? C.accent : C.darkBorder}`,
+              borderRadius: RADIUS.pill, cursor: "pointer", outline: "none",
+            }}
+            title={commentPanelOpen ? "Hide comments" : "Show comments"}
+          >
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+              <path d="M2 3h12v8H5l-3 3V3z" stroke="currentColor" strokeWidth="1.3" fill="none" />
+            </svg>
+            Comments
+          </button>
           <a
             href={`https://www.figma.com/design/${viewingFile.key}`}
             target="_blank"
@@ -297,15 +318,23 @@ export default function FigmaView() {
           </div>
         )}
 
-        {/* Iframe */}
-        <iframe
-          key={viewingFile.key}
-          src={embedSrc}
-          title={`Figma: ${viewingFile.name}`}
-          allow="clipboard-write; fullscreen"
-          allowFullScreen
-          style={{ flex: 1, width: "100%", border: "none", background: C.dark }}
-        />
+        {/* Iframe + (optional) comment panel */}
+        <div style={{ flex: 1, display: "flex", minHeight: 0, overflow: "hidden" }}>
+          <iframe
+            key={viewingFile.key}
+            src={embedSrc}
+            title={`Figma: ${viewingFile.name}`}
+            allow="clipboard-write; fullscreen"
+            allowFullScreen
+            style={{ flex: 1, minWidth: 0, border: "none", background: C.dark }}
+          />
+          {commentPanelOpen && (
+            <FigmaCommentPanel
+              fileKey={viewingFile.key}
+              onClose={() => setCommentPanelOpen(false)}
+            />
+          )}
+        </div>
       </div>
     );
   }

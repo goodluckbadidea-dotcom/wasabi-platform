@@ -22,13 +22,20 @@ async function getFigmaTeamId(env) {
   return row?.value || null;
 }
 
-async function figmaFetch(env, path) {
+async function figmaFetch(env, path, { method = 'GET', body = null } = {}) {
   const token = await getFigmaKey(env);
   if (!token) throw new Error('Figma API key not configured');
 
-  const res = await fetch(`${FIGMA_API}${path}`, {
+  const init = {
+    method,
     headers: { 'X-FIGMA-TOKEN': token },
-  });
+  };
+  if (body) {
+    init.headers['Content-Type'] = 'application/json';
+    init.body = JSON.stringify(body);
+  }
+
+  const res = await fetch(`${FIGMA_API}${path}`, init);
 
   if (res.status === 429) {
     const retryAfter = res.headers.get('Retry-After') || '60';
@@ -36,10 +43,13 @@ async function figmaFetch(env, path) {
   }
 
   if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`Figma API error ${res.status}: ${body}`);
+    const text = await res.text().catch(() => '');
+    throw new Error(`Figma API error ${res.status}: ${text}`);
   }
 
+  // DELETE responses can be empty
+  const ct = res.headers.get('Content-Type') || '';
+  if (!ct.includes('application/json')) return {};
   return res.json();
 }
 
@@ -208,6 +218,56 @@ export async function handleFigmaFile(env, fileKey, jsonResponse) {
       version: data.version,
       pages: (data.document?.children || []).map(p => ({ id: p.id, name: p.name })),
     });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// ── Comments (Phase 2) ──
+// All comments are posted using the workspace's stored Figma PAT, so they
+// appear in Figma as authored by the PAT owner. We prefix each message with
+// `[<wasabi user> via Wasabi]: ` so the actual author isn't lost.
+
+export async function handleFigmaListComments(env, fileKey, jsonResponse) {
+  try {
+    if (!fileKey) return jsonResponse({ _error: 'Missing file key' }, 400);
+    const data = await figmaFetch(env, `/files/${fileKey}/comments`);
+    return jsonResponse({ comments: data.comments || [] });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+export async function handleFigmaPostComment(env, fileKey, body, user, jsonResponse) {
+  try {
+    if (!fileKey) return jsonResponse({ _error: 'Missing file key' }, 400);
+    const raw = (body?.message || '').toString().trim();
+    if (!raw) return jsonResponse({ _error: 'Message is required' }, 400);
+
+    const displayName = user?.name || 'Wasabi user';
+    // Avoid double-prefix if the client already added one for some reason.
+    const message = /^\[.+ via Wasabi\]:/.test(raw)
+      ? raw
+      : `[${displayName} via Wasabi]: ${raw}`;
+
+    const payload = { message };
+    if (body?.comment_id) payload.comment_id = body.comment_id; // reply target
+
+    const data = await figmaFetch(env, `/files/${fileKey}/comments`, {
+      method: 'POST',
+      body: payload,
+    });
+    return jsonResponse({ ok: true, comment: data });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+export async function handleFigmaDeleteComment(env, fileKey, commentId, jsonResponse) {
+  try {
+    if (!fileKey || !commentId) return jsonResponse({ _error: 'Missing file key or comment id' }, 400);
+    await figmaFetch(env, `/files/${fileKey}/comments/${commentId}`, { method: 'DELETE' });
+    return jsonResponse({ ok: true });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
   }
