@@ -46,7 +46,7 @@ async function handleInit(env, jsonResponse) {
   // ── Schema version fast path ──
   // Skip all DDL if the schema is already at the current version.
   // Reduces ~92 sequential D1 queries to 3 on returning page loads.
-  const CURRENT_SCHEMA_VERSION = "7";
+  const CURRENT_SCHEMA_VERSION = "8";
   try {
     const row = await env.DB.prepare(
       "SELECT value FROM connections WHERE key = 'schema_version'"
@@ -159,6 +159,11 @@ async function handleInit(env, jsonResponse) {
       // Microsoft SSO: email column on users for identity linking
       "ALTER TABLE users ADD COLUMN email TEXT",
       "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
+      // Phase 3b: snapshot the linked record's title so the "↗ [name]" pill
+      // and the "From Figma" section can render the actual name instead of
+      // a generic "record" fallback. Idempotent — try/catch above swallows
+      // the duplicate-column error for tables that already have it.
+      "ALTER TABLE figma_comment_links ADD COLUMN record_name TEXT DEFAULT ''",
     ];
     for (const sql of migrations) {
       try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }

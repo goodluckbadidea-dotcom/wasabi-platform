@@ -220,6 +220,7 @@ export default function FigmaCommentPanel({ fileKey, fileName = "", onClose }) {
         comment_author: comment.user?.handle || "",
         comment_created_at: comment.created_at || "",
         record_id: picked.record_id,
+        record_name: picked.record_name || "",
         page_config_id: picked.page_config_id,
       });
       // Re-fetch links for just this comment to update the UI.

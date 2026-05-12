@@ -410,6 +410,7 @@ CREATE TABLE IF NOT EXISTS figma_comment_links (
   comment_author TEXT DEFAULT '',
   comment_created_at TEXT DEFAULT '',
   record_id TEXT NOT NULL,
+  record_name TEXT DEFAULT '',
   page_config_id TEXT NOT NULL,
   linked_by TEXT DEFAULT '',
   linked_at TEXT DEFAULT (datetime('now'))

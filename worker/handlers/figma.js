@@ -325,7 +325,7 @@ export async function handleFigmaListLinksForRecord(env, recordId, jsonResponse)
     const res = await env.DB.prepare(
       `SELECT id, figma_file_key, figma_file_name, figma_comment_id,
               comment_message, comment_author, comment_created_at,
-              record_id, page_config_id, linked_by, linked_at
+              record_id, record_name, page_config_id, linked_by, linked_at
        FROM figma_comment_links WHERE record_id = ? ORDER BY linked_at DESC`
     ).bind(recordId).all();
     return jsonResponse({ links: res.results || [] });
@@ -339,7 +339,7 @@ export async function handleFigmaListLinksForComment(env, commentId, jsonRespons
     if (!commentId) return jsonResponse({ _error: 'Missing comment id' }, 400);
     const res = await env.DB.prepare(
       `SELECT id, figma_file_key, figma_file_name, figma_comment_id,
-              record_id, page_config_id, linked_by, linked_at
+              record_id, record_name, page_config_id, linked_by, linked_at
        FROM figma_comment_links WHERE figma_comment_id = ? ORDER BY linked_at DESC`
     ).bind(commentId).all();
     return jsonResponse({ links: res.results || [] });
@@ -353,7 +353,7 @@ export async function handleFigmaCreateLink(env, body, user, jsonResponse) {
     const {
       figma_file_key, figma_file_name = '',
       figma_comment_id, comment_message = '', comment_author = '', comment_created_at = '',
-      record_id, page_config_id,
+      record_id, record_name = '', page_config_id,
     } = body || {};
     if (!figma_file_key || !figma_comment_id || !record_id || !page_config_id) {
       return jsonResponse({ _error: 'figma_file_key, figma_comment_id, record_id, page_config_id are required' }, 400);
@@ -364,12 +364,12 @@ export async function handleFigmaCreateLink(env, body, user, jsonResponse) {
         `INSERT INTO figma_comment_links
          (id, figma_file_key, figma_file_name, figma_comment_id,
           comment_message, comment_author, comment_created_at,
-          record_id, page_config_id, linked_by, linked_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+          record_id, record_name, page_config_id, linked_by, linked_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
       ).bind(
         id, figma_file_key, figma_file_name, figma_comment_id,
         comment_message, comment_author, comment_created_at,
-        record_id, page_config_id, user?.sub || ''
+        record_id, record_name, page_config_id, user?.sub || ''
       ).run();
     } catch (err) {
       // Duplicate (figma_comment_id, record_id) — surface as 409.

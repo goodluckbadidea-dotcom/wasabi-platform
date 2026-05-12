@@ -1137,10 +1137,10 @@ export async function listFigmaLinksForComment(commentId) {
   return apiFetch(`/figma/comment-links?comment_id=${encodeURIComponent(commentId)}`, { method: "GET" });
 }
 
-export async function createFigmaCommentLink({ figma_file_key, figma_file_name, figma_comment_id, comment_message, comment_author, comment_created_at, record_id, page_config_id }) {
+export async function createFigmaCommentLink({ figma_file_key, figma_file_name, figma_comment_id, comment_message, comment_author, comment_created_at, record_id, record_name, page_config_id }) {
   return apiFetch(`/figma/comment-links`, {
     method: "POST",
-    body: { figma_file_key, figma_file_name, figma_comment_id, comment_message, comment_author, comment_created_at, record_id, page_config_id },
+    body: { figma_file_key, figma_file_name, figma_comment_id, comment_message, comment_author, comment_created_at, record_id, record_name, page_config_id },
   });
 }
 
