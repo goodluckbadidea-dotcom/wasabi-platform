@@ -399,7 +399,7 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
   // ── Styles ──
   const s = {
     overlay: {
-      position: "fixed", inset: 0, background: C.overlayBg, zIndex: Z.modal,
+      position: "fixed", inset: 0, background: C.overlayBg, zIndex: Z.modal + 1,
       display: "flex", alignItems: "center", justifyContent: "center",
       animation: ANIM.backdropFade,
     },
