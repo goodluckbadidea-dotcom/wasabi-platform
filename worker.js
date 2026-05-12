@@ -34,6 +34,7 @@ import { handleListRelationships, handleCreateRelationship, handleDeleteRelation
 import { emitProjectedEdge, deleteProjectedEdge, deleteAllProjectedEdgesByTarget, refToFieldId, mapNeuronNodeTypeToEntityType, resolveRecordPageId } from './worker/handlers/relationshipProjections.js';
 import { handleHealth, handleInit, handleFactoryReset } from './worker/handlers/init.js';
 import { handleAgentQuery } from './worker/handlers/agent.js';
+import { handleMcpContext } from './worker/handlers/mcp-context.js';
 
 
 // ─── Record title resolution ───
@@ -1874,6 +1875,11 @@ export default {
       if (path === "/agent" && request.method === "POST") {
         const claudeKey = await getClaudeKey(request, {}, env);
         return await handleAgentQuery(request, env, jsonResponse, claudeKey);
+      }
+
+      // ─── MCP workspace context (single-call snapshot for AI clients) ───
+      if (path === "/mcp/context" && request.method === "GET") {
+        return await handleMcpContext(request, env, user, jsonResponse);
       }
 
       // ─── File proxy (download Notion files as base64) ───
