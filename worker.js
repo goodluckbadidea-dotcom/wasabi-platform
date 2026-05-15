@@ -33,6 +33,12 @@ import { handleGetSchema, handleUpdateSchema, handleListRows, handleCreateRows, 
 import { handleListRelationships, handleCreateRelationship, handleDeleteRelationship, handleRebuildRelationships } from './worker/handlers/relationships.js';
 import { emitProjectedEdge, deleteProjectedEdge, deleteAllProjectedEdgesByTarget, refToFieldId, mapNeuronNodeTypeToEntityType, resolveRecordPageId } from './worker/handlers/relationshipProjections.js';
 import { handleHealth, handleInit, handleFactoryReset } from './worker/handlers/init.js';
+import {
+  handleListExtensions, handleGetExtension, handleCreateExtension, handleUpdateExtension, handleDeleteExtension,
+  handleListSnapshots, handleGetSnapshot, handleGenerateSnapshot, handleUpdateSnapshot, handleDeleteSnapshot,
+  handlePublishSnapshot, handleGetSnapshotData, handleServeSnapshotHtml,
+  handleAddSnapshotLink, handleListSnapshotLinks,
+} from './worker/handlers/extensions.js';
 
 
 // ─── Record title resolution ───
@@ -135,6 +141,19 @@ export default {
       // Health check
       if (path === "/health" && request.method === "GET") {
         return await handleHealth(env, jsonResponse);
+      }
+
+      // Extension snapshot HTML serving (pre-auth — visibility check is in handler).
+      // Path: /extensions/{ext_slug}/{snap_slug} (no `/api/` prefix; this is the
+      // viewable URL). Workspace-visibility snapshots still need an authenticated
+      // user; public-visibility snapshots are reachable without auth.
+      const extServeMatch = path.match(/^\/extensions\/([^/]+)\/([^/]+)\/?$/);
+      if (extServeMatch && request.method === "GET") {
+        // Don't intercept the snapshot-data subroute or known subpaths
+        if (extServeMatch[1] !== "snapshots" && extServeMatch[2] !== "snapshots") {
+          const preUser = await extractUser(request, env);
+          return await handleServeSnapshotHtml(env, extServeMatch[1], extServeMatch[2], preUser, cors);
+        }
       }
 
       // Google OAuth callback (browser redirect — no auth header)
@@ -989,6 +1008,68 @@ export default {
       }
       if (cfMatch && request.method === "DELETE") {
         return await handleDeleteCustomFunction(env, decodeURIComponent(cfMatch[1]), jsonResponse);
+      }
+
+      // ─── Extensions (custom-coded report templates) ───
+      // List + create templates
+      if (path === "/extensions" && request.method === "GET") {
+        return await handleListExtensions(env, url, jsonResponse);
+      }
+      if (path === "/extensions" && request.method === "POST") {
+        const body = await request.json();
+        return await handleCreateExtension(env, body, user, jsonResponse);
+      }
+      // Snapshot subroutes — match before the generic /extensions/:id pattern.
+      const snapByIdMatch = path.match(/^\/extensions\/snapshots\/([^/]+)$/);
+      const snapDataMatch = path.match(/^\/extensions\/snapshots\/([^/]+)\/data$/);
+      const snapPublishMatch = path.match(/^\/extensions\/snapshots\/([^/]+)\/publish$/);
+      const snapLinksMatch = path.match(/^\/extensions\/snapshots\/([^/]+)\/links$/);
+      if (path === "/extensions/snapshots" && request.method === "GET") {
+        return await handleListSnapshots(env, url, null, jsonResponse);
+      }
+      if (snapDataMatch && request.method === "GET") {
+        return await handleGetSnapshotData(env, decodeURIComponent(snapDataMatch[1]), jsonResponse);
+      }
+      if (snapPublishMatch && request.method === "POST") {
+        return await handlePublishSnapshot(env, decodeURIComponent(snapPublishMatch[1]), user, jsonResponse);
+      }
+      if (snapLinksMatch && request.method === "GET") {
+        return await handleListSnapshotLinks(env, decodeURIComponent(snapLinksMatch[1]), jsonResponse);
+      }
+      if (snapLinksMatch && request.method === "POST") {
+        const body = await request.json();
+        return await handleAddSnapshotLink(env, decodeURIComponent(snapLinksMatch[1]), body, user, jsonResponse);
+      }
+      if (snapByIdMatch && request.method === "GET") {
+        return await handleGetSnapshot(env, decodeURIComponent(snapByIdMatch[1]), jsonResponse);
+      }
+      if (snapByIdMatch && request.method === "PATCH") {
+        const body = await request.json();
+        return await handleUpdateSnapshot(env, decodeURIComponent(snapByIdMatch[1]), body, jsonResponse);
+      }
+      if (snapByIdMatch && request.method === "DELETE") {
+        return await handleDeleteSnapshot(env, decodeURIComponent(snapByIdMatch[1]), jsonResponse);
+      }
+      // Per-extension snapshot list + generation
+      const extSnapsMatch = path.match(/^\/extensions\/([^/]+)\/snapshots$/);
+      if (extSnapsMatch && request.method === "GET") {
+        return await handleListSnapshots(env, url, decodeURIComponent(extSnapsMatch[1]), jsonResponse);
+      }
+      if (extSnapsMatch && request.method === "POST") {
+        const body = await request.json();
+        return await handleGenerateSnapshot(env, decodeURIComponent(extSnapsMatch[1]), body, user, jsonResponse);
+      }
+      // Extension by id or slug
+      const extByIdMatch = path.match(/^\/extensions\/([^/]+)$/);
+      if (extByIdMatch && request.method === "GET") {
+        return await handleGetExtension(env, decodeURIComponent(extByIdMatch[1]), jsonResponse);
+      }
+      if (extByIdMatch && request.method === "PATCH") {
+        const body = await request.json();
+        return await handleUpdateExtension(env, decodeURIComponent(extByIdMatch[1]), body, jsonResponse);
+      }
+      if (extByIdMatch && request.method === "DELETE") {
+        return await handleDeleteExtension(env, decodeURIComponent(extByIdMatch[1]), jsonResponse);
       }
 
       // ─── Function Executions (Audit Trail) ───

@@ -149,6 +149,15 @@ export const ROUTE_PERMISSIONS = [
   { pattern: /^\/d1\/custom-functions/, method: "POST", minRole: "editor" },
   { pattern: /^\/d1\/custom-functions/, method: "PATCH", minRole: "editor" },
   { pattern: /^\/d1\/custom-functions/, method: "DELETE", minRole: "editor" },
+  // Extensions — editor for template/snapshot mutations, admin for deletes,
+  // viewer for reads. The HTML-serving route (/extensions/{ext_slug}/{snap_slug})
+  // is matched pre-auth in worker.js and bypasses this table entirely.
+  { pattern: /^\/extensions\/snapshots\/[^/]+$/, method: "DELETE", minRole: "admin" },
+  { pattern: /^\/extensions\/[^/]+$/, method: "DELETE", minRole: "admin" },
+  { pattern: /^\/extensions/, method: "POST", minRole: "editor" },
+  { pattern: /^\/extensions/, method: "PATCH", minRole: "editor" },
+  { pattern: /^\/extensions/, method: "DELETE", minRole: "admin" },
+  { pattern: /^\/extensions/, method: "GET", minRole: null },
   // Neurons — editor for mutations
   { pattern: /^\/neurons/, method: "POST", minRole: "editor" },
   { pattern: /^\/neurons/, method: "PATCH", minRole: "editor" },

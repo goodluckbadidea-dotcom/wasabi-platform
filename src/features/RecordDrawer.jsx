@@ -343,6 +343,27 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction, on
 
   const canGoToTask = task.source !== "manual" && !!findSourcePage();
 
+  // ── Extensions: "View Report" button when this row is in the Reports DB ──
+  // The Reports DB page config is flagged with `_extensionsReportsDb: true`
+  // in its config blob. Each row's `snapshot_id` cell points at the snapshot.
+  const reportsSnapshotId = (() => {
+    if (!task?.tableId) return null;
+    const reportsPage = pages.find((p) => p.id === task.tableId);
+    if (!reportsPage) return null;
+    const cfg = reportsPage.config || {};
+    if (!cfg._extensionsReportsDb) return null;
+    // Snapshot id may be stored either as task.cells.snapshot_id (raw fetch)
+    // or as task.snapshot_id (normalized). Check both.
+    const id = task.cells?.snapshot_id || task.snapshot_id || null;
+    return id || null;
+  })();
+
+  const handleViewReport = useCallback(() => {
+    if (!reportsSnapshotId) return;
+    onClose();
+    setActiveRightPane(`extension-snapshot:${reportsSnapshotId}`);
+  }, [reportsSnapshotId, onClose, setActiveRightPane]);
+
   // ── AI attention summary — forward-looking, action-oriented ──
   const attentionSummary = (() => {
     // If the AI curation provided a reason, use it as the primary summary
@@ -664,6 +685,24 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction, on
                   <path d="M14 2L7 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
                 </svg>
                 Go To Task
+              </button>
+            )}
+            {reportsSnapshotId && (
+              <button onClick={handleViewReport}
+                style={{
+                  flex: 1, padding: "8px 12px", borderRadius: RADIUS.md,
+                  background: C.accent, color: C.bg, border: `1px solid ${C.accent}`,
+                  fontSize: 11, fontWeight: 600, fontFamily: FONT,
+                  cursor: "pointer", outline: "none",
+                  transition: "all 0.15s", display: "flex", alignItems: "center",
+                  justifyContent: "center", gap: 5,
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                  <path d="M2 4h12v8H2z" stroke="currentColor" strokeWidth="1.3" />
+                  <path d="M5 7h6M5 9h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                </svg>
+                View Report
               </button>
             )}
           </div>

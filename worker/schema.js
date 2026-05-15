@@ -380,6 +380,51 @@ CREATE TABLE IF NOT EXISTS task_snoozes (
 );
 CREATE INDEX IF NOT EXISTS idx_task_snoozes_user ON task_snoozes(user_id);
 
+-- ─── Extensions (Custom-coded reports, generated via MCP) ───
+-- An "extension" is a named, hand-coded template (HTML + CSS + JS scaffolding
+-- with a {{DATA}} placeholder). Authored externally (e.g. Cowork), registered
+-- here via MCP. Snapshots are concrete instances generated from a template +
+-- a DATA blob, validated against the template's JSON Schema.
+CREATE TABLE IF NOT EXISTS extensions (
+  id TEXT PRIMARY KEY,
+  slug TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  icon TEXT DEFAULT '',
+  description TEXT DEFAULT '',
+  html TEXT NOT NULL DEFAULT '',
+  data_schema TEXT DEFAULT '{}',
+  sample_data TEXT DEFAULT '{}',
+  theme_preference TEXT DEFAULT 'inherit',
+  version INTEGER DEFAULT 1,
+  status TEXT DEFAULT 'active',
+  created_by TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_extensions_slug ON extensions(slug);
+CREATE INDEX IF NOT EXISTS idx_extensions_status ON extensions(status);
+
+CREATE TABLE IF NOT EXISTS extension_snapshots (
+  id TEXT PRIMARY KEY,
+  extension_id TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  data TEXT NOT NULL DEFAULT '{}',
+  html_key TEXT NOT NULL DEFAULT '',
+  template_version INTEGER DEFAULT 1,
+  source_snapshot_id TEXT,
+  status TEXT DEFAULT 'draft',
+  visibility TEXT DEFAULT 'workspace',
+  reports_row_id TEXT,
+  generated_at TEXT DEFAULT (datetime('now')),
+  generated_by TEXT DEFAULT '',
+  published_at TEXT,
+  published_by TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ext_snap_unique ON extension_snapshots(extension_id, slug);
+CREATE INDEX IF NOT EXISTS idx_ext_snap_extension ON extension_snapshots(extension_id);
+CREATE INDEX IF NOT EXISTS idx_ext_snap_status ON extension_snapshots(status);
+
 CREATE INDEX IF NOT EXISTS idx_rel_source ON relationships(source_type, source_id);
 CREATE INDEX IF NOT EXISTS idx_rel_target ON relationships(target_type, target_id);
 CREATE INDEX IF NOT EXISTS idx_rel_type ON relationships(type);

@@ -173,6 +173,12 @@ When the user asks about LINKS BETWEEN RECORDS (cross-record references that are
 
 When the user asks about DEPENDENCIES or "what blocks X":
 - \`get_relationships\` already handles \`depends_on\` / \`blocks\` relationship types.
+
+When the user asks about GENERATED REPORTS or named templates (e.g. "the inventory report", "latest sales snapshot", "what does the May 13 report say"):
+- \`list_extensions\` — discover available report templates.
+- \`list_extension_snapshots\` — find concrete generated reports (optionally filtered by extension).
+- \`get_snapshot_data\` — read the structured DATA from a specific snapshot. Use AFTER finding the snapshot id.
+- Do NOT use \`query_database\` for these — extension snapshots live in their own table and \`query_database\` won't find them.
 ${pageSection}`;
 }
 

@@ -75,6 +75,7 @@ const UnifiedInboxView = lazyWithRetry(() => import("./features/UnifiedInboxView
 const FigmaView = lazyWithRetry(() => import("./features/FigmaView.jsx"));
 const WorkspaceBrowser = lazyWithRetry(() => import("./features/WorkspaceBrowser.jsx"));
 const KnowledgeHub = lazyWithRetry(() => import("./features/KnowledgeHub.jsx"));
+const ExtensionViewer = lazyWithRetry(() => import("./features/ExtensionViewer.jsx"));
 
 // Inject CSS animations + global interaction styles on app load
 injectAnimations();
@@ -405,6 +406,24 @@ function AppContent() {
     // System settings
     if (activeRightPane === "system") {
       return <SystemManager />;
+    }
+    // Extension snapshot viewer — encoded as "extension-snapshot:<id>"
+    if (typeof activeRightPane === "string" && activeRightPane.startsWith("extension-snapshot:")) {
+      const snapId = activeRightPane.slice("extension-snapshot:".length);
+      return (
+        <ErrorBoundary fallbackLabel="Report Viewer">
+          <React.Suspense fallback={
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
+              Loading...
+            </div>
+          }>
+            <ExtensionViewer
+              snapshotId={snapId}
+              onBack={() => setActiveRightPane("system_reports")}
+            />
+          </React.Suspense>
+        </ErrorBoundary>
+      );
     }
     // Page builder (create new page)
     if (activeRightPane === "wasabi") {

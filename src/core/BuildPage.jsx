@@ -684,11 +684,19 @@ export default function BuildPage({ onOpenChat }) {
   useEffect(() => {
     if (!user?.workerUrl) return;
     setLoading(true);
-    const type = activeTab === "views" ? "view" : "plugin";
-    api.listCustomFunctions({ type, status: "active" })
-      .then((res) => setItems(res?.entries || []))
-      .catch(() => setItems([]))
-      .finally(() => setLoading(false));
+    if (activeTab === "extensions") {
+      // Extensions live in their own table (not custom_functions)
+      api.listExtensions({ status: "active" })
+        .then((res) => setItems(res?.extensions || []))
+        .catch(() => setItems([]))
+        .finally(() => setLoading(false));
+    } else {
+      const type = activeTab === "views" ? "view" : "plugin";
+      api.listCustomFunctions({ type, status: "active" })
+        .then((res) => setItems(res?.entries || []))
+        .catch(() => setItems([]))
+        .finally(() => setLoading(false));
+    }
   }, [user?.workerUrl, activeTab]);
 
   const handleDelete = useCallback(async (id) => {
@@ -751,8 +759,9 @@ export default function BuildPage({ onOpenChat }) {
           display: "flex", gap: 0, background: C.darkSurf,
           borderRadius: RADIUS.lg, border: `1px solid ${C.darkBorder}`, overflow: "hidden",
         }}>
-          {["views", "plugins"].map((key) => {
+          {["views", "plugins", "extensions"].map((key) => {
             const isActive = activeTab === key;
+            const label = key === "views" ? "Views" : key === "plugins" ? "Plugins" : "Extensions";
             return (
               <button key={key}
                 onClick={() => { setActiveTab(key); setSearch(""); }}
@@ -765,7 +774,7 @@ export default function BuildPage({ onOpenChat }) {
                   transition: "all 0.15s",
                 }}
               >
-                {key === "views" ? "Views" : "Plugins"}
+                {label}
               </button>
             );
           })}
@@ -773,19 +782,29 @@ export default function BuildPage({ onOpenChat }) {
 
         <div style={{ flex: 1 }} />
 
-        <button
-          onClick={() => setView(activeTab === "views" ? "viewBuilder" : "pluginBuilder")}
-          style={{
-            display: "flex", alignItems: "center", gap: 6,
-            background: `linear-gradient(135deg, ${color}, ${color}cc)`,
-            border: "none", borderRadius: RADIUS.lg,
-            color: "#fff", fontFamily: FONT, fontSize: 12, fontWeight: 600,
-            padding: "8px 16px", cursor: "pointer", outline: "none",
-          }}
-        >
-          <IconPlus size={14} color="#fff" />
-          New {activeTab === "views" ? "View" : "Plugin"}
-        </button>
+        {activeTab === "extensions" ? (
+          <span style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            color: C.darkMuted, fontFamily: FONT, fontSize: 11,
+            padding: "8px 12px",
+          }}>
+            Authored via MCP — see <code style={{ fontFamily: MONO, fontSize: 11, color: C.accent }}>wasabi_extensions</code>
+          </span>
+        ) : (
+          <button
+            onClick={() => setView(activeTab === "views" ? "viewBuilder" : "pluginBuilder")}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              background: `linear-gradient(135deg, ${color}, ${color}cc)`,
+              border: "none", borderRadius: RADIUS.lg,
+              color: "#fff", fontFamily: FONT, fontSize: 12, fontWeight: 600,
+              padding: "8px 16px", cursor: "pointer", outline: "none",
+            }}
+          >
+            <IconPlus size={14} color="#fff" />
+            New {activeTab === "views" ? "View" : "Plugin"}
+          </button>
+        )}
       </div>
 
       {/* Search */}
@@ -810,14 +829,108 @@ export default function BuildPage({ onOpenChat }) {
           Loading...
         </div>
       ) : filtered.length === 0 ? (
-        <EmptyState type={activeTab} onCreate={() => setView(activeTab === "views" ? "viewBuilder" : "pluginBuilder")} />
+        activeTab === "extensions" ? (
+          <ExtensionsEmptyState />
+        ) : (
+          <EmptyState type={activeTab} onCreate={() => setView(activeTab === "views" ? "viewBuilder" : "pluginBuilder")} />
+        )
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {filtered.map((item) => (
-            <ItemCard key={item.id} item={item} color={color} onRun={handleRun} onDelete={handleDelete} />
-          ))}
+          {activeTab === "extensions"
+            ? filtered.map((ext) => <ExtensionCard key={ext.id} ext={ext} color={color} />)
+            : filtered.map((item) => (
+                <ItemCard key={item.id} item={item} color={color} onRun={handleRun} onDelete={handleDelete} />
+              ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Extensions ───
+// Read-only listing of extension templates. Authoring is via MCP — there's
+// no in-app editor for templates (they're hand-coded in Cowork). The card
+// surfaces the metadata you'd need at a glance: name, version, status,
+// last updated. Snapshot management lives in the Reports DB.
+
+function ExtensionsEmptyState() {
+  return (
+    <div style={{
+      flex: 1, display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center",
+      color: C.darkMuted, fontFamily: FONT, fontSize: 13,
+      padding: "40px 32px", textAlign: "center", gap: 12,
+    }}>
+      <div style={{ fontSize: 14, color: C.darkText, fontWeight: 600 }}>
+        No extension templates yet
+      </div>
+      <div style={{ maxWidth: 520, lineHeight: 1.5 }}>
+        Extensions are custom-coded report templates with an embedded DATA shape.
+        Authoring happens externally via MCP — Claude reads a local HTML file and
+        registers it using <code style={{ fontFamily: MONO, fontSize: 12, color: C.accent }}>wasabi_extensions</code>.
+        Once registered, you can generate dated snapshots from the same template.
+      </div>
+    </div>
+  );
+}
+
+function ExtensionCard({ ext, color }) {
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 14,
+      background: C.darkSurf, border: `1px solid ${C.darkBorder}`,
+      borderRadius: RADIUS.lg, padding: "12px 16px",
+    }}>
+      <div style={{
+        width: 36, height: 36, borderRadius: RADIUS.md,
+        background: color + "1f", border: `1px solid ${color}40`,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        color: color, fontWeight: 700, fontSize: 14, fontFamily: MONO,
+        flexShrink: 0,
+      }}>
+        {(ext.icon || ext.name?.[0] || "E").toString().slice(0, 1).toUpperCase()}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8, minWidth: 0,
+        }}>
+          <span style={{
+            color: C.darkText, fontFamily: FONT, fontSize: 14, fontWeight: 600,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>
+            {ext.name}
+          </span>
+          <span style={{
+            fontSize: 10, fontWeight: 600, color: C.darkMuted, fontFamily: MONO,
+            padding: "2px 6px", borderRadius: 4, background: C.darkSurf2,
+          }}>
+            v{ext.version || 1}
+          </span>
+          {ext.status && ext.status !== "active" && (
+            <span style={{
+              fontSize: 10, fontWeight: 600, color: C.warning, fontFamily: FONT,
+              padding: "2px 6px", borderRadius: 4, background: C.warningDim,
+            }}>
+              {ext.status}
+            </span>
+          )}
+        </div>
+        {ext.description && (
+          <div style={{
+            color: C.darkMuted, fontFamily: FONT, fontSize: 12, marginTop: 2,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>
+            {ext.description}
+          </div>
+        )}
+        <div style={{
+          color: C.darkMuted, fontFamily: MONO, fontSize: 10, marginTop: 4,
+          display: "flex", gap: 10, alignItems: "center",
+        }}>
+          <span>slug: {ext.slug}</span>
+          {ext.updated_at && <span>updated {timeAgo(ext.updated_at)}</span>}
+        </div>
+      </div>
     </div>
   );
 }

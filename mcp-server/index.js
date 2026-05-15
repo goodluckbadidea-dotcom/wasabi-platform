@@ -9,7 +9,12 @@
 // 3. Use wasabi_data to read/write rows — if rows come back empty,
 //    the table may need a Notion sync pull (use wasabi_sync pull)
 // 4. Use wasabi_search to find anything by keyword across all data
+//    (scopes include `extensions` for templates and `snapshots` for reports)
 // 5. Use wasabi_analytics for aggregations (count, sum, group_by)
+// 6. For generated reports: wasabi_extensions lists/registers template
+//    definitions; wasabi_extension_snapshots generates dated reports
+//    from a template + DATA, manages publish state, and adds neuron
+//    or comment links to weave reports into the workspace.
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -439,15 +444,16 @@ server.tool(
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_search",
-  "Search across ALL tables, pages, and knowledge base in one call. Finds records by keyword across the entire workspace. Returns matched rows grouped by page/table.",
+  "Search across tables, pages, knowledge base, extension templates, and generated report snapshots in one call. Finds records by keyword across the entire workspace. Returns matched results grouped by scope.",
   {
     query: z.string().describe("Search keyword or phrase"),
-    scope: z.enum(["all", "tables", "kb", "pages"]).optional().describe("Limit search scope (default: all)"),
-    limit: z.number().optional().describe("Max results per table (default 10)"),
+    scope: z.enum(["all", "tables", "kb", "pages", "extensions", "snapshots"]).optional().describe("Limit search scope (default: all). Use 'extensions' to find templates by name/description, 'snapshots' to find generated reports by title or DATA contents."),
+    limit: z.number().optional().describe("Max results per scope (default 10)"),
   },
   async ({ query, scope, limit }) => {
     const lim = limit || 10;
     const s = scope || "all";
+    const q = String(query || "").toLowerCase();
     try {
       const results = {};
 
@@ -455,7 +461,7 @@ server.tool(
       if (s === "all" || s === "pages") {
         const pages = await wasabiFetch("/pages").catch(() => []);
         const matched = (Array.isArray(pages) ? pages : []).filter(
-          (p) => (p.name || "").toLowerCase().includes(query.toLowerCase())
+          (p) => (p.name || "").toLowerCase().includes(q)
         );
         if (matched.length) results.pages = matched.map((p) => ({ id: p.id, name: p.name, type: p.page_type }));
       }
@@ -481,6 +487,38 @@ server.tool(
         if (tableResults.length) results.table_rows = tableResults;
       }
 
+      // Search extension templates by name/description
+      if (s === "all" || s === "extensions") {
+        try {
+          const r = await wasabiFetch("/extensions");
+          const exts = r?.extensions || [];
+          const matched = exts.filter((e) =>
+            (e.name || "").toLowerCase().includes(q) ||
+            (e.description || "").toLowerCase().includes(q) ||
+            (e.slug || "").toLowerCase().includes(q)
+          );
+          if (matched.length) results.extensions = matched.slice(0, lim).map((e) => ({
+            id: e.id, slug: e.slug, name: e.name, description: e.description, version: e.version, status: e.status,
+          }));
+        } catch { /* ignore */ }
+      }
+
+      // Search snapshots by title or DATA contents
+      if (s === "all" || s === "snapshots") {
+        try {
+          const r = await wasabiFetch("/extensions/snapshots");
+          const snaps = r?.snapshots || [];
+          const matched = snaps.filter((sn) => {
+            const haystack = `${sn.title || ""} ${sn.slug || ""} ${JSON.stringify(sn.data || {})}`.toLowerCase();
+            return haystack.includes(q);
+          });
+          if (matched.length) results.snapshots = matched.slice(0, lim).map((sn) => ({
+            id: sn.id, extension_id: sn.extension_id, slug: sn.slug, title: sn.title,
+            status: sn.status, visibility: sn.visibility, generated_at: sn.generated_at,
+          }));
+        } catch { /* ignore */ }
+      }
+
       return ok(results);
     } catch (e) { return err(e); }
   }
@@ -491,9 +529,9 @@ server.tool(
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_dashboard",
-  "Get a comprehensive workspace snapshot: health status, page list with row counts, unread notifications, recent activity. Perfect for morning briefings or status checks. START HERE when exploring the workspace — this gives you the full picture. Then use wasabi_pages to drill into specific pages, wasabi_data to read rows, wasabi_analytics for aggregations.",
+  "Get a comprehensive workspace snapshot: health status, page list, unread notifications, recent activity, plus extension templates and recent report snapshots. Perfect for morning briefings or status checks. START HERE when exploring the workspace — this gives you the full picture. Then use wasabi_pages to drill into specific pages, wasabi_data for rows, wasabi_extension_snapshots for generated reports.",
   {
-    include: z.enum(["all", "health", "pages", "notifications", "activity"]).optional().describe("What to include (default: all)"),
+    include: z.enum(["all", "health", "pages", "notifications", "activity", "extensions"]).optional().describe("What to include (default: all)"),
   },
   async ({ include }) => {
     const inc = include || "all";
@@ -522,6 +560,27 @@ server.tool(
       }
       if (inc === "all" || inc === "activity") {
         fetches.push(wasabiFetch("/task-activity?limit=10").then((r) => (snapshot.recent_activity = r)).catch(() => (snapshot.recent_activity = [])));
+      }
+      if (inc === "all" || inc === "extensions") {
+        fetches.push(
+          Promise.all([
+            wasabiFetch("/extensions").catch(() => ({ extensions: [] })),
+            wasabiFetch("/extensions/snapshots").catch(() => ({ snapshots: [] })),
+          ]).then(([extRes, snapRes]) => {
+            const exts = extRes?.extensions || [];
+            const snaps = snapRes?.snapshots || [];
+            snapshot.extensions = {
+              templates: exts.map((e) => ({ id: e.id, slug: e.slug, name: e.name, version: e.version, status: e.status })),
+              template_count: exts.length,
+              recent_snapshots: snaps.slice(0, 10).map((s) => ({
+                id: s.id, extension_id: s.extension_id, slug: s.slug, title: s.title,
+                status: s.status, visibility: s.visibility, generated_at: s.generated_at,
+              })),
+              snapshot_count: snaps.length,
+              draft_count: snaps.filter((s) => s.status === "draft").length,
+            };
+          }).catch(() => (snapshot.extensions = { templates: [], recent_snapshots: [], template_count: 0, snapshot_count: 0 }))
+        );
       }
 
       await Promise.all(fetches);
@@ -1100,6 +1159,116 @@ server.tool(
           return ok(await wasabiFetch(`/record-views${qs}`));
         }
         case "record_view": return ok(await wasabiFetch(`/record-views/${record_id}`, "PUT"));
+      }
+    } catch (e) { return err(e); }
+  }
+);
+
+// ═══════════════════════════════════════════
+// 30. EXTENSIONS (custom-coded report templates)
+// ═══════════════════════════════════════════
+// An "extension" is a hand-coded HTML/CSS/JS template registered in Wasabi.
+// MCP is the primary authoring surface: Claude reads a local .html file in
+// chat (so you can see the contents pass through), then calls this tool with
+// `action: "create"` passing { name, html, data_schema, sample_data }.
+//
+// The template HTML must contain a `{{DATA}}` placeholder that Wasabi will
+// substitute with the snapshot's JSON DATA at generation time.
+//
+// FLOW:
+//   1. wasabi_extensions create     → register template (one-time per template type)
+//   2. wasabi_extensions list/get   → discover existing templates
+//   3. wasabi_extension_snapshots generate → create dated/slug-named report
+//   4. wasabi_extension_snapshots publish → make report live in Reports DB
+server.tool(
+  "wasabi_extensions",
+  "CRUD for custom-coded report templates. An extension is a named, hand-coded HTML+CSS+JS scaffolding with a {{DATA}} placeholder and a JSON Schema describing valid DATA shapes. Use this tool to register, list, update, or remove templates. Authoring is via MCP: pass the file's full HTML contents as a string under `html`. Snapshots (generated reports) are managed via the separate `wasabi_extension_snapshots` tool. Read wasabi://docs/data-model for related schema.",
+  {
+    action: z.enum(["list", "get", "create", "update", "delete"]),
+    id: z.string().optional().describe("Extension id or slug (for get/update/delete)"),
+    data: z.string().optional().describe("JSON string of extension fields. For create: { name, slug?, icon?, description?, html, data_schema?, sample_data?, theme_preference? }. For update: any subset of those fields."),
+    status: z.string().optional().describe("Filter by status: active, archived (for list)"),
+  },
+  async ({ action, id, data: rawData, status }) => {
+    const data = parseJSON(rawData);
+    try {
+      switch (action) {
+        case "list": {
+          const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+          return ok(await wasabiFetch(`/extensions${qs}`));
+        }
+        case "get": return ok(await wasabiFetch(`/extensions/${encodeURIComponent(id)}`));
+        case "create": return ok(await wasabiFetch("/extensions", "POST", data));
+        case "update": return ok(await wasabiFetch(`/extensions/${encodeURIComponent(id)}`, "PATCH", data));
+        case "delete": return ok(await wasabiFetch(`/extensions/${encodeURIComponent(id)}`, "DELETE"));
+      }
+    } catch (e) { return err(e); }
+  }
+);
+
+// ═══════════════════════════════════════════
+// 31. EXTENSION SNAPSHOTS (generated reports)
+// ═══════════════════════════════════════════
+// A "snapshot" is a concrete generated report from a template + a DATA blob.
+// Each snapshot has its own slug (user-provided, like "q2-handoff"), gets
+// rendered to R2 as HTML, and lands in the Reports database as a Draft row
+// awaiting the user's review and publish action.
+//
+// SNAPSHOT LIFECYCLE:
+//   draft     → just generated; Reports row exists but flagged 'Draft'
+//   published → after `publish` action; visible in Reports as 'Published'
+//
+// VISIBILITY:
+//   workspace → authenticated workspace users only (default)
+//   public    → anyone with the URL can view (no auth required)
+//
+// COMPOSITION (the "use last week's data + new template" flow):
+//   1. wasabi_extension_snapshots get_data id=<old_snapshot_id> → returns DATA
+//   2. Claude modifies/extends that DATA as instructed
+//   3. wasabi_extension_snapshots generate extension_id=<new_template> + the data
+//
+// LINKS — to weave a snapshot into the workspace semantic graph:
+//   add_link kind=neuron → creates/extends a neuron joining the snapshot
+//                          to other records, pages, or fields
+//   add_link kind=record_comment → posts a comment on a related record
+//                                   referencing the snapshot
+server.tool(
+  "wasabi_extension_snapshots",
+  "CRUD + lifecycle for snapshots (concrete generated reports). To generate: action='generate', extension_id (or slug), data={...}, slug='q2-handoff'. DATA is validated against the template's JSON Schema. After generation, the snapshot is Draft; call 'publish' to make it live. Use 'get_data' to read the structured DATA from any snapshot (lets Claude compose new reports from old data). Use 'propose_links' suggestions paired with 'add_link' to weave the snapshot into Wasabi's neuron graph or attach comments to related records.",
+  {
+    action: z.enum([
+      "list", "get", "generate", "update", "delete",
+      "get_data", "publish", "set_visibility",
+      "add_link", "list_links",
+    ]),
+    id: z.string().optional().describe("Snapshot id (for get/update/delete/get_data/publish/set_visibility/add_link/list_links)"),
+    extension_id: z.string().optional().describe("Extension id or slug (for list/generate)"),
+    data: z.string().optional().describe("JSON string of payload. For generate: { slug (required), data (the DATA blob), title?, summary?, visibility?, source_snapshot_id? }. For update: { title?, data?, visibility?, status? }. For add_link: { kind: 'neuron'|'record_comment', ...kind-specific fields }. For set_visibility: { visibility: 'workspace'|'public' }."),
+    status: z.string().optional().describe("Filter for list: 'draft' | 'published'"),
+  },
+  async ({ action, id, extension_id, data: rawData, status }) => {
+    const data = parseJSON(rawData);
+    try {
+      switch (action) {
+        case "list": {
+          const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+          if (extension_id) {
+            return ok(await wasabiFetch(`/extensions/${encodeURIComponent(extension_id)}/snapshots${qs}`));
+          }
+          return ok(await wasabiFetch(`/extensions/snapshots${qs}`));
+        }
+        case "get": return ok(await wasabiFetch(`/extensions/snapshots/${encodeURIComponent(id)}`));
+        case "generate": {
+          if (!extension_id) return err("extension_id required for generate");
+          return ok(await wasabiFetch(`/extensions/${encodeURIComponent(extension_id)}/snapshots`, "POST", data));
+        }
+        case "update": return ok(await wasabiFetch(`/extensions/snapshots/${encodeURIComponent(id)}`, "PATCH", data));
+        case "delete": return ok(await wasabiFetch(`/extensions/snapshots/${encodeURIComponent(id)}`, "DELETE"));
+        case "get_data": return ok(await wasabiFetch(`/extensions/snapshots/${encodeURIComponent(id)}/data`));
+        case "publish": return ok(await wasabiFetch(`/extensions/snapshots/${encodeURIComponent(id)}/publish`, "POST"));
+        case "set_visibility": return ok(await wasabiFetch(`/extensions/snapshots/${encodeURIComponent(id)}`, "PATCH", { visibility: data?.visibility }));
+        case "add_link": return ok(await wasabiFetch(`/extensions/snapshots/${encodeURIComponent(id)}/links`, "POST", data));
+        case "list_links": return ok(await wasabiFetch(`/extensions/snapshots/${encodeURIComponent(id)}/links`));
       }
     } catch (e) { return err(e); }
   }

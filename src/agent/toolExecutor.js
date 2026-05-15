@@ -2357,6 +2357,24 @@ export function createToolExecutor({
         return JSON.stringify(result);
       }
 
+      // ── Extensions / generated reports ──
+      case "list_extensions": {
+        const result = await api.listExtensions();
+        return JSON.stringify(result);
+      }
+      case "list_extension_snapshots": {
+        const result = await api.listSnapshots({
+          extensionId: toolInput.extension_id,
+          status: toolInput.status,
+        });
+        return JSON.stringify(result);
+      }
+      case "get_snapshot_data": {
+        if (!toolInput.snapshot_id) return JSON.stringify({ error: "snapshot_id required" });
+        const result = await api.getSnapshotData(toolInput.snapshot_id);
+        return JSON.stringify(result);
+      }
+
       default:
         return JSON.stringify({ error: `Unknown tool: ${toolName}` });
     }

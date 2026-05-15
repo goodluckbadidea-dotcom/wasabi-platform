@@ -1452,6 +1452,39 @@ const LIST_LINKS = {
   },
 };
 
+// ─── EXTENSIONS / GENERATED REPORTS ───
+
+const LIST_EXTENSIONS = {
+  name: "list_extensions",
+  description: "List custom-coded extension templates registered in the workspace. Each extension is a hand-coded report template (HTML + DATA schema) authored via MCP. Use to discover available report types when the user mentions reports, snapshots, or specific named templates like 'inventory report' or 'sales report'.",
+  input_schema: { type: "object", properties: {}, required: [] },
+};
+
+const LIST_EXTENSION_SNAPSHOTS = {
+  name: "list_extension_snapshots",
+  description: "List generated report snapshots in the workspace, optionally filtered by extension template. Snapshots are concrete instances of templates with real DATA. Returns id, title, slug, status (draft|published), visibility, and generated_at. Use to answer 'what reports do we have?', 'when was the latest X report generated?', or to find a specific snapshot by title.",
+  input_schema: {
+    type: "object",
+    properties: {
+      extension_id: { type: "string", description: "Optional: filter to snapshots of one template (id or slug)." },
+      status: { type: "string", enum: ["draft", "published"], description: "Optional: filter by status." },
+    },
+    required: [],
+  },
+};
+
+const GET_SNAPSHOT_DATA = {
+  name: "get_snapshot_data",
+  description: "Get the structured DATA object from a generated report snapshot. Returns the validated DATA blob that was used to render the snapshot's HTML — typically nested objects like markets, shipments, on-site inventory, etc. Use when the user asks about specific values inside a report (e.g. 'what does the May 13 inventory report say about NY tins?'), and use AFTER list_extension_snapshots to find the right snapshot id.",
+  input_schema: {
+    type: "object",
+    properties: {
+      snapshot_id: { type: "string", description: "The snapshot ID to read DATA from." },
+    },
+    required: ["snapshot_id"],
+  },
+};
+
 // ─── TOOL SETS ───
 
 export const WASABI_TOOLS = [
@@ -1533,6 +1566,10 @@ export const WASABI_TOOLS = [
   GET_DOCUMENT,
   GET_PAGE_PERMISSIONS,
   LIST_LINKS,
+  // Extensions / generated reports
+  LIST_EXTENSIONS,
+  LIST_EXTENSION_SNAPSHOTS,
+  GET_SNAPSHOT_DATA,
 ];
 
 export const AUTO_TOOLS = [

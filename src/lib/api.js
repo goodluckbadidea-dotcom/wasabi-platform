@@ -1381,3 +1381,88 @@ export async function deleteRelationship(id) {
 export async function rebuildRelationships() {
   return apiFetch(`/relationships/rebuild`, { method: "POST" });
 }
+
+// ─── Extensions (custom-coded reports, generated via MCP) ───
+// Templates live in D1; snapshots are concrete generated reports. The viewer
+// fetches the rendered HTML directly from the worker (see `getSnapshotHtmlUrl`).
+
+export async function listExtensions({ status } = {}) {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  return apiFetch(`/extensions${qs}`);
+}
+
+export async function getExtension(idOrSlug) {
+  return apiFetch(`/extensions/${encodeURIComponent(idOrSlug)}`);
+}
+
+export async function listSnapshots({ extensionId, status } = {}) {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  if (extensionId) return apiFetch(`/extensions/${encodeURIComponent(extensionId)}/snapshots${qs}`);
+  return apiFetch(`/extensions/snapshots${qs}`);
+}
+
+export async function getSnapshot(id) {
+  return apiFetch(`/extensions/snapshots/${encodeURIComponent(id)}`);
+}
+
+export async function getSnapshotData(id) {
+  return apiFetch(`/extensions/snapshots/${encodeURIComponent(id)}/data`);
+}
+
+export async function publishSnapshot(id) {
+  return apiFetch(`/extensions/snapshots/${encodeURIComponent(id)}/publish`, { method: "POST" });
+}
+
+export async function updateSnapshot(id, body) {
+  return apiFetch(`/extensions/snapshots/${encodeURIComponent(id)}`, { method: "PATCH", body });
+}
+
+export async function listSnapshotLinks(id) {
+  return apiFetch(`/extensions/snapshots/${encodeURIComponent(id)}/links`);
+}
+
+/**
+ * Build the URL for a snapshot's rendered HTML. Useful for public-visibility
+ * snapshots that can be opened in a new tab without authentication. For
+ * workspace-visibility snapshots viewed inside Wasabi, use `fetchSnapshotHtml`
+ * (the iframe loads via srcDoc since iframes can't send Bearer headers).
+ */
+export function getSnapshotHtmlUrl(extSlug, snapSlug) {
+  return `${getWorkerUrl()}/extensions/${encodeURIComponent(extSlug)}/${encodeURIComponent(snapSlug)}`;
+}
+
+/**
+ * Fetch a snapshot's rendered HTML as a text string. Sends Authorization
+ * header so workspace-visibility snapshots are reachable. Returns the raw
+ * HTML, ready to drop into an iframe `srcDoc`.
+ */
+export async function fetchSnapshotHtml(extSlug, snapSlug) {
+  const workerUrl = getWorkerUrl();
+  if (!workerUrl) throw new Error("Worker URL not configured");
+  let jwt = getJwt();
+  if (jwt && isTokenExpiringSoon(jwt)) {
+    const newToken = await refreshAccessToken();
+    if (newToken) jwt = newToken;
+  }
+  const url = `${workerUrl}/extensions/${encodeURIComponent(extSlug)}/${encodeURIComponent(snapSlug)}`;
+  let res = await fetch(url, {
+    headers: jwt ? { "Authorization": `Bearer ${jwt}` } : {},
+    credentials: "include",
+  });
+  if (res.status === 401) {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      res = await fetch(url, {
+        headers: { "Authorization": `Bearer ${newToken}` },
+        credentials: "include",
+      });
+    }
+  }
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    const err = new Error(txt || `HTTP ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  return await res.text();
+}
