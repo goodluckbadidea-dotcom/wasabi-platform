@@ -146,12 +146,16 @@ export default {
       // Extension snapshot HTML serving (pre-auth — visibility check is in handler).
       // Path: /extensions/{ext_slug}/{snap_slug} (no `/api/` prefix; this is the
       // viewable URL). Workspace-visibility snapshots still need an authenticated
-      // user; public-visibility snapshots are reachable without auth.
+      // user; public-visibility snapshots are reachable without auth. MCP callers
+      // (X-Wasabi-Key) get a synthetic admin user so MCP-originated fetches work.
       const extServeMatch = path.match(/^\/extensions\/([^/]+)\/([^/]+)\/?$/);
       if (extServeMatch && request.method === "GET") {
         // Don't intercept the snapshot-data subroute or known subpaths
         if (extServeMatch[1] !== "snapshots" && extServeMatch[2] !== "snapshots") {
-          const preUser = await extractUser(request, env);
+          let preUser = await extractUser(request, env);
+          if (!preUser && env.WASABI_SECRET && request.headers.get("X-Wasabi-Key") === env.WASABI_SECRET) {
+            preUser = { sub: "__mcp__", role: "admin", name: "MCP Server" };
+          }
           return await handleServeSnapshotHtml(env, extServeMatch[1], extServeMatch[2], preUser, cors);
         }
       }
