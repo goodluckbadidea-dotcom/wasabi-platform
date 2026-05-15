@@ -290,13 +290,27 @@ export default function WorkspaceBrowser() {
   // ── Resolve current level items ──
   const currentItems = useMemo(() => {
     if (path.length === 0) {
-      return pageTree.map((node) => ({
-        ...node,
-        itemType: "folder",
-        pageCount: (node.children?.length || 0) + (node.childFolders || []).reduce(
-          (sum, f) => sum + (f.children?.length || 0), 0
-        ),
-      }));
+      // Real folders render as folder cards. The virtual `__uncategorized__`
+      // node from pageTree holds pages that have no parent folder; we surface
+      // its children directly as page cards alongside the folder cards so
+      // unfoldered pages stay discoverable at the workspace root.
+      const out = [];
+      for (const node of pageTree) {
+        if (node.id === "__uncategorized__") {
+          for (const orphan of (node.children || [])) {
+            out.push({ ...orphan, itemType: "page" });
+          }
+          continue;
+        }
+        out.push({
+          ...node,
+          itemType: "folder",
+          pageCount: (node.children?.length || 0) + (node.childFolders || []).reduce(
+            (sum, f) => sum + (f.children?.length || 0), 0
+          ),
+        });
+      }
+      return out;
     }
 
     let current = null;
