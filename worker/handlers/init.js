@@ -46,7 +46,7 @@ async function handleInit(env, jsonResponse) {
   // ── Schema version fast path ──
   // Skip all DDL if the schema is already at the current version.
   // Reduces ~92 sequential D1 queries to 3 on returning page loads.
-  const CURRENT_SCHEMA_VERSION = "9";
+  const CURRENT_SCHEMA_VERSION = "10";
   try {
     const row = await env.DB.prepare(
       "SELECT value FROM connections WHERE key = 'schema_version'"
@@ -278,16 +278,21 @@ async function handleInit(env, jsonResponse) {
       console.error('[parent_owner] backfill failed:', err.message || err);
     }
 
-    // ─── Reports DB one-shot bootstrap ───
-    // Creates a workspace-wide "Reports" database the first time we run at
-    // schema v9. Every MCP-generated snapshot gets a row in this table.
-    // Self-disabling via a connections-table flag — manually deleting the
-    // flag re-runs the bootstrap (harmless: page is upserted by stable ID).
+    // ─── Reports DB bootstrap ───
+    // Creates (or upgrades) the workspace-wide "Reports" database. Every
+    // MCP-generated snapshot gets a row in this table. The flag value is
+    // versioned ("v2", "v3", …) so future column/view config changes can
+    // re-run the upsert. INSERT … ON CONFLICT DO UPDATE keeps the user's
+    // page id stable, but blasts the config + columns to the canonical
+    // shape defined here. Hand-edits to the Reports DB's structure get
+    // overwritten on version bumps — by design, since these are
+    // system-managed.
+    const REPORTS_BOOTSTRAP_VERSION = 'v2';
     try {
       const flag = await env.DB.prepare(
         "SELECT value FROM connections WHERE key = 'extensions_reports_db_bootstrap'"
       ).first();
-      if (flag?.value !== 'done') {
+      if (flag?.value !== REPORTS_BOOTSTRAP_VERSION) {
         const reportsPageId = 'system_reports';
         const reportsColumns = [
           { id: 'title', name: 'Title', type: 'text', system: false },
@@ -308,21 +313,31 @@ async function handleInit(env, jsonResponse) {
           { id: '_last_edited_time', name: 'Last Updated', type: 'last_edited_time', system: true },
           { id: '_created_time', name: 'Created', type: 'created_time', system: true },
         ];
+        // visibleFields = columns the Table view shows on first load.
+        // Hidden by default: snapshot_slug (redundant w/ title), summary
+        // (long text, surfaced in the drawer instead), snapshot_id
+        // (internal id used by ExtensionViewer routing), and the system
+        // last-edited / created timestamps (redundant w/ generated_at).
+        // Users can still toggle any of these visible from the column
+        // menu. `columns` snapshots the "known at save time" set so
+        // schema additions later stay visible by default.
+        const knownColumns = reportsColumns.map((c) => c.id);
+        const visibleFields = ['title', 'extension', 'status', 'visibility', 'generated_at', 'generated_by'];
+        const baseTableConfig = {
+          visibleFields,
+          columns: knownColumns,
+          sorts: [{ field: 'generated_at', direction: 'desc' }],
+        };
         const reportsConfig = {
           views: [
-            { label: 'All Reports', type: 'table', config: {
-              sorts: [{ field: 'generated_at', direction: 'desc' }],
-              hiddenColumns: ['snapshot_id'],
-            }},
+            { label: 'All Reports', type: 'table', config: { ...baseTableConfig } },
             { label: 'Published', type: 'table', config: {
+              ...baseTableConfig,
               filters: [{ field: 'status', op: 'eq', value: 'Published' }],
-              sorts: [{ field: 'generated_at', direction: 'desc' }],
-              hiddenColumns: ['snapshot_id'],
             }},
             { label: 'Drafts', type: 'table', config: {
+              ...baseTableConfig,
               filters: [{ field: 'status', op: 'eq', value: 'Draft' }],
-              sorts: [{ field: 'generated_at', direction: 'desc' }],
-              hiddenColumns: ['snapshot_id'],
             }},
           ],
           _extensionsReportsDb: true,
@@ -342,9 +357,9 @@ async function handleInit(env, jsonResponse) {
              updated_at = datetime('now')`
         ).bind(reportsPageId, JSON.stringify(reportsColumns)).run();
         await env.DB.prepare(
-          "INSERT INTO connections (key, value, metadata, updated_at) VALUES ('extensions_reports_db_bootstrap', 'done', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, metadata = excluded.metadata, updated_at = datetime('now')"
-        ).bind(JSON.stringify({ page_id: reportsPageId, column_count: reportsColumns.length })).run();
-        console.log('[extensions] Reports DB bootstrapped');
+          "INSERT INTO connections (key, value, metadata, updated_at) VALUES ('extensions_reports_db_bootstrap', ?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, metadata = excluded.metadata, updated_at = datetime('now')"
+        ).bind(REPORTS_BOOTSTRAP_VERSION, JSON.stringify({ page_id: reportsPageId, column_count: reportsColumns.length, visible_count: visibleFields.length })).run();
+        console.log(`[extensions] Reports DB bootstrap → ${REPORTS_BOOTSTRAP_VERSION}`);
       }
     } catch (err) {
       console.error('[extensions] Reports DB bootstrap failed:', err.message || err);

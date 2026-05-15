@@ -203,8 +203,11 @@ export function getStyles() { return {
 
   // Legacy styles used by CellEditor (in RecordDetail drawer) and CSV import modal
   table: { borderCollapse: "separate", borderSpacing: "0 4px", fontSize: 13, tableLayout: "fixed" },
-  th: { textAlign: "left", padding: "10px 12px", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: C.darkMuted, borderBottom: `1px solid ${C.darkBorder}`, whiteSpace: "nowrap", background: C.darkSurf },
-  td: { padding: "8px 12px", border: "none", color: C.darkText, fontSize: 13, lineHeight: 1.45, boxSizing: "border-box", overflow: "hidden", background: C.darkSurf },
+  // overflow:hidden + textOverflow:ellipsis here so column header text in the
+  // empty-state preview clips at the cell boundary instead of bleeding into
+  // adjacent columns when the table has many narrow columns.
+  th: { textAlign: "left", padding: "10px 12px", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: C.darkMuted, borderBottom: `1px solid ${C.darkBorder}`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", background: C.darkSurf },
+  td: { padding: "8px 12px", border: "none", color: C.darkText, fontSize: 13, lineHeight: 1.45, boxSizing: "border-box", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", background: C.darkSurf },
   cellInput: { width: "100%", border: `1px solid ${C.accent}`, borderRadius: RADIUS.sm, padding: "4px 8px", fontSize: 13, fontFamily: FONT, color: C.darkText, background: C.darkSurf, outline: "none", boxShadow: `0 0 0 2px ${C.accent}33`, boxSizing: "border-box" },
   cellSelect: { width: "100%", border: `1px solid ${C.accent}`, borderRadius: RADIUS.sm, padding: "4px 8px", fontSize: 13, fontFamily: FONT, color: C.darkText, background: C.darkSurf, outline: "none", cursor: "pointer", appearance: "none", boxShadow: `0 0 0 2px ${C.accent}33`, boxSizing: "border-box" },
 
