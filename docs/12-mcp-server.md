@@ -1,6 +1,17 @@
 # MCP Server
 
-**Last Updated:** 2026-03-21
+**Last Updated:** 2026-05-18
+
+> **In development (2026-05-15):** The MCP surface gained two new tools —
+> `wasabi_extensions` and `wasabi_extension_snapshots` — for the Extensions
+> feature (custom-coded reports authored externally and generated from MCP).
+> See "Tools 30 & 31" below and the corresponding `extensions` /
+> `extension_snapshots` tables in `09-config-data-models.md`. Existing tools
+> `wasabi_search` and `wasabi_dashboard` were extended with extension/snapshot
+> scopes. The end-to-end author → generate → publish flow is wired and
+> deployed but is being shaken out on a single live template. **Treat as
+> beta:** schema and tool shapes may change before the feature is announced
+> as stable.
 
 ## Product Context
 
@@ -62,7 +73,7 @@ The API key is stored in a gitignored config file. The MCP server runs locally a
 
 ---
 
-## Tools (29)
+## Tools (31)
 
 ### 1. wasabi_health
 
@@ -189,21 +200,21 @@ List, get URL, or delete files in R2 storage. Upload is via web UI only.
 
 ### 12. wasabi_search
 
-Global keyword search across all tables, pages, and knowledge base.
+Global keyword search across tables, pages, knowledge base, **extension templates, and generated report snapshots** (the last two added 2026-05-15).
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | query | string | Search keyword |
-| scope | `"all"` `"tables"` `"kb"` `"pages"` | Limit scope |
-| limit | number | Max results per table |
+| scope | `"all"` `"tables"` `"kb"` `"pages"` `"extensions"` `"snapshots"` | Limit scope |
+| limit | number | Max results per scope |
 
 ### 13. wasabi_dashboard
 
-Workspace snapshot: health status, page list with row counts, unread notifications, recent activity.
+Workspace snapshot: health status, page list with row counts, unread notifications, recent activity, **plus extension templates and recent snapshots** (added 2026-05-15).
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| include | `"all"` `"health"` `"pages"` `"notifications"` `"activity"` | What to include |
+| include | `"all"` `"health"` `"pages"` `"notifications"` `"activity"` `"extensions"` | What to include |
 
 ### 14. wasabi_analytics
 
@@ -383,13 +394,67 @@ Manage per-record metadata: notes, comments, badge counts, view history.
 | record_ids | array | For badge_counts |
 | since | ISO date | For view_history filter |
 
+### 30. wasabi_extensions  *(in development — 2026-05-15)*
+
+CRUD for custom-coded report templates ("Extensions"). An Extension is a
+named, hand-coded HTML+CSS+JS scaffolding with a `{{DATA}}` placeholder
+and a JSON Schema describing valid DATA shapes. Authoring happens
+externally (Claude reads a local HTML file in chat and registers it via
+this tool). Concrete generated reports are managed via
+`wasabi_extension_snapshots`.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| action | `"list"` `"get"` `"create"` `"update"` `"delete"` | Operation |
+| id | string | Extension id or slug |
+| data | object | For `create`: `{ name, slug?, icon?, description?, html, data_schema?, sample_data?, theme_preference? }`. For `update`: any subset. |
+| status | string | Filter by status: `active`, `archived` (for list) |
+
+### 31. wasabi_extension_snapshots  *(in development — 2026-05-15)*
+
+CRUD + lifecycle for snapshots (concrete generated reports). To generate:
+`action: "generate"`, an `extension_id` (or slug), `data: {...}` matching
+the template's schema, and a user-provided `slug` (e.g. `"q2-handoff"`).
+DATA is validated against the template's JSON Schema before rendering.
+After generation, the snapshot is `draft`; call `publish` to make it live
+in the Reports DB.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| action | `"list"` `"get"` `"generate"` `"update"` `"delete"` `"get_data"` `"publish"` `"set_visibility"` `"add_link"` `"list_links"` | Operation |
+| id | string | Snapshot id |
+| extension_id | string | Extension id or slug (required for `generate`, optional filter for `list`) |
+| data | object | For `generate`: `{ slug, data, title?, summary?, visibility?, source_snapshot_id? }`. For `update`: `{ title?, data?, visibility?, status? }`. For `add_link`: `{ kind: 'neuron'\|'record_comment', ...kind-specific fields }`. |
+| status | string | Filter for `list`: `draft` or `published` |
+
+**Snapshot lifecycle:**
+
+- `draft` → just generated; Reports DB row exists but flagged Draft
+- `published` → after `publish` action; visible in Reports as Published
+
+**Visibility:**
+
+- `workspace` → authenticated workspace users only (default)
+- `public` → anyone with the URL can view (no auth required)
+
+**Composition pattern ("use last week's data + new template" flow):**
+
+1. `wasabi_extension_snapshots get_data id=<old_snapshot_id>` → returns DATA
+2. Claude modifies/extends that DATA as instructed
+3. `wasabi_extension_snapshots generate` with `extension_id=<new_template>` and the modified DATA
+
+**Linking — to weave a snapshot into the workspace semantic graph:**
+
+- `add_link kind=neuron` → creates/extends a neuron joining the snapshot to other records, pages, or fields
+- `add_link kind=record_comment` → posts a comment on a related record referencing the snapshot
+
 ---
 
 ## Usage Playbook
 
 For most tasks, follow this order:
 
-1. `wasabi_dashboard` -- understand workspace health and page list
+1. `wasabi_dashboard` -- understand workspace health, page list, and (since 2026-05-15) recent extension snapshots
 2. `wasabi_pages list` -- find page IDs and types
 3. `wasabi_data list` -- fetch rows (triggers auto-sync for Notion-linked tables)
 4. `wasabi_search` -- keyword search across all data

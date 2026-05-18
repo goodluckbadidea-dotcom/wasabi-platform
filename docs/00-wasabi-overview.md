@@ -38,6 +38,16 @@ Two tiers of extensibility:
 - **Accessible tier:** Via chat, users build custom apps/plugins/integrations using natural language and the built-in function/plugin/view builders
 - **Super-user tier:** Via MCP server, developers directly manipulate Wasabi's data and logic to create entirely bespoke systems using the platform as foundation
 
+> **In development (2026-05-15):** **Extensions** — a third extensibility
+> pattern for *custom-coded reports*. Templates are hand-authored
+> externally (e.g. in Cowork) and registered into Wasabi via MCP;
+> snapshots are then generated from a template + a validated DATA blob,
+> rendered to R2, and listed in an auto-bootstrapped "Reports" database
+> for review and publish. The framework is wired end-to-end and shipped
+> behind no flag, but is being shaken out on its first live template.
+> See `docs/02-features-functions.md` → "Extensions" for the full
+> overview.
+
 ---
 
 ## Architecture
