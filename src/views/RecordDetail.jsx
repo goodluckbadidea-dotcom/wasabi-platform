@@ -430,13 +430,16 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
   const { identity, pages, setActiveRightPane } = usePlatform();
 
   // ── Extensions: detect when this record is a snapshot in the Reports DB ──
-  // The Reports page_config is flagged via `_extensionsReportsDb: true`. When
-  // present, surface a prominent "View Report" banner that opens the snapshot
-  // inside Wasabi (handled by App.jsx's `extension-snapshot:<id>` route).
+  // The Reports page_config is flagged via `_extensionsReportsDb: true` in its
+  // stored config blob. d1ToFrontend() spreads `...config` into the page object,
+  // so on the frontend the flag lives at `page._extensionsReportsDb` (NOT
+  // page.config._extensionsReportsDb). When detected, surface a prominent
+  // "Open report" banner that routes to ExtensionViewer via
+  // App.jsx's `extension-snapshot:<id>` activeRightPane value.
   const reportsSnapshotId = (() => {
     if (!page || !pageConfigId) return null;
     const reportsPage = pages?.find?.((p) => p.id === pageConfigId);
-    if (!reportsPage?.config?._extensionsReportsDb) return null;
+    if (!reportsPage?._extensionsReportsDb) return null;
     // snapshot_id was written by the worker into the row's "Snapshot ID"
     // property at generation time. Read via readProp like every other cell.
     const prop = page.properties?.["Snapshot ID"];

@@ -345,13 +345,14 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction, on
 
   // ── Extensions: "View Report" button when this row is in the Reports DB ──
   // The Reports DB page config is flagged with `_extensionsReportsDb: true`
-  // in its config blob. Each row's `snapshot_id` cell points at the snapshot.
+  // in its stored config blob. d1ToFrontend() spreads `...config` into the
+  // page object, so on the frontend the flag is at `page._extensionsReportsDb`
+  // (NOT page.config._extensionsReportsDb). Each row's `snapshot_id` cell
+  // points at the snapshot.
   const reportsSnapshotId = (() => {
     if (!task?.tableId) return null;
     const reportsPage = pages.find((p) => p.id === task.tableId);
-    if (!reportsPage) return null;
-    const cfg = reportsPage.config || {};
-    if (!cfg._extensionsReportsDb) return null;
+    if (!reportsPage?._extensionsReportsDb) return null;
     // Snapshot id may be stored either as task.cells.snapshot_id (raw fetch)
     // or as task.snapshot_id (normalized). Check both.
     const id = task.cells?.snapshot_id || task.snapshot_id || null;
