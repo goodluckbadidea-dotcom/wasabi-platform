@@ -427,7 +427,28 @@ const OwnerPickerDropdown = React.forwardRef(function OwnerPickerDropdown({ owne
 export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete, pageConfigId, resolvedLinks, onLinkField, onUnlinkField, onRefresh, onCreateOption, parentTitle }) {
   const ds = getDs();
   const { isTablet } = useViewport();
-  const { identity } = usePlatform();
+  const { identity, pages, setActiveRightPane } = usePlatform();
+
+  // ── Extensions: detect when this record is a snapshot in the Reports DB ──
+  // The Reports page_config is flagged via `_extensionsReportsDb: true`. When
+  // present, surface a prominent "View Report" banner that opens the snapshot
+  // inside Wasabi (handled by App.jsx's `extension-snapshot:<id>` route).
+  const reportsSnapshotId = (() => {
+    if (!page || !pageConfigId) return null;
+    const reportsPage = pages?.find?.((p) => p.id === pageConfigId);
+    if (!reportsPage?.config?._extensionsReportsDb) return null;
+    // snapshot_id was written by the worker into the row's "Snapshot ID"
+    // property at generation time. Read via readProp like every other cell.
+    const prop = page.properties?.["Snapshot ID"];
+    if (!prop) return null;
+    const val = readProp(prop);
+    return typeof val === "string" && val.length > 0 ? val : null;
+  })();
+  const handleViewReport = useCallback(() => {
+    if (!reportsSnapshotId) return;
+    onClose?.();
+    setActiveRightPane(`extension-snapshot:${reportsSnapshotId}`);
+  }, [reportsSnapshotId, onClose, setActiveRightPane]);
   const [editingField, setEditingField] = useState(null);
   const [editValue, setEditValue] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -624,6 +645,47 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
             </div>
           );
         })()}
+
+        {/* Extension snapshot — prominent "View Report" CTA */}
+        {reportsSnapshotId && (
+          <div
+            onClick={handleViewReport}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleViewReport(); }}
+            style={{
+              padding: "12px 16px",
+              background: `linear-gradient(135deg, ${C.accent}1f, ${C.accent}0f)`,
+              borderBottom: `1px solid ${C.accent}33`,
+              display: "flex", alignItems: "center", gap: 10,
+              cursor: "pointer", transition: "background 0.15s",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = `linear-gradient(135deg, ${C.accent}33, ${C.accent}1f)`; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = `linear-gradient(135deg, ${C.accent}1f, ${C.accent}0f)`; }}
+          >
+            <div style={{
+              width: 32, height: 32, borderRadius: 8,
+              background: C.accent, display: "flex",
+              alignItems: "center", justifyContent: "center", flexShrink: 0,
+            }}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M2 4h12v8H2z" stroke={C.bg} strokeWidth="1.5" />
+                <path d="M5 7h6M5 9h4" stroke={C.bg} strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.darkText, fontFamily: FONT }}>
+                Open report
+              </div>
+              <div style={{ fontSize: 11, color: C.darkMuted, marginTop: 2 }}>
+                Render the generated report inside Wasabi
+              </div>
+            </div>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+              <path d="M6 4l4 4-4 4" stroke={C.accent} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+        )}
 
         {/* Tab Bar */}
         <div style={ds.tabBar}>
