@@ -46,7 +46,7 @@ async function handleInit(env, jsonResponse) {
   // ── Schema version fast path ──
   // Skip all DDL if the schema is already at the current version.
   // Reduces ~92 sequential D1 queries to 3 on returning page loads.
-  const CURRENT_SCHEMA_VERSION = "11";
+  const CURRENT_SCHEMA_VERSION = "12";
   try {
     const row = await env.DB.prepare(
       "SELECT value FROM connections WHERE key = 'schema_version'"
@@ -175,6 +175,7 @@ async function handleInit(env, jsonResponse) {
         name TEXT NOT NULL,
         icon TEXT DEFAULT '',
         description TEXT DEFAULT '',
+        definition TEXT DEFAULT '',
         html TEXT NOT NULL DEFAULT '',
         data_schema TEXT DEFAULT '{}',
         sample_data TEXT DEFAULT '{}',
@@ -185,6 +186,9 @@ async function handleInit(env, jsonResponse) {
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now'))
       )`,
+      // Schema v12: `definition` field for existing rows (idempotent — try/catch
+      // above swallows the duplicate-column error on databases that already have it).
+      "ALTER TABLE extensions ADD COLUMN definition TEXT DEFAULT ''",
       "CREATE INDEX IF NOT EXISTS idx_extensions_slug ON extensions(slug)",
       "CREATE INDEX IF NOT EXISTS idx_extensions_status ON extensions(status)",
       `CREATE TABLE IF NOT EXISTS extension_snapshots (

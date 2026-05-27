@@ -674,8 +674,83 @@ type CascadeHint =
 | `relationships` | id (UUID) | Unified relationship edges (Phase 1, 2026-04-24) |
 | `relationship_types` | type (string) | Type registry for relationships subsystem |
 | `figma_comment_links` | id (UUID) | Joins a Figma comment to a Wasabi record. Snapshot of message/author/created_at + record_name. Phase 3b, 2026-05-11. |
-| `extensions` | id (e.g. `ext_…`) | Custom-coded report template definitions (HTML + DATA schema). In development, 2026-05-15. |
-| `extension_snapshots` | id (UUID) | Concrete generated reports (DATA + R2 key + lifecycle). In development, 2026-05-15. |
+| `extensions` | id (text) | Custom-coded report template definitions. Schema v9 (initial), v12 added `definition`. See Extension below + `docs/18-extensions.md`. |
+| `extension_snapshots` | id (UUID) | Concrete generated reports from an extension + DATA blob. R2-backed HTML. Lifecycle: draft → published. |
+
+---
+
+## Extension (2026-05-15, definition field added 2026-05-22)
+
+A custom-coded report template registered in Wasabi. The D1 row is the
+source of truth — once created, all visual/schema/definition edits
+happen here via MCP, not in any local file. See `docs/18-extensions.md`
+for the authoring workflow.
+
+```typescript
+interface Extension {
+  id: string;                       // e.g. "ext_2c786a9dc7fd"
+  slug: string;                     // URL-safe identifier, unique
+  name: string;                     // Display name
+  icon: string;                     // Icon identifier
+  description: string;              // Short, user-facing blurb (1-2 sentences)
+
+  // Long-form markdown conceptual model — glossary, calculations,
+  // source-document roles, field meanings, gotchas. Claude-facing context
+  // read at the start of any refresh/refine session. Distinct from
+  // `description`. Added in schema v12 (2026-05-22).
+  definition: string;
+
+  html: string;                     // Template with {{DATA}} placeholder
+  data_schema: object;              // JSON Schema validating snapshot DATA
+
+  // Dev/test fixture ONLY. Never used for real snapshots — real data
+  // always flows: source folder → Claude+MCP parser → snapshot DATA.
+  sample_data: object;
+
+  theme_preference: "inherit" | "static";  // Apply Wasabi theme via postMessage?
+  version: number;                  // Bumps on every html/schema/sample_data edit
+  status: "active" | "archived";
+  created_by: string;               // user.sub
+  created_at: string;               // ISO 8601
+  updated_at: string;               // ISO 8601
+}
+```
+
+## ExtensionSnapshot (2026-05-15)
+
+A concrete generated report from a template + a DATA blob. Stored in
+`extension_snapshots`; rendered HTML lives in R2 under
+`extensions/{ext_slug}/{snap_slug}.html`.
+
+```typescript
+interface ExtensionSnapshot {
+  id: string;                       // UUID
+  extension_id: string;             // FK to extensions.id
+  slug: string;                     // User-provided, unique per extension
+  title: string;                    // Display title
+
+  // The DATA blob — validated against the extension's data_schema on
+  // every write. Bad shapes return 422 with validation_errors[].
+  data: object;
+
+  html_key: string;                 // R2 key for rendered HTML
+  template_version: number;         // Frozen — which extension.version produced this
+  source_snapshot_id: string | null; // Optional — set when composed from prior snapshot
+
+  status: "draft" | "published";    // Lifecycle
+  visibility: "workspace" | "public"; // Access control on HTML serve
+
+  reports_row_id: string | null;    // FK to the Reports DB row mirroring this snapshot
+
+  generated_at: string;             // ISO 8601
+  generated_by: string;             // user.sub or 'MCP'
+  published_at: string | null;      // ISO 8601, set on publish action
+  published_by: string | null;      // user.sub
+}
+```
+
+**Unique constraint:** `(extension_id, slug)` — one snapshot per slug per
+template.
 
 ---
 
@@ -741,91 +816,3 @@ defensive-accept both shapes (raw array or wrapped) so older callers
 don't break.
 
 **Gating:** `COLUMN_TYPES` flags `figma_files` with `requiresFigma: true`. The Add Column dialog pings `/figma/status` once on mount (60 s cached) and filters the type out when no Figma connection is configured.
-
----
-
-## Extension + ExtensionSnapshot  *(in development — 2026-05-15, schema v9–v11)*
-
-> **Status: Under development.** The framework is wired end-to-end and
-> deployed, but is being shaken out on a single live template. Schema
-> and tool shapes may change before the feature is announced as stable.
-
-Two new D1 tables added at schema version 9. See `docs/02-features-functions.md`
-→ "Extensions" for the conceptual model and `docs/12-mcp-server.md` →
-"Tools 30 & 31" for the MCP surface.
-
-### Extension (template definition)
-
-```typescript
-interface Extension {
-  id: string;                  // e.g. "ext_7d26b4549cbf"
-  slug: string;                // URL-safe identifier, unique (e.g. "inventory-production")
-  name: string;                // Display name (e.g. "Inventory & Production")
-  icon: string;                // Icon id from the design system
-  description: string;
-  html: string;                // Full HTML template with a {{DATA}} placeholder
-  data_schema: object;         // JSON Schema describing valid DATA shapes (stored as JSON text)
-  sample_data: object;         // Canonical example DATA blob (stored as JSON text)
-  theme_preference: 'inherit' | 'kori' | 'shoji' | 'hinoki' | 'sumi' | 'obsidian';
-  version: number;             // Auto-incremented when html / data_schema / sample_data change
-  status: 'active' | 'archived';
-  created_by: string;          // User id
-  created_at: string;
-  updated_at: string;
-}
-```
-
-### ExtensionSnapshot (generated report)
-
-```typescript
-interface ExtensionSnapshot {
-  id: string;                  // UUID
-  extension_id: string;        // FK → extensions.id
-  slug: string;                // URL-safe, user-provided at generation time
-                                 // (e.g. "q2-handoff", "05-15-2026"). Unique per extension.
-  title: string;               // e.g. "Inventory & Production — 05.15.2026"
-  data: object;                // The DATA blob that drove rendering (validated against extension.data_schema)
-  html_key: string;            // R2 key: "extensions/{ext_slug}/{snap_slug}.html"
-  template_version: number;    // Snapshot of extensions.version at generation time
-  source_snapshot_id: string | null;   // If seeded from another snapshot (composition pattern)
-  status: 'draft' | 'published';
-  visibility: 'workspace' | 'public';
-  reports_row_id: string | null;        // FK → table_rows.id (auto-created Reports DB row)
-  generated_at: string;
-  generated_by: string;        // User id (or "" for MCP server)
-  published_at: string | null;
-  published_by: string | null;
-}
-```
-
-**Unique constraint:** `(extension_id, slug)` — one snapshot per (template, slug) pair.
-
-### Reports DB (auto-bootstrapped page)
-
-When the worker `/init` runs at schema v9+, it upserts a workspace-wide
-page (`page_configs` id = `'system_reports'`, page_type = `'database'`,
-title = `'Reports'`) and a matching `table_schemas` row. The config flag
-`_extensionsReportsDb: true` lives in `page_configs.config` (and is
-spread onto frontend page objects via `d1ToFrontend()` as
-`page._extensionsReportsDb`).
-
-Bootstrap is versioned via `connections.extensions_reports_db_bootstrap`
-(`'v3'` as of 2026-05-18). Bumping the version string and re-deploying
-forces the upsert to re-run with the latest canonical column/view config.
-
-Default columns: `title`, `extension` (display name "Report Type"),
-`snapshot_slug` (display name "Reference"), `status` (Draft/Published),
-`visibility` (Workspace/Public), `generated_at`, `generated_by`,
-`summary`, `snapshot_id` (hidden), plus system `_last_edited_time` and
-`_created_time`. Default-visible columns: Title, Report Type, Status,
-Visibility, Generated, Generated by.
-
-### Snapshot ↔ workspace links
-
-Snapshots participate in Wasabi's semantic graph via existing tables —
-no new link table:
-
-- **Neurons:** `neuron_nodes` with `node_type: 'extension_snapshot'`, `node_id: snapshot.id`. Created via `wasabi_extension_snapshots add_link kind=neuron`.
-- **Record comments:** `record_comments` rows referencing the snapshot in their `content`. Created via `add_link kind=record_comment`.
-
-Both surface to the relationships projection system automatically.

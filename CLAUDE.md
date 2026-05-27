@@ -167,6 +167,25 @@ users. If you are uncertain about any step — ask before running it.
 
 ---
 
+## Extensions / Reports
+
+If a session involves **reports** — refreshing an existing report,
+authoring a new report template, or refining one — read
+`docs/18-extensions.md` in full before touching anything. That doc is
+the canonical workflow.
+
+Two non-obvious things from that workflow that are easy to get wrong:
+
+1. **Local `.html` mockup files (in `mockups/`) are bootstrap-only.** Once a
+   template is in D1, the mockup is vestigial. Never iterate on the
+   mockup; iterate on the D1 row via `wasabi_extensions update`.
+2. **Always read the extension's `definition` field first** in a refresh
+   or refine session. That field is the conceptual model — glossary,
+   calculations, source-document roles, gotchas. If it's missing or thin,
+   pause and offer to author it rather than re-deriving logic from scratch.
+
+---
+
 ## Tone
 
 Say what you actually think. If you see a problem with a plan, say so

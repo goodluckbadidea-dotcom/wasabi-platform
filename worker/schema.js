@@ -391,8 +391,15 @@ CREATE TABLE IF NOT EXISTS extensions (
   name TEXT NOT NULL,
   icon TEXT DEFAULT '',
   description TEXT DEFAULT '',
+  -- Long-form markdown conceptual model: glossary, calculation rules,
+  -- source-document roles, field meanings, gotchas. Claude-facing context
+  -- for any session that authors data or refines the template. Distinct
+  -- from description (which is a short user-facing blurb).
+  definition TEXT DEFAULT '',
   html TEXT NOT NULL DEFAULT '',
   data_schema TEXT DEFAULT '{}',
+  -- Dev/test fixture only — NEVER used for real snapshot generation.
+  -- Real data always flows: source folder → Claude+MCP parser → snapshot.
   sample_data TEXT DEFAULT '{}',
   theme_preference TEXT DEFAULT 'inherit',
   version INTEGER DEFAULT 1,

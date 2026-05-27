@@ -186,14 +186,15 @@ export async function handleCreateExtension(env, body, user, jsonResponse) {
 
   await env.DB.prepare(
     `INSERT INTO extensions
-       (id, slug, name, icon, description, html, data_schema, sample_data, theme_preference, version, status, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, datetime('now'), datetime('now'))`
+       (id, slug, name, icon, description, definition, html, data_schema, sample_data, theme_preference, version, status, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, datetime('now'), datetime('now'))`
   ).bind(
     id,
     slug,
     name,
     body.icon || '',
     body.description || '',
+    body.definition || '',
     html,
     JSON.stringify(body.data_schema || {}),
     JSON.stringify(body.sample_data || {}),
@@ -211,7 +212,7 @@ export async function handleUpdateExtension(env, id, body, jsonResponse) {
 
   const sets = [];
   const vals = [];
-  const allowedScalar = ['name', 'icon', 'description', 'html', 'theme_preference', 'status'];
+  const allowedScalar = ['name', 'icon', 'description', 'definition', 'html', 'theme_preference', 'status'];
   for (const key of allowedScalar) {
     if (key in body) { sets.push(`${key} = ?`); vals.push(body[key]); }
   }

@@ -864,6 +864,95 @@ React context providers wrapping the app in `App.jsx`:
 
 ---
 
+## Extensions (Custom-Coded Reports)
+
+**Status:** In development (2026-05-22). Wired end-to-end and deployed; the
+authoring workflow described here is canonical. See
+[`docs/18-extensions.md`](18-extensions.md) for the full reference.
+
+Extensions is Wasabi's generic report-generation feature. A user designs a
+report as a self-contained HTML mockup, Claude (with filesystem access to
+the user's source data folder) translates that into a live D1 template,
+and Wasabi handles validation, snapshot lifecycle, and rendering. The
+same workflow produces any report type — the platform layer is
+data-agnostic.
+
+### Two halves
+
+- **Bootstrap (once per report type):** HTML mockup + source folder →
+  Claude session → `wasabi_extensions create` writes template HTML
+  (with `{{DATA}}` placeholder), strict JSON Schema, and a long-form
+  markdown `definition` to the D1 row. After this the mockup file is
+  vestigial.
+- **Refresh / refine (recurring):** Fresh Claude session reads the D1
+  row's `data_schema` + `definition`, parses new source data to match,
+  validates, calls `wasabi_extension_snapshots update` or `generate`.
+
+### Data model
+
+- `extensions` (D1) — template definitions. Key fields: `html`,
+  `data_schema`, `definition` (markdown for Claude),
+  `sample_data` (dev-only fixture), `theme_preference`.
+- `extension_snapshots` (D1) — concrete generated reports. Stores the
+  validated DATA blob; rendered HTML lives in R2 at
+  `extensions/{ext_slug}/{snap_slug}.html`. Lifecycle: `draft` → `published`.
+- Reports DB (system page `system_reports`) — workspace-wide index of
+  every snapshot, seeded by `worker/handlers/init.js`.
+
+### Validation
+
+The worker validates every snapshot DATA payload against the extension's
+`data_schema` on generate and update. Bad shapes return `422` with a
+`validation_errors` array. Schema discipline is the primary guardrail
+against malformed snapshots.
+
+### MCP authoring surface
+
+- `wasabi_extensions` — template CRUD. Accepts `definition` field;
+  tool description directs Claude to read `data_schema` + `definition`
+  before any data write.
+- `wasabi_extension_snapshots` — snapshot lifecycle. `get_data` reads
+  prior DATA for diffing; `update` re-renders R2 HTML using the current
+  template (so fixing template logic + re-pushing any snapshot picks up
+  the fix).
+
+### Frontend
+
+- `src/features/ExtensionViewer.jsx` — sandboxed iframe renderer with
+  Wasabi theme handshake via `postMessage`. Opened from a Reports DB
+  row's "Open report" banner in `src/views/RecordDetail.jsx`.
+
+### Authoring discipline
+
+Six rules that make the workflow durable (full details in
+[`docs/18-extensions.md`](18-extensions.md)):
+
+1. **Local mockup is bootstrap-only.** After translation to D1, do not
+   re-edit. The D1 row is the source of truth.
+2. **All future edits via MCP on the D1 row** — template, schema,
+   definition, data.
+3. **`definition` is mandatory at create time** and updated whenever the
+   conceptual model changes. Next session's Claude reads it first.
+4. **Schema first, data second.** A strict `data_schema` catches bad
+   shapes at the worker boundary. Class-of-bug → "should schema reject
+   this?" — usually yes.
+5. **Don't iterate template + data in the same change.** Push template,
+   verify, then push data, verify.
+6. **Discovery before push.** When updating data, produce a discovery
+   report covering all source files first. Surface ambiguities as a
+   batched interview, not a stream of one-off questions.
+
+### Live extensions (in development)
+
+- `inventory-production-v2` (`ext_2c786a9dc7fd`) — per-market packaging
+  materials snapshot for the five Drops markets (NY, OR, CA, HEMP, NV).
+  Tracks on-site inventory, at-Treeform warehoused inventory, and on-order
+  shipments. Adds per-SKU stockout-risk analysis for markets with
+  `sellThrough` metrics populated (CA only at time of writing). See
+  `memory/project_extensions_feature.md` for current state.
+
+---
+
 ## Cross-Page Cell Links
 
 Cell links connect individual cell values across different pages/views. A user picks a source cell from one page and links it to a target cell on another, creating a one-way live reference.

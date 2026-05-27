@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>Territory Performance Report — v8 · theme-aware</title>
+<style>
+/* ── Theme tokens (default = Kori; overridden via postMessage when embedded) ── */
+:root {
+  --bg:#F4F7FB; --surface:#E0E6F0; --raised:#CCD4E2; --border:#A0AAC0;
+  --text:#121820; --text-mid:#48546C; --muted:#5A667E;
+  --accent:#2C72CC;
+  /* Derived — recomputed automatically when --accent / --bg change */
+  --accent-soft: color-mix(in srgb, var(--accent) 18%, var(--bg));
+  --gradient: radial-gradient(ellipse at 50% -10%, var(--accent-soft) 0%, var(--bg) 60%);
+  --shadow: 0 1px 3px rgba(0,6,20,.12),0 1px 2px rgba(0,6,20,.08);
+
+  --font:'Outfit','DM Sans',sans-serif;
+  --mono:'DM Mono','Courier New',monospace;
+  --r-sm:4px; --r-md:10px; --r-lg:14px; --r-pill:999px;
+
+  --orange:#D27339; --yellow:#B8A23E; --purple:#7A66B0; --blue:#3D7BD0;
+}
+
+*,*::before,*::after {box-sizing:border-box;margin:0;padding:0}
+body {
+  font-family:var(--font);font-size:14px;color:var(--text);
+  background:var(--bg);line-height:1.5;
+  background-image:var(--gradient);background-attachment:fixed;
+  min-height:100vh;
+}
+.eyebrow {
+  font-size:11px;font-weight:600;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--accent);margin-bottom:8px;
+}
+h1 {font-size:26px;font-weight:700;line-height:1.2;color:var(--text)}
+.sub {font-size:13px;color:var(--text-mid);margin-top:6px}
+
+/* ── Accounts summary block ───────────────────────────── */
+.accounts-section {
+  max-width:1480px; margin:24px auto 8px; padding:0 24px;
+}
+.accounts-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r-lg); padding:20px 24px;
+}
+.accounts-header {
+  display:flex; align-items:baseline; justify-content:space-between;
+  margin-bottom:14px; gap:16px; flex-wrap:wrap;
+}
+.accounts-title {
+  font-size:11px; font-weight:700; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--muted);
+}
+.accounts-total {
+  font-size:13px; color:var(--text-mid);
+  font-variant-numeric:tabular-nums;
+}
+.accounts-total strong { color:var(--text); font-weight:700; }
+.coverage-hero {
+  display:grid; grid-template-columns:220px 1fr; gap:28px;
+  align-items:center; margin-bottom:18px;
+  padding:18px; background:var(--raised); border:1px solid var(--border);
+  border-radius:var(--r-md);
+}
+.coverage-pie-wrap { position:relative; width:200px; height:200px; }
+.coverage-pie-wrap svg { width:100%; height:100%; display:block; }
+.coverage-pie-center {
+  position:absolute; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; pointer-events:none;
+}
+.coverage-pie-num {
+  font-size:34px; font-weight:700; color:var(--text);
+  font-variant-numeric:tabular-nums; line-height:1;
+}
+.coverage-pie-pct {
+  font-size:11px; font-weight:600; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--accent); margin-top:6px;
+}
+.coverage-legend { display:flex; flex-direction:column; gap:12px; }
+.coverage-legend-row {
+  display:grid; grid-template-columns:14px 1fr auto auto;
+  align-items:center; gap:14px;
+  padding:10px 14px; background:var(--surface);
+  border:1px solid var(--border); border-radius:var(--r-sm);
+}
+.coverage-legend-swatch { width:14px; height:14px; border-radius:3px; }
+.coverage-legend-name { font-size:13px; color:var(--text); font-weight:500; }
+.coverage-legend-count {
+  font-size:14px; font-weight:700; color:var(--text);
+  font-variant-numeric:tabular-nums; min-width:40px; text-align:right;
+}
+.coverage-legend-pct {
+  font-size:12px; color:var(--text-mid);
+  font-variant-numeric:tabular-nums; min-width:48px; text-align:right;
+}
+@media (max-width:560px) {
+  .coverage-hero { grid-template-columns:1fr; }
+  .coverage-pie-wrap { margin:0 auto; }
+}
+/* prominence palette */
+:root {
+  --prom-hi:  var(--accent);
+  --prom-med: #D27339;
+  --prom-low: #C0473A;
+}
+.prom-stack {
+  display:flex; height:8px; background:var(--raised);
+  border-radius:999px; overflow:hidden;
+}
+.prom-stack-seg { transition:width .2s ease; }
+.prom-stack-seg.hi  { background:var(--prom-hi); }
+.prom-stack-seg.med { background:var(--prom-med); }
+.prom-stack-seg.low { background:var(--prom-low); }
+
+.accounts-grid {
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+  gap:1px; background:var(--border);
+  border:1px solid var(--border); border-radius:var(--r-md);
+  overflow:hidden;
+}
+.accounts-cell {
+  background:var(--surface); padding:12px 14px;
+  display:flex; flex-direction:column; gap:6px;
+  transition:background .15s ease;
+}
+.accounts-cell:hover { background:var(--raised); }
+.accounts-cell-top { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+.accounts-cell-name {
+  font-size:13px; color:var(--text); font-weight:500;
+}
+.accounts-cell-count {
+  font-size:13px; color:var(--text-mid);
+  font-variant-numeric:tabular-nums; white-space:nowrap;
+}
+.accounts-cell-count strong { color:var(--text); font-weight:700; }
+.accounts-cell-bar {
+  position:relative; height:6px; background:var(--raised);
+  border-radius:999px; overflow:hidden;
+}
+.accounts-cell:hover .accounts-cell-bar { background:var(--bg); }
+.accounts-cell-bar-fill {
+  position:absolute; left:0; top:0; bottom:0;
+  background:linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, var(--blue)));
+  border-radius:999px;
+}
+.accounts-cell-pct {
+  font-size:11px; color:var(--accent); font-weight:700;
+  font-variant-numeric:tabular-nums;
+  letter-spacing:.04em;
+}
+
+/* ── Tabs nav (match inventory mockup) ────────────────── */
+.market-tabs {
+  display:flex; gap:6px; flex-wrap:wrap;
+  max-width:1480px; margin:24px auto 8px; padding:0 24px;
+}
+.market-tabs button {
+  background:var(--surface); color:var(--text-mid); border:1px solid var(--border);
+  padding:9px 18px; border-radius:10px; cursor:pointer; font-size:13px; font-weight:600;
+  letter-spacing:.5px; transition:all .15s ease;
+  font-family:inherit;
+}
+.market-tabs button:hover { color:var(--text); border-color:var(--accent); }
+.market-tabs button.active {
+  background:var(--accent-soft); color:var(--accent); border-color:var(--accent);
+}
+
+/* ── Territory page ───────────────────────────────────── */
+.market-page { max-width:1480px; margin:0 auto; padding:18px 24px 60px; }
+.market-page[hidden] { display:none; }
+.market-page > h2 { margin:8px 0 4px; font-size:28px; letter-spacing:.5px; }
+.market-page > .market-meta { color:var(--muted); font-size:13px; margin-bottom:20px; }
+
+/* ── Visit-type pie chart card ────────────────────────── */
+.pie-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r-lg); padding:28px;
+  display:grid; grid-template-columns:300px 1fr; gap:32px;
+  align-items:center;
+}
+.pie-card h3 {
+  font-size:11px; font-weight:700; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--muted); margin-bottom:14px;
+}
+.pie-wrap { position:relative; width:260px; height:260px; }
+.pie-wrap svg { width:100%; height:100%; display:block; }
+.pie-center {
+  position:absolute; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; pointer-events:none;
+}
+.pie-center-num {
+  font-size:36px; font-weight:700; color:var(--text);
+  font-variant-numeric:tabular-nums; line-height:1;
+}
+.pie-center-label {
+  font-size:11px; font-weight:600; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--muted); margin-top:6px;
+}
+
+.legend { display:flex; flex-direction:column; gap:14px; }
+.legend-row {
+  display:grid; grid-template-columns:14px 1fr auto auto;
+  align-items:center; gap:14px;
+  padding:10px 14px; background:var(--raised);
+  border:1px solid var(--border); border-radius:var(--r-md);
+}
+.legend-swatch { width:14px; height:14px; border-radius:3px; }
+.legend-name { font-size:14px; color:var(--text); font-weight:500; }
+.legend-count {
+  font-size:14px; font-weight:700; color:var(--text);
+  font-variant-numeric:tabular-nums; min-width:48px; text-align:right;
+}
+.legend-pct {
+  font-size:13px; color:var(--text-mid);
+  font-variant-numeric:tabular-nums; min-width:56px; text-align:right;
+}
+.empty {
+  padding:32px; background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r-md); color:var(--muted); text-align:center;
+  font-size:13px;
+}
+
+/* ── Materials bar chart card ─────────────────────────── */
+.bars-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r-lg); padding:28px;
+  margin-top:20px;
+}
+.bars-card h3 {
+  font-size:11px; font-weight:700; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--muted); margin-bottom:6px;
+}
+.bars-card .bars-sub {
+  font-size:12px; color:var(--text-mid); margin-bottom:18px;
+}
+.bars { display:flex; flex-direction:column; gap:10px; }
+.bar-row {
+  display:grid; grid-template-columns:200px 1fr 90px;
+  align-items:center; gap:14px;
+}
+.bar-label {
+  font-size:13px; color:var(--text); font-weight:500;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.bar-track {
+  position:relative; height:22px;
+  background:var(--raised); border:1px solid var(--border);
+  border-radius:var(--r-sm); overflow:hidden;
+}
+.bar-fill {
+  position:absolute; left:0; top:0; bottom:0;
+  background:linear-gradient(90deg, var(--purple), color-mix(in srgb, var(--purple) 70%, var(--accent)));
+  border-radius:0 var(--r-sm) var(--r-sm) 0;
+  transition:width .3s ease;
+}
+.bar-count {
+  font-size:14px; font-weight:700; color:var(--text);
+  font-variant-numeric:tabular-nums; text-align:right;
+}
+.bars-empty {
+  padding:24px; background:var(--raised); border:1px dashed var(--border);
+  border-radius:var(--r-md); color:var(--muted); text-align:center;
+  font-size:13px;
+}
+
+@media (max-width:760px) {
+  .pie-card { grid-template-columns:1fr; }
+  .pie-wrap { margin:0 auto; }
+  .bar-row { grid-template-columns:140px 1fr 76px; gap:10px; }
+}
+</style>
+</head>
+<body>
+
+<header style="max-width:1480px;margin:0 auto;padding:36px 24px 0;">
+  <div class="eyebrow">Drops &middot; Internal &middot; Jan&ndash;May 2026 &middot; <span style="opacity:.7">build v8 · theme-aware</span></div>
+  <h1>Territory Performance Report</h1>
+  <div class="sub">Account coverage, form completion, and merchandising material across Oregon territories. Territory assignment via Drops April-26 Master.</div>
+</header>
+
+<section class="accounts-section">
+  <div class="accounts-card">
+    <div class="accounts-header">
+      <div class="accounts-title">Account Coverage &middot; Visited vs. Total in Master</div>
+      <div class="accounts-total" id="accounts-total"></div>
+    </div>
+    <div class="coverage-hero" id="coverage-hero"></div>
+    <div class="accounts-grid" id="accounts-grid"></div>
+  </div>
+</section>
+
+<section class="accounts-section">
+  <div class="accounts-card">
+    <div class="accounts-header">
+      <div class="accounts-title">Display Prominence &middot; Brand Visibility in Store</div>
+      <div class="accounts-total" id="prominence-total"></div>
+    </div>
+    <div class="coverage-hero" id="prominence-hero"></div>
+    <div class="accounts-grid" id="prominence-grid"></div>
+  </div>
+</section>
+
+<nav class="market-tabs" id="market-tabs"></nav>
+<main id="market-pages"></main>
+
+<script>
+/* ─── DATA (injected at snapshot generation; see schema in extension definition) ── */
+const DATA = {{DATA}};
+
+/* ─── Theme inheritance ────────────────────────────────
+   When embedded inside Wasabi (theme_preference="inherit"), the parent
+   ExtensionViewer posts {type:"wasabi:theme", tokens, mode} after iframe
+   load. We apply those tokens to the CSS variables; derived tokens
+   (--accent-soft, --gradient) update automatically via color-mix. */
+(function () {
+  const TOKEN_MAP = {
+    bg:'--bg', surface:'--surface', raised:'--raised', border:'--border',
+    text:'--text', textMid:'--text-mid', muted:'--muted', accent:'--accent'
+  };
+  function applyTheme(tokens) {
+    const r = document.documentElement;
+    Object.entries(tokens || {}).forEach(([k, v]) => {
+      const cssVar = TOKEN_MAP[k];
+      if (cssVar && typeof v === 'string') r.style.setProperty(cssVar, v);
+    });
+  }
+  window.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'wasabi:theme') applyTheme(e.data.tokens);
+  });
+})();
+
+/* ─── Helpers ─────────────────────────────────────────── */
+function el(tag, attrs, children) {
+  const n = document.createElement(tag);
+  if (attrs) for (const k in attrs) {
+    if (k === 'class') n.className = attrs[k];
+    else if (k === 'style') n.setAttribute('style', attrs[k]);
+    else if (k.startsWith('data-')) n.setAttribute(k, attrs[k]);
+    else n[k] = attrs[k];
+  }
+  if (children != null) {
+    if (Array.isArray(children)) children.forEach(c => n.appendChild(typeof c === 'string' ? document.createTextNode(c) : c));
+    else if (typeof children === 'string') n.textContent = children;
+    else n.appendChild(children);
+  }
+  return n;
+}
+
+function polar(cx, cy, r, angleDeg) {
+  const a = (angleDeg - 90) * Math.PI / 180;
+  return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+}
+
+/* SVG pie. `slices` is [{label, value, color}]. Outputs a donut-style pie. */
+function renderPie(slices, size) {
+  const cx = size / 2, cy = size / 2;
+  const rOuter = size / 2 - 4;
+  const rInner = rOuter * 0.55;
+  const total = slices.reduce((s, x) => s + x.value, 0);
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
+
+  if (total === 0) {
+    const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    c.setAttribute('cx', cx); c.setAttribute('cy', cy);
+    c.setAttribute('r', rOuter);
+    c.setAttribute('fill', 'transparent');
+    c.setAttribute('stroke', 'var(--border)');
+    c.setAttribute('stroke-width', '2');
+    svg.appendChild(c);
+    return svg;
+  }
+
+  let startAngle = 0;
+  slices.forEach(s => {
+    if (s.value <= 0) return;
+    const sweep = (s.value / total) * 360;
+    const endAngle = startAngle + sweep;
+    const largeArc = sweep > 180 ? 1 : 0;
+
+    const [x1, y1] = polar(cx, cy, rOuter, startAngle);
+    const [x2, y2] = polar(cx, cy, rOuter, endAngle);
+    const [x3, y3] = polar(cx, cy, rInner, endAngle);
+    const [x4, y4] = polar(cx, cy, rInner, startAngle);
+
+    const d = [
+      `M ${x1} ${y1}`,
+      `A ${rOuter} ${rOuter} 0 ${largeArc} 1 ${x2} ${y2}`,
+      `L ${x3} ${y3}`,
+      `A ${rInner} ${rInner} 0 ${largeArc} 0 ${x4} ${y4}`,
+      'Z'
+    ].join(' ');
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', s.color);
+    path.setAttribute('stroke', 'var(--surface)');
+    path.setAttribute('stroke-width', '2');
+    svg.appendChild(path);
+
+    startAngle = endAngle;
+  });
+
+  return svg;
+}
+
+/* ─── Accounts summary ─────────────────────────────────── */
+function renderAccountsSummary() {
+  const grid = document.getElementById('accounts-grid');
+  const totalEl = document.getElementById('accounts-total');
+  const entries = Object.entries(DATA.territories)
+    .sort((a, b) => b[1].totalAccounts - a[1].totalAccounts);
+  const totalAccts   = entries.reduce((s, [, v]) => s + v.totalAccounts, 0);
+  const visitedAccts = entries.reduce((s, [, v]) => s + v.visitedAccounts, 0);
+  const overallPct = totalAccts > 0 ? Math.round(100 * visitedAccts / totalAccts) : 0;
+
+  totalEl.innerHTML = `<strong>${visitedAccts}</strong> of <strong>${totalAccts}</strong> accounts visited &middot; <strong>${overallPct}%</strong> overall coverage &middot; ${DATA.period}`;
+
+  // Hero pie: visited vs unvisited (across all territories)
+  const hero = document.getElementById('coverage-hero');
+  if (hero) {
+    hero.innerHTML = '';
+    const unvisited = totalAccts - visitedAccts;
+    const pieWrap = el('div', { class: 'coverage-pie-wrap' });
+    pieWrap.appendChild(renderPie([
+      { label: 'Visited',   value: visitedAccts, color: 'var(--accent)' },
+      { label: 'Unvisited', value: unvisited,    color: 'var(--raised)' }
+    ], 200));
+    const center = el('div', { class: 'coverage-pie-center' });
+    center.appendChild(el('div', { class: 'coverage-pie-num' }, String(overallPct) + '%'));
+    center.appendChild(el('div', { class: 'coverage-pie-pct' }, 'Visited'));
+    pieWrap.appendChild(center);
+    hero.appendChild(pieWrap);
+
+    const legend = el('div', { class: 'coverage-legend' });
+    const mkRow = (swatch, name, count, pctTxt) => {
+      const row = el('div', { class: 'coverage-legend-row' });
+      row.appendChild(el('div', { class: 'coverage-legend-swatch', style: 'background:' + swatch }));
+      row.appendChild(el('div', { class: 'coverage-legend-name' }, name));
+      row.appendChild(el('div', { class: 'coverage-legend-count' }, String(count)));
+      row.appendChild(el('div', { class: 'coverage-legend-pct' }, pctTxt));
+      return row;
+    };
+    const visPct = totalAccts > 0 ? (100 * visitedAccts / totalAccts).toFixed(1) + '%' : '—';
+    const unvPct = totalAccts > 0 ? (100 * unvisited    / totalAccts).toFixed(1) + '%' : '—';
+    legend.appendChild(mkRow('var(--accent)',                       'Visited accounts',   visitedAccts, visPct));
+    legend.appendChild(mkRow('color-mix(in srgb, var(--text) 12%, var(--raised))', 'Unvisited accounts', unvisited,    unvPct));
+    hero.appendChild(legend);
+  }
+
+  entries.forEach(([name, info]) => {
+    const pct = info.totalAccounts > 0 ? Math.round(100 * info.visitedAccounts / info.totalAccounts) : 0;
+    const cell = el('div', { class: 'accounts-cell' });
+
+    const top = el('div', { class: 'accounts-cell-top' });
+    top.appendChild(el('div', { class: 'accounts-cell-name' }, name));
+    const cnt = el('div', { class: 'accounts-cell-count' });
+    cnt.innerHTML = `<strong>${info.visitedAccounts}</strong> / ${info.totalAccounts}`;
+    top.appendChild(cnt);
+    cell.appendChild(top);
+
+    const bar = el('div', { class: 'accounts-cell-bar' });
+    bar.appendChild(el('div', { class: 'accounts-cell-bar-fill', style: `width:${pct}%` }));
+    cell.appendChild(bar);
+
+    cell.appendChild(el('div', { class: 'accounts-cell-pct' }, pct + '% visited'));
+    grid.appendChild(cell);
+  });
+}
+
+/* ─── Display Prominence section ──────────────────────── */
+function renderProminenceSummary() {
+  const hero = document.getElementById('prominence-hero');
+  const grid = document.getElementById('prominence-grid');
+  const totalEl = document.getElementById('prominence-total');
+  if (!hero || !grid) return;
+
+  // Aggregate overall
+  const ord = ['Highly Visible', 'Somewhat Visible', 'Not Visible'];
+  const colorFor = (lvl) => lvl === 'Highly Visible'  ? 'var(--prom-hi)'
+                          : lvl === 'Somewhat Visible'? 'var(--prom-med)'
+                          : 'var(--prom-low)';
+  const overall = { 'Highly Visible': 0, 'Somewhat Visible': 0, 'Not Visible': 0 };
+  Object.values(DATA.territories).forEach(info => {
+    const p = info.prominenceAccounts || {};
+    ord.forEach(k => { overall[k] += (p[k] || 0); });
+  });
+  const grandTotal = ord.reduce((s,k)=>s+overall[k], 0);
+  const hiOverallPct = grandTotal > 0 ? Math.round(100 * overall['Highly Visible'] / grandTotal) : 0;
+
+  totalEl.innerHTML = `<strong>${grandTotal}</strong> accounts measured &middot; <strong>${hiOverallPct}%</strong> highly visible`;
+
+  // Hero pie
+  hero.innerHTML = '';
+  const pieWrap = el('div', { class: 'coverage-pie-wrap' });
+  pieWrap.appendChild(renderPie(
+    ord.filter(k => overall[k] > 0).map(k => ({ label: k, value: overall[k], color: colorFor(k) })),
+    200
+  ));
+  const center = el('div', { class: 'coverage-pie-center' });
+  center.appendChild(el('div', { class: 'coverage-pie-num' }, String(hiOverallPct) + '%'));
+  center.appendChild(el('div', { class: 'coverage-pie-pct' }, 'Highly Visible'));
+  pieWrap.appendChild(center);
+  hero.appendChild(pieWrap);
+
+  const legend = el('div', { class: 'coverage-legend' });
+  ord.forEach(k => {
+    const n = overall[k] || 0;
+    const pctTxt = grandTotal > 0 ? (100 * n / grandTotal).toFixed(1) + '%' : '—';
+    const row = el('div', { class: 'coverage-legend-row' });
+    row.appendChild(el('div', { class: 'coverage-legend-swatch', style: 'background:' + colorFor(k) }));
+    row.appendChild(el('div', { class: 'coverage-legend-name' }, k));
+    row.appendChild(el('div', { class: 'coverage-legend-count' }, String(n)));
+    row.appendChild(el('div', { class: 'coverage-legend-pct' }, pctTxt));
+    legend.appendChild(row);
+  });
+  hero.appendChild(legend);
+
+  // Per-territory grid — stacked bar of prominence breakdown
+  const entries = Object.entries(DATA.territories)
+    .map(([name, info]) => {
+      const p = info.prominenceAccounts || {};
+      const total = ord.reduce((s,k) => s + (p[k]||0), 0);
+      return [name, info, p, total];
+    })
+    .filter(([,,, total]) => total > 0)
+    .sort((a, b) => {
+      // sort by % Highly Visible desc
+      const ah = (a[2]['Highly Visible'] || 0) / a[3];
+      const bh = (b[2]['Highly Visible'] || 0) / b[3];
+      return bh - ah;
+    });
+
+  entries.forEach(([name, info, p, total]) => {
+    const hi  = p['Highly Visible'] || 0;
+    const med = p['Somewhat Visible'] || 0;
+    const low = p['Not Visible'] || 0;
+    const hiPct = total > 0 ? Math.round(100 * hi / total) : 0;
+
+    const cell = el('div', { class: 'accounts-cell' });
+    const top = el('div', { class: 'accounts-cell-top' });
+    top.appendChild(el('div', { class: 'accounts-cell-name' }, name));
+    const cnt = el('div', { class: 'accounts-cell-count' });
+    cnt.innerHTML = `<strong>${hi}</strong> / ${total}`;
+    top.appendChild(cnt);
+    cell.appendChild(top);
+
+    const stack = el('div', { class: 'prom-stack' });
+    if (hi)  stack.appendChild(el('div', { class: 'prom-stack-seg hi',  style: `width:${100*hi/total}%` }));
+    if (med) stack.appendChild(el('div', { class: 'prom-stack-seg med', style: `width:${100*med/total}%` }));
+    if (low) stack.appendChild(el('div', { class: 'prom-stack-seg low', style: `width:${100*low/total}%` }));
+    cell.appendChild(stack);
+
+    cell.appendChild(el('div', { class: 'accounts-cell-pct' }, hiPct + '% highly visible'));
+    grid.appendChild(cell);
+  });
+}
+
+/* ─── Tabs + per-territory pages ──────────────────────── */
+function renderTabs() {
+  const nav = document.getElementById('market-tabs');
+  nav.innerHTML = '';
+  Object.keys(DATA.territories).forEach((key, i) => {
+    const btn = el('button', { 'data-territory': key }, key);
+    if (i === 0) btn.classList.add('active');
+    btn.onclick = () => showTerritory(key);
+    nav.appendChild(btn);
+  });
+}
+
+function renderTerritoryPage(key) {
+  const info = DATA.territories[key];
+  const page = el('div', { class: 'market-page', id: 'terr-' + cssId(key) });
+  page.setAttribute('hidden', '');
+
+  const pct = info.totalAccounts > 0 ? Math.round(100 * info.visitedAccounts / info.totalAccounts) : 0;
+
+  page.appendChild(el('h2', null, key));
+  const meta = el('div', { class: 'market-meta' });
+  meta.textContent = `${info.visitedAccounts} of ${info.totalAccounts} accounts visited · ${pct}% coverage · ${DATA.period}`;
+  page.appendChild(meta);
+
+  page.appendChild(renderFormsCard(info));
+  page.appendChild(renderMaterialsCard(info));
+  return page;
+}
+
+/* Form-completion bar chart. Each bar = # of distinct accounts that
+   completed that form at least once, as a % of total master accounts. */
+function renderFormsCard(info) {
+  const card = el('div', { class: 'bars-card' });
+  card.appendChild(el('h3', null, 'Form Completion by Account'));
+  card.appendChild(el('div', { class: 'bars-sub' }, 'Number of accounts that completed each non-Universal form during the period, and % of all accounts in this territory.'));
+
+  const entries = Object.entries(info.formAccounts || {}).sort((a, b) => b[1] - a[1]);
+  if (entries.length === 0) {
+    card.appendChild(el('div', { class: 'bars-empty' }, 'No specialized form activity reported for this territory.'));
+    return card;
+  }
+  return renderBarChart(card, entries, info.totalAccounts, name => DATA.formColors[name] || 'var(--muted)');
+}
+
+function renderMaterialsCard(info) {
+  const card = el('div', { class: 'bars-card' });
+  card.appendChild(el('h3', null, 'Merchandising Material in Store'));
+  card.appendChild(el('div', { class: 'bars-sub' }, 'Number of accounts displaying each material type, and % of all accounts in this territory.'));
+
+  const entries = Object.entries(info.materialAccounts || {}).sort((a, b) => b[1] - a[1]);
+  if (entries.length === 0) {
+    card.appendChild(el('div', { class: 'bars-empty' }, 'No merchandising display data reported for this territory.'));
+    return card;
+  }
+  return renderBarChart(card, entries, info.totalAccounts, () => 'var(--purple)');
+}
+
+/* Shared bar chart. `entries` = [[name,count],...]; `denom` = master total. */
+function renderBarChart(card, entries, denom, colorFor) {
+  const bars = el('div', { class: 'bars' });
+  entries.forEach(([name, count]) => {
+    const pct = denom > 0 ? (100 * count / denom) : 0;
+    const row = el('div', { class: 'bar-row' });
+    row.appendChild(el('div', { class: 'bar-label', title: name }, name));
+    const track = el('div', { class: 'bar-track' });
+    const fill = el('div', { class: 'bar-fill', style: `width:${Math.min(pct, 100)}%; background:${colorFor(name)};` });
+    track.appendChild(fill);
+    row.appendChild(track);
+    const cnt = el('div', { class: 'bar-count' });
+    cnt.innerHTML = `<strong>${count}</strong><span style="color:var(--text-mid);font-weight:500;margin-left:6px;">${pct.toFixed(0)}%</span>`;
+    row.appendChild(cnt);
+    bars.appendChild(row);
+  });
+  card.appendChild(bars);
+  return card;
+}
+
+function cssId(s) { return s.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase(); }
+
+function showTerritory(key) {
+  document.querySelectorAll('.market-page').forEach(p => p.setAttribute('hidden', ''));
+  const page = document.getElementById('terr-' + cssId(key));
+  if (page) page.removeAttribute('hidden');
+  document.querySelectorAll('.market-tabs button').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-territory') === key);
+  });
+  try { localStorage.setItem('drops-territory', key); } catch (e) {}
+}
+
+function renderAll() {
+  renderAccountsSummary();
+  renderProminenceSummary();
+  const main = document.getElementById('market-pages');
+  main.innerHTML = '';
+  Object.keys(DATA.territories).forEach(k => main.appendChild(renderTerritoryPage(k)));
+  renderTabs();
+  let saved; try { saved = localStorage.getItem('drops-territory'); } catch (e) {}
+  const first = Object.keys(DATA.territories)[0];
+  showTerritory(saved && DATA.territories[saved] ? saved : first);
+}
+
+document.addEventListener('DOMContentLoaded', renderAll);
+</script>
+</body>
+</html>

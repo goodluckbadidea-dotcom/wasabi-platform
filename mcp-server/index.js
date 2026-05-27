@@ -1167,26 +1167,49 @@ server.tool(
 // ═══════════════════════════════════════════
 // 30. EXTENSIONS (custom-coded report templates)
 // ═══════════════════════════════════════════
-// An "extension" is a hand-coded HTML/CSS/JS template registered in Wasabi.
-// MCP is the primary authoring surface: Claude reads a local .html file in
-// chat (so you can see the contents pass through), then calls this tool with
-// `action: "create"` passing { name, html, data_schema, sample_data }.
+// An "extension" is a hand-coded HTML/CSS/JS template registered in Wasabi as
+// the source of truth. Once registered, ALL iteration happens on the D1 row
+// via this tool — the local HTML mockup is a one-shot bootstrap artifact and
+// should not be re-edited. The mockup file becomes vestigial after bootstrap.
 //
-// The template HTML must contain a `{{DATA}}` placeholder that Wasabi will
-// substitute with the snapshot's JSON DATA at generation time.
+// FOUR FIELDS (read docs/17-extensions.md for the full reference):
+//   - html          : template with {{DATA}} placeholder, substituted per-snapshot
+//   - data_schema   : strict JSON Schema validating snapshot DATA at write time
+//   - definition    : long-form markdown for Claude — glossary, calculations,
+//                     source-document roles, field meanings, gotchas. READ THIS
+//                     at the start of any refresh/refine session so you know
+//                     what each field means and how to shape source data.
+//   - sample_data   : DEV/TEST FIXTURE ONLY. Never used for real snapshots.
+//                     Real data flows: source folder → Claude+MCP parser → snapshot.
 //
-// FLOW:
-//   1. wasabi_extensions create     → register template (one-time per template type)
-//   2. wasabi_extensions list/get   → discover existing templates
-//   3. wasabi_extension_snapshots generate → create dated/slug-named report
-//   4. wasabi_extension_snapshots publish → make report live in Reports DB
+// BOOTSTRAP (once per new report type — user has source data folder open):
+//   1. User shares HTML mockup + source data folder
+//   2. Discuss visual design, describe data shape, troubleshoot
+//   3. Stabilize one mockup
+//   4. wasabi_extensions create { html (with {{DATA}} placeholder), data_schema,
+//      definition (write this carefully — it's your future-session memory) }
+//   5. wasabi_extension_snapshots generate { data: <parsed from source folder> }
+//   After this step the local HTML mockup file is vestigial. Do not re-edit it.
+//
+// REFRESH (recurring — new source data arrives):
+//   1. wasabi_extensions get <slug>             → read data_schema + definition
+//   2. wasabi_extension_snapshots get_data <id> → read previous snapshot's DATA
+//   3. User shares the new source folder
+//   4. Diff old vs. new with the user; parse new data to match data_schema
+//   5. wasabi_extension_snapshots update (same snapshot) OR generate (new slug)
+//   Schema validation happens server-side; bad shapes return 422 with paths.
+//
+// REFINE (visual or logic improvements):
+//   Edit `html`, `data_schema`, or `definition` directly via update action.
+//   Do NOT iterate on the original local mockup. If the schema changes, update
+//   `definition` in the same call so future sessions stay in sync.
 server.tool(
   "wasabi_extensions",
-  "CRUD for custom-coded report templates. An extension is a named, hand-coded HTML+CSS+JS scaffolding with a {{DATA}} placeholder and a JSON Schema describing valid DATA shapes. Use this tool to register, list, update, or remove templates. Authoring is via MCP: pass the file's full HTML contents as a string under `html`. Snapshots (generated reports) are managed via the separate `wasabi_extension_snapshots` tool. Read wasabi://docs/data-model for related schema.",
+  "CRUD for custom-coded report templates. The D1 row is the source of truth — once a template is created, ALL visual/schema/definition edits happen via update here, NOT in any local file. Fields: html (template with {{DATA}}), data_schema (strict JSON Schema — bad data 422s on snapshot write), definition (long markdown for Claude: glossary, calculations, source-doc roles, gotchas; READ this before any refresh), description (short user-facing blurb), sample_data (dev fixture only — never used for real snapshots). Snapshots are managed via wasabi_extension_snapshots. Read wasabi://docs/data-model and docs/17-extensions.md for the full workflow.",
   {
     action: z.enum(["list", "get", "create", "update", "delete"]),
     id: z.string().optional().describe("Extension id or slug (for get/update/delete)"),
-    data: z.string().optional().describe("JSON string of extension fields. For create: { name, slug?, icon?, description?, html, data_schema?, sample_data?, theme_preference? }. For update: any subset of those fields."),
+    data: z.string().optional().describe("JSON string of extension fields. For create: { name, slug?, icon?, description?, definition?, html, data_schema?, sample_data?, theme_preference? }. For update: any subset of those fields. `definition` should be authored at create time and updated whenever the conceptual model changes (new fields, new calculations, new source-doc roles, new gotchas)."),
     status: z.string().optional().describe("Filter by status: active, archived (for list)"),
   },
   async ({ action, id, data: rawData, status }) => {
@@ -1234,7 +1257,7 @@ server.tool(
 //                                   referencing the snapshot
 server.tool(
   "wasabi_extension_snapshots",
-  "CRUD + lifecycle for snapshots (concrete generated reports). To generate: action='generate', extension_id (or slug), data={...}, slug='q2-handoff'. DATA is validated against the template's JSON Schema. After generation, the snapshot is Draft; call 'publish' to make it live. Use 'get_data' to read the structured DATA from any snapshot (lets Claude compose new reports from old data). Use 'propose_links' suggestions paired with 'add_link' to weave the snapshot into Wasabi's neuron graph or attach comments to related records.",
+  "CRUD + lifecycle for snapshots (concrete generated reports). Before generating or updating, ALWAYS first: (1) wasabi_extensions get <slug> to read data_schema + definition, (2) for refreshes, wasabi_extension_snapshots get_data <previous-id> to read what shape last week's data took. DATA is validated server-side against the template's data_schema — bad shapes 422 with a `validation_errors` array listing each failing path. After generation a snapshot is Draft; call 'publish' to make it live in the Reports DB. Update re-renders the snapshot's R2 HTML using the CURRENT template (so fixing a template bug then updating any snapshot picks up the fix). Use 'get_data' to read DATA from any snapshot (for composing new reports from old data, or diffing week-over-week).",
   {
     action: z.enum([
       "list", "get", "generate", "update", "delete",
