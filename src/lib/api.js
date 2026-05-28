@@ -302,6 +302,12 @@ export async function searchRecords(query, { limit } = {}) {
   return apiFetch(`/search/records?${params.toString()}`, { method: "GET" });
 }
 
+export async function searchNeurons(query, { limit } = {}) {
+  const params = new URLSearchParams({ q: query });
+  if (limit) params.set("limit", String(limit));
+  return apiFetch(`/search/neurons?${params.toString()}`, { method: "GET" });
+}
+
 export async function createRows(tableId, rows, { pinToken } = {}) {
   return apiFetch(`/tables/${tableId}/rows`, {
     method: "POST",

@@ -1,20 +1,23 @@
 // ─── Search Modal ───
 // Centered modal opened from the bottom bar's search button.
-// Searches pages by name and database records by title.
-// Replaces the inline sidebar search field.
+// Searches pages by name, database records by title, and neurons (topics)
+// by name + member labels. Replaces the inline sidebar search field.
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { searchRecords } from "../lib/api.js";
+import { searchRecords, searchNeurons } from "../lib/api.js";
 import { IconSearch } from "../design/icons.jsx";
+import NeuronTopicDialog from "./NeuronTopicDialog.jsx";
 
 export default function SearchModal({ open, onClose }) {
   const { pages, setActiveRightPane } = usePlatform();
   const [query, setQuery] = useState("");
   const [dbResults, setDbResults] = useState([]); // { pageId, pageName, rowId, title, tableId }
+  const [topicResults, setTopicResults] = useState([]); // { id, name, memberCount, members }
   const [searching, setSearching] = useState(false);
+  const [openTopic, setOpenTopic] = useState(null); // a neuron object when its dialog is open
   const inputRef = useRef(null);
   const dbSearchTimer = useRef(null);
 
@@ -32,17 +35,24 @@ export default function SearchModal({ open, onClose }) {
     if (!open) {
       setQuery("");
       setDbResults([]);
+      setTopicResults([]);
       setSearching(false);
+      setOpenTopic(null);
     }
   }, [open]);
 
-  // Close on Escape
+  // Close on Escape — but only when no topic dialog is open. The dialog
+  // captures ESC first (capture-phase listener) so this fires for the
+  // outer modal only.
   useEffect(() => {
     if (!open) return;
-    const handler = (e) => { if (e.key === "Escape") onClose?.(); };
+    const handler = (e) => {
+      if (openTopic) return;
+      if (e.key === "Escape") onClose?.();
+    };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [open, onClose]);
+  }, [open, onClose, openTopic]);
 
   // ── Page name results (synchronous) ──
   const pageResults = useMemo(() => {
@@ -53,14 +63,14 @@ export default function SearchModal({ open, onClose }) {
       .slice(0, 10);
   }, [query, pages]);
 
-  // ── Debounced database record search ──
-  // Delegates to the worker's /search/records endpoint, which resolves each
-  // table's title cell from the schema and matches server-side. No per-table
-  // round-trips, no 500-row cap, no fallback-cell guessing.
+  // ── Debounced record + neuron search ──
+  // Runs both queries in parallel against the worker. Each table's title
+  // cell is resolved schema-side; neurons match name OR member labels.
   useEffect(() => {
     if (dbSearchTimer.current) clearTimeout(dbSearchTimer.current);
     if (!query || query.length < 2) {
       setDbResults([]);
+      setTopicResults([]);
       setSearching(false);
       return;
     }
@@ -68,12 +78,19 @@ export default function SearchModal({ open, onClose }) {
     let cancelled = false;
     dbSearchTimer.current = setTimeout(async () => {
       try {
-        const resp = await searchRecords(query, { limit: 50 });
+        const [recs, neus] = await Promise.all([
+          searchRecords(query, { limit: 50 }).catch((e) => {
+            console.error("[SearchModal] record search error:", e);
+            return { results: [] };
+          }),
+          searchNeurons(query, { limit: 20 }).catch((e) => {
+            console.error("[SearchModal] neuron search error:", e);
+            return { results: [] };
+          }),
+        ]);
         if (cancelled) return;
-        setDbResults(resp?.results || []);
-      } catch (err) {
-        console.error("[SearchModal] DB search error:", err);
-        if (!cancelled) setDbResults([]);
+        setDbResults(recs?.results || []);
+        setTopicResults(neus?.results || []);
       } finally {
         if (!cancelled) setSearching(false);
       }
@@ -91,12 +108,19 @@ export default function SearchModal({ open, onClose }) {
     onClose?.();
   };
 
+  const handleTopicMemberNavigate = (member) => {
+    if (member?.targetPageId) setActiveRightPane(member.targetPageId);
+    setOpenTopic(null);
+    onClose?.();
+  };
+
   const inactiveColor = C.darkText + "BB";
   const noResults =
     query.length >= 2 &&
     !searching &&
     pageResults.length === 0 &&
-    dbResults.length === 0;
+    dbResults.length === 0 &&
+    topicResults.length === 0;
 
   return (
     <div
@@ -144,7 +168,7 @@ export default function SearchModal({ open, onClose }) {
           <input
             ref={inputRef}
             type="text"
-            placeholder="Search pages and records..."
+            placeholder="Search pages, records, and topics..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             style={{
@@ -246,8 +270,38 @@ export default function SearchModal({ open, onClose }) {
             </>
           )}
 
+          {/* Topic (neuron) matches */}
+          {topicResults.length > 0 && (
+            <>
+              <div style={sectionHeaderStyle(inactiveColor)}>Topics</div>
+              {topicResults.map((t) => {
+                const previewLabels = (t.members || []).slice(0, 3).map((m) => m.label).filter(Boolean);
+                const overflow = Math.max(0, (t.memberCount || 0) - previewLabels.length);
+                const previewText = previewLabels.length > 0
+                  ? `${previewLabels.join(", ")}${overflow > 0 ? `, +${overflow} more` : ""}`
+                  : `${t.memberCount || 0} connection${(t.memberCount || 0) === 1 ? "" : "s"}`;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => setOpenTopic(t)}
+                    style={{ ...resultRowStyle(), flexDirection: "column", alignItems: "flex-start", gap: 2 }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <span style={{ fontSize: 13, color: C.darkText, fontFamily: FONT, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
+                      {t.name}
+                    </span>
+                    <span style={{ fontSize: 11, color: inactiveColor, fontFamily: FONT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
+                      {previewText}
+                    </span>
+                  </button>
+                );
+              })}
+            </>
+          )}
+
           {/* Searching */}
-          {searching && pageResults.length === 0 && dbResults.length === 0 && (
+          {searching && pageResults.length === 0 && dbResults.length === 0 && topicResults.length === 0 && (
             <div style={{ fontSize: 12, color: inactiveColor, fontFamily: FONT, textAlign: "center", padding: "20px 0" }}>
               Searching...
             </div>
@@ -261,6 +315,13 @@ export default function SearchModal({ open, onClose }) {
           )}
         </div>
       </div>
+
+      <NeuronTopicDialog
+        neuron={openTopic}
+        open={!!openTopic}
+        onClose={() => setOpenTopic(null)}
+        onNavigate={handleTopicMemberNavigate}
+      />
     </div>
   );
 }
