@@ -2,10 +2,11 @@
 
 **Status:** In development. Feature wired end-to-end and deployed; the
 authoring workflow and parse rules in this doc are canonical as of
-2026-05-22.
+2026-05-27.
 
 **See also:** `memory/project_extensions_feature.md` for current
-inventory-production-v2 state + cumulative gotchas.
+inventory-production-v2 state, complete feature spec of the live report,
+and cumulative gotchas (25+ entries).
 
 ## What this is
 
@@ -369,6 +370,30 @@ standard pattern documented in `docs/06-deployment.md`:
 
 ---
 
+## Live template feature spec (inventory-production-v2)
+
+Beyond the bootstrap workflow, the live `inventory-production-v2` template
+has substantial domain-specific logic. Documented in full in
+`memory/project_extensions_feature.md` §5; highlights:
+
+- **Multi-pool stockout analysis** — per-SKU sim tracks tins · compliance
+  labels · masterpacks (in tin-equivalents). Cover = min across pools.
+  Binding pool named in cells.
+- **Timeline-aware** — walks forward at target rate, adds shipments on
+  their actual arrival dates, reports first stockout AND first recovery
+  (with gap days). "No recovery scheduled" = new-order signal.
+- **Card-style row UX** — each SKU is a click-to-expand card. Detail
+  panel shows per-pool inventory + cover + suggested action.
+- **Suggested actions** are production-lead-time based (~3mo first batch,
+  ~5mo full PO, ~2.5mo direct), no shipping mode recommendations.
+- **Pill filter** (Component Balance pills also filter Stockout Risk) —
+  single SKU pill auto-expands the row; "All SKUs" force-collapses all.
+- **Market tab order** is controlled by a `MARKET_ORDER` constant in the
+  template (current: `OR · CA · NY · NV · HEMP`).
+
+The `markets[*].sellThrough` schema field is required for any market that
+should render the Stockout Risk section. Shape: `{[sku]: {avg, target}}`.
+
 ## Open work
 
 Tracked in `memory/project_extensions_feature.md` § "What's open for next
@@ -379,8 +404,6 @@ session." Highlights:
 - **Tighten the `data_schema`** to constrain `shipments[items]` shape —
   required fields, enums for `method` / `status` / `air_class` /
   `ocean_class`. Until done, bad shipment shapes pass server validation.
-- **Repo housekeeping** — move bootstrap HTML files to `mockups/` directory,
-  delete 20+ backup files in repo root. Awaiting explicit user approval.
 - **`wasabi_extensions preview` action** (render template + sample_data
   without persisting a snapshot) is a planned but not-yet-implemented
   developer convenience.
