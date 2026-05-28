@@ -241,11 +241,16 @@ export default function SyncPanel({ tableId }) {
   }, [tableId]);
 
   // ── Disconnect ──
+  // Calls /pages/:id/disconnect (handleDisconnect) which converts the page
+  // from linked_notion → database, removes databaseIds, and clears Notion
+  // metadata from rows. The older /sync/:id DELETE only removed the
+  // sync_configs row and left page_type as linked_notion, which kept the
+  // Notion Sync panel visible forever — see the Vendor CRM regression.
   const handleDisconnect = useCallback(async () => {
     try {
-      await api.deleteSync(tableId);
+      await api.disconnectPage(tableId);
       setSyncConfig(null);
-      setStatusMsg("Sync disconnected");
+      setStatusMsg("Sync disconnected. Page is now a native database.");
     } catch (err) {
       setError(err.message || "Failed to disconnect");
     }
