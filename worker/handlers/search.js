@@ -89,22 +89,26 @@ export async function handleSearchRecords(env, url, jsonResponse) {
     for (const c of candidates) {
       if (results.length >= limit) break;
       const remaining = limit - results.length;
-      const coalesce = `COALESCE(${c.paths.map(() => "json_extract(cells, ?)").join(", ")})`;
+      // SQLite COALESCE requires ≥2 args, so for single-path tables fall
+      // back to a plain json_extract.
+      const titleExpr = c.paths.length === 1
+        ? "json_extract(cells, ?)"
+        : `COALESCE(${c.paths.map(() => "json_extract(cells, ?)").join(", ")})`;
       try {
         const rowsRes = await env.DB.prepare(
-          `SELECT id, ${coalesce} AS title, updated_at
+          `SELECT id, ${titleExpr} AS title, updated_at
              FROM table_rows
             WHERE table_id = ?
               AND archived = 0
-              AND ${coalesce} IS NOT NULL
-              AND LOWER(${coalesce}) LIKE ?
+              AND ${titleExpr} IS NOT NULL
+              AND LOWER(${titleExpr}) LIKE ?
             ORDER BY updated_at DESC
             LIMIT ${Math.max(1, Math.min(remaining, 200))}`
         ).bind(
-          ...c.paths,            // SELECT COALESCE
+          ...c.paths,            // SELECT
           c.id,                  // table_id
-          ...c.paths,            // WHERE IS NOT NULL COALESCE
-          ...c.paths,            // WHERE LIKE COALESCE
+          ...c.paths,            // WHERE IS NOT NULL
+          ...c.paths,            // WHERE LIKE
           pattern,
         ).all();
 
@@ -119,8 +123,10 @@ export async function handleSearchRecords(env, url, jsonResponse) {
             updatedAt: r.updated_at,
           });
         }
-      } catch {
-        // Skip tables whose schema or rows break the query — keep going.
+      } catch (err) {
+        // Log but don't fail the whole search — one broken table shouldn't
+        // sink the rest. Surfacing the error helps diagnose next time.
+        console.error(`[search/records] table ${c.id} (${c.name}) failed:`, err.message);
       }
     }
 
