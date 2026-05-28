@@ -5,6 +5,10 @@
 // vary by table origin: Notion-synced tables key cells by name, native
 // D1 tables key by id) and runs SQL LIKE on COALESCE(json_extract...).
 // Server-side. No 500-row cap. No fallback-cell guessing.
+//
+// When the LIKE pass returns < FUZZY_EXACT_THRESHOLD results, a second
+// pass scans up to FUZZY_PER_TABLE_LIMIT rows per table and ranks by
+// normalized Levenshtein similarity. Same idea for neuron search.
 
 const RECORD_PAGE_TYPES = new Set([
   "database",
@@ -12,6 +16,61 @@ const RECORD_PAGE_TYPES = new Set([
   "linked_monday",
   "linked_sheet",
 ]);
+
+const FUZZY_THRESHOLD = 0.7;
+const FUZZY_MIN_QUERY_LENGTH = 3;
+const FUZZY_EXACT_THRESHOLD = 5;       // exact-match count below which fuzzy fires
+const FUZZY_PER_TABLE_LIMIT = 500;     // candidates pulled per table for fuzzy
+const FUZZY_RESULT_CAP = 25;           // max fuzzy results merged into a search
+
+function normalizeForFuzzy(s) {
+  return String(s || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function levenshtein(a, b) {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const m = a.length, n = b.length;
+  let prev = new Array(n + 1);
+  let curr = new Array(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
+      curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[n];
+}
+
+function strSimilarity(a, b) {
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return 1;
+  return 1 - levenshtein(a, b) / maxLen;
+}
+
+// Best similarity between query and a candidate string. Tries the full
+// normalized candidate plus each whitespace-delimited token; returns the
+// max so "treform" can match "1st Run Tins (Treeform)" via the "treeform"
+// token even though the full string is far off.
+function fuzzySimilarity(normQuery, candidate) {
+  const c = normalizeForFuzzy(candidate);
+  if (!normQuery || !c) return 0;
+  let best = strSimilarity(normQuery, c);
+  for (const token of c.split(" ")) {
+    if (!token) continue;
+    const s = strSimilarity(normQuery, token);
+    if (s > best) best = s;
+  }
+  return best;
+}
 
 // Build the list of JSON paths to probe as the row's "title". Each title
 // column contributes both its id and its name, since either may be used
@@ -85,15 +144,17 @@ export async function handleSearchRecords(env, url, jsonResponse) {
 
     const pattern = `%${query.toLowerCase()}%`;
     const results = [];
+    const seen = new Set();  // page+row keys we've already returned (exact pass)
 
+    const buildTitleExpr = (paths) => paths.length === 1
+      ? "json_extract(cells, ?)"
+      : `COALESCE(${paths.map(() => "json_extract(cells, ?)").join(", ")})`;
+
+    // ── Pass 1: exact substring (SQL LIKE) ──
     for (const c of candidates) {
       if (results.length >= limit) break;
       const remaining = limit - results.length;
-      // SQLite COALESCE requires ≥2 args, so for single-path tables fall
-      // back to a plain json_extract.
-      const titleExpr = c.paths.length === 1
-        ? "json_extract(cells, ?)"
-        : `COALESCE(${c.paths.map(() => "json_extract(cells, ?)").join(", ")})`;
+      const titleExpr = buildTitleExpr(c.paths);
       try {
         const rowsRes = await env.DB.prepare(
           `SELECT id, ${titleExpr} AS title, updated_at
@@ -113,6 +174,9 @@ export async function handleSearchRecords(env, url, jsonResponse) {
         ).all();
 
         for (const r of rowsRes.results || []) {
+          const key = `${c.id}:${r.id}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
           results.push({
             pageId: c.id,
             pageName: c.name,
@@ -124,9 +188,67 @@ export async function handleSearchRecords(env, url, jsonResponse) {
           });
         }
       } catch (err) {
-        // Log but don't fail the whole search — one broken table shouldn't
-        // sink the rest. Surfacing the error helps diagnose next time.
-        console.error(`[search/records] table ${c.id} (${c.name}) failed:`, err.message);
+        console.error(`[search/records] table ${c.id} (${c.name}) failed (exact):`, err.message);
+      }
+    }
+
+    // ── Pass 2: fuzzy fallback ──
+    // Only fires when the exact pass came back light AND the query is long
+    // enough to make fuzzy matches meaningful. Pulls a broader candidate
+    // pool per table and ranks by Levenshtein similarity.
+    const normQuery = normalizeForFuzzy(query);
+    if (
+      normQuery.length >= FUZZY_MIN_QUERY_LENGTH &&
+      results.length < FUZZY_EXACT_THRESHOLD
+    ) {
+      const fuzzyHits = [];
+      for (const c of candidates) {
+        const titleExpr = buildTitleExpr(c.paths);
+        try {
+          const rowsRes = await env.DB.prepare(
+            `SELECT id, ${titleExpr} AS title, updated_at
+               FROM table_rows
+              WHERE table_id = ?
+                AND archived = 0
+                AND ${titleExpr} IS NOT NULL
+              ORDER BY updated_at DESC
+              LIMIT ${FUZZY_PER_TABLE_LIMIT}`
+          ).bind(
+            ...c.paths,            // SELECT
+            c.id,                  // table_id
+            ...c.paths,            // WHERE IS NOT NULL
+          ).all();
+
+          for (const r of rowsRes.results || []) {
+            const key = `${c.id}:${r.id}`;
+            if (seen.has(key)) continue;
+            const titleStr = String(r.title || "");
+            const score = fuzzySimilarity(normQuery, titleStr);
+            if (score >= FUZZY_THRESHOLD) {
+              fuzzyHits.push({
+                pageId: c.id,
+                pageName: c.name,
+                pageIcon: c.icon,
+                rowId: r.id,
+                title: titleStr,
+                tableId: c.id,
+                updatedAt: r.updated_at,
+                fuzzy: true,
+                fuzzyScore: score,
+              });
+            }
+          }
+        } catch (err) {
+          console.error(`[search/records] table ${c.id} (${c.name}) failed (fuzzy):`, err.message);
+        }
+      }
+      fuzzyHits.sort((a, b) => b.fuzzyScore - a.fuzzyScore);
+      for (const h of fuzzyHits.slice(0, FUZZY_RESULT_CAP)) {
+        if (results.length >= limit) break;
+        const key = `${h.pageId}:${h.rowId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        results.push(h);
       }
     }
 
@@ -150,8 +272,8 @@ export async function handleSearchNeurons(env, url, jsonResponse) {
   const pattern = `%${query.toLowerCase()}%`;
 
   try {
-    // Match neurons by name OR by containing a node whose label matches.
-    const neuronsRes = await env.DB.prepare(
+    // ── Exact pass: name LIKE OR member label LIKE ──
+    const exactRes = await env.DB.prepare(
       `SELECT id, name, updated_at
          FROM neurons
         WHERE LOWER(name) LIKE ?
@@ -160,7 +282,51 @@ export async function handleSearchNeurons(env, url, jsonResponse) {
         LIMIT ${Math.max(1, limit)}`
     ).bind(pattern, pattern).all();
 
-    const neurons = neuronsRes.results || [];
+    const neurons = exactRes.results || [];
+    const exactIds = new Set(neurons.map((n) => n.id));
+
+    // ── Fuzzy fallback: name OR any member label within Levenshtein threshold ──
+    // Neurons are small enough to scan in full; we fetch every neuron + the
+    // node labels and rank by best similarity per neuron.
+    const normQuery = normalizeForFuzzy(query);
+    if (
+      normQuery.length >= FUZZY_MIN_QUERY_LENGTH &&
+      neurons.length < FUZZY_EXACT_THRESHOLD
+    ) {
+      try {
+        const [allNeuronsRes, allLabelsRes] = await Promise.all([
+          env.DB.prepare("SELECT id, name, updated_at FROM neurons").all(),
+          env.DB.prepare("SELECT neuron_id, node_label FROM neuron_nodes WHERE node_label != ''").all(),
+        ]);
+        const labelsByNeuron = new Map();
+        for (const row of allLabelsRes.results || []) {
+          const list = labelsByNeuron.get(row.neuron_id) || [];
+          list.push(row.node_label);
+          labelsByNeuron.set(row.neuron_id, list);
+        }
+        const fuzzyHits = [];
+        for (const n of allNeuronsRes.results || []) {
+          if (exactIds.has(n.id)) continue;
+          let best = fuzzySimilarity(normQuery, n.name);
+          for (const label of labelsByNeuron.get(n.id) || []) {
+            const s = fuzzySimilarity(normQuery, label);
+            if (s > best) best = s;
+          }
+          if (best >= FUZZY_THRESHOLD) {
+            fuzzyHits.push({ ...n, _score: best });
+          }
+        }
+        fuzzyHits.sort((a, b) => b._score - a._score);
+        for (const h of fuzzyHits.slice(0, FUZZY_RESULT_CAP)) {
+          if (neurons.length >= limit) break;
+          neurons.push({ id: h.id, name: h.name, updated_at: h.updated_at });
+          exactIds.add(h.id);
+        }
+      } catch (err) {
+        console.error("[search/neurons] fuzzy pass failed:", err.message);
+      }
+    }
+
     if (neurons.length === 0) return jsonResponse({ results: [] });
 
     // All members for the matched neurons in one shot.

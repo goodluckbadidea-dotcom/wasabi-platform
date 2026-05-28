@@ -8,6 +8,7 @@ import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { searchRecords, searchNeurons } from "../lib/api.js";
+import { fuzzySimilarity, normalizeForFuzzy, FUZZY_THRESHOLD, FUZZY_MIN_QUERY_LENGTH } from "../lib/fuzzy.js";
 import { IconSearch } from "../design/icons.jsx";
 import NeuronTopicDialog from "./NeuronTopicDialog.jsx";
 
@@ -55,12 +56,28 @@ export default function SearchModal({ open, onClose }) {
   }, [open, onClose, openTopic]);
 
   // ── Page name results (synchronous) ──
+  // Exact substring first; if that comes back light AND the query is long
+  // enough, supplement with fuzzy matches sorted by similarity. Pages are
+  // already in memory so this stays cheap.
   const pageResults = useMemo(() => {
     if (!query || query.length < 1) return [];
     const q = query.toLowerCase();
-    return pages
-      .filter((p) => !p._systemInternal && p.name?.toLowerCase().includes(q))
-      .slice(0, 10);
+    const visible = pages.filter((p) => !p._systemInternal);
+    const exact = visible.filter((p) => p.name?.toLowerCase().includes(q));
+    const exactIds = new Set(exact.map((p) => p.id));
+
+    const normQuery = normalizeForFuzzy(query);
+    if (exact.length >= 5 || normQuery.length < FUZZY_MIN_QUERY_LENGTH) {
+      return exact.slice(0, 10);
+    }
+    const fuzzyHits = [];
+    for (const p of visible) {
+      if (exactIds.has(p.id)) continue;
+      const score = fuzzySimilarity(normQuery, p.name || "");
+      if (score >= FUZZY_THRESHOLD) fuzzyHits.push({ page: p, score });
+    }
+    fuzzyHits.sort((a, b) => b.score - a.score);
+    return [...exact, ...fuzzyHits.map((h) => h.page)].slice(0, 10);
   }, [query, pages]);
 
   // ── Debounced record + neuron search ──
