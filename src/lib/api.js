@@ -296,6 +296,12 @@ export async function listRows(tableId, { limit, offset, archived, topLevelOnly 
   return apiFetch(`/tables/${tableId}/rows${qs ? `?${qs}` : ""}`, { method: "GET" });
 }
 
+export async function searchRecords(query, { limit } = {}) {
+  const params = new URLSearchParams({ q: query });
+  if (limit) params.set("limit", String(limit));
+  return apiFetch(`/search/records?${params.toString()}`, { method: "GET" });
+}
+
 export async function createRows(tableId, rows, { pinToken } = {}) {
   return apiFetch(`/tables/${tableId}/rows`, {
     method: "POST",

@@ -7,7 +7,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
-import { listRows } from "../lib/api.js";
+import { searchRecords } from "../lib/api.js";
 import { IconSearch } from "../design/icons.jsx";
 
 export default function SearchModal({ open, onClose }) {
@@ -54,6 +54,9 @@ export default function SearchModal({ open, onClose }) {
   }, [query, pages]);
 
   // ── Debounced database record search ──
+  // Delegates to the worker's /search/records endpoint, which resolves each
+  // table's title cell from the schema and matches server-side. No per-table
+  // round-trips, no 500-row cap, no fallback-cell guessing.
   useEffect(() => {
     if (dbSearchTimer.current) clearTimeout(dbSearchTimer.current);
     if (!query || query.length < 2) {
@@ -62,50 +65,24 @@ export default function SearchModal({ open, onClose }) {
       return;
     }
     setSearching(true);
+    let cancelled = false;
     dbSearchTimer.current = setTimeout(async () => {
       try {
-        const q = query.toLowerCase();
-        const dbPages = pages.filter((p) => {
-          const pt = p.page_type || p.pageType || p.type;
-          return !p._systemInternal && (p.databaseIds?.length > 0 ||
-            ["database", "linked_notion", "linked_monday", "linked_sheet"].includes(pt));
-        });
-        const results = [];
-        const seen = new Set();
-        for (const page of dbPages) {
-          const tableIds = [...(page.databaseIds || [])];
-          const pt = page.page_type || page.pageType || page.type;
-          if (["database", "linked_sheet", "linked_monday", "linked_notion"].includes(pt) && page.id && !tableIds.includes(page.id)) {
-            tableIds.push(page.id);
-          }
-          for (const tableId of tableIds) {
-            try {
-              const resp = await listRows(tableId, { limit: 500 });
-              const rows = resp?.rows || resp || [];
-              for (const row of rows) {
-                const title = row.title || row.cells?.Name || row.cells?.Title || row.cells?.name || row.cells?.title ||
-                  (row.cells ? Object.values(row.cells).find((v) => typeof v === "string" && v.length > 0) : null);
-                if (title && typeof title === "string" && title.toLowerCase().includes(q)) {
-                  const key = `${tableId}-${row.id}`;
-                  if (!seen.has(key)) {
-                    seen.add(key);
-                    results.push({ pageId: page.id, pageName: page.name || "Untitled", rowId: row.id, title, tableId });
-                  }
-                }
-              }
-            } catch { /* page-level access errors are non-fatal */ }
-          }
-          if (results.length >= 25) break;
-        }
-        setDbResults(results.slice(0, 25));
+        const resp = await searchRecords(query, { limit: 50 });
+        if (cancelled) return;
+        setDbResults(resp?.results || []);
       } catch (err) {
         console.error("[SearchModal] DB search error:", err);
+        if (!cancelled) setDbResults([]);
       } finally {
-        setSearching(false);
+        if (!cancelled) setSearching(false);
       }
-    }, 350);
-    return () => { if (dbSearchTimer.current) clearTimeout(dbSearchTimer.current); };
-  }, [query, pages]);
+    }, 250);
+    return () => {
+      cancelled = true;
+      if (dbSearchTimer.current) clearTimeout(dbSearchTimer.current);
+    };
+  }, [query]);
 
   if (!open) return null;
 

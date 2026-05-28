@@ -472,19 +472,27 @@ server.tool(
         if (Array.isArray(kb) && kb.length) results.knowledge_base = kb.slice(0, lim);
       }
 
-      // Search across all table rows
+      // Search across all table rows via the worker's schema-aware endpoint.
+      // Server resolves each table's title column from its schema and runs
+      // SQL LIKE — no client-side filtering, no 10-page slice.
       if (s === "all" || s === "tables") {
-        const pages = await wasabiFetch("/pages").catch(() => []);
-        const tables = (Array.isArray(pages) ? pages : []).filter((p) => p.id);
-        const tableResults = [];
-        for (const page of tables.slice(0, 10)) {
-          try {
-            const rows = await wasabiFetch(`/tables/${page.id}/rows?limit=${lim}&search=${encodeURIComponent(query)}`);
-            const rowArr = rows?.rows || (Array.isArray(rows) ? rows : []);
-            if (rowArr.length) tableResults.push({ page_id: page.id, page_name: page.name, rows: rowArr });
-          } catch { /* skip tables that error */ }
-        }
-        if (tableResults.length) results.table_rows = tableResults;
+        try {
+          const r = await wasabiFetch(`/search/records?q=${encodeURIComponent(query)}&limit=${lim * 5}`);
+          const matches = r?.results || [];
+          if (matches.length) {
+            const grouped = new Map();
+            for (const m of matches) {
+              if (!grouped.has(m.pageId)) {
+                grouped.set(m.pageId, { page_id: m.pageId, page_name: m.pageName, rows: [] });
+              }
+              const g = grouped.get(m.pageId);
+              if (g.rows.length < lim) {
+                g.rows.push({ id: m.rowId, title: m.title, updated_at: m.updatedAt });
+              }
+            }
+            results.table_rows = Array.from(grouped.values());
+          }
+        } catch { /* search endpoint failure shouldn't break other scopes */ }
       }
 
       // Search extension templates by name/description

@@ -30,6 +30,7 @@ import { runAutomationTick, checkAutomationTriggers, runNeuronPruneTick } from '
 import { runSyncFlushTick, handleSyncConfigure, handleSyncPush, handleSyncPull, handleSyncStatus, handleSyncDelete, handleDisconnect, handleSyncBackup, handleSyncBootstrap, handleSyncFlush, getNotionKeyFromDB, invalidateSummaryCache } from './worker/handlers/notion-sync.js';
 import { handleListPages, handleCreatePage, handleGetSummaryCache, handleSetSummaryCache, handleGetPage, handleUpdatePage, handleReorderPages, handleDeletePage } from './worker/handlers/pages.js';
 import { handleGetSchema, handleUpdateSchema, handleListRows, handleCreateRows, handleUpdateRow, handleDeleteRow, handleQueryTable } from './worker/handlers/tables.js';
+import { handleSearchRecords } from './worker/handlers/search.js';
 import { handleListRelationships, handleCreateRelationship, handleDeleteRelationship, handleRebuildRelationships } from './worker/handlers/relationships.js';
 import { emitProjectedEdge, deleteProjectedEdge, deleteAllProjectedEdgesByTarget, refToFieldId, mapNeuronNodeTypeToEntityType, resolveRecordPageId } from './worker/handlers/relationshipProjections.js';
 import { handleHealth, handleInit, handleFactoryReset } from './worker/handlers/init.js';
@@ -992,6 +993,11 @@ export default {
       if (path === "/d1/kb/search" && request.method === "POST") {
         const body = await request.json();
         return await handleSearchKB(env, body, jsonResponse);
+      }
+
+      // ─── Cross-table record search (bottom-bar + MCP) ───
+      if (path === "/search/records" && request.method === "GET") {
+        return await handleSearchRecords(env, url, jsonResponse);
       }
 
       // ─── Custom Functions CRUD ───
