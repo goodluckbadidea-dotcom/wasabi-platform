@@ -113,6 +113,11 @@ async function handleUpdateSchema(env, id, body, jsonResponse) {
 
 // ─── Table Row Handlers ───
 
+// Hard cap on nesting depth. Depth 0 = top-level, 1 = child, 2 = grandchild.
+// Mirrors MAX_DEPTH in src/lib/useTreeData.js so the UI and backend never
+// disagree about what's renderable.
+const MAX_NEST_DEPTH = 2;
+
 async function checkCircularReference(db, tableId, rowId, proposedParentId) {
   let currentId = proposedParentId;
   const visited = new Set();
@@ -126,6 +131,44 @@ async function checkCircularReference(db, tableId, rowId, proposedParentId) {
     currentId = row?.parent_row_id;
   }
   return false;
+}
+
+// Returns the depth of a row by walking up parent_row_id pointers.
+// Root rows return 0, children of root return 1, grandchildren return 2.
+async function getRowDepth(db, tableId, rowId) {
+  let currentId = rowId;
+  let depth = 0;
+  const visited = new Set();
+  while (currentId) {
+    if (visited.has(currentId)) break; // cycle safety
+    visited.add(currentId);
+    const row = await db.prepare(
+      "SELECT parent_row_id FROM table_rows WHERE id = ? AND table_id = ?"
+    ).bind(currentId, tableId).first();
+    if (!row?.parent_row_id) break;
+    currentId = row.parent_row_id;
+    depth++;
+    if (depth > MAX_NEST_DEPTH + 2) break; // hard ceiling so a corrupted chain can't spin
+  }
+  return depth;
+}
+
+// Returns the deepest non-archived descendant offset below `rowId`.
+// 0 if the row has no children. Early-exits once the depth exceeds the cap.
+async function getSubtreeDepth(db, tableId, rowId) {
+  let frontier = [rowId];
+  let depth = 0;
+  while (frontier.length > 0) {
+    const placeholders = frontier.map(() => "?").join(",");
+    const next = await db.prepare(
+      `SELECT id FROM table_rows WHERE parent_row_id IN (${placeholders}) AND table_id = ? AND archived = 0`
+    ).bind(...frontier, tableId).all();
+    if (!next.results || next.results.length === 0) break;
+    depth++;
+    if (depth > MAX_NEST_DEPTH) break; // early-out — anything past cap is a reject anyway
+    frontier = next.results.map((r) => r.id);
+  }
+  return depth;
 }
 
 async function handleListRows(env, tableId, url, jsonResponse) {
@@ -275,6 +318,17 @@ async function handleUpdateRow(env, tableId, rowId, body, user, jsonResponse) {
       const isCircular = await checkCircularReference(env.DB, tableId, rowId, body.parent_row_id);
       if (isCircular) {
         return jsonResponse({ _error: "Circular reference: this record is an ancestor of the target parent" }, 400);
+      }
+
+      // ── Depth cap: refuse moves that would push any row past MAX_NEST_DEPTH.
+      // depth(newParent) + 1 + subtreeDepthBelow(rowId) ≤ MAX_NEST_DEPTH.
+      const parentDepth = await getRowDepth(env.DB, tableId, body.parent_row_id);
+      const subDepth = await getSubtreeDepth(env.DB, tableId, rowId);
+      if (parentDepth + 1 + subDepth > MAX_NEST_DEPTH) {
+        return jsonResponse({
+          _error: `Maximum ${MAX_NEST_DEPTH + 1} levels of nesting`,
+          code: "DEPTH_CAP_EXCEEDED",
+        }, 400);
       }
     }
 

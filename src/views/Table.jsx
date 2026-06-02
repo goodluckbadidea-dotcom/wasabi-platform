@@ -20,7 +20,7 @@ import NewRecordModal from "./NewRecordModal.jsx";
 import { useLinks } from "../context/LinksContext.jsx";
 import LinkPicker from "../core/LinkPicker.jsx";
 // isNeuronsMode, dispatchNeuronSelect, NeuronBadge now imported by table/TableRow.jsx
-import { listUserDirectory, updateRowOwner, notionProxy, getRecordBadgeCounts, deleteRow, getTableSchema, updateTableSchema, updateSubColumnSchema } from "../lib/api.js";
+import { listUserDirectory, updateRowOwner, notionProxy, getRecordBadgeCounts, deleteRow, getTableSchema, updateTableSchema, updateSubColumnSchema, reparentRow } from "../lib/api.js";
 import { assignOptionColor } from "../lib/dataSource.js";
 import { useTreeData } from "../lib/useTreeData.js";
 import { getPinToken } from "../components/PinLockOverlay.jsx";
@@ -58,6 +58,8 @@ import useSubItemGhost from "./table/hooks/useSubItemGhost.js";
 import useTableCellEdit from "./table/hooks/useTableCellEdit.js";
 import useColumnManagement from "./table/hooks/useColumnManagement.js";
 import useTableData from "./table/hooks/useTableData.js";
+import useRowDrag from "./table/hooks/useRowDrag.js";
+import RowContextMenu from "./table/RowContextMenu.jsx";
 
 
 
@@ -413,6 +415,42 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     displayList, toggleExpand, expandAll, collapseAll,
     expandedRows, getChildren, childMap,
   } = useTreeData(processedData, { enabled: subItemsEnabled, sortFn: treeSortFn });
+
+  // ── Row Drag (drag-to-nest, drag-to-empty-space to un-nest) ──
+  // Disabled when a column sort is active (would conflict with stored
+  // sort_order) or on linked / read-only tables.
+  const rowDrag = useRowDrag({
+    tableId: pageConfig?.id,
+    isD1Table,
+    sortActive: !!(sortField && sortDir),
+    childMap,
+    data,
+    onMoveComplete: onRefresh,
+  });
+
+  // ── Row Context Menu (Phase 3 — un-nest via right-click) ──
+  const [rowCtxMenu, setRowCtxMenu] = useState(null); // { row, x, y }
+  const handleRowContextMenu = useCallback((row, e) => {
+    if (!isD1Table) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setRowCtxMenu({ row, x: e.clientX, y: e.clientY });
+  }, [isD1Table]);
+
+  const handleMoveToTop = useCallback(async (row) => {
+    if (!row || !row._parentRowId || !pageConfig?.id) return;
+    try {
+      // Land at bottom of existing top-level rows
+      const topRows = data.filter((r) => !r._parentRowId);
+      const newSortOrder = topRows.length > 0
+        ? Math.max(...topRows.map((r) => r._sortOrder || 0)) + 1
+        : 0;
+      await reparentRow(pageConfig.id, row.id, null, newSortOrder);
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      console.error("[Table] Move to top failed:", err);
+    }
+  }, [pageConfig?.id, data, onRefresh]);
 
   // ── Sub-Item Independent Schema ──
   const subColumns = useMemo(() => schema?._subColumns || [], [schema]);
@@ -1211,6 +1249,19 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                             subGhostRef={subGhostRef}
                             handleSubItemGhostCommit={handleSubItemGhostCommit}
                             getChildren={getChildren}
+                            // Drag-to-nest (Phase 2)
+                            onRowDragStart={rowDrag.handleDragStart}
+                            onRowDragEnd={rowDrag.handleDragEnd}
+                            onRowDragOver={rowDrag.handleRowDragOver}
+                            onRowDragEnter={rowDrag.handleRowDragEnter}
+                            onRowDragLeave={rowDrag.handleRowDragLeave}
+                            onRowDrop={rowDrag.handleRowDrop}
+                            dropTarget={rowDrag.dropTarget}
+                            isDragging={rowDrag.isDragging}
+                            isDragDisabled={rowDrag.isDragDisabled}
+                            disabledReason={rowDrag.disabledReason}
+                            // Row context menu (Phase 3)
+                            onRowContextMenu={handleRowContextMenu}
                           />
                         ))}
                         {/* Bottom spacer */}
@@ -1260,6 +1311,36 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
                       {ghostError}
                     </div>
                   )}
+
+                  {/* ── Empty-space drop zone (Phase 3, un-nest gesture) ──
+                      Visible only while a sub-item row is being dragged.
+                      Drop here = row's parent_row_id becomes null. */}
+                  {rowDrag.isDragging && (() => {
+                    const draggedRow = data.find((r) => r.id === rowDrag.dragState?.rowId);
+                    if (!draggedRow || !draggedRow._parentRowId) return null;
+                    const active = rowDrag.dropTarget?.type === "empty";
+                    return (
+                      <div
+                        onDragOver={rowDrag.handleEmptyDragOver}
+                        onDragLeave={rowDrag.handleEmptyDragLeave}
+                        onDrop={rowDrag.handleEmptyDrop}
+                        style={{
+                          marginTop: 8,
+                          padding: "12px 16px",
+                          border: `1px dashed ${active ? C.accent : C.darkBorder}`,
+                          borderRadius: RADIUS.lg,
+                          background: active ? `${C.accent}14` : "transparent",
+                          color: active ? C.accent : C.darkMuted,
+                          fontSize: 12,
+                          fontFamily: FONT,
+                          textAlign: "center",
+                          transition: "background 0.12s, border-color 0.12s, color 0.12s",
+                        }}
+                      >
+                        ⤴ Drop here to move to top level
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* ── Sticky Footer (Totals) ── */}
@@ -1409,6 +1490,13 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
         onTypeChange={setAddSubColType}
         onSubmit={handleAddSubCol}
         onClose={() => { setAddSubColOpen(false); setAddSubColName(""); setAddSubColType("text"); }}
+      />
+
+      {/* ── Row Context Menu (Phase 3 — un-nest via right-click) ── */}
+      <RowContextMenu
+        menu={rowCtxMenu}
+        onMoveToTop={handleMoveToTop}
+        onClose={() => setRowCtxMenu(null)}
       />
 
       {/* ── New Record Modal ── */}

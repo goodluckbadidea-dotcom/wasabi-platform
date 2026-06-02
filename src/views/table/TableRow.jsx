@@ -3,7 +3,7 @@
 // card. The wrapping <div> owns the card border, shadow, and radius; sub-items
 // inside strip those, becoming indented strips beneath the parent.
 
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../../design/tokens.js";
 
 // Track which tables we've already warned about missing subSchema so the
@@ -48,9 +48,19 @@ export default function TableRow({
   handleSubItemGhostCommit,
   // Tree
   getChildren,
+  // Drag-to-nest (Phase 2)
+  onRowDragStart, onRowDragEnd,
+  onRowDragOver, onRowDragEnter, onRowDragLeave, onRowDrop,
+  dropTarget, isDragging, isDragDisabled, disabledReason,
+  // Row context menu (Phase 3)
+  onRowContextMenu,
 }) {
   const styles = getStyles();
   const subHeaderClickTimer = useRef(null);
+  // Local hover state for the SUB-row drag handle (per-child-row hover).
+  // Parent-strip handle visibility piggy-backs on the existing `isHovered`
+  // group-level state.
+  const [hoveredSubRowId, setHoveredSubRowId] = useState(null);
   const parentEntry = group.parent;
   const children = group.children || [];
   const parentRow = parentEntry.row;
@@ -87,6 +97,60 @@ export default function TableRow({
     ? C.darkSurf2
     : C.darkSurf;
 
+  // ── Drag handle (Phase 2) ──
+  // Small ⋮⋮ button rendered inside the leftmost 80px cell of any row.
+  // Only the handle is draggable — clicking it gives you grab cursor;
+  // dragging it starts the row drag. Cells themselves are not draggable
+  // so cell editing (the dominant interaction) stays unaffected.
+  const renderDragHandle = (rowId, visible) => {
+    if (!onRowDragStart) return null;
+    const disabled = !!isDragDisabled;
+    return (
+      <span
+        draggable={!disabled}
+        onDragStart={(e) => onRowDragStart(rowId, e)}
+        onDragEnd={onRowDragEnd}
+        onClick={(e) => e.stopPropagation()}
+        title={disabled ? (disabledReason || "Reordering disabled") : "Drag to nest under another row"}
+        aria-label="Drag to reorder"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 12,
+          height: 20,
+          marginRight: 2,
+          color: C.darkMuted,
+          opacity: visible ? (disabled ? 0.25 : 0.55) : 0,
+          cursor: disabled ? "not-allowed" : "grab",
+          transition: "opacity 0.12s",
+          fontSize: 14,
+          lineHeight: 1,
+          userSelect: "none",
+          fontWeight: 700,
+          letterSpacing: -2,
+        }}
+        onMouseEnter={(e) => { if (!disabled && visible) e.currentTarget.style.opacity = "1"; }}
+        onMouseLeave={(e) => { if (!disabled && visible) e.currentTarget.style.opacity = "0.55"; }}
+      >
+        {"⋮⋮"}
+      </span>
+    );
+  };
+
+  // ── Drop-target visual derivation ──
+  // The hook emits { rowId, invalid } when a drag is in progress and hovering
+  // a row. We translate that into an outline + bg tint for the specific row
+  // strip when it's the active target.
+  const dropTargetStyleFor = (rowId) => {
+    if (!dropTarget || dropTarget.rowId !== rowId || dropTarget.type !== "row") return null;
+    const color = dropTarget.invalid ? C.error : C.accent;
+    return {
+      boxShadow: `inset 0 0 0 2px ${color}`,
+      background: dropTarget.invalid ? `${C.error}10` : `${C.accent}14`,
+    };
+  };
+
   // Real-time collaboration presence (parent row only).
   const othersOnRow = collab?.getUsersOnRecord?.(parentId) || [];
   const presenceColor = othersOnRow.length > 0 ? othersOnRow[0].color : null;
@@ -95,11 +159,16 @@ export default function TableRow({
     : presenceColor ? { borderLeft: `3px solid ${presenceColor}` } : {};
 
   // ── Cell renderer (used for both parent strip and sub-item strips) ──
-  function renderDataCells({ page, cols, activeSchema, isSubRow }) {
+  // `entry` carries depth/hasChildren/isExpanded when rendering a sub-item row,
+  // so we can indent by depth and show a chevron on rows that have grandchildren.
+  function renderDataCells({ page, cols, activeSchema, isSubRow, entry }) {
     const cellTypingMap = {};
     for (const u of othersOnRow) {
       if (u.isTyping && u.typingField) cellTypingMap[u.typingField] = u;
     }
+    const depth = entry?.depth || 0;
+    const subHasChildren = isSubRow && entry?.hasChildren;
+    const subIsExpanded = isSubRow && entry?.isExpanded;
     return cols.map((col, colIdx) => {
       if (col === OWNER_COL_NAME && (showOwnerColumn || (isSubRow && showSubItemOwnerColumn))) {
         const ownerIds = page._ownerUserIds || [];
@@ -126,7 +195,35 @@ export default function TableRow({
         >
           {isFirstCol && subItemsEnabled && isSubRow ? (
             <div style={{ display: "flex", alignItems: "center", minWidth: 0, width: "100%" }}>
-              <div style={{ width: 24, flexShrink: 0 }} />
+              {/* Indent ramp: every level of depth adds 24px. A depth-1 child gets
+                  24px, a depth-2 grandchild gets 48px. The last 24px of that
+                  indent hosts either an expand chevron (when this row has its
+                  own children) or empty space. */}
+              {depth > 1 && (
+                <div style={{ width: (depth - 1) * 24, flexShrink: 0 }} />
+              )}
+              {subHasChildren ? (
+                <button
+                  data-row-expand-toggle
+                  title={subIsExpanded ? "Collapse sub-items" : "Show sub-items"}
+                  onClick={(e) => { e.stopPropagation(); toggleExpand(page.id); }}
+                  aria-expanded={subIsExpanded}
+                  style={{
+                    width: 24, height: 24, flexShrink: 0,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    background: "none", border: "none", cursor: "pointer",
+                    color: C.darkMuted, padding: 0, borderRadius: RADIUS.sm,
+                    transition: "background 0.12s",
+                    transform: subIsExpanded ? "rotate(0deg)" : "rotate(-90deg)",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+                >
+                  <IconChevronDown size={11} />
+                </button>
+              ) : (
+                <div style={{ width: 24, flexShrink: 0 }} />
+              )}
               <div style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
                 <CellDisplay
                   value={value}
@@ -425,6 +522,8 @@ export default function TableRow({
           gridTemplateColumns: gtc,
           minHeight: ROW_HEIGHT,
           cursor: "pointer",
+          transition: "background 0.12s, box-shadow 0.12s",
+          ...(dropTargetStyleFor(parentId) || {}),
         }}
         onClick={(e) => {
           if ((e.metaKey || e.ctrlKey) && isNeuronsMode()) {
@@ -435,9 +534,15 @@ export default function TableRow({
           }
           setDetailPage(parentRow);
         }}
+        onContextMenu={(e) => { if (onRowContextMenu) onRowContextMenu(parentRow, e); }}
+        onDragOver={(e) => onRowDragOver && onRowDragOver(parentId, e)}
+        onDragEnter={() => onRowDragEnter && onRowDragEnter(parentId)}
+        onDragLeave={() => onRowDragLeave && onRowDragLeave(parentId)}
+        onDrop={(e) => onRowDrop && onRowDrop(parentId, e)}
       >
         {/* Checkbox + sub-items button cell */}
         <div style={{ ...styles.gridCell, justifyContent: "center", padding: 0, gap: 2 }}>
+          {renderDragHandle(parentId, isHovered)}
           <span
             style={styles.toggle(isParentSelected)}
             onClick={(e) => { e.stopPropagation(); toggleRow(parentId); }}
@@ -517,7 +622,8 @@ export default function TableRow({
             const childRow = childEntry.row;
             const childId = childRow.id;
             const isChildSelected = selectedRows.has(childId);
-            const isChildHovered = false; // group-level hover only; per-sub hover not tracked
+            const isChildHoverHandle = hoveredSubRowId === childId;
+            const childDropStyle = dropTargetStyleFor(childId);
             return (
               <div
                 key={childId}
@@ -527,6 +633,8 @@ export default function TableRow({
                   gridTemplateColumns: subGtc,
                   minHeight: ROW_HEIGHT,
                   background: isChildSelected ? C.accent + "12" : "transparent",
+                  transition: "background 0.12s, box-shadow 0.12s",
+                  ...(childDropStyle || {}),
                 }}
                 onClick={(e) => {
                   if ((e.metaKey || e.ctrlKey) && isNeuronsMode()) {
@@ -537,11 +645,23 @@ export default function TableRow({
                   }
                   setDetailPage(childRow);
                 }}
-                onMouseEnter={(e) => { if (!isChildSelected) e.currentTarget.style.background = `rgba(255,255,255,0.025)`; }}
-                onMouseLeave={(e) => { if (!isChildSelected) e.currentTarget.style.background = "transparent"; }}
+                onContextMenu={(e) => { if (onRowContextMenu) onRowContextMenu(childRow, e); }}
+                onDragOver={(e) => onRowDragOver && onRowDragOver(childId, e)}
+                onDragEnter={() => onRowDragEnter && onRowDragEnter(childId)}
+                onDragLeave={() => onRowDragLeave && onRowDragLeave(childId)}
+                onDrop={(e) => onRowDrop && onRowDrop(childId, e)}
+                onMouseEnter={(e) => {
+                  if (!isChildSelected) e.currentTarget.style.background = `rgba(255,255,255,0.025)`;
+                  setHoveredSubRowId(childId);
+                }}
+                onMouseLeave={(e) => {
+                  if (!isChildSelected && !childDropStyle) e.currentTarget.style.background = "transparent";
+                  setHoveredSubRowId((cur) => (cur === childId ? null : cur));
+                }}
               >
                 {/* Checkbox cell */}
                 <div style={{ ...styles.gridCell, justifyContent: "center", padding: 0, gap: 2 }}>
+                  {renderDragHandle(childId, isChildHoverHandle)}
                   <span
                     style={styles.toggle(isChildSelected)}
                     onClick={(e) => { e.stopPropagation(); toggleRow(childId); }}
@@ -549,8 +669,10 @@ export default function TableRow({
                     {isChildSelected ? "✓" : ""}
                   </span>
                 </div>
-                {/* Data cells (uses subItemSchema) */}
-                {renderDataCells({ page: childRow, cols: subColsList, activeSchema: subItemSchema, isSubRow: true })}
+                {/* Data cells (uses subItemSchema). `entry` carries depth + expand
+                    state so the title cell can indent + show a chevron for any
+                    grandchild-bearing children. */}
+                {renderDataCells({ page: childRow, cols: subColsList, activeSchema: subItemSchema, isSubRow: true, entry: childEntry })}
                 {/* Badge cell */}
                 <div style={{ ...styles.gridCell, justifyContent: "center", padding: "4px 2px", gap: 3, display: "flex", alignItems: "center" }}>
                   {badgeCounts[childId]?.comments > 0 && (

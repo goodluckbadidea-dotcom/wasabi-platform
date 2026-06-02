@@ -332,6 +332,19 @@ export async function updateRowOwner(tableId, rowId, ownerUserIds) {
   });
 }
 
+// Re-parent a row by setting its parent_row_id. Pass `null` to un-nest to
+// top level. `newSortOrder` is optional — when provided, lands the moved row
+// at that ordinal among its new siblings; when omitted, server keeps the
+// existing sort_order untouched.
+// Backend enforces both a circular-reference check and a depth cap; a
+// rejected move comes back as a 400 with `code: "DEPTH_CAP_EXCEEDED"` or
+// a descriptive `_error` string.
+export async function reparentRow(tableId, rowId, newParentId, newSortOrder = undefined) {
+  const body = { parent_row_id: newParentId };
+  if (newSortOrder !== undefined) body.sort_order = newSortOrder;
+  return apiFetch(`/tables/${tableId}/rows/${rowId}`, { method: "PATCH", body });
+}
+
 export async function deleteRow(tableId, rowId, { pinToken, cascade, confirmDependents } = {}) {
   const params = new URLSearchParams();
   if (cascade) params.set("cascade", cascade);

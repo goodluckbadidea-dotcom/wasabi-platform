@@ -1,6 +1,10 @@
 import { useState, useMemo, useCallback } from "react";
 
-const MAX_DEPTH = 5;
+// Hard cap on tree depth. Depth 0 = top-level, 1 = sub-item, 2 = sub-sub-item.
+// Anything past depth 2 is rejected — keeps the visual model legible and
+// the drag-to-nest interaction tractable. Server-side cap in
+// worker/handlers/tables.js mirrors this.
+const MAX_DEPTH = 2;
 
 /**
  * Build a lookup: parentId → [childRows] preserving sort order.
