@@ -60,7 +60,9 @@ const tabStyle = (active) => ({
   background: active ? C.dark : "transparent",
   color: active ? C.darkText : C.darkMuted,
   fontSize: 12, fontWeight: 600, fontFamily: FONT,
-  borderRadius: RADIUS.sm, cursor: "pointer", outline: "none",
+  // Concentric with the outer container's RADIUS.pill so the selected
+  // pill's corners don't bleed past the outer curve at the bar's ends.
+  borderRadius: RADIUS.pill, cursor: "pointer", outline: "none",
   transition: "all 0.15s", letterSpacing: "0.03em",
   minHeight: 32,
 });
