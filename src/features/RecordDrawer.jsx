@@ -21,6 +21,7 @@ import { useCollaboration } from "../context/CollaborationContext.jsx";
 import EmailThreadDrawer from "./EmailThreadDrawer.jsx";
 import RecordComments from "../components/RecordComments.jsx";
 import RecordFiles from "../components/RecordFiles.jsx";
+import RecordFormsTab from "../views/forms/RecordFormsTab.jsx";
 import { IconLightbulb } from "../design/icons.jsx";
 
 // ── Priority colors (aligned to INFO_PALETTE) ──
@@ -484,6 +485,7 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction, on
         {[
           { key: "details", label: "Details" },
           { key: "comments", label: "Comments" },
+          { key: "forms", label: "Forms" },
           { key: "files", label: "Files" },
         ].map((t) => (
           <button key={t.key} style={tabStyle(activeTab === t.key)} onClick={() => setActiveTab(t.key)}>
@@ -761,6 +763,18 @@ function TaskEditor({ task, onSaved, onDeleted, onClose, onRecordInteraction, on
           userId={identity?.id}
           userName={identity?.display_name}
           userRole={identity?.role}
+        />
+      )}
+
+      {/* ── Forms tab ── */}
+      {activeTab === "forms" && (
+        <RecordFormsTab
+          record={{ id: task.id, ...task }}
+          tableId={pageConfigId}
+          currentUserId={identity?.id || user?.sub}
+          isAdmin={(identity?.role || user?.role) === "admin" || (identity?.role || user?.role) === "owner"}
+          recordTitle={title || task.title}
+          onClose={onClose}
         />
       )}
 

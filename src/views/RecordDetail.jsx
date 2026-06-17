@@ -13,6 +13,7 @@ import { timeAgo, formatDate } from "../utils/helpers.js";
 import NeuronBadge from "../neurons/NeuronBadge.jsx";
 import RecordComments from "../components/RecordComments.jsx";
 import RecordFiles from "../components/RecordFiles.jsx";
+import RecordFormsTab from "./forms/RecordFormsTab.jsx";
 import FigmaFilePicker from "../components/FigmaFilePicker.jsx";
 import FigmaCellPreview from "../components/FigmaCellPreview.jsx";
 import { useCollaboration } from "../context/CollaborationContext.jsx";
@@ -697,6 +698,7 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
             ...(page?._source === "d1" && !page?._parentRowId ? [{ key: "subitems", label: "Sub-Items" }] : []),
             ...(page?._source === "d1" ? [{ key: "dependencies", label: "Dependencies" }] : []),
             { key: "comments", label: "Comments" },
+            { key: "forms", label: "Forms" },
             { key: "files", label: "Files" },
           ].map((t) => (
             <button
@@ -984,6 +986,18 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
             <FigmaCommentsFromRecord recordId={page.id} />
             <RecordComments recordId={page.id} pageConfigId={pageConfigId} userId={identity?.id} userName={identity?.display_name} userRole={identity?.role} />
           </>
+        )}
+
+        {/* Forms Tab */}
+        {activeTab === "forms" && (
+          <RecordFormsTab
+            record={page}
+            tableId={pageConfigId}
+            currentUserId={identity?.id}
+            isAdmin={identity?.role === "admin" || identity?.role === "owner"}
+            recordTitle={page?.properties?.[Object.keys(page?.properties || {})[0]]?.title?.[0]?.plain_text || "Record"}
+            onClose={onClose}
+          />
         )}
 
         {/* Files Tab */}

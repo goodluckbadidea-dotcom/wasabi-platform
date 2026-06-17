@@ -353,6 +353,44 @@ export async function deleteRow(tableId, rowId, { pinToken, cascade, confirmDepe
   return apiFetch(`/tables/${tableId}/rows/${rowId}${qs ? `?${qs}` : ""}`, { method: "DELETE", pinToken });
 }
 
+// ─── Forms feature ───
+// Form definitions
+export async function listForms(tableId) {
+  return apiFetch(`/tables/${tableId}/forms`);
+}
+export async function createForm(tableId, payload) {
+  return apiFetch(`/tables/${tableId}/forms`, { method: "POST", body: payload });
+}
+export async function getForm(formId) {
+  return apiFetch(`/forms/${formId}`);
+}
+export async function updateForm(formId, payload) {
+  return apiFetch(`/forms/${formId}`, { method: "PATCH", body: payload });
+}
+export async function deleteForm(formId) {
+  return apiFetch(`/forms/${formId}`, { method: "DELETE" });
+}
+
+// Connections + Submissions
+export async function listFormConnectionsForRecord(recordId) {
+  return apiFetch(`/records/${recordId}/form-connections`);
+}
+export async function createFormConnection(payload) {
+  return apiFetch(`/form-connections`, { method: "POST", body: payload });
+}
+export async function deleteFormConnection(connId) {
+  return apiFetch(`/form-connections/${connId}`, { method: "DELETE" });
+}
+export async function createFormSubmission(payload) {
+  return apiFetch(`/form-submissions`, { method: "POST", body: payload });
+}
+export async function updateFormSubmission(subId, payload) {
+  return apiFetch(`/form-submissions/${subId}`, { method: "PATCH", body: payload });
+}
+export async function deleteFormSubmission(subId) {
+  return apiFetch(`/form-submissions/${subId}`, { method: "DELETE" });
+}
+
 export async function listChildRows(tableId, parentRowId, { limit = 200 } = {}) {
   return apiFetch(`/tables/${tableId}/rows?parent_row_id=${encodeURIComponent(parentRowId)}&limit=${limit}`);
 }

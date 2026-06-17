@@ -211,6 +211,51 @@ async function handleInit(env, jsonResponse) {
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_ext_snap_unique ON extension_snapshots(extension_id, slug)",
       "CREATE INDEX IF NOT EXISTS idx_ext_snap_extension ON extension_snapshots(extension_id)",
       "CREATE INDEX IF NOT EXISTS idx_ext_snap_status ON extension_snapshots(status)",
+      // ─── Forms feature ───
+      // Three tables: form_definitions (templates), form_connections (form↔record
+      // relationships), form_submissions (actual fills, draft or submitted).
+      // See docs/19-forms-feature.md for the full design.
+      `CREATE TABLE IF NOT EXISTS form_definitions (
+        id TEXT PRIMARY KEY,
+        table_id TEXT NOT NULL,
+        name TEXT NOT NULL DEFAULT 'Untitled form',
+        description TEXT DEFAULT '',
+        form_type TEXT NOT NULL DEFAULT 'single_instance',
+        fields TEXT NOT NULL DEFAULT '[]',
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        created_by TEXT DEFAULT ''
+      )`,
+      "CREATE INDEX IF NOT EXISTS idx_form_defs_table ON form_definitions(table_id)",
+      `CREATE TABLE IF NOT EXISTS form_connections (
+        id TEXT PRIMARY KEY,
+        form_id TEXT NOT NULL,
+        record_id TEXT NOT NULL,
+        table_id TEXT NOT NULL,
+        connected_at TEXT DEFAULT (datetime('now')),
+        connected_by TEXT DEFAULT ''
+      )`,
+      "CREATE INDEX IF NOT EXISTS idx_form_conns_record ON form_connections(record_id)",
+      "CREATE INDEX IF NOT EXISTS idx_form_conns_form_record ON form_connections(form_id, record_id)",
+      `CREATE TABLE IF NOT EXISTS form_submissions (
+        id TEXT PRIMARY KEY,
+        connection_id TEXT NOT NULL,
+        form_id TEXT NOT NULL,
+        record_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft',
+        values TEXT NOT NULL DEFAULT '{}',
+        draft_owner_id TEXT DEFAULT NULL,
+        submitted_at TEXT DEFAULT NULL,
+        submitted_by TEXT DEFAULT NULL,
+        edited_at TEXT DEFAULT NULL,
+        edited_by TEXT DEFAULT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )`,
+      "CREATE INDEX IF NOT EXISTS idx_form_subs_conn ON form_submissions(connection_id)",
+      "CREATE INDEX IF NOT EXISTS idx_form_subs_record_status ON form_submissions(record_id, status)",
+      "CREATE INDEX IF NOT EXISTS idx_form_subs_form_record ON form_submissions(record_id, form_id, status)",
     ];
     for (const sql of migrations) {
       try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }

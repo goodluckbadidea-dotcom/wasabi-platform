@@ -40,6 +40,11 @@ import {
   handlePublishSnapshot, handleGetSnapshotData, handleServeSnapshotHtml,
   handleAddSnapshotLink, handleListSnapshotLinks,
 } from './worker/handlers/extensions.js';
+import {
+  handleListForms, handleCreateForm, handleGetForm, handleUpdateForm, handleDeleteForm,
+  handleListConnectionsForRecord, handleCreateConnection, handleDeleteFormConnection,
+  handleCreateSubmission, handleUpdateSubmission, handleDeleteSubmission,
+} from './worker/handlers/forms.js';
 
 
 // ─── Record title resolution ───
@@ -1112,6 +1117,55 @@ export default {
 
       if (path === "/proxy/external-api" && request.method === "POST") {
         return await handleExternalApiProxy(env, await request.json(), jsonResponse);
+      }
+
+      // ─── Forms feature ───
+      // Form definitions
+      const formsTableMatch = path.match(/^\/tables\/([^/]+)\/forms$/);
+      if (formsTableMatch) {
+        const tableId = formsTableMatch[1];
+        if (request.method === "GET") {
+          if (!await checkPagePermission(env, user, tableId, "viewer")) {
+            return jsonResponse({ _error: "Not authorized" }, 403);
+          }
+          return await handleListForms(env, tableId, jsonResponse);
+        }
+        if (request.method === "POST") {
+          if (!await checkPagePermission(env, user, tableId, "editor")) {
+            return jsonResponse({ _error: "Not authorized" }, 403);
+          }
+          return await handleCreateForm(env, tableId, await request.json(), user, jsonResponse);
+        }
+      }
+      const formByIdMatch = path.match(/^\/forms\/([^/]+)$/);
+      if (formByIdMatch) {
+        const formId = formByIdMatch[1];
+        if (request.method === "GET") return await handleGetForm(env, formId, jsonResponse);
+        if (request.method === "PATCH") return await handleUpdateForm(env, formId, await request.json(), user, jsonResponse);
+        if (request.method === "DELETE") return await handleDeleteForm(env, formId, jsonResponse);
+      }
+
+      // Form connections (record-attached)
+      const formConnsForRecordMatch = path.match(/^\/records\/([^/]+)\/form-connections$/);
+      if (formConnsForRecordMatch && request.method === "GET") {
+        return await handleListConnectionsForRecord(env, formConnsForRecordMatch[1], jsonResponse);
+      }
+      if (path === "/form-connections" && request.method === "POST") {
+        return await handleCreateConnection(env, await request.json(), user, jsonResponse);
+      }
+      const formConnByIdMatch = path.match(/^\/form-connections\/([^/]+)$/);
+      if (formConnByIdMatch && request.method === "DELETE") {
+        return await handleDeleteFormConnection(env, formConnByIdMatch[1], jsonResponse);
+      }
+
+      // Form submissions
+      if (path === "/form-submissions" && request.method === "POST") {
+        return await handleCreateSubmission(env, await request.json(), user, jsonResponse);
+      }
+      const formSubByIdMatch = path.match(/^\/form-submissions\/([^/]+)$/);
+      if (formSubByIdMatch) {
+        if (request.method === "PATCH") return await handleUpdateSubmission(env, formSubByIdMatch[1], await request.json(), user, jsonResponse);
+        if (request.method === "DELETE") return await handleDeleteSubmission(env, formSubByIdMatch[1], jsonResponse);
       }
 
       // ─── Neurons CRUD ───
