@@ -1587,3 +1587,43 @@ Every viewport-anchored overlay (`position: fixed; inset: 0`) that's mounted dee
 `TableRow.jsx`: when a parent is expanded with one or more children, a faint "+ Add sub-item" row renders at the bottom of the expanded children list. Click → calls the same `handleCreateSubItem(parentId)` as the unified sub-item button, which sets `subItemGhostParent` and reveals the inline ghost row.
 
 **Why this row exists:** the 2026-05-05 unified sub-item button only creates when a parent has zero children; with one or more children, it toggles expand. Before this row, there was no remaining path to add another sub-item from the table view — users had to open RecordDetail → Sub-Items tab. The trailing row restores discoverable add-affordance to the table view itself. Hidden when the ghost row is already active (to avoid duplicate add UI).
+
+---
+
+## Drag-to-nest Table Rows (2026-06-17)
+
+`useRowDrag.js` + `TableRow.jsx`. On any D1 table, hovering a row reveals a `⋮⋮` drag handle in the leftmost cell. Drag a row onto another row to make it a sub-item of the target. The depth cap is **3 levels** (top-level → child → grandchild); accepting a drop that would push any row past depth 2 returns `400 DEPTH_CAP_EXCEEDED` from the worker. Drag is disabled while a column sort is active (would conflict with stored `sort_order`) or on linked / read-only tables — handle dims with a tooltip explaining why.
+
+Un-nest options:
+- **Drop on the dashed zone below the table** (appears mid-drag for any sub-item) → `parent_row_id` becomes null.
+- **Right-click any sub-item** → "Move to top level" menu entry.
+
+The worker's `handleUpdateRow` validates the depth cap server-side (`getRowDepth` + `getSubtreeDepth` helpers in `worker/handlers/tables.js`). The original circular-reference check is preserved.
+
+---
+
+## Customizable Forms (2026-06-17)
+
+A first-class forms system replacing the old auto-generated "Form" view. See `docs/19-forms-feature.md` for the full design — short summary:
+
+**Concept:** Forms are templates defined on a table. Each form has a name, description, Form Type (single-instance vs. repeating), and an ordered list of fields. Two consumption paths:
+1. **Create-new-record** (preserves today's behavior) — open from the table's Form tab, fill, submit → creates a new record.
+2. **Attach-to-existing** (new) — from any record's drawer Forms tab, "Connect a form" → fill → submission attaches to the record.
+
+**Hub model.** The table's Form tab is a directory of all forms defined on that table. Multiplicity is the first thing the user sees. Both surfaces (table-level Form tab + record-level Forms tab) draw from the same form definitions.
+
+**Linked fields (bidirectional sync).** Each form field can optionally `link_to_column`. Linked field values are NOT stored on the submission — they're written through to the column on save and read live from the column on display. Editing the column or the submission updates both; no drift.
+
+**Three buckets in the record drawer's Forms tab** (between Comments and Files): Drafts (per-user, in-progress) / Empty (connected, no submission yet) / Submitted (one or more completed). Repeating forms appear once in Submitted with a count badge + "+ Submit again" + expand-to-view-all.
+
+**Field types in v1** (16): Short text, Long text, Number, Date, Date range, Single-select, Multi-select, Status, Checkbox, URL, Email, Phone, Person, Linked record, File upload, Figma file. **Layout blocks (3):** Section header, Description text, Divider. Person, Linked record, and File upload are placeholder text inputs in v1.
+
+**Storage:** three D1 tables — `form_definitions` (templates), `form_connections` (form↔record relationships, the row that makes the Empty bucket non-empty), `form_submissions` (per-fill blobs with `status` = `draft` or `submitted`). Indexes on `(record_id)`, `(record_id, status)`, `(record_id, form_id, status)`.
+
+**Permissions:**
+- Form definition CRUD: anyone with edit rights to the table.
+- Fill / submit: anyone with edit rights to the record.
+- Draft editing: owner-only in v1 (the user who started the draft). Other users see the card and form in read-only.
+- Submission editing: original submitter and admins. An "Edited [date] by [name]" stamp surfaces below the original "Submitted [date]."
+
+**Deferred to v2** (tracked in plan doc): conditional show/hide, repeating sections, rating/scale, signature, multi-page forms, hidden/auto-filled fields, image/banner blocks; collaborative draft editing; surfacing form data to AI / automations / neurons.

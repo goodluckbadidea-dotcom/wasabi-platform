@@ -4,7 +4,13 @@ Living plan document for the Forms feature. Captures decisions agreed
 during design discussion; gets updated as we make more calls. Open
 questions and v2 deferrals listed at the bottom.
 
-Status: **design phase** — no code written yet.
+Status: **v1 shipped 2026-06-17** (commit `fd45000`). Worker version
+`37761a8a-bcce-41af-97a7-1bdee9ae6156` is live with the three new D1
+tables migrated. Frontend live on Cloudflare Pages.
+
+> Note: v1 shipped as a single PR rather than the planned 3-ship cadence —
+> the user explicitly opted into batching all phases when ready to test
+> end-to-end live.
 
 ---
 
@@ -529,7 +535,57 @@ Captured here so they're not lost:
 
 ---
 
-## Implementation plan — three ships
+## Implementation — shipped 2026-06-17 (single PR)
+
+All three planned phases were shipped together in commit `fd45000`.
+Original three-ship plan retained below for reference (each row is what
+*was* in scope; everything below the heading actually shipped).
+
+**Files created:**
+- `worker/handlers/forms.js` — backend CRUD for forms, connections, submissions
+- `src/views/forms/FormsHub.jsx` — replaces the old auto-Form view; hub/designer/filler orchestrator
+- `src/views/forms/FormDesigner.jsx` — inline editor
+- `src/views/forms/FormFiller.jsx` — fill screen with sticky context bar + navigator
+- `src/views/forms/BlockTypePicker.jsx` — "+ Add" dropdown
+- `src/views/forms/FieldSettings.jsx` — per-field settings panel
+- `src/views/forms/FieldRenderer.jsx` — per-type input renderer
+- `src/views/forms/RecordFormsTab.jsx` — new tab inside `RecordDrawer` and `RecordDetail`
+- `src/views/forms/formTypes.js` — block taxonomy + column-type mapping
+
+**Files modified:**
+- `worker.js` — wired forms routes
+- `worker/handlers/init.js` — added 3 table migrations
+- `src/lib/api.js` — `listForms`, `createForm`, `updateForm`, `deleteForm`,
+  `listFormConnectionsForRecord`, `createFormConnection`,
+  `deleteFormConnection`, `createFormSubmission`, `updateFormSubmission`,
+  `deleteFormSubmission`
+- `src/views/Form.jsx` — now a thin wrapper that listens for
+  `wasabi:fill-form` events and threads `fillContext` into `FormsHub`
+- `src/features/RecordDrawer.jsx` — added Forms tab between Comments and Files
+- `src/views/RecordDetail.jsx` — same, for the table-view detail drawer
+
+**Naming gotcha resolved during build:** the forms-connection
+DELETE handler was renamed `handleDeleteFormConnection` to avoid
+colliding with the existing `handleDeleteConnection` (API-key
+deletion) imported in `worker.js`. Easy mistake to repeat — if a
+future session adds another "connection" handler, prefix with the
+domain (`form_`, `oauth_`, etc.).
+
+**Event-based wiring** (not the most elegant, but works without a new
+context provider):
+- `RecordFormsTab` dispatches `wasabi:fill-form` when the user clicks a
+  card → `Form.jsx` listens → sets `fillContext` → `FormsHub` enters
+  filler mode.
+- `RecordFormsTab` also dispatches `wasabi:switch-to-form-view` so the
+  host can route to the Form tab. This route hint is NOT wired to a
+  page-level listener yet; the user has to click the Form tab manually
+  for now. **First polish target.**
+- `FormsHub` dispatches `wasabi:form-submitted` after a successful save
+  so `RecordFormsTab` can re-fetch.
+
+---
+
+## Implementation plan — three ships (original, for reference)
 
 The feature is big enough that shipping it as one PR is asking for
 trouble. Three sequential ships, each independently testable:
@@ -675,6 +731,15 @@ creation and submit.
   context; required-field error UX (red outlines, inline messages,
   scroll to first); drafted read-only mode for someone-else's-drafts
   and submitted forms.
+- 2026-06-17 — **v1 shipped** in commit `fd45000`. Single-PR delivery
+  rather than the planned three-ship cadence (user opted into batching).
+  Frontend live on Cloudflare Pages; worker version
+  `37761a8a-bcce-41af-97a7-1bdee9ae6156` deployed with the three D1
+  table migrations applied. Open follow-ups: "Switch to Form view"
+  route hint not wired to a page-level listener (user must click the
+  Form tab manually after initiating fill from drawer); Person and
+  Linked-record pickers are plain text inputs in v1; File upload is a
+  placeholder.
 - 2026-06-04 — final batch of cleanup resolutions: submissions editable
   by original submitter and admins with edit stamp; disconnect Empty
   (no confirm), discard own draft (no confirm), discard others' draft

@@ -57,6 +57,7 @@ Extracted from worker.js during the 2026-04-06 refactor. Each file is a named ES
 | `worker/handlers/relationshipProjections.js` | Projection layer + rebuild script for relationships subsystem. Phase 2a (2026-04-24) filled in all five projectors (`projectParentRows`, `projectCellLinks`, `projectRelationColumns`, `projectNeuronNodes`, `projectMentions`) and added live-trigger helpers (`emitProjectedEdge`, `deleteProjectedEdge`, `deleteAllProjectedEdgesForEntity`, `deleteAllProjectedEdgesByTarget`, `refToFieldId`, `mapNeuronNodeTypeToEntityType`, `resolveRecordPageId`, `getRelationColumns`). All helpers wrap their writes in try/catch so projection failures cannot break user-visible saves. Rebuild contract: `DELETE FROM relationships WHERE origin LIKE 'projected_%'` followed by `rebuildProjections(env)` reproduces identical state. Idempotency enforced by partial UNIQUE INDEX `idx_rel_uniq_active` on (source_type, source_id, target_type, target_id, type) WHERE deleted_at IS NULL. |
 | `worker/automation/engine.js` | Automation rule evaluation and execution. Lazy-decrypts Claude key if stored as plaintext. |
 | `worker/handlers/extensions.js` | Extensions feature: CRUD for `extensions` (templates) + `extension_snapshots` (generated reports), JSON Schema validator (`validateData`, ~100 LOC), snapshot generation with `{{DATA}}` substitution + R2 write, publish + visibility, snapshot ↔ workspace links (neuron + record comment). Schema v9 introduced the tables; v12 (2026-05-22) added the `definition` field accepted in create/update. See `docs/18-extensions.md`. |
+| `worker/handlers/forms.js` | **NEW 2026-06-17.** Forms feature backend. CRUD for three tables: `form_definitions` (templates with name, description, form_type single_instance/repeating, fields JSON), `form_connections` (form↔record relationships), `form_submissions` (drafts + submitted fills with values JSON blob). Form Type is locked once any submission exists for that form. Single-instance forms refuse a second connection per record with `code: ALREADY_CONNECTED`. Delete cascades: deleting a form removes its connections + submissions; deleting a connection removes its submissions. See `docs/19-forms-feature.md`. **Naming gotcha:** the connection delete handler is `handleDeleteFormConnection` (NOT `handleDeleteConnection` — that name belongs to the API-key handler in `connections.js`). |
 | `index.html` | HTML shell for React SPA. Loads fonts (DM Sans, DM Mono, Outfit), mounts into `#root`. |
 | `package.json` | npm manifest. React 18, Vite 5, vitest, jsPDF. |
 | `vite.config.js` | Vite build config. Dev server on 0.0.0.0:5173, React plugin. |
@@ -200,7 +201,7 @@ Extracted sub-modules for the Table view. Refactored from a 3,600-line monolith 
 | `TableRow.jsx` | Row rendering: parent rows, sub-item rows, expand/collapse, sub-item mini-headers (with chevron affordance, single-click opens `SubColumnContextMenu`, double-click inline rename, 250ms disambiguation timer), neuron badges. `colorMapping` prop drilling removed from `CellDisplay` sites and from hover-wash `getStatusColor` call (2026-04-15) — hover wash reads from schema options. Warns once per table when a sub-item row renders without `subSchema` (legacy fallback still renders parent schema so nothing crashes). **2026-05-04 (commit `d82056e`):** `height: ROW_HEIGHT` → `minHeight: ROW_HEIGHT` in both parent and sub-item row containers so rows grow when wrapped pills (multiPillWrap) need a second line. Trade-off: virtualization math in Table.jsx still computes by `ROW_HEIGHT * idx`, but `VIRT_BUFFER = 200` absorbs the slop for typical workspaces. **2026-05-05:** unified sub-item buttons. The chevron-expand button in the Name cell and the branch-icon "add sub-item" button in the checkbox cell collapsed into a single `IconSubItems` button in the checkbox cell. Click branches on `hasChildren` — toggles expand/collapse if children exist, otherwise calls `handleCreateSubItem` (which auto-expands as a side effect). Count badge inlined next to the icon. 18px icon + 12px count, 40×32 button, full opacity always (iPad-friendly tap target). |
 | `TableFooter.jsx` | Row count display footer (41 lines) |
 
-#### src/views/table/hooks/ (5 files)
+#### src/views/table/hooks/ (6 files)
 
 | File | Purpose |
 |------|---------|
@@ -209,6 +210,35 @@ Extracted sub-modules for the Table view. Refactored from a 3,600-line monolith 
 | `useTableCellEdit.js` | Inline cell edit state: active cell tracking, value commit to API, blur handling (~107 lines). `handleCreateOption` injects a color via `assignOptionColor(existing.length)` when creating new select/status options through the in-cell `SelectPicker` "allow create" path (2026-04-15). |
 | `useGhostRow.js` | Parent ghost row state: cell values, saving flag, commit-and-create logic (74 lines) |
 | `useSubItemGhost.js` | Sub-item ghost row state: parent tracking, cell values, commit-and-create logic (81 lines) |
+| `useRowDrag.js` | **NEW 2026-06-17.** Drag-to-nest for table rows. Drag-handle on hover, drop-target detection with depth cap (3 levels max), self/descendant guard, drop-on-empty-space → un-nest to top level. Disabled while a column sort is active or on linked/read-only tables. Pairs with the depth-cap check in `worker/handlers/tables.js` `handleUpdateRow`. |
+
+### src/views/forms/ (9 files) — **NEW 2026-06-17**
+
+Customizable forms feature. The existing `src/views/Form.jsx` is now a
+thin wrapper that listens for `wasabi:fill-form` events from the record
+drawer and delegates rendering to `FormsHub`. See `docs/19-forms-feature.md`
+for the full design.
+
+| File | Purpose |
+|------|---------|
+| `formTypes.js` | Block taxonomy (16 field types + 3 layout blocks) and block-type → column-type mapping. Single source of truth for what blocks exist and how they map to Wasabi column types. |
+| `FormsHub.jsx` | Three-mode orchestrator: hub (form directory), designer (edit form structure), filler (fill out a form with optional record context). Replaces the old auto-Form view. |
+| `FormDesigner.jsx` | Inline designer. Form-level controls (name, description, Form Type toggle), vertical stack of field blocks, "+ Add" pill button, drag-to-reorder via ⋮⋮ handles. Form Type toggle disables once submissions exist. |
+| `BlockTypePicker.jsx` | Pill-styled "+ Add" dropdown. Three sections: "Insert from column" (shortcut that creates a pre-linked field), "Form fields" (16 types), "Layout" (section header, description text, divider). Rendered via createPortal. |
+| `FieldSettings.jsx` | Per-field settings: label, type, link-to-column dropdown, required toggle, helper text, placeholder, default value, options editor for select-like types. Type locks when linked to a column. |
+| `FieldRenderer.jsx` | Per-field-type input renderer. Single component renders the editable input for fill mode and a compact display for read-only mode. Person, Linked record, and File upload are placeholder text inputs in v1. |
+| `FormFiller.jsx` | The fill screen. Sticky context bar showing "Filling for: [record]" with `[×]` to clear context. Scrollable form body. Debounced auto-save (~900ms) via `onAutoSave` prop. Required-field validation on Save only (red outline + inline message + scroll-to-first). Read-only mode for submitted/others'-drafts. |
+| `RecordFormsTab.jsx` | New tab in `RecordDrawer` and `RecordDetail`, between Comments and Files. "Connect a form" dropdown at top. Three buckets: Drafts / Empty / Submitted. Repeating forms show count badge + "+ Submit again" + expand-to-view-all. |
+
+#### Event channel between drawer and Form view
+
+The drawer dispatches `wasabi:fill-form` (CustomEvent on `window`) when
+the user clicks a connected form. `src/views/Form.jsx` listens and
+threads the intent into `FormsHub`. There's also a
+`wasabi:switch-to-form-view` hint and a `wasabi:form-submitted`
+broadcast after save. **`wasabi:switch-to-form-view` is NOT wired to
+page-level routing yet** — user manually clicks the Form tab post-fill.
+First polish target.
 
 ---
 
