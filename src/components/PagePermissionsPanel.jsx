@@ -99,14 +99,14 @@ export default function PagePermissionsPanel({ pageId }) {
                     fontSize: 11, fontWeight: 600, color: C.accent,
                     flexShrink: 0,
                   }}>
-                    {(u.display_name || u.email || "?")[0].toUpperCase()}
+                    {(u.display_name || "?")[0].toUpperCase()}
                   </div>
                   <div style={{ minWidth: 0 }}>
                     <div style={{
                       fontSize: 12, color: C.darkText, fontWeight: 500,
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}>
-                      {u.display_name || u.email}
+                      {u.display_name}
                     </div>
                     <div style={{ fontSize: 10, color: C.darkMuted }}>{u.role}</div>
                   </div>

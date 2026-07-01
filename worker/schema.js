@@ -281,7 +281,6 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT NOT NULL DEFAULT 'viewer',
   invite_code TEXT UNIQUE,
   password_hash TEXT,
-  email TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   last_login_at TEXT,
   invite_expires_at TEXT,

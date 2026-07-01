@@ -156,9 +156,6 @@ async function handleInit(env, jsonResponse) {
       "CREATE INDEX IF NOT EXISTS idx_rows_parent ON table_rows(table_id, parent_row_id)",
       // Sub-item independent schema
       "ALTER TABLE table_schemas ADD COLUMN sub_columns TEXT DEFAULT '[]'",
-      // Microsoft SSO: email column on users for identity linking
-      "ALTER TABLE users ADD COLUMN email TEXT",
-      "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
       // Phase 3b: snapshot the linked record's title so the "↗ [name]" pill
       // and the "From Figma" section can render the actual name instead of
       // a generic "record" fallback. Idempotent — try/catch above swallows
