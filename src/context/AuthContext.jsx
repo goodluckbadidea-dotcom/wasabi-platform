@@ -181,15 +181,6 @@ export function AuthProvider({ children }) {
     return result;
   }, []);
 
-  // Used by SSO flows (Microsoft, future) where the token arrives via postMessage
-  const loginWithToken = useCallback((token, refreshToken, user) => {
-    if (!token || !user) return;
-    saveJwt(token);
-    if (refreshToken) saveRefreshToken(refreshToken);
-    setIdentity({ id: user.id, display_name: user.display_name, role: user.role });
-    setMultiUserEnabled(true);
-  }, []);
-
   const logout = useCallback(() => {
     clearJwt();
     setIdentity(null);
@@ -226,7 +217,6 @@ export function AuthProvider({ children }) {
     identityLoading,
     bootError,
     login,
-    loginWithToken,
     register,
     logout,
     hasRole,
