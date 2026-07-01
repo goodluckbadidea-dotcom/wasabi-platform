@@ -69,9 +69,7 @@ const TasksView = lazyWithRetry(() => import("./features/TasksView.jsx"));
 const NotesView = lazyWithRetry(() => import("./features/NotesView.jsx"));
 const DashboardView = lazyWithRetry(() => import("./features/DashboardView.jsx"));
 const CalendarView = lazyWithRetry(() => import("./features/CalendarView.jsx"));
-// GmailView and OutlookView lazy imports removed 2026-05-04 — UnifiedInboxView replaces both.
-// The .jsx files are retained on disk in case they need to be re-enabled.
-const UnifiedInboxView = lazyWithRetry(() => import("./features/UnifiedInboxView.jsx"));
+const InboxView = lazyWithRetry(() => import("./features/InboxView.jsx"));
 const FigmaView = lazyWithRetry(() => import("./features/FigmaView.jsx"));
 const WorkspaceBrowser = lazyWithRetry(() => import("./features/WorkspaceBrowser.jsx"));
 const KnowledgeHub = lazyWithRetry(() => import("./features/KnowledgeHub.jsx"));
@@ -463,8 +461,7 @@ function AppContent() {
         </ErrorBoundary>
       );
     }
-    // Legacy "gmail" / "outlook" routes redirect to the unified inbox.
-    if (activeRightPane === "gmail" || activeRightPane === "outlook" || activeRightPane === "inbox-unified") {
+    if (activeRightPane === "inbox-unified") {
       return (
         <ErrorBoundary fallbackLabel="Inbox">
           <React.Suspense fallback={
@@ -472,7 +469,7 @@ function AppContent() {
               Loading...
             </div>
           }>
-            <UnifiedInboxView />
+            <InboxView />
           </React.Suspense>
         </ErrorBoundary>
       );

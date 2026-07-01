@@ -23,7 +23,6 @@ export function buildWasabiPrompt(paramsOrEnvelope) {
       dataSummary: frozenContext.dataSummary,
       platformDbIds: frozenContext.platformDbIds,
       googleContext: frozenContext.googleContext,
-      microsoftContext: frozenContext.microsoftContext,
       agentMode: frozenContext.agentMode,
       workspaceInstructions: frozenContext.workspaceInstructions,
       currentDate: new Date().toISOString().split("T")[0],
@@ -68,7 +67,7 @@ function neuronsOverlapWorkspace(neuronSummary, workspaceSummary) {
   return covered / workspaceDbIds.size > 0.8;
 }
 
-function _buildPrompt({ platformDbIds, kbContext = "", currentPageContext, dataSummary, workspaceSummary, neuronSummary, currentDate, workspaceInstructions, agentMode, googleContext, microsoftContext }) {
+function _buildPrompt({ platformDbIds, kbContext = "", currentPageContext, dataSummary, workspaceSummary, neuronSummary, currentDate, workspaceInstructions, agentMode, googleContext }) {
   let pageSection = "";
   if (currentPageContext) {
     const { pageName, databaseIds, schemaText } = currentPageContext;
@@ -138,17 +137,12 @@ ${kbContext ? `\n## Your Knowledge Base Context\n${kbContext}` : ""}
 ${effectiveWorkspaceSummary ? `\n## Workspace Pages\n${effectiveWorkspaceSummary}` : ""}
 ${neuronSummary ? `\n## Neuron Connections\nThe user has created the following neuron connections (semantic links between items):\n${neuronSummary}` : ""}
 ${googleContext ? `\n${googleContext}` : ""}
-${microsoftContext ? `\n${microsoftContext}` : ""}
 
 ## How to Answer Common Questions
 
 When the user asks about EMAIL or CALENDAR:
-- ALWAYS call \`get_email_provider_status\` first to see which provider is connected.
-- Microsoft connected → reads: \`search_outlook_messages\`, \`get_outlook_message\`, \`get_outlook_thread\`, \`list_outlook_events\`, \`get_outlook_calendar_summary\`. Writes: \`send_outlook_email\`, \`create_outlook_draft\`, \`update_outlook_draft\`, \`modify_outlook_message\` (read/unread/flag/unflag/archive/trash), \`create_outlook_event\`, \`update_outlook_event\`, \`delete_outlook_event\`, \`check_outlook_freebusy\`.
-- Google connected → reads: \`search_emails\`, \`get_email\`, \`list_calendar_events\`. Writes: \`send_email\`, \`create_draft\`, \`modify_email\`, \`create_calendar_event\`, \`update_calendar_event\`, \`delete_calendar_event\`.
-- Neither → say so explicitly; do NOT default to Gmail when only Outlook is connected.
-- For multi-message email chains/threads, prefer \`get_outlook_thread\` (Microsoft) — it returns the full conversation in order.
-- To find a meeting time across multiple attendees, use \`check_outlook_freebusy\` (Microsoft). Don't guess availability; check it.
+- Email/calendar is served by Gmail + Google Calendar. Reads: \`search_emails\`, \`get_email\`, \`list_calendar_events\`. Writes: \`send_email\`, \`create_draft\`, \`modify_email\`, \`create_calendar_event\`, \`update_calendar_event\`, \`delete_calendar_event\`.
+- If the user hasn't connected Google, say so explicitly rather than pretending to check.
 
 When the user asks about a SPECIFIC RECORD (status update, handoff report, "what's going on with X", summarize a project):
 - Use \`get_record_context\` — returns fields + comments + notes + files + sub-items + links in ONE call.

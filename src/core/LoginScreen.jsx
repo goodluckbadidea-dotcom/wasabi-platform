@@ -8,12 +8,11 @@ import { C, FONT, FONT_DISPLAY, RADIUS, SHADOW } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { ANIM } from "../design/animations.js";
 import { useAuth } from "../context/AuthContext.jsx";
-import { getMicrosoftAuthUrl } from "../lib/api.js";
 import WasabiFlame from "./WasabiFlame.jsx";
 import Spinner from "../components/Spinner.jsx";
 
 export default function LoginScreen({ configError, loading }) {
-  const { register, login, loginWithToken, adminInvite, bootError } = useAuth();
+  const { register, login, adminInvite, bootError } = useAuth();
 
   const [mode, setMode] = useState(adminInvite ? "register" : "login"); // "register" | "login"
   const [inviteCode, setInviteCode] = useState(adminInvite || "");
@@ -21,8 +20,6 @@ export default function LoginScreen({ configError, loading }) {
   const [password, setPassword] = useState("");
   const [step, setStep] = useState("idle"); // "idle" | "loading" | "error"
   const [error, setError] = useState("");
-  const [ssoLoading, setSsoLoading] = useState(false);
-  const [ssoError, setSsoError] = useState("");
 
   const handleRegister = useCallback(async () => {
     const code = inviteCode.trim();
@@ -56,44 +53,6 @@ export default function LoginScreen({ configError, loading }) {
       setStep("idle");
     }
   }, [displayName, password, login]);
-
-  const handleMicrosoftSSO = useCallback(async () => {
-    setSsoLoading(true);
-    setSsoError("");
-    try {
-      const result = await getMicrosoftAuthUrl("login");
-      if (!result?.url) {
-        throw new Error(result?._error || "Microsoft OAuth not configured");
-      }
-      const popup = window.open(result.url, "microsoft-sso", "width=500,height=700,left=200,top=100");
-      if (!popup) {
-        setSsoError("Popup blocked — allow popups for this site and try again");
-        setSsoLoading(false);
-        return;
-      }
-      const onMessage = (e) => {
-        if (!e.data?.type?.startsWith("microsoft-oauth-")) return;
-        window.removeEventListener("message", onMessage);
-        if (e.data.type === "microsoft-oauth-login") {
-          loginWithToken(e.data.token, e.data.refreshToken, e.data.user);
-        } else if (e.data.type === "microsoft-oauth-error") {
-          setSsoError(e.data.detail || "Microsoft sign-in failed");
-          setSsoLoading(false);
-        }
-      };
-      window.addEventListener("message", onMessage);
-      const pollId = setInterval(() => {
-        if (popup?.closed) {
-          clearInterval(pollId);
-          window.removeEventListener("message", onMessage);
-          setSsoLoading(false);
-        }
-      }, 1000);
-    } catch (err) {
-      setSsoError(err.message || "Microsoft sign-in failed");
-      setSsoLoading(false);
-    }
-  }, [loginWithToken]);
 
   const isLoading = step === "loading";
 
@@ -228,56 +187,6 @@ export default function LoginScreen({ configError, loading }) {
           {isLoading ? "Please wait..." : mode === "register" ? "Register" : "Sign In"}
         </button>
       </div>
-
-      {/* SSO divider — only show on login mode */}
-      {mode === "login" && (
-        <>
-          <div style={{
-            display: "flex", alignItems: "center", gap: 12, marginTop: 8,
-          }}>
-            <div style={{ flex: 1, height: 1, background: C.darkBorder }} />
-            <span style={{ fontSize: 11, color: C.darkMuted, fontFamily: FONT }}>or</span>
-            <div style={{ flex: 1, height: 1, background: C.darkBorder }} />
-          </div>
-          <button
-            onClick={handleMicrosoftSSO}
-            disabled={ssoLoading || isLoading}
-            style={{
-              width: "100%", padding: "11px 20px", fontSize: 14,
-              background: "transparent",
-              border: `1px solid ${C.darkBorder}`,
-              borderRadius: RADIUS.md,
-              color: C.darkText, fontFamily: FONT, fontWeight: 500,
-              cursor: (ssoLoading || isLoading) ? "default" : "pointer",
-              opacity: (ssoLoading || isLoading) ? 0.6 : 1,
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-            }}
-          >
-            {ssoLoading ? (
-              <><Spinner size={14} color={C.darkMuted} /> Signing in with Microsoft...</>
-            ) : (
-              <>
-                <svg width="16" height="16" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <rect x="1" y="1" width="9" height="9" fill="#F25022"/>
-                  <rect x="11" y="1" width="9" height="9" fill="#7FBA00"/>
-                  <rect x="1" y="11" width="9" height="9" fill="#00A4EF"/>
-                  <rect x="11" y="11" width="9" height="9" fill="#FFB900"/>
-                </svg>
-                Sign in with Microsoft
-              </>
-            )}
-          </button>
-          {ssoError && (
-            <div style={{
-              background: C.orange + "18", border: `1px solid ${C.orange}44`,
-              borderRadius: RADIUS.pill, padding: "10px 14px",
-              fontSize: 13, color: C.orange,
-            }}>
-              {ssoError}
-            </div>
-          )}
-        </>
-      )}
 
       {/* Mode toggle */}
       <p style={{

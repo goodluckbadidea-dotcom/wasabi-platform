@@ -23,7 +23,6 @@ import { buildAgentContext } from "../agent/agentContext.js";
 import { buildFilteredNeuronContext, loadHydratedNeurons } from "../neurons/neuronStorage.js";
 import { buildDataSummary, getTokenBudget, findWorkspaceAncestor } from "../agent/dataSummary.js";
 import { fetchGoogleContext } from "../google/googleContext.js";
-import { fetchMicrosoftContext } from "../microsoft/microsoftContext.js";
 import * as api from "../lib/api.js";
 import useInsight from "../features/useInsight.js";
 // Legacy Notion imports removed — notifications now stored in D1
@@ -233,19 +232,12 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
         await loadHydratedNeurons().catch(() => {});
         let neuronSummary = buildFilteredNeuronContext(agentText);
 
-        // Fetch Google + Microsoft context (best effort, cached 5 min each)
+        // Fetch Google context (best effort, cached 5 min)
         let googleContext = "";
-        let microsoftContext = "";
         try {
-          const [gStatus, mStatus] = await Promise.allSettled([
-            api.getGoogleStatus(),
-            api.getMicrosoftStatus(),
-          ]);
-          if (gStatus.status === "fulfilled" && gStatus.value?.connected) {
+          const gStatus = await api.getGoogleStatus().catch(() => null);
+          if (gStatus?.connected) {
             googleContext = await fetchGoogleContext();
-          }
-          if (mStatus.status === "fulfilled" && mStatus.value?.connected) {
-            microsoftContext = await fetchMicrosoftContext();
           }
         } catch (err) { console.warn("[WasabiPanel] Mail/calendar context fetch:", err.message || err); }
 
@@ -278,7 +270,6 @@ export default function WasabiPanel({ onClose, isThinking, activePageConfig, act
           neuronSummary,
           kbContext,
           googleContext,
-          microsoftContext,
           agentMode,
           workspaceInstructions,
         });

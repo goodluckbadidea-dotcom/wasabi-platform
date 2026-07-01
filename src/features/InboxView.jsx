@@ -1,68 +1,21 @@
-// ─── Unified Inbox View ───
-// Merged Gmail + Outlook inbox in one surface. Phase 5A (2026-05-04).
-// Fetches both providers in parallel, displays merged list with provider
-// badges, supports expand-to-read, reply, compose with provider toggle.
-// Coexists with single-provider GmailView and OutlookView — does not replace them.
+// ─── Inbox View ───
+// Gmail inbox. Fetches threads, expand-to-read, reply, compose.
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { C, FONT, FONT_DISPLAY, RADIUS, Z } from "../design/tokens.js";
+import { C, FONT, RADIUS, Z } from "../design/tokens.js";
 import { ANIM, TRANSITION } from "../design/animations.js";
 import { formatEmailDate, truncate } from "../utils/helpers.js";
 import PanelHeader, { HeaderIconButton } from "../core/PanelHeader.jsx";
 import {
   getGoogleStatus,
-  getMicrosoftStatus,
   searchEmails,
-  getEmail,
   getThread,
   sendEmail,
   modifyEmail,
-  searchOutlookMessages,
-  getOutlookMessage,
-  getOutlookThread,
-  sendOutlookEmail,
-  modifyOutlookMessage,
 } from "../lib/api.js";
 
-// ─── Provider Badge ───
-function ProviderBadge({ provider, size = "md" }) {
-  const isGoogle = provider === "google";
-  const padding = size === "sm" ? "2px 6px" : "3px 8px";
-  const fontSize = size === "sm" ? 9 : 10;
-  return (
-    <span
-      title={isGoogle ? "Gmail" : "Outlook"}
-      style={{
-        display: "inline-flex", alignItems: "center", gap: 4,
-        padding, borderRadius: RADIUS.pill,
-        background: isGoogle ? "#ea433522" : "#0078d422",
-        color: isGoogle ? "#ea4335" : "#0078d4",
-        fontSize, fontWeight: 700, fontFamily: FONT,
-        letterSpacing: "0.04em", textTransform: "uppercase",
-        flexShrink: 0,
-      }}
-    >
-      {isGoogle ? (
-        <svg width="9" height="9" viewBox="0 0 24 24" fill="none">
-          <path d="M22.05 5.55v12.9c0 .85-.7 1.55-1.55 1.55h-1.55V8.5L12 13.5 5.05 8.5V20H3.5c-.85 0-1.55-.7-1.55-1.55V5.55c0-.85.7-1.55 1.55-1.55h.78L12 9.5l7.72-5.5h.78c.85 0 1.55.7 1.55 1.55Z" fill="#ea4335" />
-        </svg>
-      ) : (
-        <svg width="9" height="9" viewBox="0 0 21 21" fill="none">
-          <rect x="1" y="1" width="9" height="9" fill="#F25022" />
-          <rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
-          <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
-          <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
-        </svg>
-      )}
-      {isGoogle ? "Gmail" : "Outlook"}
-    </span>
-  );
-}
-
 // ─── Compose / Reply Modal ───
-function ComposeModal({ onClose, onSent, replyTo, defaultProvider, googleConnected, microsoftConnected }) {
-  const lockedProvider = replyTo?.provider || null;
-  const [provider, setProvider] = useState(lockedProvider || defaultProvider || (microsoftConnected ? "microsoft" : "google"));
+function ComposeModal({ onClose, onSent, replyTo }) {
   const [to, setTo] = useState(replyTo?.from || "");
   const [subject, setSubject] = useState(replyTo ? `Re: ${replyTo.subject?.replace(/^Re:\s*/i, "") || ""}` : "");
   const [body, setBody] = useState("");
@@ -77,30 +30,21 @@ function ComposeModal({ onClose, onSent, replyTo, defaultProvider, googleConnect
     setSending(true);
     setError(null);
     try {
-      if (provider === "microsoft") {
-        await sendOutlookEmail({
-          to: to.trim(),
-          subject: subject.trim(),
-          bodyText: body,
-          replyToId: replyTo?.provider === "microsoft" ? replyTo.id : undefined,
-        });
-      } else {
-        await sendEmail({
-          to: to.trim(),
-          subject: subject.trim(),
-          bodyText: body,
-          threadId: replyTo?.provider === "google" ? replyTo.threadId : undefined,
-        });
-      }
+      await sendEmail({
+        to: to.trim(),
+        subject: subject.trim(),
+        bodyText: body,
+        threadId: replyTo?.threadId,
+      });
       onSent?.();
       onClose();
     } catch (err) {
-      console.error("[UnifiedInbox] Send failed:", err);
+      console.error("[Inbox] Send failed:", err);
       setError("Failed to send. Please try again.");
     } finally {
       setSending(false);
     }
-  }, [provider, to, subject, body, replyTo, onSent, onClose]);
+  }, [to, subject, body, replyTo, onSent, onClose]);
 
   return (
     <div style={{
@@ -118,9 +62,8 @@ function ComposeModal({ onClose, onSent, replyTo, defaultProvider, googleConnect
           padding: "14px 18px", borderBottom: `1px solid ${C.darkBorder}`,
           display: "flex", alignItems: "center", justifyContent: "space-between",
         }}>
-          <span style={{ fontSize: 14, fontWeight: 600, fontFamily: FONT, color: C.darkText, display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 14, fontWeight: 600, fontFamily: FONT, color: C.darkText }}>
             {replyTo ? "Reply" : "New Message"}
-            <ProviderBadge provider={provider === "microsoft" ? "microsoft" : "google"} />
           </span>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}>
             <svg width="14" height="14" viewBox="0 0 12 12" fill="none">
@@ -129,28 +72,6 @@ function ComposeModal({ onClose, onSent, replyTo, defaultProvider, googleConnect
           </button>
         </div>
         <div style={{ padding: "14px 18px", flex: 1, overflowY: "auto" }}>
-          {/* Provider toggle (only if both connected and NOT a reply) */}
-          {!lockedProvider && googleConnected && microsoftConnected && (
-            <div style={{ marginBottom: 12, display: "flex", gap: 6 }}>
-              {[
-                { key: "microsoft", label: "Outlook" },
-                { key: "google", label: "Gmail" },
-              ].map((p) => (
-                <button
-                  key={p.key}
-                  onClick={() => setProvider(p.key)}
-                  style={{
-                    background: provider === p.key ? C.accent + "22" : "transparent",
-                    border: `1px solid ${provider === p.key ? C.accent + "44" : C.darkBorder}`,
-                    color: provider === p.key ? C.accent : C.darkMuted,
-                    padding: "4px 12px", borderRadius: RADIUS.pill,
-                    cursor: "pointer", fontFamily: FONT, fontSize: 11, fontWeight: 600,
-                    outline: "none",
-                  }}
-                >Send via {p.label}</button>
-              ))}
-            </div>
-          )}
           <div style={{ marginBottom: 10 }}>
             <label style={{ fontSize: 10, fontWeight: 600, color: C.darkMuted, fontFamily: FONT, textTransform: "uppercase", letterSpacing: "0.05em" }}>To</label>
             <input
@@ -245,26 +166,20 @@ function compactSenders(senders) {
 }
 
 // ─── Thread grouping ───
-// Group flat messages into threads by provider+threadId/conversationId.
-// Falls back to the message id when no thread/conversation id is available.
+// Group flat messages into threads by threadId. Falls back to message id.
 function groupThreads(messages) {
   const groups = new Map();
   for (const m of messages) {
-    const tid = m.provider === "google"
-      ? (m.threadId || m.id)
-      : (m.conversationId || m.id);
-    const key = `${m.provider === "google" ? "g" : "o"}:${tid}`;
-    if (!groups.has(key)) {
-      groups.set(key, {
-        threadKey: key,
-        provider: m.provider,
-        threadId: m.provider === "google" ? tid : null,
-        conversationId: m.provider === "microsoft" ? tid : null,
+    const tid = m.threadId || m.id;
+    if (!groups.has(tid)) {
+      groups.set(tid, {
+        threadKey: tid,
+        threadId: tid,
         subject: m.subject,
         messages: [],
       });
     }
-    groups.get(key).messages.push(m);
+    groups.get(tid).messages.push(m);
   }
   // Compute aggregates for each thread.
   return Array.from(groups.values()).map((g) => {
@@ -282,8 +197,6 @@ function groupThreads(messages) {
       isAnyUnread: g.messages.some((m) => !m.isRead),
       sendersDisplay: compactSenders(sorted.map((m) => m.fromName || m.from)),
       messageCount: g.messages.length,
-      // Subject from any message — they're all the same thread, but pick the
-      // one that doesn't start with "Re:" if available, otherwise latest.
       displaySubject: (g.messages.find((m) => m.subject && !/^re:\s/i.test(m.subject))?.subject)
         || latest?.subject
         || "(no subject)",
@@ -296,24 +209,21 @@ function groupThreads(messages) {
 }
 
 // ─── Main View ───
-export default function UnifiedInboxView() {
+export default function InboxView() {
   const [googleConnected, setGoogleConnected] = useState(false);
-  const [microsoftConnected, setMicrosoftConnected] = useState(false);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState("all"); // "all" | "unread"
-  const [providerFilter, setProviderFilter] = useState("all"); // "all" | "google" | "microsoft"
   const [expandedThreadKey, setExpandedThreadKey] = useState(null);
   const [expandedThread, setExpandedThread] = useState(null); // { loading, messages?, error? }
   const [compose, setCompose] = useState(null);
   const searchTimerRef = useRef(null);
 
-  // ── Normalize messages from each provider into a common shape ──
+  // ── Normalize Gmail messages into a common shape ──
   const normalizeGmail = (m) => ({
-    key: `g:${m.id}`,
-    provider: "google",
+    key: m.id,
     id: m.id,
     threadId: m.threadId,
     from: m.from || "",
@@ -324,55 +234,33 @@ export default function UnifiedInboxView() {
     isRead: m.isRead !== false && !((m.labelIds || []).includes("UNREAD")),
   });
 
-  const normalizeOutlook = (m) => ({
-    key: `o:${m.id}`,
-    provider: "microsoft",
-    id: m.id,
-    conversationId: m.conversationId,
-    from: m.from || "",
-    fromName: m.fromName || m.from,
-    subject: m.subject || "(no subject)",
-    snippet: m.snippet || "",
-    date: m.date || "",
-    isRead: m.isRead !== false,
-  });
-
-  // ── Fetch messages from both providers in parallel ──
+  // ── Fetch messages from Gmail ──
   const fetchMessages = useCallback(async (q = "") => {
     setLoading(true);
     setError(null);
     try {
-      const [gStatus, mStatus] = await Promise.all([
-        getGoogleStatus().catch(() => null),
-        getMicrosoftStatus().catch(() => null),
-      ]);
+      const gStatus = await getGoogleStatus().catch(() => null);
       // googleConnected here means "user has Gmail grant" — Sheets-only Google
       // connections don't surface in the inbox.
       const isGoogle = !!gStatus?.connected && (gStatus?.grants || []).includes("gmail");
-      const isMicrosoft = !!mStatus?.connected;
       setGoogleConnected(isGoogle);
-      setMicrosoftConnected(isMicrosoft);
 
-      const fetches = [];
-      if (isGoogle) {
-        const gQuery = q ? q : "in:inbox";
-        fetches.push(searchEmails(gQuery, 40).catch(() => null));
-      } else fetches.push(Promise.resolve(null));
-      if (isMicrosoft) {
-        fetches.push(searchOutlookMessages(q, 40, "inbox").catch(() => null));
-      } else fetches.push(Promise.resolve(null));
+      if (!isGoogle) {
+        setMessages([]);
+        return;
+      }
 
-      const [gRes, mRes] = await Promise.all(fetches);
+      const gQuery = q ? q : "in:inbox";
+      const gRes = await searchEmails(gQuery, 40).catch(() => null);
       const gMessages = (gRes?.messages || gRes?.emails || []).map(normalizeGmail);
-      const mMessages = (mRes?.messages || []).map(normalizeOutlook);
-      const merged = [...gMessages, ...mMessages].sort((a, b) => {
+      const sorted = gMessages.sort((a, b) => {
         const da = new Date(a.date).getTime() || 0;
         const db = new Date(b.date).getTime() || 0;
         return db - da;
       });
-      setMessages(merged);
+      setMessages(sorted);
     } catch (err) {
-      console.error("[UnifiedInbox] Fetch failed:", err);
+      console.error("[Inbox] Fetch failed:", err);
       setError("Failed to load messages.");
     } finally {
       setLoading(false);
@@ -394,10 +282,9 @@ export default function UnifiedInboxView() {
     const threads = groupThreads(messages);
     return threads.filter((t) => {
       if (filter === "unread" && !t.isAnyUnread) return false;
-      if (providerFilter !== "all" && t.provider !== providerFilter) return false;
       return true;
     });
-  }, [messages, filter, providerFilter]);
+  }, [messages, filter]);
 
   // ── Expand a thread (fetch full conversation) ──
   const handleExpandThread = useCallback(async (thread) => {
@@ -409,9 +296,7 @@ export default function UnifiedInboxView() {
     setExpandedThreadKey(thread.threadKey);
     setExpandedThread({ loading: true });
     try {
-      const fullThread = thread.provider === "google"
-        ? await getThread(thread.threadId)
-        : await getOutlookThread(thread.conversationId);
+      const fullThread = await getThread(thread.threadId);
       const fullMessages = (fullThread?.messages || []).slice().sort((a, b) => {
         const da = new Date(a.date).getTime() || 0;
         const db = new Date(b.date).getTime() || 0;
@@ -419,24 +304,22 @@ export default function UnifiedInboxView() {
       });
       setExpandedThread({ messages: fullMessages });
 
-      // Mark all unread messages in this thread as read on the right provider.
+      // Mark all unread messages in this thread as read.
       const unreadInThread = thread.messages.filter((m) => !m.isRead);
       if (unreadInThread.length) {
-        const markPromises = unreadInThread.map((m) => {
-          if (m.provider === "google") return modifyEmail(m.id, "mark_read").catch(() => null);
-          return modifyOutlookMessage(m.id, "read").catch(() => null);
-        });
+        const markPromises = unreadInThread.map((m) =>
+          modifyEmail(m.id, "mark_read").catch(() => null)
+        );
         Promise.all(markPromises).then(() => {
           // Reflect read state locally so the thread list updates without refetch.
           setMessages((prev) => prev.map((m) => {
-            const tid = m.provider === "google" ? (m.threadId || m.id) : (m.conversationId || m.id);
-            const inThread = `${m.provider === "google" ? "g" : "o"}:${tid}` === thread.threadKey;
+            const inThread = (m.threadId || m.id) === thread.threadKey;
             return inThread && !m.isRead ? { ...m, isRead: true } : m;
           }));
         });
       }
     } catch (err) {
-      console.error("[UnifiedInbox] Get thread failed:", err);
+      console.error("[Inbox] Get thread failed:", err);
       setExpandedThread({ error: "Failed to load thread" });
     }
   }, [expandedThreadKey]);
@@ -445,10 +328,8 @@ export default function UnifiedInboxView() {
   const handleReply = useCallback((msg) => {
     setCompose({
       replyTo: {
-        provider: msg.provider,
         id: msg.id,
         threadId: msg.threadId,
-        conversationId: msg.conversationId,
         from: msg.from,
         subject: msg.subject,
       },
@@ -460,14 +341,14 @@ export default function UnifiedInboxView() {
   }, [fetchMessages, searchQuery]);
 
   // ── Render ──
-  if (!googleConnected && !microsoftConnected && !loading) {
+  if (!googleConnected && !loading) {
     return (
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", padding: 24, gap: 8 }}>
         <div style={{ fontSize: 14, fontFamily: FONT, color: C.darkMuted }}>
-          No email account connected.
+          Gmail not connected.
         </div>
         <div style={{ fontSize: 12, fontFamily: FONT, color: C.darkMuted, opacity: 0.7 }}>
-          Connect Google or Microsoft in Settings.
+          Connect Google in Settings.
         </div>
       </div>
     );
@@ -520,7 +401,7 @@ export default function UnifiedInboxView() {
             <path d="M9.5 9.5L12.5 12.5" stroke={C.darkMuted} strokeWidth="1.2" strokeLinecap="round" />
           </svg>
           <input type="text" value={searchQuery} onChange={handleSearchChange}
-            placeholder="Search both inboxes..."
+            placeholder="Search inbox..."
             style={{
               width: "100%", boxSizing: "border-box",
               background: C.darkSurf2, border: `1px solid ${C.darkBorder}`,
@@ -545,22 +426,6 @@ export default function UnifiedInboxView() {
                 cursor: "pointer", fontFamily: FONT, fontSize: 11, fontWeight: 600, outline: "none",
               }}
             >{f.label}</button>
-          ))}
-          <div style={{ width: 1, background: C.darkBorder, margin: "2px 4px" }} />
-          {[
-            { key: "all", label: "Both" },
-            ...(googleConnected ? [{ key: "google", label: "Gmail" }] : []),
-            ...(microsoftConnected ? [{ key: "microsoft", label: "Outlook" }] : []),
-          ].map((p) => (
-            <button key={p.key} onClick={() => setProviderFilter(p.key)}
-              style={{
-                background: providerFilter === p.key ? C.accent + "22" : "transparent",
-                border: `1px solid ${providerFilter === p.key ? C.accent + "44" : C.darkBorder}`,
-                color: providerFilter === p.key ? C.accent : C.darkMuted,
-                padding: "4px 12px", borderRadius: RADIUS.pill,
-                cursor: "pointer", fontFamily: FONT, fontSize: 11, fontWeight: 600, outline: "none",
-              }}
-            >{p.label}</button>
           ))}
         </div>
       </div>
@@ -613,7 +478,6 @@ export default function UnifiedInboxView() {
                     width: 6, height: 6, borderRadius: "50%",
                     background: isUnread ? C.accent : "transparent", flexShrink: 0,
                   }} />
-                  <ProviderBadge provider={thread.provider} size="sm" />
                   {/* Sender list (with count badge if multi-message thread) */}
                   <div style={{
                     width: 160, flexShrink: 0,
@@ -677,10 +541,8 @@ export default function UnifiedInboxView() {
                             const latest = msgs[msgs.length - 1];
                             if (latest) {
                               handleReply({
-                                provider: thread.provider,
                                 id: latest.id,
                                 threadId: thread.threadId,
-                                conversationId: thread.conversationId,
                                 from: latest.from,
                                 subject: latest.subject,
                               });
@@ -740,13 +602,8 @@ export default function UnifiedInboxView() {
           onClose={() => setCompose(null)}
           onSent={handleSent}
           replyTo={compose.replyTo}
-          defaultProvider={compose.replyTo?.provider}
-          googleConnected={googleConnected}
-          microsoftConnected={microsoftConnected}
         />
       )}
     </div>
   );
 }
-
-export { ProviderBadge };

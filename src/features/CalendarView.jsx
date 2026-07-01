@@ -9,7 +9,7 @@ import { C, FONT, RADIUS, VIEW_PALETTE } from "../design/tokens.js";
 import { DAY_NAMES, MONTH_NAMES } from "../utils/helpers.js";
 import { IconEdit, IconCalendar } from "../design/icons.jsx";
 import PanelHeader from "../core/PanelHeader.jsx";
-import { getGoogleStatus, listCalendarEvents, getMicrosoftStatus, listOutlookEvents } from "../lib/api.js";
+import { getGoogleStatus, listCalendarEvents } from "../lib/api.js";
 import { isSameDay, getWeekRange, getMonthRange, getListViewRange, formatWeekDateHeader, formatMonthHeader } from "./taskHelpers.js";
 import { useRecordDrawer } from "./RecordDrawerContext.jsx";
 import { useColorMapping } from "../context/ColorMappingContext.jsx";
@@ -66,7 +66,6 @@ export default function CalendarView({ allTasks: allTasksProp, refreshRef }) {
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [viewMode, setViewMode] = useState("day"); // "day" | "week" | "month"
   const [googleConnected, setGoogleConnected] = useState(false);
-  const [outlookConnected, setOutlookConnected] = useState(false);
   const [events, setEvents] = useState([]);
   const [calendars, setCalendars] = useState([]);
   const [hiddenCalendars, setHiddenCalendars] = useState(() => loadHiddenCalendars());
@@ -122,7 +121,7 @@ export default function CalendarView({ allTasks: allTasksProp, refreshRef }) {
   // Week range (used for date header label)
   const weekRange = useMemo(() => viewMode === "week" ? getListViewRange(selectedDate) : getWeekRange(selectedDate), [selectedDate, viewMode]);
 
-  // ── Fetch calendar data (Google + Outlook, in parallel, with retry) ──
+  // ── Fetch calendar data (Google Calendar, with retry) ──
   useEffect(() => {
     let cancelled = false;
     async function load(attempt = 0) {
@@ -130,44 +129,21 @@ export default function CalendarView({ allTasks: allTasksProp, refreshRef }) {
       setError(null);
       try {
         const maxResults = viewMode === "month" ? 250 : viewMode === "week" ? 150 : 50;
-        const [googleStatus, msStatus] = await Promise.all([
-          getGoogleStatus().catch(() => null),
-          getMicrosoftStatus().catch(() => null),
-        ]);
+        const googleStatus = await getGoogleStatus().catch(() => null);
         if (cancelled) return;
 
         // googleConnected here means "user has Calendar grant" — Sheets-only or
         // Gmail-only Google connections don't surface in the calendar.
         const isGoogle = !!googleStatus?.connected && (googleStatus?.grants || []).includes("calendar");
-        const isMs = !!msStatus?.connected;
         setGoogleConnected(isGoogle);
-        setOutlookConnected(isMs);
 
-        const fetches = [];
-        if (isGoogle) {
-          fetches.push(
-            listCalendarEvents(
+        const googleResult = isGoogle
+          ? await listCalendarEvents(
               fetchRange.start.toISOString(),
               fetchRange.end.toISOString(),
               maxResults
             ).catch(() => null)
-          );
-        } else {
-          fetches.push(Promise.resolve(null));
-        }
-        if (isMs) {
-          fetches.push(
-            listOutlookEvents(
-              fetchRange.start.toISOString(),
-              fetchRange.end.toISOString(),
-              maxResults
-            ).catch(() => null)
-          );
-        } else {
-          fetches.push(Promise.resolve(null));
-        }
-
-        const [googleResult, outlookResult] = await Promise.all(fetches);
+          : null;
         if (cancelled) return;
 
         const googleEvents = googleResult
@@ -175,26 +151,8 @@ export default function CalendarView({ allTasks: allTasksProp, refreshRef }) {
           : [];
         const googleCals = googleResult?.calendars || [];
 
-        // Normalize Outlook events to match Google Calendar event shape
-        const outlookEvents = outlookResult?.events
-          ? outlookResult.events.map((ev) => ({
-              ...ev,
-              start: ev.isAllDay ? { date: ev.start?.split("T")[0] || ev.start } : { dateTime: ev.start },
-              end: ev.isAllDay ? { date: ev.end?.split("T")[0] || ev.end } : { dateTime: ev.end },
-              calendarId: "outlook",
-              calendarName: "Outlook Calendar",
-              calendarColor: "#0078d4",
-              provider: "microsoft",
-            }))
-          : [];
-
-        const allCals = [...googleCals];
-        if (isMs) {
-          allCals.push({ id: "outlook", summary: "Outlook Calendar", backgroundColor: "#0078d4" });
-        }
-
-        setEvents([...googleEvents, ...outlookEvents]);
-        if (allCals.length) setCalendars(allCals);
+        setEvents(googleEvents);
+        if (googleCals.length) setCalendars(googleCals);
       } catch (err) {
         console.error("[Calendar] Failed to load:", err);
         if (cancelled) return;
@@ -513,14 +471,14 @@ export default function CalendarView({ allTasks: allTasksProp, refreshRef }) {
           Failed to load calendar events — will retry on next navigation
         </div>
       )}
-      {!loading && !googleConnected && !outlookConnected && !error && (
+      {!loading && !googleConnected && !error && (
         <div style={{
           flexShrink: 0, padding: "6px 12px",
           borderTop: `1px solid ${C.darkBorder}`,
           fontSize: 9, fontFamily: FONT, color: C.darkMuted,
           opacity: 0.6, textAlign: "center",
         }}>
-          Connect Google or Microsoft calendar in Settings for events
+          Connect Google Calendar in Settings for events
         </div>
       )}
 

@@ -2,10 +2,9 @@ import React, { useState, useCallback, useRef, useEffect } from "react";
 import { C, FONT, MONO, RADIUS } from "../../design/tokens.js";
 import { ANIM } from "../../design/animations.js";
 import { usePlatform } from "../../context/PlatformContext.jsx";
-import { getConnections, setConnection as apiSetConnection, deleteConnection as apiDeleteConnection, checkHealth, getGoogleAuthUrl, getGoogleStatus, disconnectGoogle, getMicrosoftAuthUrl, getMicrosoftStatus, disconnectMicrosoft } from "../../lib/api.js";
+import { getConnections, setConnection as apiSetConnection, deleteConnection as apiDeleteConnection, checkHealth, getGoogleAuthUrl, getGoogleStatus, disconnectGoogle } from "../../lib/api.js";
 import ConnectionRow, { CONNECTION_DEFS } from "./components/ConnectionRow.jsx";
 import GoogleConnectionRow from "./components/GoogleConnectionRow.jsx";
-import MicrosoftConnectionRow from "./components/MicrosoftConnectionRow.jsx";
 
 export default function ConnectionsTab() {
   const { user, workerConnection, updateConnectionKey } = usePlatform();
@@ -22,11 +21,6 @@ export default function ConnectionsTab() {
   const [googleLoading, setGoogleLoading] = useState(null);
   const [googleError, setGoogleError] = useState("");
 
-  // ── Microsoft OAuth state ──
-  const [microsoftStatus, setMicrosoftStatus] = useState({ connected: false, email: "" });
-  const [microsoftLoading, setMicrosoftLoading] = useState(false);
-  const [microsoftError, setMicrosoftError] = useState("");
-
   // ── Worker health ──
   const [health, setHealth] = useState(null);
 
@@ -38,7 +32,6 @@ export default function ConnectionsTab() {
     Promise.all([
       getConnections().then((data) => setConnections(data.connections || [])),
       getGoogleStatus().then(setGoogleStatus).catch(err => console.warn("[ConnectionsTab] getGoogleStatus:", err.message || err)),
-      getMicrosoftStatus().then(setMicrosoftStatus).catch(err => console.warn("[ConnectionsTab] getMicrosoftStatus:", err.message || err)),
     ])
       .catch((err) => console.warn("Failed to load connections:", err))
       .finally(() => setConnectionsLoading(false));
@@ -122,57 +115,6 @@ export default function ConnectionsTab() {
       console.error("Google disconnect failed:", err);
     } finally {
       setGoogleLoading(null);
-    }
-  }, []);
-
-  const handleMicrosoftConnect = useCallback(async () => {
-    setMicrosoftLoading(true);
-    setMicrosoftError("");
-    try {
-      const result = await getMicrosoftAuthUrl("link");
-      if (!result?.url) {
-        throw new Error(result?._error || "No auth URL returned — check Microsoft OAuth configuration");
-      }
-      const popup = window.open(result.url, "microsoft-auth", "width=500,height=700,left=200,top=100");
-      if (!popup) {
-        setMicrosoftError("Popup blocked — allow popups for this site and try again");
-        setMicrosoftLoading(false);
-        return;
-      }
-      const onMessage = (e) => {
-        if (e.data?.type?.startsWith("microsoft-oauth-")) {
-          window.removeEventListener("message", onMessage);
-          if (e.data.type === "microsoft-oauth-error") {
-            setMicrosoftError(e.data.detail || "OAuth failed");
-          }
-          getMicrosoftStatus().then(setMicrosoftStatus).catch(() => {});
-          setMicrosoftLoading(false);
-        }
-      };
-      window.addEventListener("message", onMessage);
-      const pollId = setInterval(() => {
-        if (popup?.closed) {
-          clearInterval(pollId);
-          window.removeEventListener("message", onMessage);
-          getMicrosoftStatus().then(setMicrosoftStatus).catch(() => {});
-          setMicrosoftLoading(false);
-        }
-      }, 1000);
-    } catch (err) {
-      setMicrosoftError(err.message || "Connection failed");
-      setMicrosoftLoading(false);
-    }
-  }, []);
-
-  const handleMicrosoftDisconnect = useCallback(async () => {
-    setMicrosoftLoading(true);
-    try {
-      await disconnectMicrosoft();
-      setMicrosoftStatus({ connected: false, email: "" });
-    } catch (err) {
-      console.error("Microsoft disconnect failed:", err);
-    } finally {
-      setMicrosoftLoading(false);
     }
   }, []);
 
@@ -276,14 +218,6 @@ export default function ConnectionsTab() {
             onDisconnect={handleGoogleDisconnect}
             loading={googleLoading}
             error={googleError}
-          />
-          <MicrosoftConnectionRow
-            connected={microsoftStatus.connected}
-            email={microsoftStatus.email}
-            onConnect={handleMicrosoftConnect}
-            onDisconnect={handleMicrosoftDisconnect}
-            loading={microsoftLoading}
-            error={microsoftError}
           />
         </>
       )}

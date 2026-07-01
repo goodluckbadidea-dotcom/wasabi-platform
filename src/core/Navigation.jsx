@@ -14,7 +14,7 @@ import {
   IconGear, IconSearch, IconBrain, IconBell,
   IconMail, IconCalendar, IconGlobe,
 } from "../design/icons.jsx";
-import { getGoogleStatus, getGmailSummary, getCalendarSummary, getMicrosoftStatus, getOutlookSummary, getFigmaStatus, getUnreadNotificationCount, listRows } from "../lib/api.js";
+import { getGoogleStatus, getGmailSummary, getCalendarSummary, getFigmaStatus, getUnreadNotificationCount, listRows } from "../lib/api.js";
 import { useUserSync } from "../context/UserSyncContext.jsx";
 import WasabiFlame from "./WasabiFlame.jsx";
 import ConfirmDialog from "./ConfirmDialog.jsx";
@@ -68,11 +68,6 @@ export default function Navigation({
 
   const gmailGranted = googleGrants.includes("gmail");
   const calendarGranted = googleGrants.includes("calendar");
-
-  // ── Microsoft status + sidebar widgets ──
-  const [microsoftConnected, setMicrosoftConnected] = useState(false);
-  const [outlookUnreadCount, setOutlookUnreadCount] = useState(0);
-  const msPollRef = useRef(null);
 
   // ── Figma status ──
   const [figmaConnected, setFigmaConnected] = useState(false);
@@ -172,24 +167,6 @@ export default function Navigation({
     // Re-poll every 2 min (more responsive than 5min for connection state changes)
     googlePollRef.current = setInterval(checkGoogle, 2 * 60 * 1000);
     return () => { cancelled = true; clearInterval(googlePollRef.current); };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function checkMicrosoft() {
-      try {
-        const status = await getMicrosoftStatus();
-        if (cancelled) return;
-        setMicrosoftConnected(!!status?.connected);
-        if (status?.connected) {
-          const res = await getOutlookSummary().catch(() => null);
-          if (!cancelled && res) setOutlookUnreadCount(res.unread || 0);
-        }
-      } catch { /* non-fatal */ }
-    }
-    checkMicrosoft();
-    msPollRef.current = setInterval(checkMicrosoft, 2 * 60 * 1000);
-    return () => { cancelled = true; clearInterval(msPollRef.current); };
   }, []);
 
   // Active view index (from App.jsx viewStates)
@@ -613,7 +590,7 @@ export default function Navigation({
             {(() => {
               // Note: "tasks" and "notes" intentionally dropped — those are
               // left-pane routes now and never appear in activeRightPane post-Phase 2.
-              const SYSTEM_PAGES = new Set(["system", "wasabi", "inbox", "inbox-unified", "automations", "functions", "build", "knowledge-base", "dashboard", "workspaces", "calendar", "gmail", "outlook", "notifications", "knowledge"]);
+              const SYSTEM_PAGES = new Set(["system", "wasabi", "inbox", "inbox-unified", "automations", "functions", "build", "knowledge-base", "dashboard", "workspaces", "calendar", "notifications", "knowledge"]);
               const isWsActive = activeRightPane === "workspaces" ||
                 (activeRightPane && !SYSTEM_PAGES.has(activeRightPane) && pages.some(p => p.id === activeRightPane));
               return (
@@ -683,18 +660,18 @@ export default function Navigation({
                 with the animated flame as left-pane residents. See bottom
                 of this rail. */}
 
-            {/* Unified Inbox (only when Gmail granted OR Microsoft connected — Sheets-only Google users don't see this) */}
-            {(gmailGranted || microsoftConnected) && (
+            {/* Inbox (only when Gmail granted — Sheets-only Google users don't see this) */}
+            {gmailGranted && (
               <button
                 onClick={() => setActiveRightPane("inbox-unified")}
-                title="Inbox (Gmail + Outlook)"
+                title="Inbox"
                 style={bottomBtnStyle(activeRightPane === "inbox-unified")}
                 onMouseEnter={(e) => { if (activeRightPane !== "inbox-unified") e.currentTarget.style.background = C.darkSurf2; }}
                 onMouseLeave={(e) => { if (activeRightPane !== "inbox-unified") e.currentTarget.style.background = "transparent"; }}
               >
                 <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
                   <IconMail size={iconSize(activeRightPane === "inbox-unified")} color={activeRightPane === "inbox-unified" ? C.accent : navInactiveColor} />
-                  {(unreadCount + outlookUnreadCount) > 0 && (
+                  {unreadCount > 0 && (
                     <span style={{
                       position: "absolute", top: -5, right: -8,
                       background: C.accent, color: "#fff",
@@ -703,16 +680,13 @@ export default function Navigation({
                       width: 18, height: 18,
                       display: "flex", alignItems: "center", justifyContent: "center",
                     }}>
-                      {(unreadCount + outlookUnreadCount) > 99 ? "99+" : (unreadCount + outlookUnreadCount)}
+                      {unreadCount > 99 ? "99+" : unreadCount}
                     </span>
                   )}
                 </div>
                 {!collapsed && <span style={bottomLabelStyle(activeRightPane === "inbox-unified")}>Inbox</span>}
               </button>
             )}
-
-            {/* Single-provider Outlook and Gmail buttons removed 2026-05-04.
-                The unified "Inbox" button above handles both providers. */}
 
             {/* Figma (only when connected) */}
             {figmaConnected && (

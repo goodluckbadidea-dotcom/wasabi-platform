@@ -10,7 +10,7 @@
 // settings/user) lives on the far right because it doesn't target
 // either panel.
 //
-// Polling logic for Google/Microsoft/Figma/Notifications is local —
+// Polling logic for Google/Figma/Notifications is local —
 // the old Navigation.jsx is kept on disk but no longer renders, so
 // nothing else is running these pollers.
 
@@ -32,7 +32,6 @@ import {
 import { isAdmin } from "../lib/roles.js";
 import {
   getGoogleStatus, getGmailSummary, getCalendarSummary,
-  getMicrosoftStatus, getOutlookSummary,
   getFigmaStatus, getUnreadNotificationCount,
 } from "../lib/api.js";
 import WasabiFlame from "./WasabiFlame.jsx";
@@ -63,10 +62,6 @@ export default function BottomBar({ isThinking, onCreatePage, onSearchClick }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const googlePollRef = useRef(null);
   const gmailGranted = googleGrants.includes("gmail");
-
-  const [microsoftConnected, setMicrosoftConnected] = useState(false);
-  const [outlookUnreadCount, setOutlookUnreadCount] = useState(0);
-  const msPollRef = useRef(null);
 
   const [figmaConnected, setFigmaConnected] = useState(false);
   const figmaPollRef = useRef(null);
@@ -132,25 +127,6 @@ export default function BottomBar({ isThinking, onCreatePage, onSearchClick }) {
     checkGoogle();
     googlePollRef.current = setInterval(checkGoogle, 2 * 60 * 1000);
     return () => { cancelled = true; clearInterval(googlePollRef.current); };
-  }, []);
-
-  // Microsoft
-  useEffect(() => {
-    let cancelled = false;
-    async function checkMicrosoft() {
-      try {
-        const status = await getMicrosoftStatus();
-        if (cancelled) return;
-        setMicrosoftConnected(!!status?.connected);
-        if (status?.connected) {
-          const res = await getOutlookSummary().catch(() => null);
-          if (!cancelled && res) setOutlookUnreadCount(res.unread || 0);
-        }
-      } catch { /* non-fatal */ }
-    }
-    checkMicrosoft();
-    msPollRef.current = setInterval(checkMicrosoft, 2 * 60 * 1000);
-    return () => { cancelled = true; clearInterval(msPollRef.current); };
   }, []);
 
   // Figma
@@ -254,7 +230,7 @@ export default function BottomBar({ isThinking, onCreatePage, onSearchClick }) {
   const ICON = 22;
 
   // Workspace highlight rule: Workspaces icon is also lit when viewing a user-built page.
-  const SYSTEM_PAGES = new Set(["system", "wasabi", "inbox", "inbox-unified", "automations", "functions", "build", "knowledge-base", "dashboard", "workspaces", "calendar", "gmail", "outlook", "notifications", "knowledge"]);
+  const SYSTEM_PAGES = new Set(["system", "wasabi", "inbox", "inbox-unified", "automations", "functions", "build", "knowledge-base", "dashboard", "workspaces", "calendar", "notifications", "knowledge"]);
   const isWsActive = activeRightPane === "workspaces" ||
     (activeRightPane && !SYSTEM_PAGES.has(activeRightPane) && pages.some((p) => p.id === activeRightPane));
 
@@ -434,8 +410,8 @@ export default function BottomBar({ isThinking, onCreatePage, onSearchClick }) {
         <IconCalendar size={ICON} color={iconColor(activeRightPane === "calendar")} />
       </button>
 
-      {/* Inbox (only when Gmail granted OR Microsoft connected) */}
-      {(gmailGranted || microsoftConnected) && (
+      {/* Inbox (only when Gmail granted) */}
+      {gmailGranted && (
         <button
           onClick={() => setActiveRightPane("inbox-unified")}
           title="Inbox"
@@ -446,9 +422,9 @@ export default function BottomBar({ isThinking, onCreatePage, onSearchClick }) {
           onMouseLeave={(e) => { if (activeRightPane !== "inbox-unified") e.currentTarget.style.background = "transparent"; }}
         >
           <IconMail size={ICON} color={iconColor(activeRightPane === "inbox-unified")} />
-          {(unreadCount + outlookUnreadCount) > 0 && (
+          {unreadCount > 0 && (
             <span style={badgeStyle()}>
-              {(unreadCount + outlookUnreadCount) > 99 ? "99+" : (unreadCount + outlookUnreadCount)}
+              {unreadCount > 99 ? "99+" : unreadCount}
             </span>
           )}
         </button>

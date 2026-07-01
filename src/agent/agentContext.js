@@ -37,7 +37,6 @@ export async function buildAgentContext({
   neuronSummary = "",
   kbContext = "",
   googleContext = "",
-  microsoftContext = "",
   agentMode = "auto",
   workspaceInstructions = "",
 }) {
@@ -86,7 +85,6 @@ export async function buildAgentContext({
       dataSummary,
       platformDbIds: platformDbIdsStr,
       googleContext,
-      microsoftContext,
       agentMode,
       workspaceInstructions,
       builtAt: Date.now(),
