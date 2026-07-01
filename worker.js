@@ -23,8 +23,6 @@ import { handleListCustomFunctions, handleCreateCustomFunction, handleGetCustomF
 import { handleListRules, handleCreateRule, handleGetRule, handleUpdateRule, handleDeleteRule, handleListFlows, handleCreateFlow, handleGetFlow, handleUpdateFlow, handleDeleteFlow, handleListFunctionExecutions, handleCreateFunctionExecution, handleListFlowExecutions, handleCreateFlowExecution, handleUpdateFlowExecution } from './worker/handlers/automations.js';
 import { handleListComments, handleCreateComment, handleDeleteComment } from './worker/handlers/records.js';
 import { handleGoogleAuthUrl, handleGoogleCallback, handleGoogleStatus, handleGoogleDisconnect, handleGmailSummary, handleGmailSearch, handleGmailGetMessage, handleGmailGetThread, handleGmailUpdateDraft, handleGmailSend, handleGmailCreateDraft, handleGmailModify, handleCalendarSummary, handleCalendarList, handleCalendarListEvents, handleCalendarCreateEvent, handleCalendarUpdateEvent, handleCalendarDeleteEvent, handleCalendarFreeBusy, fetchGoogleSheetViaApi } from './worker/handlers/google.js';
-import { handleMicrosoftAuthUrl, handleMicrosoftCallback, handleMicrosoftStatus, handleMicrosoftDisconnect } from './worker/handlers/microsoft.js';
-import { handleOutlookSummary, handleOutlookSearch, handleOutlookGetMessage, handleOutlookGetThread, handleOutlookSend, handleOutlookModify, handleOutlookCreateDraft, handleOutlookUpdateDraft, handleOutlookFreeBusy, handleOutlookCalendarSummary, handleOutlookListEvents, handleOutlookCreateEvent, handleOutlookUpdateEvent, handleOutlookDeleteEvent } from './worker/handlers/outlook.js';
 import { handleFigmaStatus, handleFigmaProjects, handleFigmaFiles, handleFigmaFile, handleFigmaImport, handleFigmaListComments, handleFigmaPostComment, handleFigmaDeleteComment, handleFigmaListLinksForRecord, handleFigmaListLinksForComment, handleFigmaCreateLink, handleFigmaDeleteLink } from './worker/handlers/figma.js';
 import { runAutomationTick, checkAutomationTriggers, runNeuronPruneTick } from './worker/automation/engine.js';
 import { runSyncFlushTick, handleSyncConfigure, handleSyncPush, handleSyncPull, handleSyncStatus, handleSyncDelete, handleDisconnect, handleSyncBackup, handleSyncBootstrap, handleSyncFlush, getNotionKeyFromDB, invalidateSummaryCache } from './worker/handlers/notion-sync.js';
@@ -169,17 +167,6 @@ export default {
       // Google OAuth callback (browser redirect — no auth header)
       if (path === "/google/callback" && request.method === "GET") {
         return await handleGoogleCallback(request, env, jsonResponse);
-      }
-
-      // Microsoft OAuth — auth URL (login mode: no auth; link mode: extracts JWT from header)
-      if (path === "/auth/microsoft" && request.method === "GET") {
-        const msUser = await extractUser(request, env); // null if not authenticated — ok for login mode
-        return await handleMicrosoftAuthUrl(request, env, msUser, jsonResponse);
-      }
-
-      // Microsoft OAuth callback (browser redirect — no auth header)
-      if (path === "/auth/microsoft/callback" && request.method === "GET") {
-        return await handleMicrosoftCallback(request, env, jsonResponse);
       }
 
       // ─── WebSocket Upgrade (real-time collaboration) ───
@@ -469,16 +456,6 @@ export default {
         return await handleFigmaImport(env, body, user?.sub, jsonResponse);
       }
 
-      // ─── Microsoft OAuth (per-user) ───
-      if (path === "/microsoft/status" && request.method === "GET") {
-        if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
-        return await handleMicrosoftStatus(env, user.sub, jsonResponse);
-      }
-      if (path === "/microsoft/disconnect" && request.method === "POST") {
-        if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
-        return await handleMicrosoftDisconnect(env, user.sub, jsonResponse);
-      }
-
       // ─── Google OAuth + API Proxy (per-user) ───
       if (path === "/google/auth-url" && request.method === "GET") {
         return handleGoogleAuthUrl(request, env, user?.sub, jsonResponse);
@@ -552,68 +529,6 @@ export default {
         if (path === "/google/calendar/freebusy" && request.method === "POST") {
           const body = await request.json();
           return await handleCalendarFreeBusy(env, body, gUid, jsonResponse);
-        }
-      }
-
-      // ─── Microsoft Outlook + Calendar (per-user) ───
-      {
-        const msUid = user?.sub;
-        if (path === "/microsoft/mail/summary" && request.method === "GET") {
-          return await handleOutlookSummary(env, msUid, jsonResponse);
-        }
-        if (path === "/microsoft/mail/messages" && request.method === "POST") {
-          const body = await request.json();
-          return await handleOutlookSearch(env, body, msUid, jsonResponse);
-        }
-        if (path.match(/^\/microsoft\/mail\/messages\/[^/]+$/) && request.method === "GET") {
-          const msgId = path.split("/microsoft/mail/messages/")[1];
-          return await handleOutlookGetMessage(env, msgId, msUid, jsonResponse);
-        }
-        if (path.match(/^\/microsoft\/mail\/conversations\/[^/]+$/) && request.method === "GET") {
-          const convId = path.split("/microsoft/mail/conversations/")[1];
-          return await handleOutlookGetThread(env, convId, msUid, jsonResponse);
-        }
-        if (path === "/microsoft/mail/send" && request.method === "POST") {
-          const body = await request.json();
-          return await handleOutlookSend(env, body, msUid, jsonResponse);
-        }
-        if (path.match(/^\/microsoft\/mail\/modify\/[^/]+$/) && request.method === "POST") {
-          const msgId = path.split("/microsoft/mail/modify/")[1];
-          const body = await request.json();
-          return await handleOutlookModify(env, msgId, body, msUid, jsonResponse);
-        }
-        if (path === "/microsoft/mail/drafts" && request.method === "POST") {
-          const body = await request.json();
-          return await handleOutlookCreateDraft(env, body, msUid, jsonResponse);
-        }
-        if (path.match(/^\/microsoft\/mail\/drafts\/[^/]+$/) && request.method === "PATCH") {
-          const msgId = path.split("/microsoft/mail/drafts/")[1];
-          const body = await request.json();
-          return await handleOutlookUpdateDraft(env, msgId, body, msUid, jsonResponse);
-        }
-        if (path === "/microsoft/calendar/freebusy" && request.method === "POST") {
-          const body = await request.json();
-          return await handleOutlookFreeBusy(env, body, msUid, jsonResponse);
-        }
-        if (path === "/microsoft/calendar/summary" && request.method === "GET") {
-          return await handleOutlookCalendarSummary(env, msUid, jsonResponse);
-        }
-        if (path === "/microsoft/calendar/events" && request.method === "GET") {
-          const params = Object.fromEntries(url.searchParams);
-          return await handleOutlookListEvents(env, params, msUid, jsonResponse);
-        }
-        if (path === "/microsoft/calendar/events" && request.method === "POST") {
-          const body = await request.json();
-          return await handleOutlookCreateEvent(env, body, msUid, jsonResponse);
-        }
-        if (path.match(/^\/microsoft\/calendar\/events\/[^/]+$/) && request.method === "PATCH") {
-          const eventId = path.split("/microsoft/calendar/events/")[1];
-          const body = await request.json();
-          return await handleOutlookUpdateEvent(env, eventId, body, msUid, jsonResponse);
-        }
-        if (path.match(/^\/microsoft\/calendar\/events\/[^/]+$/) && request.method === "DELETE") {
-          const eventId = path.split("/microsoft/calendar/events/")[1];
-          return await handleOutlookDeleteEvent(env, eventId, msUid, jsonResponse);
         }
       }
 
