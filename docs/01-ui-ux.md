@@ -107,7 +107,7 @@ function MyComponent() {
 
 **Also safe:** `src/design/styles.js` — the `S` object is exported as `const S = buildStyles()` but `rebuildStyles()` (called by `ThemeContext.applyTheme()`) mutates `S` in place via `delete`/`Object.assign`, so all importers see fresh values.
 
-A full codebase sweep in 2026-04-16 converted 20 files from the buggy pattern to the correct pattern. The initial fix (`tableStyles.js`) addressed the Table view. The follow-up sweep addressed `VisualPageBuilder`, `RecordDetail`, `WorkspaceSettings`, `ViewToolbar`, `_CellComponents`, `BuildPage`, `TopHeader`, `RecordDrawer`, `GmailView`, `OutlookView`, `EmailThreadDrawer`, `ToastContext`, `OptionsManagerModal`, `PagePermissionsPanel`, and `RecordComments`. See `docs/15-security-and-known-issues.md` for the full list.
+A full codebase sweep in 2026-04-16 converted 20 files from the buggy pattern to the correct pattern. The initial fix (`tableStyles.js`) addressed the Table view. The follow-up sweep addressed `VisualPageBuilder`, `RecordDetail`, `WorkspaceSettings`, `ViewToolbar`, `_CellComponents`, `BuildPage`, `TopHeader`, `RecordDrawer`, the inbox view (formerly `GmailView` / `OutlookView`, since consolidated into `InboxView`), `EmailThreadDrawer`, `ToastContext`, `OptionsManagerModal`, `PagePermissionsPanel`, and `RecordComments`. See `docs/15-security-and-known-issues.md` for the full list.
 
 ---
 

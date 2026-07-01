@@ -28,7 +28,7 @@ Personal productivity surface. User-scoped data. All components lazy-loaded.
 | TasksView | `src/features/TasksView.jsx` | Personal task list + calendar integration |
 | CalendarView | `src/features/CalendarView.jsx` | Day/week/month calendar with Google Calendar sync |
 | RecordDrawer | `src/features/RecordDrawer.jsx` | Slide-out record editor (primary edit surface for all views). "Go to Task" button uses `navigateToRecord()` to open RecordDetail drawer after navigating to source database. |
-| WasabiPanel | `src/core/WasabiPanel.jsx` | The Wasabi agent chat panel (only chat surface). Fetches Google + Microsoft 365 context in parallel via `Promise.allSettled` so connected users get email/calendar context in the system prompt. **2026-05-05:** the previous dual-tab `features/ChatPanel.jsx` (Assistant + Agent toggle) was removed; the floating panel now always runs the full agent. Hidden from viewers. Editors get a restricted tool set (no destructive admin tools). |
+| WasabiPanel | `src/core/WasabiPanel.jsx` | The Wasabi agent chat panel (only chat surface). Fetches Google (Gmail + Calendar) context so connected users get email/calendar context in the system prompt. **2026-05-05:** the previous dual-tab `features/ChatPanel.jsx` (Assistant + Agent toggle) was removed; the floating panel now always runs the full agent. Hidden from viewers. Editors get a restricted tool set (no destructive admin tools). |
 | GmailView | `src/features/GmailView.jsx` | Gmail inbox, read, compose, reply |
 | FigmaView | `src/features/FigmaView.jsx` | Browse Figma team projects and files. Project sidebar, file thumbnail grid, search/filter, file detail panel. Multi-select import creates/reuses a "Design Assets" database with status tracking (Draft/In Review/Approved/Archived). De-duplicates by file key. **2026-05-11 (Phase 1):** "Open in App" button takes over the FigmaView area with an `<iframe src="https://www.figma.com/embed?embed_host=wasabi-platform&url=…">`. 48 px header strip (file icon + name + Open in Figma + Comments toggle + ×). Escape closes. Sign-in hint banner surfaces after 4s. **2026-05-11 (Phase 2):** Comments button in the header opens a 360 px native comment panel (`src/features/FigmaCommentPanel.jsx`) that reads/writes via the workspace Figma PAT — worker prefixes every outgoing message with `[<wasabi user> via Wasabi]: ` so the original author isn't lost behind the shared identity. Polls every 30s while open. No resolve action (Figma's public REST API doesn't expose one). |
 | FigmaCommentPanel | `src/features/FigmaCommentPanel.jsx` | Side panel inside the Phase 1 viewer. Lists comments grouped into threads with replies via `parent_id`, supports posting, replying, deleting own comments, @-mentioning Wasabi users (reuses `<MentionInput>` + the same `extractMentions` → `notifications` pipeline as record comments — see Phase 2 below). Each comment has a "Link to record" action that opens `RecordPickerModal` for cross-system linking (Phase 3b). Strips the `[Name via Wasabi]:` prefix into a small badge so the body reads cleanly. |
@@ -456,7 +456,7 @@ Refactored from a single file into a folder with 9 files:
 | File | Purpose |
 |------|---------|
 | `runAgent.js` | Agent loop: prompt, classify, route to model, execute tools, respond |
-| `toolExecutor.js` | 71+ tool implementations: CRUD pages/rows, email (Gmail + Outlook full parity), calendar (Google + Outlook full parity incl. free/busy), automations, neuron CRUD, per-record context (`get_record_context` mega-tool), workspace structure (`list_pages`/`list_users`/`list_notifications`), documents, page permissions, cell links. 2026-05-04 expansions: read tools + Phase 5C/D Outlook write parity. |
+| `toolExecutor.js` | Tool implementations: CRUD pages/rows, Gmail, Google Calendar, automations, neuron CRUD, per-record context (`get_record_context` mega-tool), workspace structure (`list_pages`/`list_users`/`list_notifications`), documents, page permissions, cell links. 2026-05-04 expansion: added 17 read tools. |
 | `queryClassifier.js` | Determines query complexity, routes to Haiku (fast/cheap) or Sonnet (complex) |
 | `tools.js` | Tool definitions (name, description, parameters) for Claude |
 | `automations.js` | Cron-triggered automation engine: evaluates rules, executes actions |
@@ -1156,18 +1156,16 @@ for it.
 
 ## AI Tool Expansion — Read Coverage (2026-05-04)
 
-**Source:** `src/agent/tools.js`, `src/agent/toolExecutor.js`, `src/agent/wasabiPrompt.js`, `src/microsoft/microsoftContext.js` (new).
+**Source:** `src/agent/tools.js`, `src/agent/toolExecutor.js`, `src/agent/wasabiPrompt.js`.
 
 The AI chat had 46 tools — but the app surfaced ~130 capabilities. Comments,
 record notes, attached files, sub-items, page list, user directory,
-notifications, document content, page permissions, cell links, and the entire
-Microsoft 365 stack were dark to the AI. Practical effect: handoff reports
-collapsed at "I can't access comments," and Outlook users got Gmail tools that
-returned zero results then concluded "Google isn't connected."
+notifications, document content, page permissions, and cell links were dark
+to the AI. Practical effect: handoff reports collapsed at "I can't access
+comments."
 
-Added 17 read tools across four buckets, plus prompt guidance and a Microsoft
-context provider. Writes deferred — current rule is **read everything,
-guardrails on writes**.
+Added 17 read tools across four buckets, plus prompt guidance. Writes
+deferred — current rule is **read everything, guardrails on writes**.
 
 ### `get_record_context` — One-Call Record Picture
 
@@ -1184,15 +1182,6 @@ Returns a single structured blob. Replaces 6–7 separate AI tool calls for any
 "what's going on with X" question. Failures in one section don't kill the
 others.
 
-### Outlook / Microsoft 365 Tool Set
-
-Mirror of the Gmail/Calendar set: `search_outlook_messages`,
-`get_outlook_message`, `get_outlook_thread` (full conversation in chronological
-order — critical for email-chain summaries), `list_outlook_events`,
-`get_outlook_calendar_summary`. Plus `get_email_provider_status` which returns
-both Google and Microsoft connection state in one call so the AI can route
-correctly.
-
 ### Workspace Structure & Document Tools
 
 - `list_pages` — full workspace page list (replaces "I'll guess if this page exists")
@@ -1202,18 +1191,9 @@ correctly.
 - `get_page_permissions` — who has access to a page
 - `list_links` — cell links by source or target page
 
-### Microsoft 365 Context Provider
-
-`src/microsoft/microsoftContext.js` mirrors `googleContext.js`. Both
-`ChatPanel.jsx` and `WasabiPanel.jsx` now fetch both providers in parallel via
-`Promise.allSettled` and inject both context blocks into the system prompt.
-Without this, even with new tools the AI would default to Gmail because
-"Microsoft Context" never appeared in the prompt.
-
 ### "How to Answer Common Questions" Prompt Section
 
 Added to `_buildPrompt` in `wasabiPrompt.js`. Explicit rules: call
-`get_email_provider_status` before choosing email tools; call
 `get_record_context` for any record-level question; call
 `list_pages`/`list_users`/`list_notifications`/`get_document` for the
 respective surfaces. Includes the directive *"Never tell the user comments
@@ -1230,15 +1210,6 @@ admins get the full set, editors lose destructive admin-only tools (deletes,
 sends, modifies, plugin saves, page-config writes, batch ops). Viewers get
 no chat at all — the Wasabi flame button is hidden in `Navigation.jsx`.
 
-### Deferred (Tier 3 reads + all writes)
-
-- Reads: Flows CRUD, Figma tools, audit log query, sync controls, KB
-  enumeration/deletion, user state/dashboard reads, connection status.
-- Writes: `add_record_comment`, `save_record_note`, `update_document`,
-  `set_page_permission`, `send_outlook_email`, calendar create/update/delete
-  for Outlook, page admin (rename, reorder, delete) — all with confirm-mode
-  gating per `agentMode`.
-
 ### Bug Fixes Bundled With This Work
 
 - **`input/toolInput` ReferenceError** — every Gmail and Calendar tool call
@@ -1252,125 +1223,28 @@ Commits: `c2e72d4`, `a6c34e5`, `162505e`, `f0bf734`.
 
 ---
 
-## Microsoft 365 Phase 5 — Closed (2026-05-04)
+## Microsoft 365 / Outlook — Removed (2026-07-01)
 
-**Source:** `worker/handlers/outlook.js`, `src/agent/tools.js`, `src/agent/toolExecutor.js`, `src/agent/wasabiPrompt.js`, `src/lib/api.js`, `src/features/UnifiedInboxView.jsx` (new), `src/features/CalendarView.jsx`, `src/App.jsx`, `src/core/Navigation.jsx`. Commits `4e94642` (worker, deployed `78652baa`) + `e28f979` (frontend).
+The Microsoft 365 stack (Outlook mail + calendar, Microsoft Entra SSO login,
+Microsoft account linking, `UnifiedInboxView`, provider-status routing,
+Microsoft context injection, 13 Outlook AI tools) shipped 2026-05-04 in
+Phase 5A–D and was fully removed 2026-07-01 as a security-driven cleanup.
 
-Phase 5 had been pending since 2026-04-07 with the items "agent tools, unified views" still open. Closed in this session.
+Removed surface:
+- Frontend: `src/features/OutlookView.jsx`, `src/features/UnifiedInboxView.jsx`,
+  `src/microsoft/`, Microsoft SSO button in `LoginScreen`, MicrosoftConnectionRow,
+  outlook fetch in `CalendarView`, all outlook-related `api.js` functions +
+  agent tools + tool-executor cases + prompt sections.
+- Worker: `worker/handlers/microsoft.js`, `worker/handlers/outlook.js`, all
+  `/microsoft/*` + `/auth/microsoft*` routes.
+- D1: `user_connections` rows with `key='microsoft'` purged (5 rows);
+  `users.email` column + `idx_users_email` dropped; schema-file entries removed.
+- Cloudflare secrets: `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`,
+  `MICROSOFT_TENANT_ID` deleted.
 
-### 5C — Outlook Write AI Tools (8 new)
-Brings Microsoft 365 to full Gmail parity in the AI surface. Worker handlers for send/modify/calendar already existed; this added missing draft endpoints and extended the modify action enum.
-
-**Worker additions:**
-- `handleOutlookCreateDraft` — POST /messages, returns id + conversationId.
-- `handleOutlookUpdateDraft` — PATCH /messages/{id} for to/subject/body fields.
-- `handleOutlookModify` extended action enum — now supports `archive` (move to Archive folder), `trash` (move to Deleted Items), `flag`/`unflag` (Microsoft equivalent of star), plus `mark_read`/`mark_unread` aliases for Gmail naming parity.
-- Routes wired in `worker.js`: POST `/microsoft/mail/drafts`, PATCH `/microsoft/mail/drafts/:id`.
-
-**API client (src/lib/api.js):** `createOutlookDraft`, `updateOutlookDraft`.
-
-**AI tools (8 new):** `send_outlook_email`, `create_outlook_draft`, `update_outlook_draft`, `modify_outlook_message` (extended actions), `create_outlook_event`, `update_outlook_event`, `delete_outlook_event`, `check_outlook_freebusy`.
-
-**Tool-set tiering:** Admin gets full Outlook write parity. Editor gets `create_outlook_event` + `create_outlook_draft` + `check_outlook_freebusy` (scheduling and drafting allowed; full send and delete are admin-only). Confirm-mode gating in `runAgent.js` applies automatically via `create_*`/`update_*`/`delete_*`/`send_*` name patterns.
-
-**Prompt builder:** "How to Answer Common Questions" section enumerates Outlook writes alongside reads so the AI knows when to reach for them. Includes guidance to use `check_outlook_freebusy` for multi-attendee scheduling instead of guessing availability.
-
-### 5D — Free/Busy Endpoint
-- Worker handler `handleOutlookFreeBusy` calls `POST /me/calendar/getSchedule` against Microsoft Graph with `availabilityViewInterval: 30` (30-min granularity). Normalizes response to `{ calendars: [{ email, busy: [{ start, end, status, subject }] }] }`. Status enum: `free` / `tentative` / `busy` / `oof` / `workingElsewhere` / `unknown`.
-- Worker route: POST `/microsoft/calendar/freebusy`.
-- API client: `checkOutlookFreeBusy(timeMin, timeMax, attendees)`. Defaults to current user's calendar when no attendees given.
-- AI tool: `check_outlook_freebusy(time_min, time_max, attendees?)`.
-
-### 5A — Unified Inbox View
-
-**New file:** `src/features/UnifiedInboxView.jsx` (~520 lines).
-
-**Architecture:**
-- Fetches Gmail + Outlook in parallel via `Promise.all` on `getGoogleStatus`/`getMicrosoftStatus` + `searchEmails`/`searchOutlookMessages`.
-- Normalizes both into common shape: `{ key, provider, id, threadId|conversationId, from, fromName, subject, snippet, date, isRead }`. Key prefix `g:` or `o:` distinguishes provider for React keys.
-- Merged list sorted by date DESC.
-
-**UI:**
-- Provider badges on every message — Gmail red with the M envelope, Outlook MS-blue with the four-square logo. `ProviderBadge` component exported for reuse.
-- Filter pills: `All` / `Unread`, plus per-provider `Both` / `Gmail` / `Outlook`.
-- Search bar searches both providers in parallel (debounced 400ms).
-- Click message expands inline with full body, marks read on the correct provider via `modifyEmail`/`modifyOutlookMessage`.
-- Reply opens compose modal locked to source provider.
-- Compose new shows provider toggle when both connected (defaults to Outlook if Microsoft connected).
-
-**Coexistence:** Does NOT replace `OutlookView` or `GmailView`. Per CLAUDE.md "never delete working code", existing single-provider views are preserved. Graham can decide later whether to retire them.
-
-**Wiring:**
-- `src/App.jsx`: lazy import `UnifiedInboxView`, route `activeRightPane === "inbox-unified"`.
-- `src/core/Navigation.jsx`: new "Inbox" button shown when EITHER provider is connected. Combined unread badge (`unreadCount + outlookUnreadCount`). Placed above per-provider buttons. SYSTEM_PAGES set updated.
-
-### 5B — Provider Tagging on Calendar Events
-- `src/features/CalendarView.jsx`: every event normalized with `provider: "google" | "microsoft"` field after merging.
-- Visual provider differentiation already existed via per-calendar color (`calendarColor: "#0078d4"` for Outlook). Color is the signal — no additional badges added in calendar tiles to avoid clutter.
-- Provider field gives clean data for AI tool returns and any future UI consumers.
-
-### Out of scope for this push (open backlog)
-- Outlook attachment parsing (PDF/xlsx). Flagged earlier when Graham hit a Premier Press email chain where the latest quantities were in attachments and the AI couldn't see them.
-- Tier 3 reads (Flows, Figma, audit log, sync, KB list, user state) still pending.
-
----
-
-## Unified Inbox Consolidation (2026-05-04)
-
-**Source:** `src/features/UnifiedInboxView.jsx`, `src/App.jsx`, `src/core/Navigation.jsx`. Commit `8dd0445`.
-
-After Phase 5A shipped the Unified Inbox alongside `OutlookView` / `GmailView`, the navigation showed three nearly-identical email surfaces. Retired the single-provider buttons:
-
-- `Navigation.jsx` no longer renders separate Outlook or Gmail buttons. The unified "Inbox" button is the only mail surface, shown when EITHER provider is connected.
-- `App.jsx` removed the lazy imports for `GmailView` and `OutlookView`. The route handler now treats `activeRightPane === "gmail" || "outlook" || "inbox-unified"` as redirects to `UnifiedInboxView`, so any saved localStorage state pointing at the old surfaces still works.
-- The `OutlookView.jsx` and `GmailView.jsx` files are intentionally retained on disk per CLAUDE.md "never delete working code." If we ever want to re-enable per-provider views, restore the imports + route blocks in two minutes.
-
----
-
-## Inbox Thread Grouping (2026-05-04)
-
-**Source:** `src/features/UnifiedInboxView.jsx`. Commit `e845f86`.
-
-The first version of the Unified Inbox showed every email as its own row — an 8-message back-and-forth filled 8 inbox rows with the same subject. Graham flagged it as non-standard. Replaced with thread grouping that mirrors Gmail/Outlook's native UX:
-
-### Thread grouping mechanics
-
-`groupThreads(messages)` builds an array of thread aggregates from the flat message list. Grouping key:
-- Gmail: `g:${threadId}` (falls back to `g:${id}` when no thread reference)
-- Outlook: `o:${conversationId}` (falls back to `o:${id}`)
-
-Each aggregate carries:
-- `messages` (sorted newest-first within the thread)
-- `latest` — the most recent message
-- `latestDate`, `isAnyUnread`
-- `sendersDisplay` — compacted unique participants ("Mark Brooks, Graham, Stuart" up to 3, then "+N")
-- `messageCount` — visible-window count
-- `displaySubject` — prefers the first non-"Re:" subject, falling back to the latest
-
-Threads sort by `latestDate` DESC across both providers.
-
-### List view behavior
-
-- One row per thread.
-- Provider badge (Gmail red / Outlook MS-blue) on each row.
-- Sender list with overflow handling.
-- Number badge next to senders when `messageCount > 1`.
-- Subject prefers the non-"Re:" form when available.
-- Most-recent snippet shown after the subject.
-- Unread dot when ANY message in the thread is unread.
-
-### Click-to-expand
-
-Clicking a thread fetches the full conversation via `getThread(threadId)` (Gmail) or `getOutlookThread(conversationId)` (Outlook) — both endpoints already existed. The fetched messages render chronologically (oldest first, like Gmail's default) with sender + date + body per message. This means messages outside the 40-message inbox window are still visible on expand.
-
-### Mark-read + reply
-
-- Expanding a thread marks ALL unread messages in it as read on the correct provider in parallel via `Promise.all` (`modifyEmail` for Gmail, `modifyOutlookMessage` for Outlook). Local state updates without a refetch.
-- The Reply button targets the latest message in the thread, so replies land on the active branch.
-
-### Trade-off
-
-Thread row's `messageCount` reflects only messages in the loaded inbox window (40 per provider). Very long threads may understate true thread length in the badge. The full thread loads on expand, so this only affects the at-a-glance count — same limitation as native Gmail/Outlook inbox UIs.
+Replacement: `UnifiedInboxView` was reduced to Gmail-only and renamed
+`InboxView.jsx`. Google (Gmail, Calendar, Sheets) is the only external email
+integration.
 
 ---
 

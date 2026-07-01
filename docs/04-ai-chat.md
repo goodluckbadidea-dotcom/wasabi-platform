@@ -70,7 +70,7 @@ Classifies each user message before it reaches the model to determine:
 
 **File:** `src/agent/toolExecutor.js`
 
-Dispatches tool calls from the Claude response to the appropriate worker API endpoint. **71+ tools** organized by category. Two 2026-05-04 expansions: (1) added 17 read tools to close major visibility gaps — comments, notes, files, sub-items, page list, user directory, notifications, document content, page permissions, cell links, and the entire Microsoft 365 stack were previously invisible to the AI; (2) Phase 5C/D added 8 Outlook write tools to bring Microsoft 365 to full Gmail parity (send/draft create+update/modify with archive+trash+flag/calendar CRUD/free+busy).
+Dispatches tool calls from the Claude response to the appropriate worker API endpoint. 2026-05-04 expansion added 17 read tools to close major visibility gaps — comments, notes, files, sub-items, page list, user directory, notifications, document content, page permissions, and cell links were previously invisible to the AI. Microsoft 365 stack (Outlook + provider-status routing) was later removed (2026-07-01) — only Google/Gmail remains for email + calendar.
 
 | Category | Tools |
 |----------|-------|
@@ -78,10 +78,7 @@ Dispatches tool calls from the Claude response to the appropriate worker API end
 | **Per-Record Context (2026-05-04)** | `get_record_context` (mega-tool: fields + comments + notes + files + sub-items + links in one call), `get_record_comments`, `get_record_note`, `list_record_files`, `list_child_rows` |
 | **Workspace Structure (2026-05-04)** | `list_pages`, `list_users`, `list_notifications` |
 | **Documents, Permissions, Links (2026-05-04)** | `get_document`, `get_page_permissions`, `list_links` |
-| **Provider Status (2026-05-04)** | `get_email_provider_status` — returns `{ google: { connected, email }, microsoft: { connected, email } }`. AI is instructed to call this FIRST when user asks about email/calendar, then route to the right provider's tools. |
 | **Gmail (Google)** | `search_emails`, `get_email`, `send_email`, `modify_email`, `create_email_draft` |
-| **Outlook reads (Microsoft 365, 2026-05-04)** | `search_outlook_messages`, `get_outlook_message`, `get_outlook_thread` (full conversation, chronological), `list_outlook_events`, `get_outlook_calendar_summary` |
-| **Outlook writes (Phase 5C/D, 2026-05-04)** | `send_outlook_email`, `create_outlook_draft`, `update_outlook_draft`, `modify_outlook_message` (read/unread/flag/unflag/archive/trash), `create_outlook_event`, `update_outlook_event`, `delete_outlook_event`, `check_outlook_freebusy` (multi-attendee availability) |
 | **Calendar (Google)** | `list_calendar_events`, `create_calendar_event`, `update_calendar_event`, `delete_calendar_event` |
 | **Automation** | `create_automation_rule`, `save_custom_function`, `list_custom_functions`, `run_custom_function`, `delete_custom_function`, `run_calculation` |
 | **Neurons** | `query_neurons`, `query_neuron_data`, `create_neuron`, `update_neuron`, `delete_neuron`, `add_neuron_node`, `remove_neuron_node` |
@@ -101,14 +98,6 @@ Dispatches tool calls from the Claude response to the appropriate worker API end
 6. `getLinksBySource` — outgoing cell links
 
 Returns a structured blob with all six sections. Each section uses `Promise.allSettled` so a single endpoint failure doesn't kill the whole call. Used for handoff reports, status summaries, and any record-level question — replaces ~7 separate tool calls with one.
-
-### Email/Calendar Provider Routing (2026-05-04)
-
-The AI was previously hardwired to Gmail tools — Microsoft 365 users would get "Google isn't connected" answers even though Outlook was connected. The fix has three parts:
-
-1. **Provider-status tool** (`get_email_provider_status`) — AI calls this first to discover which provider the user has.
-2. **Provider-specific tool sets** — Outlook tools (`search_outlook_messages`, `get_outlook_thread`, etc.) parallel the Gmail set.
-3. **Prompt guidance** — `wasabiPrompt.js` now instructs the AI to ALWAYS check provider status before choosing email/calendar tools. See "How to Answer Common Questions" section below.
 
 ### Tool Safety
 
@@ -159,9 +148,8 @@ Assembles the full system prompt in order:
 9. Workspace pages summary (may be compressed or omitted by context budget competition — see below)
 10. Neuron connections (hydrated, relevance-filtered)
 11. **Google context** — Gmail + Calendar snapshot, if connected (`src/google/googleContext.js`)
-12. **Microsoft 365 context (2026-05-04)** — Outlook + Calendar snapshot, if connected (`src/microsoft/microsoftContext.js`). Mirror of googleContext: 5-min sessionStorage cache, fetched in parallel from `getOutlookSummary` + `getOutlookCalendarSummary`. Both ChatPanel and WasabiPanel fetch both providers via `Promise.allSettled` so one failure doesn't block the other.
-13. **"How to Answer Common Questions" guidance (2026-05-04)** — explicit tool-selection rules for the AI. See below.
-14. Current page context: schema + data summary
+12. **"How to Answer Common Questions" guidance (2026-05-04)** — explicit tool-selection rules for the AI. See below.
+13. Current page context: schema + data summary
 
 ### Linked Sheet AI Access (2026-05-07)
 
@@ -189,7 +177,7 @@ Prompt updates: signals listed under "Each task includes:" plus two new priority
 
 Added to `_buildPrompt`. Tells the AI explicitly which tools to reach for in common scenarios:
 
-- **Email/Calendar** — call `get_email_provider_status` first. Microsoft → Outlook tools; Google → Gmail tools; neither → say so plainly. For email chains, prefer `get_outlook_thread` (full conversation in order).
+- **Email/Calendar** — Gmail + Google Calendar tools. If Google isn't connected, say so plainly rather than pretending to check.
 - **Specific record** ("status update", "handoff", "what's going on with X") — call `get_record_context`. Explicit instruction: *"Never tell the user comments are inaccessible — they are accessible."*
 - **People / assignments / permissions** — `list_users`, `get_page_permissions`.
 - **Notifications / "what's new"** — `list_notifications`.
@@ -317,7 +305,7 @@ All context for a conversation turn is assembled into a single envelope object, 
 
 | Builder | Used By | Includes |
 |---------|---------|----------|
-| `buildAgentContext()` | WasabiPanel | Full context: KB, neurons, workspace, data summary, Google, Microsoft 365, workspace instructions, agent mode |
+| `buildAgentContext()` | WasabiPanel | Full context: KB, neurons, workspace, data summary, Google, workspace instructions, agent mode |
 
 The envelope has frozen context, identity, routing metadata, and mutable conversation state. It's passed through the entire pipeline (classifier → prompt builder → agent loop → tool executor).
 
@@ -328,16 +316,15 @@ The envelope has frozen context, identity, routing metadata, and mutable convers
 | File | Purpose |
 |------|---------|
 | `src/agent/runAgent.js` | Agent loop: classify, route, call Claude, execute tools, respond |
-| `src/agent/agentContext.js` | Context envelope builder: `buildAgentContext()`. Accepts `googleContext` AND `microsoftContext` (2026-05-04). 2026-05-05: `buildAssistantContext()` removed. |
+| `src/agent/agentContext.js` | Context envelope builder: `buildAgentContext()`. Accepts `googleContext`. 2026-05-05: `buildAssistantContext()` removed. |
 | `src/agent/queryClassifier.js` | Determines strategy, complexity, model routing |
-| `src/agent/toolExecutor.js` | 63+ tool implementations dispatched to worker API. 2026-05-04: added 17 read tools (per-record context, workspace structure, documents, Microsoft 365, provider status). 2026-05-04 hotfix: renamed bare `input` → `toolInput` in Gmail/Calendar cases (was throwing `ReferenceError: Can't find variable: input` on every email/calendar call). |
+| `src/agent/toolExecutor.js` | Tool implementations dispatched to worker API. 2026-05-04: added 17 read tools (per-record context, workspace structure, documents). 2026-05-04 hotfix: renamed bare `input` → `toolInput` in Gmail/Calendar cases (was throwing `ReferenceError: Can't find variable: input` on every email/calendar call). |
 | `src/agent/tools.js` | Tool definitions (schemas) for Claude's tool_use. **2026-05-05:** `ASSISTANT_TOOLS_*` exports removed; `getWasabiToolsForRole(role)` filters `WASABI_TOOLS` so editors lose destructive tools (deletes, sends, modifies, plugin saves, page-config writes, batch ops). Admins get the full set; viewers don't have a chat surface. |
-| `src/agent/wasabiPrompt.js` | System prompt builder — injects KB, neurons, page context, data summary. 2026-05-04: accepts `microsoftContext` alongside `googleContext`, renders both sections, adds "How to Answer Common Questions" guidance section. Context budget competition for workspace summary compression. |
+| `src/agent/wasabiPrompt.js` | System prompt builder — injects KB, neurons, page context, data summary, and `googleContext`. 2026-05-04: added "How to Answer Common Questions" guidance section. Context budget competition for workspace summary compression. |
 | `src/agent/dataSummary.js` | Compact data context within token budget |
 | `src/agent/automations.js` | Cron-triggered automation rule engine |
 | `src/agent/flowExecutor.js` | DAG-based multi-step workflow executor |
 | `src/agent/costTracker.js` | Token usage and cost tracking |
 | `src/agent/memory.js` | Knowledge base read/write helpers |
 | `src/google/googleContext.js` | Gmail + Calendar context fetcher for system prompt (5-min sessionStorage cache) |
-| `src/microsoft/microsoftContext.js` | **(2026-05-04)** Outlook + Calendar context fetcher — mirror of googleContext for Microsoft 365 users. Fetches `getOutlookSummary` + `getOutlookCalendarSummary` in parallel, returns formatted snippet for system prompt injection. |
 | `src/neurons/neuronStorage.js` | Neuron caching (list/graph/hydrated), relevance-filtered context builder |

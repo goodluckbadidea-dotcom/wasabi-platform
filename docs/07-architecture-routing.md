@@ -90,9 +90,7 @@ The `activeRightPane` value is either a system string or a page UUID:
 | `"tasks"` or `null` | TasksView | Home: personal tasks + calendar |
 | `"notes"` | NotesView | Notes scratchpad |
 | `"dashboard"` | DashboardView | Customizable widget dashboard |
-| `"inbox-unified"` | UnifiedInboxView | **(2026-05-04)** Unified Gmail + Outlook inbox. The only mail surface in nav. |
-| `"gmail"` | UnifiedInboxView (redirect) | **(2026-05-04)** Legacy value — App.jsx route handler treats this as `inbox-unified` so saved localStorage state still works. The standalone `GmailView` component is retained on disk but no longer wired in nav or routing. |
-| `"outlook"` | UnifiedInboxView (redirect) | **(2026-05-04)** Legacy value — same redirect treatment as `gmail`. `OutlookView` retained on disk, unwired. |
+| `"inbox-unified"` | InboxView | Gmail inbox. Named `inbox-unified` historically (used to merge Gmail + Outlook); Outlook removed 2026-07-01. |
 | `"figma"` | FigmaView | Figma project browser + import |
 | `"workspaces"` | WorkspaceBrowser | Folder-based page navigation |
 | `"notifications"` | NotificationFeed | Notification inbox |
@@ -111,8 +109,8 @@ In `AppContent`, the `renderContent()` function matches `activeRightPane` agains
 const renderContent = () => {
   if (activeRightPane === "system") return <SystemManager />;
   if (activeRightPane === "dashboard") return <DashboardView />;
-  if (activeRightPane === "gmail" || activeRightPane === "outlook" || activeRightPane === "inbox-unified") {
-    return <UnifiedInboxView />;  // 2026-05-04: legacy gmail/outlook values redirect here
+  if (activeRightPane === "inbox-unified") {
+    return <InboxView />;
   }
   // ... other system routes ...
 
@@ -354,4 +352,4 @@ src/
 
 - **`src/views/`** — Database-bound view components. Each renders a specific view type for a database page. Loaded by PageShell/ViewRenderer based on the active viewConfig type. Views receive `data`, `schema`, `onUpdate`, `onRefresh` props from PageShell. The Table view has been decomposed into `src/views/table/` (16 sub-module files) with `Table.jsx` serving as the orchestrator (~1,205 lines).
 
-- **`src/features/`** — Standalone workspace panels and personal productivity views. These are top-level screens not tied to a specific database: TasksView, UnifiedInboxView (Gmail + Outlook merged, 2026-05-04), NotesView, DashboardView, KnowledgeHub, WorkspaceBrowser, ChatPanel, and the RecordDrawer system. Feature views manage their own data fetching. `GmailView.jsx` and `OutlookView.jsx` files are retained on disk but no longer wired in routing as of commit `8dd0445`.
+- **`src/features/`** — Standalone workspace panels and personal productivity views. These are top-level screens not tied to a specific database: TasksView, InboxView (Gmail), NotesView, DashboardView, KnowledgeHub, WorkspaceBrowser, ChatPanel, and the RecordDrawer system. Feature views manage their own data fetching.

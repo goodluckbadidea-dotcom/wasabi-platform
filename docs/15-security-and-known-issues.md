@@ -32,7 +32,6 @@ The following security features are implemented and active in production.
 | Typing TTL guard | Typing indicators auto-expire after 8s to prevent ghost state from crashed browsers | `CollaborationContext.jsx` |
 | Notion JWT auth | All Notion API calls routed through JWT-authenticated `apiFetch()`. Worker `getNotionKey()` validates key prefix (`ntn_`/`secret_`) before accepting. Raw fetch with Notion key as Bearer removed from 31 files. | `src/notion/client.js`, `worker.js` getNotionKey() |
 | D1 credential encryption | All API keys and OAuth tokens in D1 (`connections` + `user_connections`) encrypted at rest using AES-256-GCM. DEK derived via HKDF from `WASABI_SECRET` with fixed salt `"wasabi-dek-v1"`. Ciphertext format: `enc:v1:{base64url-iv}:{base64url-ciphertext}`. Legacy plaintext values auto-migrated on next read/write (zero-downtime). Non-secret keys (schema_version, table_pin, external_api_whitelist, external_api:*) are not encrypted. | `worker/crypto.js` encryptSecret/decryptSecret, `worker/handlers/connections.js`, `worker/handlers/notion-sync.js`, `worker/automation/engine.js`, `worker/handlers/google.js` |
-| Microsoft OAuth security | Popup postMessage payload XSS-hardened: `JSON.stringify(payload).replace(/</g, "\\u003c")`. OAuth state includes HMAC nonce encoded as btoa(JSON.stringify({ mode, userId, nonce })). Auth-exempt path uses `startsWith` not exact match to handle query strings. | `worker/handlers/microsoft.js` |
 | Figma API proxy | Figma API key stored encrypted in D1 (same AES-256-GCM pattern). All Figma API calls proxied through worker with `X-FIGMA-TOKEN` header — key never exposed to frontend. Team ID stored unencrypted (non-secret config). | `worker/handlers/figma.js`, `worker/handlers/connections.js` NON_SECRET_KEYS |
 | WCAG AA contrast | All 5 themes pass 4.5:1+ for muted text on all surfaces; surface/border/text token gaps widened | `src/design/tokens.js` |
 | Relationship edge ACL | `GET /relationships` filters every returned edge by caller's ACL on **both** `source_page_id` and `target_page_id`. Admin and shared-secret (MCP) callers bypass; non-admins exclude edges whose endpoint pages are restricted by an explicit `page_permissions.permission='none'` row. Documented invariant: missing this filter would leak edge existence even when the entity itself is hidden. | `worker/handlers/relationships.js` `buildPermissionFilter()` |
@@ -314,8 +313,7 @@ All fixed via the same pattern: `export const x = { ...C... }` → `export funct
 - `BuildPage.jsx` — `fieldStyle` used in ViewBuilder + WidgetCard + PluginBuilder
 - `TopHeader.jsx` — `dropdownItemStyle` (user menu)
 - `RecordDrawer.jsx` — `inputStyle`, `labelStyle`, `tabBarStyle` used in TaskEditor + EventEditor + WorkspaceSettingsEditor
-- `GmailView.jsx` — `labelStyle`, `fieldStyle`, `cancelBtnStyle`, `sendBtnStyle` used in ComposeModal
-- `OutlookView.jsx` — same set as Gmail; `iconBtnStyle` kept as const (no C refs)
+- `InboxView.jsx` — `labelStyle`, `fieldStyle`, `cancelBtnStyle`, `sendBtnStyle` used in ComposeModal (formerly `GmailView.jsx` / `OutlookView.jsx`, consolidated 2026-07-01)
 - `EmailThreadDrawer.jsx` — `labelStyle`, `fieldStyle`, `actionBtnStyle` used in Composer + EmailThreadDrawer
 
 **MEDIUM files:**
@@ -369,15 +367,16 @@ All `console.log` debug statements have been removed from production code. Error
 
 ### AI Tool Visibility Gap (Resolved 2026-05-04)
 
-The AI chat had 46 tools but the app surfaced ~130 capabilities. Major surfaces were dark to the AI: **comments, record notes, attached files, sub-items as a hierarchy, the full page list, the user directory, the notifications inbox, document content, page permissions, cell links, AND the entire Microsoft 365 stack (Outlook mail + calendar)**. This caused the chat to:
+The AI chat had 46 tools but the app surfaced ~130 capabilities. Major surfaces were dark to the AI: **comments, record notes, attached files, sub-items as a hierarchy, the full page list, the user directory, the notifications inbox, document content, page permissions, and cell links**. This caused the chat to:
 
 - Tell users "I can't access comments" when asked for handoff reports — comments were one tool call away.
-- Default to Gmail tools for Microsoft 365 users, then conclude "Google isn't connected" as a dead end.
 - Fall back to `query_database` for record-level questions, missing all unstructured context.
 
-Fixed by adding 17 read tools across four buckets — per-record context (with a `get_record_context` mega-tool that fans out 6 parallel API calls), workspace structure (`list_pages`, `list_users`, `list_notifications`), documents/permissions/links (`get_document`, `get_page_permissions`, `list_links`), and the full Outlook tool set (`search_outlook_messages`, `get_outlook_message`, `get_outlook_thread`, `list_outlook_events`, `get_outlook_calendar_summary`) plus `get_email_provider_status` for routing. Also added `microsoftContext.js` (mirror of `googleContext.js`) so the system prompt sees Outlook context for Microsoft 365 users — both `ChatPanel.jsx` and `WasabiPanel.jsx` now fetch both providers in parallel via `Promise.allSettled`. Prompt builder gained a "How to Answer Common Questions" section explicitly directing the AI to call the right tool for each scenario — without this the model defaults back to `query_database` for everything.
+Fixed by adding 17 read tools across four buckets — per-record context (with a `get_record_context` mega-tool that fans out 6 parallel API calls), workspace structure (`list_pages`, `list_users`, `list_notifications`), documents/permissions/links (`get_document`, `get_page_permissions`, `list_links`). Prompt builder gained a "How to Answer Common Questions" section explicitly directing the AI to call the right tool for each scenario — without this the model defaults back to `query_database` for everything.
 
-Writes for these surfaces (add comment, save note, update document, set permission, send Outlook email, create/update/delete events) are intentionally deferred — current scope is read-everything + guardrails-on-write. Commit `162505e`.
+Writes for these surfaces (add comment, save note, update document, set permission) are intentionally deferred — current scope is read-everything + guardrails-on-write. Commit `162505e`.
+
+**Note (2026-07-01):** This work also shipped the full Outlook tool set + provider-status routing + `microsoftContext.js`, which were later removed when the entire Microsoft 365 stack was cut for security reasons.
 
 ### AI Email/Calendar Tools Threw ReferenceError on Every Call (Resolved 2026-05-04)
 
@@ -437,7 +436,7 @@ Fixed by passing `multiline rows={1}` and adding auto-grow behavior to `MentionI
 
 The dual-tab Assistant/Agent chat ([features/ChatPanel.jsx](src/features/ChatPanel.jsx)) was removed. The Wasabi panel now always runs the full agent. Role access shifted in two ways:
 
-- **Editors gain chat for the first time.** Previously the Agent tab was admin-only ([features/ChatPanel.jsx:161](src/features/ChatPanel.jsx:161): `canUseAgent = identity?.role === "admin"`). Now editors can use the chat too. To prevent privilege escalation via tools, `getWasabiToolsForRole(role)` in [src/agent/tools.js](src/agent/tools.js) filters `WASABI_TOOLS` for non-admins — editors lose `delete_neuron`, `remove_neuron_node`, `delete_custom_function`, `delete_calendar_event`, `delete_outlook_event`, `send_email`, `send_outlook_email`, `modify_email`, `modify_outlook_message`, `save_plugin`, `create_page_config`, `batch_operations`. Admins keep the full set.
+- **Editors gain chat for the first time.** Previously the Agent tab was admin-only ([features/ChatPanel.jsx:161](src/features/ChatPanel.jsx:161): `canUseAgent = identity?.role === "admin"`). Now editors can use the chat too. To prevent privilege escalation via tools, `getWasabiToolsForRole(role)` in [src/agent/tools.js](src/agent/tools.js) filters `WASABI_TOOLS` for non-admins — editors lose `delete_neuron`, `remove_neuron_node`, `delete_custom_function`, `delete_calendar_event`, `send_email`, `modify_email`, `save_plugin`, `create_page_config`, `batch_operations`. Admins keep the full set. (Outlook write tools removed 2026-07-01.)
 - **Viewers lose chat entirely.** The Wasabi flame button in [Navigation.jsx:784](src/core/Navigation.jsx:784) is gated on `identity?.role !== "viewer"`. Defense-in-depth: the Cmd+. shortcut and the panel render in [App.jsx](src/App.jsx) are also gated on the same check, so a viewer can't open the panel via keyboard or programmatic state push.
 
 Removed code: `buildAssistantContext`, `buildAssistantPrompt`, `ASSISTANT_TOOLS_*`, `ASSISTANT_READS`, `executeChatTool`, the `wasabi_chat_tab` localStorage key, and `features/ChatPanel.jsx` itself. App.jsx now imports `WasabiPanel` directly.

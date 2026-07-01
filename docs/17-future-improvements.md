@@ -20,17 +20,12 @@ Tracked improvements and UX refinements. Not bugs — the current implementation
 
 ---
 
-## Unified Inbox
+## Inbox
 
-### Outlook attachment parsing
-**Current (2026-05-04):** AI tools `search_outlook_messages`, `get_outlook_message`, and `get_outlook_thread` return body text only — attachments are invisible. Surfaced when Graham hit a Premier Press email chain where the latest quantities lived in a PDF attachment and the AI confidently summarized stale numbers from the body text.
+### Gmail attachment parsing
+**Current:** AI tools `search_emails`, `get_email`, and `get_thread` return body text only — attachments are invisible. Same gap that surfaced for Outlook in 2026-05 (Premier Press email chain where latest quantities lived in a PDF attachment and the AI confidently summarized stale numbers from the body text).
 
-**Proposed fix:** Add `list_outlook_attachments` and `get_outlook_attachment` tools (Microsoft Graph `/messages/{id}/attachments` exists for both list + download). Wire downstream PDF/xlsx parsing — could reuse the existing PDF tooling. Same gap exists on Gmail; address both at the same time.
-
-### Decide whether to delete OutlookView.jsx and GmailView.jsx
-**Current (2026-05-04):** Both component files retained on disk but no longer wired in `App.jsx` routing or `Navigation.jsx` (commit `8dd0445`). Per CLAUDE.md "never delete working code without explicit permission" they're preserved in case the unified inbox is dialed back.
-
-**Proposed:** Once the unified inbox has stabilized for some time and Graham is confident in it, decide whether to delete both files (~1400 lines). Do not delete unprompted.
+**Proposed fix:** Add `list_email_attachments` and `get_email_attachment` tools. Wire downstream PDF/xlsx parsing — could reuse the existing PDF tooling.
 
 ---
 
@@ -44,4 +39,4 @@ Tracked improvements and UX refinements. Not bugs — the current implementation
 ### Long thread message-count understated
 **Current (2026-05-04):** Thread row's `messageCount` reflects only messages currently in the loaded inbox window (40 per provider). A 12-message thread with 5 messages outside the window shows "(7)" in the badge. The full thread loads correctly on expand — only the at-a-glance count is affected.
 
-**Proposed fix:** call provider thread/conversation list endpoints upfront for any thread with multiple visible messages to get the true count. Or accept the same limitation Gmail/Outlook native UIs have. Low priority.
+**Proposed fix:** call Gmail's thread endpoint upfront for any thread with multiple visible messages to get the true count. Or accept the same limitation Gmail native UI has. Low priority.

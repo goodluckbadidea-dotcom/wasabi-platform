@@ -156,7 +156,7 @@ Shared database views. Workspace-scoped with per-page permissions.
 |------|---------|
 | `src/agent/runAgent.js` | Agent loop: prompt → classify → route to model → execute tools → respond |
 | `src/agent/agentContext.js` | Context envelope builders for Agent and Assistant modes |
-| `src/agent/toolExecutor.js` | 63+ tool implementations: CRUD pages/rows, email (Gmail + Outlook), calendar (Google + Outlook), automations, neuron CRUD, per-record context, workspace structure, documents, permissions |
+| `src/agent/toolExecutor.js` | Tool implementations: CRUD pages/rows, Gmail, Google Calendar, automations, neuron CRUD, per-record context, workspace structure, documents, permissions |
 | `src/agent/queryClassifier.js` | Determines query complexity → routes to Haiku or Sonnet |
 | `src/agent/tools.js` | Tool definitions (name, description, parameters) for Claude. Role-based assistant tool sets. |
 | `src/agent/wasabiPrompt.js` | System prompt builder for Agent and Assistant. Context budget competition. |
