@@ -15,6 +15,7 @@ import { handleGetUserState, handlePutUserState, handleGetUserDashboard, handleP
 import { createNotificationInternal, extractMentions, handleListNotifications, handleCreateNotification, handleGetNotification, handleUpdateNotification, handleDeleteNotification } from './worker/handlers/notifications.js';
 import { handleListSessions, handleRevokeSession, handleLogoutOtherSessions, handleLogoutAllDevices } from './worker/handlers/sessions.js';
 import { handleListTaskActivity, handleGetTaskActivity, handleUpsertTaskActivity, handleLogInteraction, handleListInteractions, handleGetInteractionSummary } from './worker/handlers/interactions.js';
+import { handleListPinsForTarget, handleListMyPins, handleReplacePinsForTarget, handleDeletePin } from './worker/handlers/task-pins.js';
 import { handleGetDoc, handleSaveDoc, handleUpdateDocBlocks, handleExportDocNotion } from './worker/handlers/documents.js';
 import { handleFileUpload, handleListFiles, handleGetFile, handleDeleteFile } from './worker/handlers/files.js';
 import { handleAuthRegister, handleAuthLogin, handleAuthMe, handleAuthRefresh } from './worker/handlers/auth.js';
@@ -752,6 +753,35 @@ export default {
           "SELECT * FROM task_snoozes WHERE user_id = ? AND snooze_until > datetime('now') ORDER BY snooze_until ASC"
         ).bind(userId).all();
         return jsonResponse({ snoozes: result.results || [] });
+      }
+
+      // ─── Task Pin Routes (admin-managed priority pins) ───
+      // GET  /task-pins?target_user_id=X → admin lists pins for a target user
+      // GET  /task-pins?user_id=me       → authenticated user reads their own pins
+      // POST /task-pins                  → admin replaces the full pin set for one user
+      // DELETE /task-pins/:id            → admin removes one pin
+      const pinDeleteMatch = path.match(/^\/task-pins\/(.+)$/);
+      if (pinDeleteMatch && request.method === "DELETE") {
+        const id = decodeURIComponent(pinDeleteMatch[1]);
+        return await handleDeletePin(env, id, jsonResponse);
+      }
+      if (path === "/task-pins" && request.method === "POST") {
+        const body = await request.json();
+        return await handleReplacePinsForTarget(env, body, user, jsonResponse);
+      }
+      if (path === "/task-pins" && request.method === "GET") {
+        const targetUserId = url.searchParams.get("target_user_id");
+        const selfParam = url.searchParams.get("user_id");
+        if (targetUserId) {
+          if (user && user.role !== "admin") {
+            return jsonResponse({ _error: "Admin required" }, 403);
+          }
+          return await handleListPinsForTarget(env, targetUserId, jsonResponse);
+        }
+        if (selfParam === "me" || (selfParam && user?.sub && selfParam === user.sub)) {
+          return await handleListMyPins(env, user, jsonResponse);
+        }
+        return jsonResponse({ _error: "target_user_id or user_id=me required" }, 400);
       }
 
       // ─── Document (R2) Routes ───

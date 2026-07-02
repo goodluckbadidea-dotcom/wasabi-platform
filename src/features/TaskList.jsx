@@ -5,6 +5,38 @@
 import React, { useState, useRef, useCallback, useMemo } from "react";
 import { C, FONT, RADIUS, SHADOW, VIEW_PALETTE, getSolidPillColor, isLightColor, getThemeMode, resolveUnifiedColor } from "../design/tokens.js";
 import { formatDueDate, isOverdue, isToday, parseDate } from "./taskHelpers.js";
+import { IconStar } from "../design/icons.jsx";
+
+// ── Pinned-by-admin strip (Team Priorities feature) ──
+// When a task carries `_pin` metadata, the target user sees a small
+// accent-tinted strip above the row explaining who pinned it and (if
+// provided) why.
+function PinnedByStrip({ pin }) {
+  if (!pin) return null;
+  const byName = pin.pinned_by_name || "an admin";
+  const reason = (pin.reason || "").trim();
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 6,
+      padding: "6px 14px",
+      background: `${C.accent}18`,
+      borderBottom: `1px solid ${C.accent}33`,
+      fontSize: 11, fontFamily: FONT,
+      color: C.darkText,
+    }}>
+      <IconStar size={10} color={C.accent} />
+      <span style={{ fontWeight: 500 }}>Pinned by {byName}</span>
+      {reason && (
+        <>
+          <span style={{ color: C.darkMuted }}>·</span>
+          <span style={{ color: C.darkMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+            {reason}
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
 
 // ── Priority → palette index mapping ──
 const PRIORITY_IDX = { High: 9, Medium: 3, Normal: 4, Low: 6 };
@@ -189,6 +221,9 @@ function TaskRow({ task, onToggle, onDelete, onTaskClick, colorMapping, dateChip
           pointerEvents: "none",
         }} />
       )}
+
+      {/* Pinned-by-admin strip (rendered above the parent strip when present) */}
+      <PinnedByStrip pin={task._pin} />
 
       {/* Parent strip */}
       <div

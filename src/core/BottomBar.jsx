@@ -27,7 +27,7 @@ import { useUserSync } from "../context/UserSyncContext.jsx";
 import { focusRing } from "../design/interactions.js";
 import { savePageConfig, createFolderConfig, createWorkspaceConfig, createDashboardConfig } from "../config/pageConfig.js";
 import {
-  IconGear, IconBrain, IconBell, IconMail, IconCalendar, IconGlobe, IconRefresh,
+  IconGear, IconBrain, IconBell, IconMail, IconCalendar, IconGlobe, IconRefresh, IconUsers,
 } from "../design/icons.jsx";
 import { isAdmin } from "../lib/roles.js";
 import {
@@ -481,6 +481,21 @@ export default function BottomBar({ isThinking, onCreatePage, onSearchClick }) {
       >
         <IconBrain size={ICON} color={iconColor(activeRightPane === "knowledge")} />
       </button>
+
+      {/* Team Priorities (admin only) */}
+      {isAdmin(identity) && (
+        <button
+          onClick={() => { setActiveRightPane("team-priorities"); setActiveFolder(null); }}
+          title="Team Priorities"
+          aria-label="Team Priorities"
+          {...focusRing()}
+          style={itemBtnStyle(activeRightPane === "team-priorities")}
+          onMouseEnter={(e) => { if (activeRightPane !== "team-priorities") e.currentTarget.style.background = C.darkSurf2; }}
+          onMouseLeave={(e) => { if (activeRightPane !== "team-priorities") e.currentTarget.style.background = "transparent"; }}
+        >
+          <IconUsers size={ICON} color={iconColor(activeRightPane === "team-priorities")} />
+        </button>
+      )}
 
       {/* ─ Spacer pushes the create button + chrome to the right ─ */}
       <div style={{ flex: 1, minWidth: 8 }} />

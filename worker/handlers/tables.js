@@ -10,6 +10,7 @@ import {
   emitProjectedEdge, deleteProjectedEdge, deleteAllProjectedEdgesForEntity,
   getRelationColumns, resolveRecordPageId,
 } from './relationshipProjections.js';
+import { clearPinsForCompletedTask } from './task-pins.js';
 
 // ─── Parent owner propagation ───
 // When a sub-item gains an owner, walk up the parent chain and add any
@@ -438,6 +439,35 @@ async function handleUpdateRow(env, tableId, rowId, body, user, jsonResponse) {
         }
       } catch (err) {
         console.error("[parent_owner] update propagation failed:", err.message || err);
+      }
+    }
+
+    // Auto-clear task pins when this row moves to a done/cancelled status.
+    // Reads the table schema, finds status columns, checks the new cell
+    // value's category, and drops any pins pointing at this row. Best-
+    // effort — never breaks the row update.
+    if (body.cells !== undefined) {
+      try {
+        const schemaRow = await env.DB.prepare(
+          "SELECT columns FROM table_schemas WHERE id = ?"
+        ).bind(tableId).first();
+        if (schemaRow?.columns) {
+          const cols = JSON.parse(schemaRow.columns);
+          for (const col of (Array.isArray(cols) ? cols : [])) {
+            if (col?.type !== "status") continue;
+            const rawVal = newCells[col.id] ?? newCells[col.name];
+            if (!rawVal) continue;
+            const valStr = String(rawVal).toLowerCase();
+            const opt = (Array.isArray(col.options) ? col.options : [])
+              .find((o) => String(o?.name || "").toLowerCase() === valStr);
+            if (opt && (opt.category === "complete" || opt.category === "cancelled")) {
+              await clearPinsForCompletedTask(env, rowId);
+              break;
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[task-pins] auto-clear failed:", err?.message || err);
       }
     }
 

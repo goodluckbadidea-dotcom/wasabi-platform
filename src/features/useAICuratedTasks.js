@@ -10,6 +10,7 @@ import {
   getRecordViews, listTaskInteractions, logTaskInteraction,
   getActiveSnoozes, snoozeTask as snoozeTaskApi, unsnoozeTask as unsnoozeTaskApi,
   listNotifications,
+  listMyPins, listPinsForTarget,
 } from "../lib/api.js";
 import { loadCachedNeuronGraph } from "../neurons/neuronStorage.js";
 import {
@@ -19,7 +20,7 @@ import {
   sortSubItemsByParentContext,
 } from "./taskHelpers.js";
 
-const CACHE_KEY_PREFIX = "wasabi_ai_tasks_v15"; // v15: sub-item owner auto-propagates to parent (server-side)
+const CACHE_KEY_PREFIX = "wasabi_ai_tasks_v16"; // v16: task objects can now carry _pin metadata (Team Priorities)
 const INSIGHT_CACHE_KEY = "wasabi_insight";
 const CACHE_TTL = 30 * 60 * 1000; // 30 minutes — stale-while-revalidate shows cached data instantly
 const MAX_DATABASES = 25;
@@ -65,6 +66,27 @@ const DONE_STATUSES = new Set([
 const HOLD_STATUSES = new Set([
   "waiting", "waiting on vendor", "blocked", "on hold", "pending",
 ]);
+
+// Team Priorities: hoist admin-pinned tasks to the top and never drop them
+// due to the target-count cap. `pins` is the fresh /task-pins response;
+// each task_id it references gets `_pin` metadata attached so TaskList can
+// render the "Pinned by X" badge.
+function applyPinHoistingAndSlice(tasks, pins, targetCount) {
+  if (!pins || pins.length === 0) return tasks.slice(0, targetCount);
+  const pinMap = new Map(pins.map((p) => [p.task_id, p]));
+  const pinnedTasks = [];
+  const unpinnedTasks = [];
+  for (const t of tasks) {
+    if (pinMap.has(t.id)) {
+      pinnedTasks.push({ ...t, _pin: pinMap.get(t.id) });
+    } else {
+      unpinnedTasks.push(t);
+    }
+  }
+  pinnedTasks.sort((a, b) => (a._pin.pin_order || 0) - (b._pin.pin_order || 0));
+  const remainingSlots = Math.max(0, targetCount - pinnedTasks.length);
+  return [...pinnedTasks, ...unpinnedTasks.slice(0, remainingSlots)];
+}
 
 function applyLocalAdjustment(tasks, changeEvent, identity) {
   const { recordId, changes } = changeEvent;
@@ -425,8 +447,15 @@ function compressTask(task) {
 const BASE_TARGET = 15;
 const TARGET_MAX = 25;
 
-export default function useAICuratedTasks({ dismissedIds, completedCount, userTasksTableId } = {}) {
-  const { user, pages, identity } = usePlatform();
+// `overrideIdentity` (optional): when supplied, the hook computes and caches
+// the curated task list *as if* this identity were the logged-in user —
+// used by the Team Priorities admin screen to render another user's zen
+// list. The caller's JWT is still used for API auth; only the identity that
+// drives role-filtering, per-user cache keys, snooze/interaction fetches,
+// and the Claude ranking prompt is overridden. Shape: { id, role, display_name }.
+export default function useAICuratedTasks({ dismissedIds, completedCount, userTasksTableId, overrideIdentity } = {}) {
+  const { user, pages, identity: platformIdentity } = usePlatform();
+  const identity = overrideIdentity || platformIdentity;
   const userSync = useUserSync();
   const CACHE_KEY = cacheKeyForUser(identity?.id);
   const INSIGHT_KEY = identity?.id ? `${INSIGHT_CACHE_KEY}_${identity.id}` : INSIGHT_CACHE_KEY;
@@ -463,7 +492,7 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
     try {
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (k && (k.startsWith("wasabi_ai_tasks_v8") || k.startsWith("wasabi_ai_tasks_v9") || k.startsWith("wasabi_ai_tasks_v10") || k.startsWith("wasabi_ai_tasks_v11") || k.startsWith("wasabi_ai_tasks_v12") || k.startsWith("wasabi_ai_tasks_v13") || k.startsWith("wasabi_ai_tasks_v14"))) { localStorage.removeItem(k); i--; }
+        if (k && (k.startsWith("wasabi_ai_tasks_v8") || k.startsWith("wasabi_ai_tasks_v9") || k.startsWith("wasabi_ai_tasks_v10") || k.startsWith("wasabi_ai_tasks_v11") || k.startsWith("wasabi_ai_tasks_v12") || k.startsWith("wasabi_ai_tasks_v13") || k.startsWith("wasabi_ai_tasks_v14") || k.startsWith("wasabi_ai_tasks_v15"))) { localStorage.removeItem(k); i--; }
       }
     } catch {}
 
@@ -819,7 +848,27 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
       // surviving parents would carry sub-items belonging to other users.
       pruneSubItems(filteredTasks, identity);
 
-      // Step 2.76: Snooze filtering — remove snoozed tasks from active list
+      // Step 2.76a: Team Priorities — fetch admin-set pins for this
+      // identity. When admin is viewing another user's list via the
+      // override, we hit the target-user endpoint (admin JWT authorizes);
+      // otherwise we fetch the caller's own pins.
+      let pinsForThisUser = [];
+      const pinIdSet = new Set();
+      try {
+        if (identity?.id) {
+          const pinsRes = overrideIdentity
+            ? await listPinsForTarget(identity.id)
+            : await listMyPins();
+          pinsForThisUser = pinsRes?.pins || [];
+          for (const p of pinsForThisUser) pinIdSet.add(p.task_id);
+        }
+      } catch (err) {
+        console.warn("[AICurated] Pin fetch failed:", err.message);
+      }
+
+      // Step 2.76b: Snooze filtering — remove snoozed tasks from active list.
+      // Pinned tasks bypass the snooze: admin intent overrides user snooze
+      // (per the Team Priorities design — pin wins).
       try {
         if (identity?.id) {
           const snoozeResult = await getActiveSnoozes(identity.id);
@@ -827,10 +876,10 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
           if (snoozes.length > 0) {
             const snoozeMap = new Map(snoozes.map(s => [s.task_id, s]));
             const snoozed = filteredTasks
-              .filter(t => snoozeMap.has(t.id))
+              .filter(t => snoozeMap.has(t.id) && !pinIdSet.has(t.id))
               .map(t => ({ ...t, _snoozeUntil: snoozeMap.get(t.id).snooze_until, _snoozeId: snoozeMap.get(t.id).id }));
             setSnoozedTasks(snoozed);
-            filteredTasks = filteredTasks.filter(t => !snoozeMap.has(t.id));
+            filteredTasks = filteredTasks.filter(t => !snoozeMap.has(t.id) || pinIdSet.has(t.id));
           } else {
             setSnoozedTasks([]);
           }
@@ -1186,7 +1235,7 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
             const targetCount = Math.min(TARGET_MAX, BASE_TARGET + completedCountRef.current);
             // Filter out dismissed tasks, then slice to target
             const visible = merged.filter((t) => !dismissedIdsRef.current.has(t.id));
-            setAiTasks(visible.slice(0, targetCount));
+            setAiTasks(applyPinHoistingAndSlice(visible, pinsForThisUser, targetCount));
             setCache(CACHE_KEY, merged); // cache includes interaction adjustments
           } else {
             // Fallback: show filtered tasks sorted by nearest date
@@ -1204,7 +1253,7 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
             });
             const targetCount = Math.min(TARGET_MAX, BASE_TARGET + completedCountRef.current);
             const visible = merged.filter((t) => !dismissedIdsRef.current.has(t.id));
-            setAiTasks(visible.slice(0, targetCount));
+            setAiTasks(applyPinHoistingAndSlice(visible, pinsForThisUser, targetCount));
             setCache(CACHE_KEY, merged); // cache includes interaction adjustments
           }
         } catch (err) {
@@ -1222,7 +1271,7 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
           });
           const targetCount = Math.min(TARGET_MAX, BASE_TARGET + completedCountRef.current);
           const visible = merged.filter((t) => !dismissedIdsRef.current.has(t.id));
-          setAiTasks(visible.slice(0, targetCount));
+          setAiTasks(applyPinHoistingAndSlice(visible, pinsForThisUser, targetCount));
           setCache(CACHE_KEY, merged); // cache includes interaction adjustments
         }
       } else {
@@ -1240,7 +1289,7 @@ ${JSON.stringify(dbSummaries, null, 0)}`;
         });
         const targetCount = Math.min(TARGET_MAX, BASE_TARGET + completedCountRef.current);
         const visible = merged.filter((t) => !dismissedIdsRef.current.has(t.id));
-        setAiTasks(visible.slice(0, targetCount));
+        setAiTasks(applyPinHoistingAndSlice(visible, pinsForThisUser, targetCount));
         setCache(CACHE_KEY, merged); // cache includes interaction adjustments
       }
 

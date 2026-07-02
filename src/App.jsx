@@ -74,6 +74,7 @@ const FigmaView = lazyWithRetry(() => import("./features/FigmaView.jsx"));
 const WorkspaceBrowser = lazyWithRetry(() => import("./features/WorkspaceBrowser.jsx"));
 const KnowledgeHub = lazyWithRetry(() => import("./features/KnowledgeHub.jsx"));
 const ExtensionViewer = lazyWithRetry(() => import("./features/ExtensionViewer.jsx"));
+const TeamPrioritiesView = lazyWithRetry(() => import("./features/TeamPrioritiesView.jsx"));
 
 // Inject CSS animations + global interaction styles on app load
 injectAnimations();
@@ -512,6 +513,20 @@ function AppContent() {
             </div>
           }>
             <KnowledgeHub onOpenChat={(msg) => { setPendingChatMessage(msg); focusChatInLeftPane(); }} />
+          </React.Suspense>
+        </ErrorBoundary>
+      );
+    }
+    // Team Priorities (admin — see other users' zen tasks, manage pins)
+    if (activeRightPane === "team-priorities") {
+      return (
+        <ErrorBoundary fallbackLabel="Team Priorities">
+          <React.Suspense fallback={
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
+              Loading...
+            </div>
+          }>
+            <TeamPrioritiesView />
           </React.Suspense>
         </ErrorBoundary>
       );

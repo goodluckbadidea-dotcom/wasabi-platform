@@ -121,6 +121,11 @@ export const ROUTE_PERMISSIONS = [
   // Task snoozes — editor for mutations
   { pattern: /^\/task-snoozes/, method: "POST", minRole: "editor" },
   { pattern: /^\/task-snoozes\//, method: "DELETE", minRole: "editor" },
+  // Task pins (admin-managed priority) — admin for mutations. GET is
+  // viewer+ so users can read their own pins; the route handler enforces
+  // the admin check when the request is targeted at another user's pins.
+  { pattern: /^\/task-pins$/, method: "POST", minRole: "admin" },
+  { pattern: /^\/task-pins\//, method: "DELETE", minRole: "admin" },
   // Sheets — editor for linked sheet proxy
   { pattern: /^\/sheets\/fetch$/, method: "POST", minRole: "editor" },
   // Docs — editor for mutations

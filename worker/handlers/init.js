@@ -46,7 +46,7 @@ async function handleInit(env, jsonResponse) {
   // ── Schema version fast path ──
   // Skip all DDL if the schema is already at the current version.
   // Reduces ~92 sequential D1 queries to 3 on returning page loads.
-  const CURRENT_SCHEMA_VERSION = "12";
+  const CURRENT_SCHEMA_VERSION = "13";
   try {
     const row = await env.DB.prepare(
       "SELECT value FROM connections WHERE key = 'schema_version'"
@@ -253,6 +253,22 @@ async function handleInit(env, jsonResponse) {
       "CREATE INDEX IF NOT EXISTS idx_form_subs_conn ON form_submissions(connection_id)",
       "CREATE INDEX IF NOT EXISTS idx_form_subs_record_status ON form_submissions(record_id, status)",
       "CREATE INDEX IF NOT EXISTS idx_form_subs_form_record ON form_submissions(record_id, form_id, status)",
+      // Team Priorities: admin-set pins that pin tasks to the top of a
+      // target user's AI-curated zen list. See project_admin_priorities.
+      `CREATE TABLE IF NOT EXISTS task_pins (
+        id TEXT PRIMARY KEY,
+        target_user_id TEXT NOT NULL,
+        task_id TEXT NOT NULL,
+        source TEXT NOT NULL DEFAULT '',
+        pin_order INTEGER NOT NULL DEFAULT 0,
+        pinned_by_user_id TEXT NOT NULL,
+        reason TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(target_user_id, task_id)
+      )`,
+      "CREATE INDEX IF NOT EXISTS idx_task_pins_target ON task_pins(target_user_id, pin_order)",
+      "CREATE INDEX IF NOT EXISTS idx_task_pins_task ON task_pins(task_id)",
     ];
     for (const sql of migrations) {
       try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }

@@ -1027,6 +1027,32 @@ export async function unsnoozeTask(id) {
   return apiFetch(`/task-snoozes/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+// ─── Team Priorities (admin task pins) ───
+// See project_admin_priorities. Admins pin tasks to the top of a target
+// user's AI-curated zen list; the pinned order sticks until admin unpins
+// or the task hits a done/cancelled status (server-side auto-clear).
+
+export async function listMyPins() {
+  return apiFetch(`/task-pins?user_id=me`, { method: "GET" });
+}
+
+export async function listPinsForTarget(targetUserId) {
+  return apiFetch(`/task-pins?target_user_id=${encodeURIComponent(targetUserId)}`, { method: "GET" });
+}
+
+// pins: [{ task_id, source, pin_order, reason }] — replace-all for the
+// target user; missing entries are deleted, new entries inserted.
+export async function replacePins(targetUserId, pins) {
+  return apiFetch(`/task-pins`, {
+    method: "POST",
+    body: { target_user_id: targetUserId, pins },
+  });
+}
+
+export async function deletePin(id) {
+  return apiFetch(`/task-pins/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 // ─── Google Calendar ───
 
 export async function listCalendars() {
