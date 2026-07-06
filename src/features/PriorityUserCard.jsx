@@ -514,6 +514,12 @@ function cardShellStyle() {
     borderRadius: RADIUS.lg,
     background: C.darkSurf2,
     overflow: "hidden",
+    // Cards sit inside a flex-column scroll parent. Without flexShrink:0
+    // each card would be squished to fit the viewport (fighting the scroll
+    // container's overflow:auto) — clipping their content instead of
+    // letting the parent scroll. Locking shrink to 0 makes each card take
+    // its natural height and any excess falls into the parent's scroll.
+    flexShrink: 0,
   };
 }
 
