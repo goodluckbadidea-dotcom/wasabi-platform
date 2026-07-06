@@ -27,7 +27,7 @@ import { useUserSync } from "../context/UserSyncContext.jsx";
 import { focusRing } from "../design/interactions.js";
 import { savePageConfig, createFolderConfig, createWorkspaceConfig, createDashboardConfig } from "../config/pageConfig.js";
 import {
-  IconGear, IconBrain, IconBell, IconMail, IconCalendar, IconGlobe, IconRefresh, IconUsers,
+  IconGear, IconBrain, IconBell, IconMail, IconCalendar, IconRefresh, IconUsers,
 } from "../design/icons.jsx";
 import { isAdmin } from "../lib/roles.js";
 import {
@@ -230,7 +230,7 @@ export default function BottomBar({ isThinking, onCreatePage, onSearchClick }) {
   const ICON = 22;
 
   // Workspace highlight rule: Workspaces icon is also lit when viewing a user-built page.
-  const SYSTEM_PAGES = new Set(["system", "wasabi", "inbox", "inbox-unified", "automations", "functions", "build", "knowledge-base", "dashboard", "workspaces", "calendar", "notifications", "knowledge"]);
+  const SYSTEM_PAGES = new Set(["system", "wasabi", "inbox", "inbox-unified", "automations", "functions", "build", "knowledge-base", "workspaces", "calendar", "notifications", "knowledge", "team-priorities"]);
   const isWsActive = activeRightPane === "workspaces" ||
     (activeRightPane && !SYSTEM_PAGES.has(activeRightPane) && pages.some((p) => p.id === activeRightPane));
 
@@ -366,7 +366,8 @@ export default function BottomBar({ isThinking, onCreatePage, onSearchClick }) {
       />
 
       {/* ─ Right-pane group ─ */}
-      {/* Workspaces */}
+      {/* Workspaces (grid icon — the old Dashboard button, retargeted after
+          per-user dashboards were removed and folded into the page tree) */}
       <button
         onClick={handleWorkspacesClick}
         title="Workspaces"
@@ -376,24 +377,11 @@ export default function BottomBar({ isThinking, onCreatePage, onSearchClick }) {
         onMouseEnter={(e) => { if (!isWsActive) e.currentTarget.style.background = C.darkSurf2; }}
         onMouseLeave={(e) => { if (!isWsActive) e.currentTarget.style.background = "transparent"; }}
       >
-        <IconGlobe size={ICON} color={iconColor(isWsActive)} />
-      </button>
-
-      {/* Dashboard */}
-      <button
-        onClick={() => { setActiveRightPane("dashboard"); setActiveFolder(null); }}
-        title="Dashboard"
-        aria-label="Dashboard"
-        {...focusRing()}
-        style={itemBtnStyle(activeRightPane === "dashboard")}
-        onMouseEnter={(e) => { if (activeRightPane !== "dashboard") e.currentTarget.style.background = C.darkSurf2; }}
-        onMouseLeave={(e) => { if (activeRightPane !== "dashboard") e.currentTarget.style.background = "transparent"; }}
-      >
         <svg width={ICON} height={ICON} viewBox="0 0 16 16" fill="none">
-          <rect x="1" y="1" width="6" height="6" rx="1.5" stroke={iconColor(activeRightPane === "dashboard")} strokeWidth="1.3" fill="none" />
-          <rect x="9" y="1" width="6" height="6" rx="1.5" stroke={iconColor(activeRightPane === "dashboard")} strokeWidth="1.3" fill="none" />
-          <rect x="1" y="9" width="6" height="6" rx="1.5" stroke={iconColor(activeRightPane === "dashboard")} strokeWidth="1.3" fill="none" />
-          <rect x="9" y="9" width="6" height="6" rx="1.5" stroke={iconColor(activeRightPane === "dashboard")} strokeWidth="1.3" fill="none" />
+          <rect x="1" y="1" width="6" height="6" rx="1.5" stroke={iconColor(isWsActive)} strokeWidth="1.3" fill="none" />
+          <rect x="9" y="1" width="6" height="6" rx="1.5" stroke={iconColor(isWsActive)} strokeWidth="1.3" fill="none" />
+          <rect x="1" y="9" width="6" height="6" rx="1.5" stroke={iconColor(isWsActive)} strokeWidth="1.3" fill="none" />
+          <rect x="9" y="9" width="6" height="6" rx="1.5" stroke={iconColor(isWsActive)} strokeWidth="1.3" fill="none" />
         </svg>
       </button>
 

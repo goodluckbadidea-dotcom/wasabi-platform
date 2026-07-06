@@ -46,7 +46,7 @@ async function handleInit(env, jsonResponse) {
   // ── Schema version fast path ──
   // Skip all DDL if the schema is already at the current version.
   // Reduces ~92 sequential D1 queries to 3 on returning page loads.
-  const CURRENT_SCHEMA_VERSION = "13";
+  const CURRENT_SCHEMA_VERSION = "14";
   try {
     const row = await env.DB.prepare(
       "SELECT value FROM connections WHERE key = 'schema_version'"
@@ -104,7 +104,10 @@ async function handleInit(env, jsonResponse) {
       "ALTER TABLE users ADD COLUMN deleted_at TEXT DEFAULT NULL",
       // Sprint 7: Per-user state persistence
       "CREATE TABLE IF NOT EXISTS user_state (user_id TEXT PRIMARY KEY, last_page TEXT, zen_tasks_table_id TEXT, updated_at TEXT DEFAULT (datetime('now')))",
-      "CREATE TABLE IF NOT EXISTS user_dashboards (user_id TEXT PRIMARY KEY, widgets TEXT NOT NULL DEFAULT '[]', updated_at TEXT DEFAULT (datetime('now')))",
+      // Schema v14: per-user widget dashboards removed. Dashboards are now a
+      // page type (created via createDashboardConfig, rendered by WidgetGrid)
+      // and follow page permissions. Drop the legacy table on existing DBs.
+      "DROP TABLE IF EXISTS user_dashboards",
       // Sprint 8: Record read receipts
       "CREATE TABLE IF NOT EXISTS record_views (user_id TEXT NOT NULL, record_id TEXT NOT NULL, last_viewed_at TEXT NOT NULL, PRIMARY KEY (user_id, record_id))",
       "CREATE INDEX IF NOT EXISTS idx_record_views_user ON record_views(user_id)",

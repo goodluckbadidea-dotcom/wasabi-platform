@@ -303,12 +303,6 @@ CREATE TABLE IF NOT EXISTS user_state (
   updated_at TEXT DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS user_dashboards (
-  user_id TEXT PRIMARY KEY,
-  widgets TEXT NOT NULL DEFAULT '[]',
-  updated_at TEXT DEFAULT (datetime('now'))
-);
-
 CREATE TABLE IF NOT EXISTS record_views (
   user_id TEXT NOT NULL,
   record_id TEXT NOT NULL,

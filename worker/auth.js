@@ -77,7 +77,6 @@ export const ROUTE_PERMISSIONS = [
   { pattern: /^\/sessions/, method: "*", minRole: null },
   // Per-user state — own data, no role check
   { pattern: /^\/user-state/, method: "*", minRole: null },
-  { pattern: /^\/user-dashboard/, method: "*", minRole: null },
   { pattern: /^\/record-views/, method: "*", minRole: null },
   { pattern: /^\/d1\/notifications\/preferences/, method: "*", minRole: null },
   { pattern: /^\/d1\/notifications\/unread-count$/, method: "GET", minRole: null },

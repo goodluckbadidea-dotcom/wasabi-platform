@@ -40,47 +40,6 @@ export async function handlePutUserState(env, user, body, jsonResponse) {
   }
 }
 
-export async function handleGetUserDashboard(env, user, jsonResponse) {
-  try {
-    const row = await env.DB.prepare("SELECT * FROM user_dashboards WHERE user_id = ?").bind(user.sub).first();
-    const widgets = row?.widgets ? JSON.parse(row.widgets) : [];
-    return jsonResponse({ widgets, updated_at: row?.updated_at || null });
-  } catch (err) {
-    return jsonResponse({ widgets: [], updated_at: null });
-  }
-}
-
-export async function handlePutUserDashboard(env, user, body, jsonResponse) {
-  try {
-    const widgetsJson = JSON.stringify(body.widgets || []);
-    // Conflict detection: if client sends if_match (updated_at), check it
-    if (body.if_match) {
-      const existing = await env.DB.prepare(
-        "SELECT updated_at FROM user_dashboards WHERE user_id = ?"
-      ).bind(user.sub).first();
-      if (existing && existing.updated_at > body.if_match) {
-        const currentWidgets = await env.DB.prepare(
-          "SELECT widgets FROM user_dashboards WHERE user_id = ?"
-        ).bind(user.sub).first();
-        return jsonResponse({
-          _error: "Conflict: dashboard was updated on another device",
-          conflict: true,
-          server_widgets: currentWidgets?.widgets ? JSON.parse(currentWidgets.widgets) : [],
-          server_updated_at: existing.updated_at,
-        }, 409);
-      }
-    }
-    await env.DB.prepare(
-      `INSERT INTO user_dashboards (user_id, widgets, updated_at)
-       VALUES (?, ?, datetime('now'))
-       ON CONFLICT(user_id) DO UPDATE SET widgets = ?, updated_at = datetime('now')`
-    ).bind(user.sub, widgetsJson, widgetsJson).run();
-    return jsonResponse({ ok: true });
-  } catch (err) {
-    return jsonResponse({ _error: err.message }, 500);
-  }
-}
-
 export async function handlePutRecordView(env, user, recordId, jsonResponse) {
   try {
     await env.DB.prepare(

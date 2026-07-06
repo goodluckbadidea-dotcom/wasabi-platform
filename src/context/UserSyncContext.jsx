@@ -1,6 +1,6 @@
 // ─── UserSyncContext ───
 // React context wrapping UserSocket for multi-device sync.
-// Provides dashboard sync, navigation sync, session management, and device awareness.
+// Provides navigation sync, session management, and device awareness.
 // Must be mounted inside PlatformProvider (uses usePlatform for identity).
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
@@ -14,7 +14,6 @@ export function UserSyncProvider({ children }) {
   const [connectedDevices, setConnectedDevices] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef(null);
-  const dashboardHandlers = useRef(new Set());
   const navHandlers = useRef(new Set());
   const sessionRevokedHandlers = useRef(new Set());
   const taskCacheHandlers = useRef(new Set());
@@ -30,12 +29,6 @@ export function UserSyncProvider({ children }) {
       switch (msg.type) {
         case "devices":
           setConnectedDevices(msg.devices || []);
-          break;
-
-        case "dashboard_update":
-          for (const handler of dashboardHandlers.current) {
-            try { handler(msg.widgets); } catch (e) { console.warn("[UserSync] handler error:", e); }
-          }
           break;
 
         case "nav_update":
@@ -80,20 +73,11 @@ export function UserSyncProvider({ children }) {
 
   // ── Outbound actions ──
 
-  const sendDashboardUpdate = useCallback((widgets) => {
-    socketRef.current?.sendDashboardUpdate(widgets);
-  }, []);
-
   const sendNavUpdate = useCallback((pageId, folderId) => {
     socketRef.current?.sendNavUpdate(pageId, folderId);
   }, []);
 
   // ── Subscribe to inbound events ──
-
-  const onDashboardUpdate = useCallback((handler) => {
-    dashboardHandlers.current.add(handler);
-    return () => dashboardHandlers.current.delete(handler);
-  }, []);
 
   const onNavUpdate = useCallback((handler) => {
     navHandlers.current.add(handler);
@@ -118,9 +102,7 @@ export function UserSyncProvider({ children }) {
   const value = {
     isConnected,
     connectedDevices,
-    sendDashboardUpdate,
     sendNavUpdate,
-    onDashboardUpdate,
     onNavUpdate,
     onSessionRevoked,
     onTaskCacheInvalidate,

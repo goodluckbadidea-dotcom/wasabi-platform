@@ -1266,16 +1266,6 @@ export async function putUserState(updates) {
   return apiFetch("/user-state", { method: "PUT", body: updates });
 }
 
-// ─── Per-User Dashboard ───
-
-export async function getUserDashboard() {
-  return apiFetch("/user-dashboard", { method: "GET" });
-}
-
-export async function putUserDashboard(widgets) {
-  return apiFetch("/user-dashboard", { method: "PUT", body: { widgets } });
-}
-
 // ─── Record Views ───
 
 export async function putRecordView(recordId) {

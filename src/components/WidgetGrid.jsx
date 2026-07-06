@@ -29,8 +29,7 @@ export default function WidgetGrid({
   widgets = [],
   onUpdateWidgets,
   // Optional controlled props — when provided, the parent owns edit/picker
-  // state and renders the toggle buttons itself (e.g. DashboardView lifts the
-  // Edit button into its section header).
+  // state and renders the toggle buttons itself.
   editModeProp,
   onEditModeChange,
   widgetPickerOpenProp,

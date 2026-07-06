@@ -67,7 +67,6 @@ import { useNeurons } from "./neurons/NeuronsContext.jsx";
 
 const TasksView = lazyWithRetry(() => import("./features/TasksView.jsx"));
 const NotesView = lazyWithRetry(() => import("./features/NotesView.jsx"));
-const DashboardView = lazyWithRetry(() => import("./features/DashboardView.jsx"));
 const CalendarView = lazyWithRetry(() => import("./features/CalendarView.jsx"));
 const InboxView = lazyWithRetry(() => import("./features/InboxView.jsx"));
 const FigmaView = lazyWithRetry(() => import("./features/FigmaView.jsx"));
@@ -91,7 +90,6 @@ updateCSSCustomProperties(C);
       ["wasabi_zen_insight", "wasabi_insight"],
       ["wasabi-zen-hidden-calendars", "wasabi-hidden-calendars"],
       ["wasabi_zen_ai_tasks_v4", "wasabi_ai_tasks_v4"],
-      ["wasabi-zen-dashboard-widgets", "wasabi-dashboard-widgets"],
     ];
     for (const [oldKey, newKey] of migrations) {
       const val = localStorage.getItem(oldKey);
@@ -448,20 +446,6 @@ function AppContent() {
         </ErrorBoundary>
       );
     }
-    // Dashboard
-    if (activeRightPane === "dashboard") {
-      return (
-        <ErrorBoundary fallbackLabel="Dashboard">
-          <React.Suspense fallback={
-            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
-              Loading...
-            </div>
-          }>
-            <DashboardView key={identity?.id || "default"} />
-          </React.Suspense>
-        </ErrorBoundary>
-      );
-    }
     if (activeRightPane === "inbox-unified") {
       return (
         <ErrorBoundary fallbackLabel="Inbox">
@@ -571,15 +555,17 @@ function AppContent() {
         />
       );
     }
-    // Default for an empty/unknown right-pane route → Dashboard.
+    // Default for an empty/unknown right-pane route → Workspaces browser.
+    // (Per-user dashboards were removed; dashboards now live as pages in
+    // the tree.)
     return (
-      <ErrorBoundary fallbackLabel="Dashboard">
+      <ErrorBoundary fallbackLabel="Workspaces">
         <React.Suspense fallback={
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
             Loading...
           </div>
         }>
-          <DashboardView key={identity?.id || "default"} />
+          <WorkspaceBrowser />
         </React.Suspense>
       </ErrorBoundary>
     );

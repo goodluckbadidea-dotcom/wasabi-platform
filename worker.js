@@ -11,7 +11,7 @@ import { createJsonResponse, safeParseJSON, sleep, resolveRecordTitle } from './
 import { handleListKB, handleCreateKB, handleGetKB, handleUpdateKB, handleDeleteKB, handleSearchKB } from './worker/handlers/knowledge-base.js';
 import { handleGetConnections, handleSetConnection, handleDeleteConnection } from './worker/handlers/connections.js';
 import { handleSetPin, handleVerifyPin } from './worker/handlers/pin.js';
-import { handleGetUserState, handlePutUserState, handleGetUserDashboard, handlePutUserDashboard, handlePutRecordView, handleGetRecordViews } from './worker/handlers/user-state.js';
+import { handleGetUserState, handlePutUserState, handlePutRecordView, handleGetRecordViews } from './worker/handlers/user-state.js';
 import { createNotificationInternal, extractMentions, handleListNotifications, handleCreateNotification, handleGetNotification, handleUpdateNotification, handleDeleteNotification } from './worker/handlers/notifications.js';
 import { handleListSessions, handleRevokeSession, handleLogoutOtherSessions, handleLogoutAllDevices } from './worker/handlers/sessions.js';
 import { handleListTaskActivity, handleGetTaskActivity, handleUpsertTaskActivity, handleLogInteraction, handleListInteractions, handleGetInteractionSummary } from './worker/handlers/interactions.js';
@@ -355,17 +355,6 @@ export default {
         if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
         const body = await request.json();
         return await handlePutUserState(env, user, body, jsonResponse);
-      }
-
-      // ─── Per-User Dashboard ───
-      if (path === "/user-dashboard" && request.method === "GET") {
-        if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
-        return await handleGetUserDashboard(env, user, jsonResponse);
-      }
-      if (path === "/user-dashboard" && request.method === "PUT") {
-        if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
-        const body = await request.json();
-        return await handlePutUserDashboard(env, user, body, jsonResponse);
       }
 
       // ─── Record Views ───

@@ -59,7 +59,6 @@ export class UserRoom {
 
   handleMessage(sender, msg) {
     switch (msg.type) {
-      case "dashboard_update":
       case "nav_update":
       case "task_cache_invalidate":
         // Relay to all OTHER connections (not sender)

@@ -165,10 +165,6 @@ export default class UserSocket {
 
   // ── Sync shortcuts ──
 
-  sendDashboardUpdate(widgets) {
-    this.send("dashboard_update", { widgets });
-  }
-
   sendNavUpdate(pageId, folderId) {
     this.send("nav_update", { pageId, folderId });
   }
