@@ -154,7 +154,6 @@ export default function FormsHub({
         setActiveFormId(null);
         setMode("hub");
       }
-      globalToast("Form deleted", "success");
     } catch (err) {
       console.error("[FormsHub] delete failed:", err);
       globalToast(`Delete failed: ${err?.message || "unknown error"}`, "error");
