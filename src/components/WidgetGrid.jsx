@@ -298,7 +298,7 @@ export default function WidgetGrid({
                   onDelete={handleDeleteWidget}
                   onToggleSpan={handleToggleSpan}
                   onToggleCollapse={handleToggleCollapse}
-                  onClick={() => {}}
+                  onClick={(w) => { if (w?.pageId) setActiveRightPane(w.pageId); }}
                 >
                   {renderWidgetContent(widget)}
                 </DashboardWidget>

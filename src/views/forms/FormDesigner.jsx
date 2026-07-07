@@ -237,7 +237,11 @@ function FieldBlock({ field, active, dragOver, onClick, onChange, onDelete, onCl
         <span style={{
           display: "inline-flex", alignItems: "center", justifyContent: "center",
           width: 22, height: 22, color: C.darkMuted, fontSize: 12,
-        }}>{def?.icon || "·"}</span>
+        }}>
+          {typeof def?.icon === "function"
+            ? React.createElement(def.icon, { size: 14, color: C.darkMuted })
+            : (def?.icon || "·")}
+        </span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{

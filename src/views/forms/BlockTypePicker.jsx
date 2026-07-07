@@ -91,7 +91,7 @@ export default function BlockTypePicker({ open, onClose, onPick, anchorRect, tab
             onClick={() => handlePickType(b.type)}
             {...hoverBg()}
           >
-            <BlockIcon>{b.icon}</BlockIcon>
+            <BlockIcon icon={b.icon} />
             <div style={{ flex: 1, textAlign: "left" }}>
               <div style={{ fontSize: 12, color: C.darkText, fontWeight: 600 }}>{b.label}</div>
               <div style={{ fontSize: 10, color: C.darkMuted }}>{b.description}</div>
@@ -110,7 +110,7 @@ export default function BlockTypePicker({ open, onClose, onPick, anchorRect, tab
             onClick={() => handlePickType(b.type)}
             {...hoverBg()}
           >
-            <BlockIcon>{b.icon}</BlockIcon>
+            <BlockIcon icon={b.icon} />
             <div style={{ flex: 1, textAlign: "left" }}>
               <div style={{ fontSize: 12, color: C.darkText, fontWeight: 600 }}>{b.label}</div>
               <div style={{ fontSize: 10, color: C.darkMuted }}>{b.description}</div>
@@ -155,12 +155,19 @@ function Divider() {
   return <div style={{ borderTop: `1px solid ${C.edgeLine}`, margin: "4px 0" }} />;
 }
 
-const BlockIcon = ({ children }) => (
-  <span style={{
-    display: "inline-flex", alignItems: "center", justifyContent: "center",
-    width: 22, height: 22, fontSize: 13, color: C.darkMuted, flexShrink: 0,
-  }}>{children}</span>
-);
+// `icon` may be a React component (from design/icons.jsx) or a short
+// typographic glyph string — see formTypes.js.
+const BlockIcon = ({ icon }) => {
+  const content = typeof icon === "function"
+    ? React.createElement(icon, { size: 14, color: C.darkMuted })
+    : icon;
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", justifyContent: "center",
+      width: 22, height: 22, fontSize: 13, color: C.darkMuted, flexShrink: 0,
+    }}>{content}</span>
+  );
+};
 
 const pickerItem = {
   display: "flex", alignItems: "center", gap: 8,

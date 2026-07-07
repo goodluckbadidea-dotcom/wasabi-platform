@@ -8,7 +8,8 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../../design/tokens.js";
 import { S } from "../../design/styles.js";
 import { hoverBg } from "../../design/interactions.js";
-import { IconPlus, IconForm } from "../../design/icons.jsx";
+import { IconPlus, IconForm, IconEdit, IconTrash } from "../../design/icons.jsx";
+import { globalToast } from "../../context/ToastContext.jsx";
 import {
   listForms, createForm, updateForm, deleteForm,
   createFormSubmission, updateFormSubmission, createFormConnection,
@@ -129,8 +130,10 @@ export default function FormsHub({
         setActiveFormId(null);
         setMode("hub");
       }
+      globalToast("Form deleted", "success");
     } catch (err) {
       console.error("[FormsHub] delete failed:", err);
+      globalToast(`Delete failed: ${err?.message || "unknown error"}`, "error");
     }
   };
 
@@ -484,12 +487,18 @@ function FormCard({ form, onOpen, onEdit, onDelete }) {
           onClick={(e) => { e.stopPropagation(); onEdit(); }}
           style={iconBtn}
           title="Edit form"
-        >✎</button>
+          aria-label="Edit form"
+        >
+          <IconEdit size={14} color={C.darkMuted} />
+        </button>
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
           style={{ ...iconBtn, color: C.error }}
           title="Delete form"
-        >🗑</button>
+          aria-label="Delete form"
+        >
+          <IconTrash size={14} color={C.error} />
+        </button>
       </div>
     </div>
   );
@@ -497,7 +506,9 @@ function FormCard({ form, onOpen, onEdit, onDelete }) {
 
 const iconBtn = {
   background: "transparent", border: "none", color: C.darkMuted,
-  cursor: "pointer", fontSize: 13, padding: 6, borderRadius: RADIUS.sm,
+  cursor: "pointer", padding: 8, borderRadius: RADIUS.sm,
+  display: "inline-flex", alignItems: "center", justifyContent: "center",
+  minWidth: 30, minHeight: 30,
 };
 
 function mapTypeToNotion(blockType) {

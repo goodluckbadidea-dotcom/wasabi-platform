@@ -7,7 +7,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { C, FONT, RADIUS, SHADOW } from "../../design/tokens.js";
 import { S } from "../../design/styles.js";
 import { hoverBg } from "../../design/interactions.js";
-import { IconPlus } from "../../design/icons.jsx";
+import { IconPlus, IconTrash } from "../../design/icons.jsx";
 import {
   listForms, listFormConnectionsForRecord,
   createFormConnection, deleteFormConnection, deleteFormSubmission,
@@ -448,7 +448,10 @@ function SubmittedCard({ row, onOpenSubmission, onSubmitAgain, onDeleteSubmissio
                 onClick={(e) => { e.stopPropagation(); onDeleteSubmission(s); }}
                 style={iconBtnStyle}
                 title="Delete submission"
-              >🗑</button>
+                aria-label="Delete submission"
+              >
+                <IconTrash size={12} color={C.darkMuted} />
+              </button>
             </div>
           ))}
         </div>
@@ -459,7 +462,9 @@ function SubmittedCard({ row, onOpenSubmission, onSubmitAgain, onDeleteSubmissio
 
 const iconBtnStyle = {
   background: "transparent", border: "none", color: C.darkMuted,
-  cursor: "pointer", fontSize: 13, padding: 4, lineHeight: 1,
+  cursor: "pointer", padding: 6, lineHeight: 1, borderRadius: RADIUS.sm,
+  display: "inline-flex", alignItems: "center", justifyContent: "center",
+  minWidth: 26, minHeight: 26,
 };
 
 function relativeTime(iso) {

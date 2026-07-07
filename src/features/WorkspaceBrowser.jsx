@@ -915,10 +915,19 @@ export default function WorkspaceBrowser() {
               </div>
               <div style={styles.cardTitle}>{item.name}</div>
               <div style={styles.cardMeta}>
-                {item.itemType === "folder"
-                  ? `${item.pageCount || 0} page${(item.pageCount || 0) !== 1 ? "s" : ""}`
-                  : `${item.views?.length || 0} view${(item.views?.length || 0) !== 1 ? "s" : ""}`
-                }
+                {(() => {
+                  if (item.itemType === "folder") {
+                    const n = item.pageCount || 0;
+                    return `${n} page${n !== 1 ? "s" : ""}`;
+                  }
+                  // Dashboard pages don't have a `views` array — count widgets.
+                  if (item.page_type === "dashboard" || item.pageType === "dashboard") {
+                    const n = item.widgets?.length || 0;
+                    return `${n} widget${n !== 1 ? "s" : ""}`;
+                  }
+                  const n = item.views?.length || 0;
+                  return `${n} view${n !== 1 ? "s" : ""}`;
+                })()}
               </div>
             </div>
           ))}

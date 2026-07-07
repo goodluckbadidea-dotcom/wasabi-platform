@@ -3,6 +3,7 @@
 
 import React from "react";
 import { C, FONT, RADIUS } from "../../design/tokens.js";
+import { IconTrash, IconClose } from "../../design/icons.jsx";
 import { BLOCK_TYPE_TO_COLUMN_TYPE, findBlockDef } from "./formTypes.js";
 
 const inputStyle = {
@@ -66,12 +67,18 @@ export default function FieldSettings({ field, tableColumns, onChange, onClose, 
             onClick={onDelete}
             style={ghostBtn(C.error)}
             title="Delete field"
-          >🗑</button>
+            aria-label="Delete field"
+          >
+            <IconTrash size={14} color={C.error} />
+          </button>
           <button
             onClick={onClose}
             style={ghostBtn(C.darkMuted)}
             title="Close"
-          >✕</button>
+            aria-label="Close settings"
+          >
+            <IconClose size={12} color={C.darkMuted} />
+          </button>
         </div>
       </div>
 
@@ -208,7 +215,11 @@ function OptionsEditor({ options, onChange, disabled }) {
             onClick={() => onChange(options.filter((_, j) => j !== i))}
             disabled={disabled}
             style={ghostBtn(C.error)}
-          >✕</button>
+            title="Remove option"
+            aria-label="Remove option"
+          >
+            <IconClose size={10} color={C.error} />
+          </button>
         </div>
       ))}
       <button
@@ -226,6 +237,8 @@ function OptionsEditor({ options, onChange, disabled }) {
 function ghostBtn(color) {
   return {
     background: "transparent", border: "none", color,
-    fontSize: 12, cursor: "pointer", padding: 4, lineHeight: 1,
+    cursor: "pointer", padding: 6, lineHeight: 1, borderRadius: RADIUS.sm,
+    display: "inline-flex", alignItems: "center", justifyContent: "center",
+    minWidth: 26, minHeight: 26,
   };
 }
