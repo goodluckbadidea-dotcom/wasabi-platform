@@ -40,6 +40,7 @@ export default function DashboardWidget({
   onResize,       // (id, newColSpan, newH) => void
   onDelete,       // (id) => void
   onToggleSpan,   // (id) => void — toggle colSpan 1↔2
+  onToggleCollapse, // (id) => void — toggle widget.collapsed on title-bar click
   onClick,        // (widget) => void — navigate to full view
   children,       // rendered widget content
 }) {
@@ -144,8 +145,8 @@ export default function DashboardWidget({
       ref={widgetRef}
       style={{
         ...(gridMode
-          ? { position: "relative", width: "100%", height: widget.h || 360 }
-          : { position: "absolute", left: widget.x, top: widget.y, width: widget.w, height: widget.h }
+          ? { position: "relative", width: "100%", height: widget.collapsed ? 28 : (widget.h || 360) }
+          : { position: "absolute", left: widget.x, top: widget.y, width: widget.w, height: widget.collapsed ? 28 : widget.h }
         ),
         background: C.darkSurf,
         border: `1px solid ${C.darkBorder}`,
@@ -156,15 +157,23 @@ export default function DashboardWidget({
         overflow: "hidden",
         cursor: editMode ? (dragging ? "grabbing" : "default") : "default",
         animation: editMode ? "widgetEditPop 0.3s cubic-bezier(0.34,1.56,0.64,1) both" : "none",
-        transition: dragging || resizing ? "none" : "box-shadow 0.15s, border-color 0.15s",
+        transition: dragging || resizing ? "none" : "height 160ms ease, box-shadow 0.15s, border-color 0.15s",
         borderColor: editMode ? C.accent + "55" : C.darkBorder,
         userSelect: editMode ? "none" : "auto",
         zIndex: dragging || resizing ? 100 : 1,
       }}
     >
       {/* ── Title bar ── */}
+      {/* onClick collapses in normal mode; onMouseDown initiates drag in
+          edit mode. Buttons inside stopPropagation so they don't trigger
+          collapse. */}
       <div
         onMouseDown={handleDragStart}
+        onClick={(e) => {
+          if (editMode) return;
+          if (!onToggleCollapse) return;
+          onToggleCollapse(widget.id);
+        }}
         style={{
           flexShrink: 0,
           height: 28,
@@ -173,10 +182,25 @@ export default function DashboardWidget({
           padding: "0 8px",
           gap: 6,
           background: C.darkSurf2,
-          borderBottom: `1px solid ${C.darkBorder}`,
-          cursor: editMode ? "grab" : "default",
+          borderBottom: widget.collapsed ? "none" : `1px solid ${C.darkBorder}`,
+          cursor: editMode ? "grab" : (onToggleCollapse ? "pointer" : "default"),
         }}
       >
+        {/* Collapse chevron — rotates 90° when collapsed */}
+        {onToggleCollapse && (
+          <span style={{
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            width: 10, height: 10, flexShrink: 0,
+            transform: widget.collapsed ? "rotate(-90deg)" : "rotate(0deg)",
+            transition: "transform 140ms ease",
+            opacity: 0.5,
+          }}>
+            <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+              <path d="M2 3.5L5 6.5L8 3.5" stroke={C.darkMuted} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+        )}
+
         <span style={{
           flex: 1,
           fontSize: 10,
@@ -258,18 +282,20 @@ export default function DashboardWidget({
         )}
       </div>
 
-      {/* ── Content area ── */}
-      <div style={{
-        flex: 1,
-        overflow: "auto",
-        position: "relative",
-        pointerEvents: editMode ? "none" : "auto",
-      }}>
-        {children}
-      </div>
+      {/* ── Content area ── (hidden when collapsed to just the title bar) */}
+      {!widget.collapsed && (
+        <div style={{
+          flex: 1,
+          overflow: "auto",
+          position: "relative",
+          pointerEvents: editMode ? "none" : "auto",
+        }}>
+          {children}
+        </div>
+      )}
 
-      {/* ── Resize handle (bottom-right corner, edit mode) ── */}
-      {editMode && (
+      {/* ── Resize handle (bottom-right corner, edit mode, not collapsed) ── */}
+      {editMode && !widget.collapsed && (
         <div
           onMouseDown={handleResizeStart}
           style={{

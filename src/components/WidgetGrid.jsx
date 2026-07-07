@@ -14,15 +14,16 @@ import MiniView from "../core/MiniView.jsx";
 import PluginWidget from "../core/PluginWidget.jsx";
 import * as api from "../lib/api.js";
 
-// Viewport-relative height ratios (fraction of window.innerHeight)
-const VH_RATIOS = { view: 0.4, shortcut: 0.09, text: 0.18, plugin: 0.31 };
-const MIN_HEIGHTS = { view: 240, shortcut: 60, text: 100, plugin: 180 };
+// Flat default heights per widget type. Previously these were viewport-
+// relative, which on a tall iPad produced 500px "view" widgets that
+// forced you to resize before the next widget below could even fit on
+// screen. Fixed pixel defaults keep the dashboard scrollable and
+// predictable — you can always drag the resize handle to grow a widget
+// that needs more space.
+const DEFAULT_HEIGHTS = { view: 280, shortcut: 60, text: 100, plugin: 220 };
 
 function defaultHeight(type) {
-  const vh = window.innerHeight || 900;
-  const ratio = VH_RATIOS[type] || VH_RATIOS.view;
-  const floor = MIN_HEIGHTS[type] || MIN_HEIGHTS.view;
-  return Math.max(floor, Math.round(vh * ratio));
+  return DEFAULT_HEIGHTS[type] || DEFAULT_HEIGHTS.view;
 }
 
 export default function WidgetGrid({
@@ -83,6 +84,12 @@ export default function WidgetGrid({
       if (newColSpan != null) updates.colSpan = newColSpan;
       return { ...w, ...updates };
     }));
+  }, [widgets, onUpdateWidgets]);
+
+  const handleToggleCollapse = useCallback((widgetId) => {
+    onUpdateWidgets(widgets.map((w) =>
+      w.id === widgetId ? { ...w, collapsed: !w.collapsed } : w
+    ));
   }, [widgets, onUpdateWidgets]);
 
   const handleToggleSpan = useCallback((widgetId) => {
@@ -283,6 +290,7 @@ export default function WidgetGrid({
                   onResize={handleResize}
                   onDelete={handleDeleteWidget}
                   onToggleSpan={handleToggleSpan}
+                  onToggleCollapse={handleToggleCollapse}
                   onClick={() => {}}
                 >
                   {renderWidgetContent(widget)}
