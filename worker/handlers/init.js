@@ -46,7 +46,7 @@ async function handleInit(env, jsonResponse) {
   // ── Schema version fast path ──
   // Skip all DDL if the schema is already at the current version.
   // Reduces ~92 sequential D1 queries to 3 on returning page loads.
-  const CURRENT_SCHEMA_VERSION = "14";
+  const CURRENT_SCHEMA_VERSION = "15";
   try {
     const row = await env.DB.prepare(
       "SELECT value FROM connections WHERE key = 'schema_version'"
@@ -238,13 +238,20 @@ async function handleInit(env, jsonResponse) {
       )`,
       "CREATE INDEX IF NOT EXISTS idx_form_conns_record ON form_connections(record_id)",
       "CREATE INDEX IF NOT EXISTS idx_form_conns_form_record ON form_connections(form_id, record_id)",
+      // Column is `field_values` (not `values`) — `VALUES` is a SQL keyword
+      // and using it unquoted here caused the whole CREATE TABLE to fail
+      // silently, leaving form_submissions absent from every DB. Delete
+      // cascades from the form/connection level would then error with
+      // "no such table: form_submissions". If your DB has the old (broken)
+      // shape lying around, the IF NOT EXISTS guard is fine — the table
+      // just never got created in the first place.
       `CREATE TABLE IF NOT EXISTS form_submissions (
         id TEXT PRIMARY KEY,
         connection_id TEXT NOT NULL,
         form_id TEXT NOT NULL,
         record_id TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'draft',
-        values TEXT NOT NULL DEFAULT '{}',
+        field_values TEXT NOT NULL DEFAULT '{}',
         draft_owner_id TEXT DEFAULT NULL,
         submitted_at TEXT DEFAULT NULL,
         submitted_by TEXT DEFAULT NULL,

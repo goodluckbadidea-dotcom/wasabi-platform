@@ -193,14 +193,16 @@ export async function handleCreateSubmission(env, body, user, jsonResponse) {
     const submittedAt = status === 'submitted' ? "datetime('now')" : null;
     const submittedBy = status === 'submitted' ? userId : null;
 
+    // DB column is `field_values` (not `values` — SQL keyword). External
+    // request/response bodies keep using `.values` for continuity.
     if (submittedAt) {
       await env.DB.prepare(
-        `INSERT INTO form_submissions (id, connection_id, form_id, record_id, status, values, draft_owner_id, submitted_at, submitted_by, created_at, updated_at)
+        `INSERT INTO form_submissions (id, connection_id, form_id, record_id, status, field_values, draft_owner_id, submitted_at, submitted_by, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), ?, datetime('now'), datetime('now'))`
       ).bind(id, body.connection_id, body.form_id, body.record_id, status, JSON.stringify(values), draftOwnerId, submittedBy).run();
     } else {
       await env.DB.prepare(
-        `INSERT INTO form_submissions (id, connection_id, form_id, record_id, status, values, draft_owner_id, created_at, updated_at)
+        `INSERT INTO form_submissions (id, connection_id, form_id, record_id, status, field_values, draft_owner_id, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
       ).bind(id, body.connection_id, body.form_id, body.record_id, status, JSON.stringify(values), draftOwnerId).run();
     }
@@ -220,7 +222,7 @@ export async function handleUpdateSubmission(env, subId, body, user, jsonRespons
 
     const sets = [];
     const binds = [];
-    if (body.values !== undefined) { sets.push("values = ?"); binds.push(JSON.stringify(body.values)); }
+    if (body.values !== undefined) { sets.push("field_values = ?"); binds.push(JSON.stringify(body.values)); }
 
     // Status transitions
     if (body.status !== undefined) {
@@ -267,8 +269,10 @@ export async function handleDeleteSubmission(env, subId, jsonResponse) {
 
 function parseSubmissionRow(row) {
   if (!row) return null;
+  // DB column is `field_values`; external API keeps returning `.values`.
+  const { field_values, ...rest } = row;
   return {
-    ...row,
-    values: safeParseJSON(row.values, {}),
+    ...rest,
+    values: safeParseJSON(field_values, {}),
   };
 }

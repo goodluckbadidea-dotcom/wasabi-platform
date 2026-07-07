@@ -31,6 +31,11 @@ export default function FormsHub({
   const [mode, setMode] = useState("hub"); // "hub" | "designer" | "filler"
   const [activeFormId, setActiveFormId] = useState(null);
   const [filling, setFilling] = useState(null); // { form, connectionId?, submissionId?, recordId?, recordRow?, recordTitle? }
+  // Set to the id of a form that was created by `handleNewForm` and has
+  // never been saved. If the user hits Cancel in the designer before ever
+  // hitting Save, we delete that row rather than leaving an "Untitled
+  // form" orphan in the hub.
+  const [pendingNewFormId, setPendingNewFormId] = useState(null);
 
   // Refresh form list
   const refresh = useCallback(async () => {
@@ -90,10 +95,29 @@ export default function FormsHub({
       });
       await refresh();
       setActiveFormId(res.form.id);
+      setPendingNewFormId(res.form.id);
       setMode("designer");
     } catch (err) {
       console.error("[FormsHub] create failed:", err);
+      globalToast(`Create failed: ${err?.message || "unknown error"}`, "error");
     }
+  };
+
+  // Designer's Cancel button. If the form was just created (never saved),
+  // delete it so we don't leave "Untitled form" orphans in the hub.
+  const handleCancelDesign = async () => {
+    if (pendingNewFormId && pendingNewFormId === activeFormId) {
+      try {
+        await deleteForm(pendingNewFormId);
+        await refresh();
+      } catch (err) {
+        console.error("[FormsHub] cancel cleanup failed:", err);
+        globalToast(`Cleanup failed: ${err?.message || "unknown error"}`, "error");
+      }
+    }
+    setPendingNewFormId(null);
+    setActiveFormId(null);
+    setMode("hub");
   };
 
   const handleOpenForm = (form) => {
@@ -147,10 +171,12 @@ export default function FormsHub({
         fields: draft.fields,
       });
       await refresh();
+      // Form is now "committed" — Cancel from here on out won't auto-delete.
+      setPendingNewFormId(null);
       setMode("hub");
     } catch (err) {
       console.error("[FormsHub] save design failed:", err);
-      alert("Save failed: " + (err.message || err));
+      globalToast(`Save failed: ${err?.message || err}`, "error");
     }
   };
 
@@ -335,7 +361,7 @@ export default function FormsHub({
           form={form}
           tableColumns={tableColumns}
           onSave={handleSaveDesign}
-          onCancel={() => setMode("hub")}
+          onCancel={handleCancelDesign}
         />
       </div>
     );
