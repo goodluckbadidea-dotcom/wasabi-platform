@@ -202,6 +202,13 @@ export default function WidgetGrid({
   return (
     <div style={{
       flex: 1,
+      // `min-height: 0` is required for flex-column scroll to work: without
+      // it the child's default `min-height: auto` grows the container to
+      // fit its content, so `flex: 1` never actually bounds the height and
+      // `overflow-y: auto` never triggers. Without this line the widgets
+      // "determine the canvas size" and there's no scroll — even though the
+      // rest of the CSS looks right.
+      minHeight: 0,
       overflowY: "auto",
       // Transparent so the app's bgGradient shows through the dashboard canvas.
       backgroundColor: "transparent",

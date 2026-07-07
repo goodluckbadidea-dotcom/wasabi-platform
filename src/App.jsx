@@ -536,7 +536,7 @@ function AppContent() {
     // Dashboard pages → render WidgetGrid directly
     if (activePageConfig && (activePageConfig.page_type === "dashboard" || activePageConfig.pageType === "dashboard")) {
       return (
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "transparent" }}>
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", background: "transparent" }}>
           <WidgetGrid
             widgets={activePageConfig.widgets || []}
             onUpdateWidgets={(widgets) => updatePageConfig(activePageConfig.id, { widgets })}
