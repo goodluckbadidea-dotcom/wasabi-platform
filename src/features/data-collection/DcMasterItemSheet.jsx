@@ -4,10 +4,12 @@
 
 import React, { useMemo, useState } from "react";
 import { C, FONT, MONO, RADIUS } from "../../design/tokens.js";
+import { useTheme } from "../../context/ThemeContext.jsx";
 import { CHANNEL_COLORS, CHANNEL_LABELS, TYPE_COLORS, TYPE_LABELS, vendorSwatchFor } from "./dcHelpers.js";
 import DcItemDrawer from "./DcItemDrawer.jsx";
 
 export default function DcMasterItemSheet({ extension, items, itemsLoaded, onItemsChanged }) {
+  useTheme();
   const [drawerItem, setDrawerItem] = useState(null); // { item } or { newItem: true }
   const [query, setQuery] = useState("");
   const [channelFilter, setChannelFilter] = useState(null);
@@ -218,7 +220,7 @@ function FilterButton({ label, value, options, onChange }) {
   );
 }
 
-const styles = {
+function buildStyles() { return {
   container: { maxWidth: 1360, margin: "0 auto", padding: "24px 24px 60px" },
   head: { paddingBottom: 20 },
   h1: {
@@ -468,3 +470,6 @@ const styles = {
     fontFamily: FONT,
   },
 };
+}
+
+const styles = new Proxy({}, { get: (_, k) => buildStyles()[k] });

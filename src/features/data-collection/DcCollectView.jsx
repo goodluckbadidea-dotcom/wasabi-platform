@@ -9,6 +9,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { C, FONT, MONO, RADIUS } from "../../design/tokens.js";
+import { useTheme } from "../../context/ThemeContext.jsx";
 import { TYPE_LABELS, computeTotal } from "./dcHelpers.js";
 
 function getWorkerBase() {
@@ -22,6 +23,7 @@ function getWorkerBase() {
 }
 
 export default function DcCollectView({ extensionSlug }) {
+  useTheme();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [ctx, setCtx] = useState(null);           // { extension, share_link, items }
@@ -312,7 +314,7 @@ function Row({ item, entry, onChange }) {
   );
 }
 
-const styles = {
+function buildStyles() { return {
   root: {
     minHeight: "100vh",
     background: C.bg,
@@ -534,3 +536,6 @@ const styles = {
     minHeight: 42,
   },
 };
+}
+
+const styles = new Proxy({}, { get: (_, k) => buildStyles()[k] });

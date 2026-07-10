@@ -7,11 +7,13 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { C, FONT, MONO, RADIUS } from "../../design/tokens.js";
+import { useTheme } from "../../context/ThemeContext.jsx";
 import { WEIGHT_UNITS } from "./dcHelpers.js";
 import { dcCreateItem, dcUpdateItem, dcDeleteItem } from "../../lib/api.js";
 import DcVendorCombobox from "./DcVendorCombobox.jsx";
 
 export default function DcItemDrawer({ extension, item, onClose, onSaved }) {
+  useTheme();
   const isNew = !item;
   const config = extension?.ext_config || {};
   const channels = Array.isArray(config.channels) ? config.channels : [];
@@ -294,7 +296,7 @@ function Field({ label, hint, children }) {
   );
 }
 
-const styles = {
+function buildStyles() { return {
   overlay: {
     position: "fixed",
     inset: 0,
@@ -507,3 +509,6 @@ const styles = {
     minHeight: 40,
   },
 };
+}
+
+const styles = new Proxy({}, { get: (_, k) => buildStyles()[k] });

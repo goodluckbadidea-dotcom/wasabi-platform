@@ -13,6 +13,7 @@
 
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { C, FONT, MONO, RADIUS } from "../../design/tokens.js";
+import { useTheme } from "../../context/ThemeContext.jsx";
 import { getExtension, dcListItems, dcListSubmissions } from "../../lib/api.js";
 
 import DcTilesLanding from "./DcTilesLanding.jsx";
@@ -22,6 +23,10 @@ import DcWorkbook from "./DcWorkbook.jsx";
 import DcShareLinksModal from "./DcShareLinksModal.jsx";
 
 export default function DataCollectionView({ extensionSlug }) {
+  // useTheme() subscribes us to Wasabi theme changes so the render below
+  // re-runs and the styles Proxy at the bottom returns fresh C values.
+  useTheme();
+
   const [extension, setExtension] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [workspace, setWorkspace] = useState("tiles");   // tiles | master | history | market key
@@ -217,7 +222,10 @@ export default function DataCollectionView({ extensionSlug }) {
   );
 }
 
-const styles = {
+// Build styles fresh each render so theme changes are picked up. The
+// module-scoped `C` token object is mutated in-place by applyTheme(), so
+// reading its properties at render time returns the current theme.
+function buildStyles() { return {
   root: {
     flex: 1,
     display: "flex",
@@ -328,3 +336,5 @@ const styles = {
     padding: 40,
   },
 };
+}
+const styles = new Proxy({}, { get: (_, k) => buildStyles()[k] });
