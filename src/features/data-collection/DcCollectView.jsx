@@ -335,7 +335,9 @@ function buildStyles() { return {
     padding: 40,
   },
   header: {
-    background: C.dark,
+    // Transparent so the page's radial bgGradient flows through without a
+    // seam between the header strip and the workspace below.
+    background: "transparent",
     borderBottom: `1px solid ${C.edgeLine}`,
     padding: "16px 24px",
     position: "sticky",

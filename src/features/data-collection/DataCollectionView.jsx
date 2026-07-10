@@ -240,7 +240,10 @@ function buildStyles() { return {
     height: 52,
     minHeight: 52,
     borderBottom: `1px solid ${C.edgeLine}`,
-    background: C.dark,
+    // Transparent so the app-level radial bgGradient flows through the top
+    // bar and the workspace below it as one continuous surface. Setting a
+    // solid `C.dark` here creates a visible seam against the gradient.
+    background: "transparent",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
