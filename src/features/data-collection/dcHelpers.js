@@ -6,11 +6,11 @@
 // (channels, item types, vendor families). Wasabi's theme tokens (C) live
 // in ../../design/tokens.js and drive surface / text / accent colors.
 
-// Channel identifiers → swatch color (product-line semantic)
+// Product-line identifiers → swatch color. Stored on dc_items as `channel`
+// for backward compatibility; user-facing label everywhere is "Product Line".
 export const CHANNEL_COLORS = {
-  drops:        "#5CC63A",
-  smoky:        "#C86040",
-  "drops-hemp": "#9480C4",
+  drops: "#5CC63A",
+  smoky: "#C86040",
 };
 
 // Item type identifiers → swatch color
@@ -54,9 +54,8 @@ export function vendorSwatchFor(nameOrKey) {
 
 // Human labels for enum keys (used in read-only pill displays)
 export const CHANNEL_LABELS = {
-  drops:        "Drops",
-  smoky:        "Smoky Flower",
-  "drops-hemp": "Drops Hemp",
+  drops: "Drops",
+  smoky: "Smoky Flower",
 };
 
 export const TYPE_LABELS = {

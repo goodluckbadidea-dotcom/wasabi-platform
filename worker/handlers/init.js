@@ -543,7 +543,7 @@ async function handleInit(env, jsonResponse) {
     // Seeds the first Data Collection extension (slug: inventory-collection)
     // on fresh workspaces. Idempotent — only inserts if the row is missing.
     // Config includes the Vendor CRM page id so the item drawer can query it.
-    const INVENTORY_BOOTSTRAP_VERSION = 'v1';
+    const INVENTORY_BOOTSTRAP_VERSION = 'v2';
     try {
       const invFlag = await env.DB.prepare(
         "SELECT value FROM connections WHERE key = 'inventory_collection_bootstrap'"
@@ -563,10 +563,11 @@ async function handleInit(env, jsonResponse) {
             { key: 'NV',   label: 'Drops NV' },
             { key: 'HEMP', label: 'Drops HEMP' },
           ],
+          // "Channels" in the schema are user-facing Product Lines.
+          // HEMP is its own market — Drops Hemp is not a product line here.
           channels: [
-            { key: 'drops',       label: 'Drops',       swatch: '#5CC63A' },
-            { key: 'smoky',       label: 'Smoky Flower',swatch: '#C86040' },
-            { key: 'drops-hemp',  label: 'Drops Hemp',  swatch: '#9480C4' },
+            { key: 'drops', label: 'Drops',        swatch: '#5CC63A' },
+            { key: 'smoky', label: 'Smoky Flower', swatch: '#C86040' },
           ],
           pages: [
             { key: 'packaging', label: 'Packaging',           has_categories: true },
