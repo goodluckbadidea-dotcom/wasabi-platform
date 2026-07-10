@@ -54,7 +54,7 @@ export default function DcMasterItemSheet({ extension, items, itemsLoaded, onIte
             style={styles.searchInput}
           />
         </div>
-        <FilterButton label="Channel" value={channelFilter} options={channels.map(c => ({ v: c.key, l: c.label }))} onChange={setChannelFilter} />
+        <FilterButton label="Product Line" value={channelFilter} options={channels.map(c => ({ v: c.key, l: c.label }))} onChange={setChannelFilter} />
         <FilterButton label="Type"    value={typeFilter}    options={itemTypes.map(t => ({ v: t.key, l: t.label }))} onChange={setTypeFilter} />
         <FilterButton label="Market"  value={marketFilter}  options={markets.map(m => ({ v: m.key, l: m.label }))}  onChange={setMarketFilter} />
         <button style={styles.newBtn} onClick={() => setDrawerItem({ newItem: true })}>
@@ -68,7 +68,7 @@ export default function DcMasterItemSheet({ extension, items, itemsLoaded, onIte
             <thead>
               <tr>
                 <th style={{ ...styles.th, width: "20%" }}>SKU / Item</th>
-                <th style={{ ...styles.th, width: "11%" }}>Channel</th>
+                <th style={{ ...styles.th, width: "11%" }}>Product Line</th>
                 <th style={{ ...styles.th, width: "17%" }}>Markets</th>
                 <th style={{ ...styles.th, width: "11%" }}>Type</th>
                 <th style={{ ...styles.th, width: "13%" }}>Vendor</th>

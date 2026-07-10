@@ -141,7 +141,7 @@ export default function DcItemDrawer({ extension, item, onClose, onSaved }) {
             />
           </Field>
 
-          <Field label="Channel">
+          <Field label="Product Line">
             <select
               value={channel}
               onChange={(e) => setChannel(e.target.value)}
