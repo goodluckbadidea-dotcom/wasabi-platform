@@ -73,6 +73,7 @@ const FigmaView = lazyWithRetry(() => import("./features/FigmaView.jsx"));
 const WorkspaceBrowser = lazyWithRetry(() => import("./features/WorkspaceBrowser.jsx"));
 const KnowledgeHub = lazyWithRetry(() => import("./features/KnowledgeHub.jsx"));
 const ExtensionViewer = lazyWithRetry(() => import("./features/ExtensionViewer.jsx"));
+const DataCollectionView = lazyWithRetry(() => import("./features/data-collection/DataCollectionView.jsx"));
 const TeamPrioritiesView = lazyWithRetry(() => import("./features/TeamPrioritiesView.jsx"));
 
 // Inject CSS animations + global interaction styles on app load
@@ -532,6 +533,23 @@ function AppContent() {
     if (activePageConfig && activePageConfig.type === "folder") {
       setActiveRightPane("workspaces");
       return null;
+    }
+    // Data Collection extensions → render DataCollectionView. The page's
+    // config carries `extension_slug` so the view knows which DC extension
+    // to load (there's typically only one but the routing is generic).
+    if (activePageConfig && (activePageConfig.page_type === "data_collection_extension" || activePageConfig.pageType === "data_collection_extension")) {
+      const extSlug = activePageConfig?.config?.extension_slug || activePageConfig?.extension_slug || "inventory-collection";
+      return (
+        <ErrorBoundary fallbackLabel="Inventory">
+          <React.Suspense fallback={
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
+              Loading…
+            </div>
+          }>
+            <DataCollectionView extensionSlug={extSlug} />
+          </React.Suspense>
+        </ErrorBoundary>
+      );
     }
     // Dashboard pages → render WidgetGrid directly
     if (activePageConfig && (activePageConfig.page_type === "dashboard" || activePageConfig.pageType === "dashboard")) {

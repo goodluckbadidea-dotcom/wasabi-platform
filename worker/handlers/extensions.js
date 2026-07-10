@@ -21,6 +21,9 @@ function rowToExtension(row) {
     ...row,
     data_schema: safeParseJSON(row.data_schema) || {},
     sample_data: safeParseJSON(row.sample_data) || {},
+    ext_config:  safeParseJSON(row.ext_config)  || {},
+    // Legacy rows may lack type — default to 'mcp_generated' for clients.
+    type: row.type || 'mcp_generated',
   };
 }
 
@@ -155,9 +158,13 @@ export function validateData(data, schema, path = '$') {
 
 export async function handleListExtensions(env, url, jsonResponse) {
   const status = url.searchParams.get('status');
+  const type   = url.searchParams.get('type');
   let query = 'SELECT * FROM extensions';
+  const conditions = [];
   const params = [];
-  if (status) { query += ' WHERE status = ?'; params.push(status); }
+  if (status) { conditions.push('status = ?'); params.push(status); }
+  if (type)   { conditions.push('type = ?');   params.push(type); }
+  if (conditions.length) query += ' WHERE ' + conditions.join(' AND ');
   query += ' ORDER BY updated_at DESC';
   const { results } = await env.DB.prepare(query).bind(...params).all();
   return jsonResponse({ extensions: (results || []).map(rowToExtension) });
@@ -173,8 +180,15 @@ export async function handleGetExtension(env, id, jsonResponse) {
 }
 
 export async function handleCreateExtension(env, body, user, jsonResponse) {
-  const { name, html } = body;
-  if (!name || !html) return jsonResponse({ _error: 'name and html required' }, 400);
+  const { name } = body;
+  // Type: 'mcp_generated' (default) or 'data_collection'. Data collection
+  // extensions don't need `html` — their UI is rendered natively in React.
+  const type = body.type === 'data_collection' ? 'data_collection' : 'mcp_generated';
+  const html = body.html || '';
+  if (!name) return jsonResponse({ _error: 'name required' }, 400);
+  if (type === 'mcp_generated' && !html) {
+    return jsonResponse({ _error: 'html required for mcp_generated extensions' }, 400);
+  }
 
   const id = body.id || `ext_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
   const slug = body.slug ? slugify(body.slug) : slugify(name);
@@ -186,8 +200,8 @@ export async function handleCreateExtension(env, body, user, jsonResponse) {
 
   await env.DB.prepare(
     `INSERT INTO extensions
-       (id, slug, name, icon, description, definition, html, data_schema, sample_data, theme_preference, version, status, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, datetime('now'), datetime('now'))`
+       (id, slug, name, icon, description, definition, html, data_schema, sample_data, theme_preference, version, status, type, ext_config, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, datetime('now'), datetime('now'))`
   ).bind(
     id,
     slug,
@@ -200,10 +214,12 @@ export async function handleCreateExtension(env, body, user, jsonResponse) {
     JSON.stringify(body.sample_data || {}),
     body.theme_preference || 'inherit',
     body.status || 'active',
+    type,
+    JSON.stringify(body.ext_config || {}),
     user?.sub || ''
   ).run();
 
-  return jsonResponse({ ok: true, id, slug }, 201);
+  return jsonResponse({ ok: true, id, slug, type }, 201);
 }
 
 export async function handleUpdateExtension(env, id, body, jsonResponse) {
@@ -212,12 +228,13 @@ export async function handleUpdateExtension(env, id, body, jsonResponse) {
 
   const sets = [];
   const vals = [];
-  const allowedScalar = ['name', 'icon', 'description', 'definition', 'html', 'theme_preference', 'status'];
+  const allowedScalar = ['name', 'icon', 'description', 'definition', 'html', 'theme_preference', 'status', 'type'];
   for (const key of allowedScalar) {
     if (key in body) { sets.push(`${key} = ?`); vals.push(body[key]); }
   }
   if ('data_schema' in body) { sets.push('data_schema = ?'); vals.push(JSON.stringify(body.data_schema || {})); }
   if ('sample_data' in body) { sets.push('sample_data = ?'); vals.push(JSON.stringify(body.sample_data || {})); }
+  if ('ext_config'  in body) { sets.push('ext_config = ?');  vals.push(JSON.stringify(body.ext_config  || {})); }
   if ('slug' in body) {
     const newSlug = slugify(body.slug);
     if (!newSlug) return jsonResponse({ _error: 'invalid slug' }, 400);
@@ -242,7 +259,7 @@ export async function handleUpdateExtension(env, id, body, jsonResponse) {
 }
 
 export async function handleDeleteExtension(env, id, jsonResponse) {
-  const row = await env.DB.prepare('SELECT id FROM extensions WHERE id = ? OR slug = ? LIMIT 1').bind(id, id).first();
+  const row = await env.DB.prepare('SELECT id, type FROM extensions WHERE id = ? OR slug = ? LIMIT 1').bind(id, id).first();
   if (!row) return jsonResponse({ _error: 'Extension not found' }, 404);
 
   // Don't allow deletion if snapshots exist (avoid orphans)
@@ -253,6 +270,22 @@ export async function handleDeleteExtension(env, id, jsonResponse) {
     return jsonResponse({
       _error: `Cannot delete: ${snapCount.count} snapshot(s) exist. Delete snapshots first or archive the extension instead.`,
     }, 409);
+  }
+
+  // Data Collection extensions may have items + submissions. Refuse if any
+  // submissions exist; caller can archive instead. Empty catalogs are fine.
+  if ((row.type || 'mcp_generated') === 'data_collection') {
+    const subCount = await env.DB.prepare(
+      'SELECT COUNT(*) as count FROM dc_submissions WHERE extension_id = ?'
+    ).bind(row.id).first();
+    if (subCount?.count > 0) {
+      return jsonResponse({
+        _error: `Cannot delete: ${subCount.count} submission(s) exist. Archive the extension or delete submissions first.`,
+      }, 409);
+    }
+    // Clean up items + share links (empty catalog + tokens are safe to drop)
+    await env.DB.prepare('DELETE FROM dc_items WHERE extension_id = ?').bind(row.id).run();
+    await env.DB.prepare('DELETE FROM dc_share_links WHERE extension_id = ?').bind(row.id).run();
   }
 
   await env.DB.prepare('DELETE FROM extensions WHERE id = ?').bind(row.id).run();
@@ -297,6 +330,9 @@ export async function handleGenerateSnapshot(env, extensionRef, body, user, json
     'SELECT * FROM extensions WHERE id = ? OR slug = ? LIMIT 1'
   ).bind(extensionRef, extensionRef).first();
   if (!ext) return jsonResponse({ _error: 'Extension not found' }, 404);
+  if ((ext.type || 'mcp_generated') !== 'mcp_generated') {
+    return jsonResponse({ _error: `Extension type '${ext.type}' does not support snapshot generation. Snapshots are for mcp_generated extensions.` }, 400);
+  }
 
   const slug = body.slug ? slugify(body.slug) : '';
   if (!slug) return jsonResponse({ _error: 'slug required (e.g. "q2-handoff")' }, 400);

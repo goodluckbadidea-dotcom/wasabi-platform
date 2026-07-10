@@ -46,7 +46,7 @@ async function handleInit(env, jsonResponse) {
   // ── Schema version fast path ──
   // Skip all DDL if the schema is already at the current version.
   // Reduces ~92 sequential D1 queries to 3 on returning page loads.
-  const CURRENT_SCHEMA_VERSION = "15";
+  const CURRENT_SCHEMA_VERSION = "16";
   try {
     const row = await env.DB.prepare(
       "SELECT value FROM connections WHERE key = 'schema_version'"
@@ -279,6 +279,100 @@ async function handleInit(env, jsonResponse) {
       )`,
       "CREATE INDEX IF NOT EXISTS idx_task_pins_target ON task_pins(target_user_id, pin_order)",
       "CREATE INDEX IF NOT EXISTS idx_task_pins_task ON task_pins(task_id)",
+      // ─── Schema v16: Extensions typing + Data Collection tables ───
+      // Adds a `type` column to `extensions` so we can distinguish today's
+      // MCP-generated reports from the new Data Collection extension type
+      // (see docs/18-extensions.md). All existing rows default to
+      // 'mcp_generated' automatically. `ext_config` is a JSON blob for
+      // per-extension config (e.g. vendor CRM page id for Data Collection).
+      "ALTER TABLE extensions ADD COLUMN type TEXT NOT NULL DEFAULT 'mcp_generated'",
+      "ALTER TABLE extensions ADD COLUMN ext_config TEXT DEFAULT '{}'",
+      "CREATE INDEX IF NOT EXISTS idx_extensions_type ON extensions(type)",
+      // Data Collection catalog (Master Item Sheet)
+      `CREATE TABLE IF NOT EXISTS dc_items (
+        id TEXT PRIMARY KEY,
+        extension_id TEXT NOT NULL,
+        sku TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        channel TEXT DEFAULT '',
+        markets TEXT DEFAULT '[]',
+        type_key TEXT DEFAULT '',
+        vendor_ref TEXT DEFAULT '',
+        vendor_name TEXT DEFAULT '',
+        count_mode TEXT NOT NULL DEFAULT 'case',
+        case_size REAL DEFAULT NULL,
+        weight_unit TEXT DEFAULT NULL,
+        notes TEXT DEFAULT '',
+        sort_order INTEGER DEFAULT 0,
+        archived INTEGER DEFAULT 0,
+        created_by TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        updated_by TEXT DEFAULT ''
+      )`,
+      "CREATE INDEX IF NOT EXISTS idx_dc_items_ext ON dc_items(extension_id, archived)",
+      "CREATE INDEX IF NOT EXISTS idx_dc_items_sku ON dc_items(sku)",
+      "CREATE INDEX IF NOT EXISTS idx_dc_items_type ON dc_items(extension_id, type_key)",
+      "CREATE INDEX IF NOT EXISTS idx_dc_items_channel ON dc_items(extension_id, channel)",
+      // Submissions — one per workbook page fill
+      `CREATE TABLE IF NOT EXISTS dc_submissions (
+        id TEXT PRIMARY KEY,
+        extension_id TEXT NOT NULL,
+        market TEXT NOT NULL,
+        page TEXT NOT NULL,
+        category TEXT DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'draft',
+        counter_name TEXT DEFAULT '',
+        counter_user_id TEXT DEFAULT '',
+        share_link_id TEXT DEFAULT '',
+        count_date TEXT DEFAULT NULL,
+        submitted_at TEXT DEFAULT NULL,
+        submitted_by TEXT DEFAULT '',
+        edited_at TEXT DEFAULT NULL,
+        edited_by TEXT DEFAULT '',
+        notes TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )`,
+      "CREATE INDEX IF NOT EXISTS idx_dc_subs_ext ON dc_submissions(extension_id, status)",
+      "CREATE INDEX IF NOT EXISTS idx_dc_subs_market ON dc_submissions(extension_id, market, page)",
+      "CREATE INDEX IF NOT EXISTS idx_dc_subs_submitted ON dc_submissions(submitted_at DESC)",
+      // Submission entries — one per counted item within a submission
+      `CREATE TABLE IF NOT EXISTS dc_submission_entries (
+        id TEXT PRIMARY KEY,
+        submission_id TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        count_mode TEXT NOT NULL,
+        cases_count REAL DEFAULT NULL,
+        units_count REAL DEFAULT NULL,
+        weight_value REAL DEFAULT NULL,
+        weight_unit TEXT DEFAULT NULL,
+        case_size_snapshot REAL DEFAULT NULL,
+        total_units REAL DEFAULT NULL,
+        notes TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )`,
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_dc_entries_unique ON dc_submission_entries(submission_id, item_id)",
+      "CREATE INDEX IF NOT EXISTS idx_dc_entries_sub ON dc_submission_entries(submission_id)",
+      "CREATE INDEX IF NOT EXISTS idx_dc_entries_item ON dc_submission_entries(item_id)",
+      // Share links — anonymous submission tokens
+      `CREATE TABLE IF NOT EXISTS dc_share_links (
+        id TEXT PRIMARY KEY,
+        extension_id TEXT NOT NULL,
+        token TEXT NOT NULL UNIQUE,
+        label TEXT DEFAULT '',
+        scope_market TEXT DEFAULT '',
+        scope_page TEXT DEFAULT '',
+        submission_limit INTEGER DEFAULT NULL,
+        submission_count INTEGER DEFAULT 0,
+        expires_at TEXT DEFAULT NULL,
+        revoked_at TEXT DEFAULT NULL,
+        created_by TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now'))
+      )`,
+      "CREATE INDEX IF NOT EXISTS idx_dc_share_ext ON dc_share_links(extension_id)",
+      "CREATE INDEX IF NOT EXISTS idx_dc_share_active ON dc_share_links(extension_id, revoked_at)",
     ];
     for (const sql of migrations) {
       try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }
@@ -443,6 +537,103 @@ async function handleInit(env, jsonResponse) {
       }
     } catch (err) {
       console.error('[extensions] Reports DB bootstrap failed:', err.message || err);
+    }
+
+    // ─── Inventory Collection extension bootstrap ───
+    // Seeds the first Data Collection extension (slug: inventory-collection)
+    // on fresh workspaces. Idempotent — only inserts if the row is missing.
+    // Config includes the Vendor CRM page id so the item drawer can query it.
+    const INVENTORY_BOOTSTRAP_VERSION = 'v1';
+    try {
+      const invFlag = await env.DB.prepare(
+        "SELECT value FROM connections WHERE key = 'inventory_collection_bootstrap'"
+      ).first();
+      if (invFlag?.value !== INVENTORY_BOOTSTRAP_VERSION) {
+        const invExtId = 'ext_inventory_collect';
+        const existing = await env.DB.prepare(
+          "SELECT id FROM extensions WHERE slug = 'inventory-collection'"
+        ).first();
+        const invConfig = {
+          vendor_crm_page_id: 'b44ace79-05fb-4402-bcba-1f52cef2af97',
+          vendor_name_field: 'Vendor Name',
+          markets: [
+            { key: 'OR',   label: 'Drops OR' },
+            { key: 'CA',   label: 'Drops CA' },
+            { key: 'NY',   label: 'Drops NY' },
+            { key: 'NV',   label: 'Drops NV' },
+            { key: 'HEMP', label: 'Drops HEMP' },
+          ],
+          channels: [
+            { key: 'drops',       label: 'Drops',       swatch: '#5CC63A' },
+            { key: 'smoky',       label: 'Smoky Flower',swatch: '#C86040' },
+            { key: 'drops-hemp',  label: 'Drops Hemp',  swatch: '#9480C4' },
+          ],
+          pages: [
+            { key: 'packaging', label: 'Packaging',           has_categories: true },
+            { key: 'kitchen',   label: 'Kitchen & Supplies',  has_categories: false },
+            { key: 'sales',     label: 'Sales & Marketing',   has_categories: false },
+          ],
+          item_types: [
+            { key: 'tins',      label: 'Tins' },
+            { key: 'mp',        label: 'Masterpacks' },
+            { key: 'labels',    label: 'Compliance Labels' },
+            { key: 'tamper',    label: 'Tamper Seals' },
+            { key: 'cover',     label: 'Cover-up Labels' },
+            { key: 'dram',      label: 'Drams' },
+            { key: 'paper',     label: 'Paper Packages' },
+            { key: 'kitchen',   label: 'Kitchen & Supplies' },
+            { key: 'marketing', label: 'Sales & Marketing' },
+          ],
+        };
+        if (!existing) {
+          await env.DB.prepare(
+            `INSERT INTO extensions
+               (id, slug, name, icon, description, definition, html, data_schema, sample_data, theme_preference, version, status, type, ext_config, created_by, created_at, updated_at)
+             VALUES (?, 'inventory-collection', 'Inventory', 'inventory', ?, ?, '', '{}', '{}', 'inherit', 1, 'active', 'data_collection', ?, '', datetime('now'), datetime('now'))`
+          ).bind(
+            invExtId,
+            'iPad-optimized inventory workbooks per market. Rows pulled from the shared Master Item Sheet; counts submitted per page.',
+            'Data Collection extension. Master Item Sheet is the catalog every market workbook pulls from. Weekly count sheets: Packaging (with Drops / Smoky Flower / Drops Hemp channels), Kitchen & Supplies, Sales & Marketing. Feeds downstream reports (inventory-production-v2).',
+            JSON.stringify(invConfig)
+          ).run();
+          console.log('[extensions] Inventory Collection bootstrap → created extension row');
+        } else {
+          // Row exists — refresh the ext_config to the canonical shape
+          await env.DB.prepare(
+            `UPDATE extensions SET ext_config = ?, updated_at = datetime('now') WHERE slug = 'inventory-collection'`
+          ).bind(JSON.stringify(invConfig)).run();
+          console.log('[extensions] Inventory Collection bootstrap → refreshed ext_config');
+        }
+        // Sidebar page: a page_config with page_type=data_collection_extension
+        // gets routed by App.jsx to DataCollectionView. Config carries the
+        // extension slug so the view knows which DC extension to render.
+        // Parent is the existing "Inventory Management" workspace so users
+        // find it in a natural home (not in the virtual Uncategorized bucket).
+        const invPageId = 'system_inventory_collection';
+        const invParentId = '62fcde4f-04d7-4c09-b0d9-b8462cba3e71';
+        const invPageConfig = {
+          extension_slug: 'inventory-collection',
+          _dataCollectionExtension: true,
+          databaseIds: [],
+          views: [],
+        };
+        await env.DB.prepare(
+          `INSERT INTO page_configs (id, parent_id, title, icon, page_type, sort_order, config, created_by, created_at, updated_at)
+           VALUES (?, ?, 'Inventory Workbooks', 'package', 'data_collection_extension', 100, ?, NULL, datetime('now'), datetime('now'))
+           ON CONFLICT(id) DO UPDATE SET
+             parent_id = excluded.parent_id,
+             title = excluded.title,
+             icon = excluded.icon,
+             config = excluded.config,
+             page_type = excluded.page_type,
+             updated_at = datetime('now')`
+        ).bind(invPageId, invParentId, JSON.stringify(invPageConfig)).run();
+        await env.DB.prepare(
+          "INSERT INTO connections (key, value, metadata, updated_at) VALUES ('inventory_collection_bootstrap', ?, '{}', datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')"
+        ).bind(INVENTORY_BOOTSTRAP_VERSION).run();
+      }
+    } catch (err) {
+      console.error('[extensions] Inventory Collection bootstrap failed:', err.message || err);
     }
 
     // Bootstrap: if no users exist, create a default admin invite

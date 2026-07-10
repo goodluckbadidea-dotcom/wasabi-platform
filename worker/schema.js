@@ -373,11 +373,10 @@ CREATE TABLE IF NOT EXISTS task_snoozes (
 );
 CREATE INDEX IF NOT EXISTS idx_task_snoozes_user ON task_snoozes(user_id);
 
--- ─── Extensions (Custom-coded reports, generated via MCP) ───
--- An "extension" is a named, hand-coded template (HTML + CSS + JS scaffolding
--- with a {{DATA}} placeholder). Authored externally (e.g. Cowork), registered
--- here via MCP. Snapshots are concrete instances generated from a template +
--- a DATA blob, validated against the template's JSON Schema.
+-- Extensions: typed appendages attached to Wasabi. Two broad types:
+-- mcp_generated (default) authors HTML rendered from a validated DATA blob.
+-- data_collection authors Wasabi-native input surfaces backed by the dc_*
+-- tables (items, submissions, submission_entries, share_links).
 CREATE TABLE IF NOT EXISTS extensions (
   id TEXT PRIMARY KEY,
   slug TEXT NOT NULL UNIQUE,
@@ -397,6 +396,13 @@ CREATE TABLE IF NOT EXISTS extensions (
   theme_preference TEXT DEFAULT 'inherit',
   version INTEGER DEFAULT 1,
   status TEXT DEFAULT 'active',
+  -- Type: 'mcp_generated' (default, HTML+DATA reports) or 'data_collection'
+  -- (Wasabi-native input surfaces backed by dc_* tables).
+  type TEXT NOT NULL DEFAULT 'mcp_generated',
+  -- Optional per-extension config JSON. For data_collection extensions this
+  -- holds things like the vendor CRM page id, workbook markets, page/category
+  -- structure. MCP-generated extensions leave this empty.
+  ext_config TEXT DEFAULT '{}',
   created_by TEXT DEFAULT '',
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
@@ -424,6 +430,101 @@ CREATE TABLE IF NOT EXISTS extension_snapshots (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ext_snap_unique ON extension_snapshots(extension_id, slug);
 CREATE INDEX IF NOT EXISTS idx_ext_snap_extension ON extension_snapshots(extension_id);
 CREATE INDEX IF NOT EXISTS idx_ext_snap_status ON extension_snapshots(status);
+CREATE INDEX IF NOT EXISTS idx_extensions_type ON extensions(type);
+
+-- ─── Data Collection Extensions (dc_* tables) ───
+-- Backing storage for extensions.type = 'data_collection'. Every DC
+-- extension owns rows across these four tables via extension_id.
+--
+-- dc_items          — the Master Item Sheet catalog: one row per SKU / item.
+-- dc_submissions    — one row per workbook page fill (market × page × counter).
+-- dc_submission_entries — one row per counted item within a submission.
+-- dc_share_links    — anonymous submission tokens for iPads without an account.
+
+CREATE TABLE IF NOT EXISTS dc_items (
+  id TEXT PRIMARY KEY,
+  extension_id TEXT NOT NULL,
+  sku TEXT NOT NULL,                     -- primary display code (may be a real SKU or a named item)
+  description TEXT DEFAULT '',           -- secondary label ("100 Sheep · 20-pack")
+  channel TEXT DEFAULT '',               -- product-line grouping ("drops" | "smoky" | "drops-hemp" | ...)
+  markets TEXT DEFAULT '[]',             -- JSON string[]: markets this item applies to
+  type_key TEXT DEFAULT '',              -- item-type ("tins" | "mp" | "labels" | "tamper" | "cover" | "dram" | "paper" | "kitchen" | "marketing")
+  vendor_ref TEXT DEFAULT '',            -- Vendor CRM row id (table_rows.id in the vendor page)
+  vendor_name TEXT DEFAULT '',           -- denormalized cache for display without a join
+  count_mode TEXT NOT NULL DEFAULT 'case', -- 'case' | 'unit' | 'weight'
+  case_size REAL DEFAULT NULL,           -- units-per-case when count_mode='case'
+  weight_unit TEXT DEFAULT NULL,         -- 'lbs' | 'oz' | 'g' | 'kg' when count_mode='weight'
+  notes TEXT DEFAULT '',
+  sort_order INTEGER DEFAULT 0,
+  archived INTEGER DEFAULT 0,
+  created_by TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  updated_by TEXT DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_dc_items_ext ON dc_items(extension_id, archived);
+CREATE INDEX IF NOT EXISTS idx_dc_items_sku ON dc_items(sku);
+CREATE INDEX IF NOT EXISTS idx_dc_items_type ON dc_items(extension_id, type_key);
+CREATE INDEX IF NOT EXISTS idx_dc_items_channel ON dc_items(extension_id, channel);
+
+CREATE TABLE IF NOT EXISTS dc_submissions (
+  id TEXT PRIMARY KEY,
+  extension_id TEXT NOT NULL,
+  market TEXT NOT NULL,                  -- e.g. "OR" | "CA" | "NY" | "NV" | "HEMP"
+  page TEXT NOT NULL,                    -- e.g. "packaging" | "kitchen" | "sales"
+  category TEXT DEFAULT '',              -- packaging sub-tab: "drops" | "smoky" | "drops-hemp"
+  status TEXT NOT NULL DEFAULT 'draft',  -- 'draft' | 'submitted'
+  counter_name TEXT DEFAULT '',
+  counter_user_id TEXT DEFAULT '',       -- populated when the submitter is a logged-in user
+  share_link_id TEXT DEFAULT '',         -- populated when submitted via a share link
+  count_date TEXT DEFAULT NULL,          -- YYYY-MM-DD of the physical count
+  submitted_at TEXT DEFAULT NULL,
+  submitted_by TEXT DEFAULT '',
+  edited_at TEXT DEFAULT NULL,
+  edited_by TEXT DEFAULT '',
+  notes TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_dc_subs_ext ON dc_submissions(extension_id, status);
+CREATE INDEX IF NOT EXISTS idx_dc_subs_market ON dc_submissions(extension_id, market, page);
+CREATE INDEX IF NOT EXISTS idx_dc_subs_submitted ON dc_submissions(submitted_at DESC);
+
+CREATE TABLE IF NOT EXISTS dc_submission_entries (
+  id TEXT PRIMARY KEY,
+  submission_id TEXT NOT NULL,
+  item_id TEXT NOT NULL,
+  count_mode TEXT NOT NULL,              -- snapshot of item's mode at entry time
+  cases_count REAL DEFAULT NULL,         -- when count_mode='case'
+  units_count REAL DEFAULT NULL,         -- when count_mode='unit'
+  weight_value REAL DEFAULT NULL,        -- when count_mode='weight'
+  weight_unit TEXT DEFAULT NULL,         -- 'lbs' | 'oz' | 'g' | 'kg'
+  case_size_snapshot REAL DEFAULT NULL,  -- units-per-case at entry time (protects against later item edits)
+  total_units REAL DEFAULT NULL,         -- computed at write: cases * case_size, or units_count, or NULL for weight
+  notes TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dc_entries_unique ON dc_submission_entries(submission_id, item_id);
+CREATE INDEX IF NOT EXISTS idx_dc_entries_sub ON dc_submission_entries(submission_id);
+CREATE INDEX IF NOT EXISTS idx_dc_entries_item ON dc_submission_entries(item_id);
+
+CREATE TABLE IF NOT EXISTS dc_share_links (
+  id TEXT PRIMARY KEY,
+  extension_id TEXT NOT NULL,
+  token TEXT NOT NULL UNIQUE,            -- ~32-char high-entropy random
+  label TEXT DEFAULT '',                 -- human name ("NY lead — iPad 1")
+  scope_market TEXT DEFAULT '',          -- optional: constrain writes to this market
+  scope_page TEXT DEFAULT '',            -- optional: constrain writes to this page
+  submission_limit INTEGER DEFAULT NULL,
+  submission_count INTEGER DEFAULT 0,
+  expires_at TEXT DEFAULT NULL,
+  revoked_at TEXT DEFAULT NULL,
+  created_by TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_dc_share_ext ON dc_share_links(extension_id);
+CREATE INDEX IF NOT EXISTS idx_dc_share_active ON dc_share_links(extension_id, revoked_at);
 
 CREATE INDEX IF NOT EXISTS idx_rel_source ON relationships(source_type, source_id);
 CREATE INDEX IF NOT EXISTS idx_rel_target ON relationships(target_type, target_id);
