@@ -373,14 +373,10 @@ CREATE TABLE IF NOT EXISTS task_snoozes (
 );
 CREATE INDEX IF NOT EXISTS idx_task_snoozes_user ON task_snoozes(user_id);
 
--- ─── Extensions (typed appendages attached to Wasabi) ───
--- An "extension" is a self-contained appendage. Two broad types:
---   'mcp_generated'  — HTML template rendered from a validated DATA blob;
---                      classic custom report authored via MCP. (default)
---   'data_collection' — human-facing input surface (iPad-optimized) backed
---                       by extension-owned D1 tables (dc_items, dc_submissions,
---                       dc_submission_entries, dc_share_links). No {{DATA}} /
---                       html template; UI is native React.
+-- Extensions: typed appendages attached to Wasabi. Two broad types:
+-- mcp_generated (default) authors HTML rendered from a validated DATA blob.
+-- data_collection authors Wasabi-native input surfaces backed by the dc_*
+-- tables (items, submissions, submission_entries, share_links).
 CREATE TABLE IF NOT EXISTS extensions (
   id TEXT PRIMARY KEY,
   slug TEXT NOT NULL UNIQUE,
