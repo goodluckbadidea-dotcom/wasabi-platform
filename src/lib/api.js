@@ -1462,3 +1462,126 @@ export async function fetchSnapshotHtml(extSlug, snapSlug) {
   }
   return await res.text();
 }
+
+// ─── Data Collection extensions ───
+// Master Item Sheet + Submissions + Share Links CRUD. Every DC endpoint is
+// scoped to an extension resolved by id or slug. Query filters (channel,
+// market, type, archived, q) are passed as URL params on the list endpoints.
+
+function _dcQs(params) {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params || {})) {
+    if (v == null || v === "") continue;
+    qs.set(k, v);
+  }
+  const s = qs.toString();
+  return s ? `?${s}` : "";
+}
+
+// ── Items ──
+export async function dcListItems(extRef, filters = {}) {
+  return apiFetch(`/data-collection/${encodeURIComponent(extRef)}/items${_dcQs(filters)}`);
+}
+export async function dcGetItem(id) {
+  return apiFetch(`/data-collection/items/${encodeURIComponent(id)}`);
+}
+export async function dcCreateItem(extRef, body) {
+  return apiFetch(`/data-collection/${encodeURIComponent(extRef)}/items`, { method: "POST", body });
+}
+export async function dcUpdateItem(id, body) {
+  return apiFetch(`/data-collection/items/${encodeURIComponent(id)}`, { method: "PATCH", body });
+}
+export async function dcDeleteItem(id) {
+  return apiFetch(`/data-collection/items/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+// ── Submissions ──
+export async function dcListSubmissions(extRef, filters = {}) {
+  return apiFetch(`/data-collection/${encodeURIComponent(extRef)}/submissions${_dcQs(filters)}`);
+}
+export async function dcGetSubmission(id) {
+  return apiFetch(`/data-collection/submissions/${encodeURIComponent(id)}`);
+}
+export async function dcCreateSubmission(extRef, body) {
+  return apiFetch(`/data-collection/${encodeURIComponent(extRef)}/submissions`, { method: "POST", body });
+}
+export async function dcUpdateSubmission(id, body) {
+  return apiFetch(`/data-collection/submissions/${encodeURIComponent(id)}`, { method: "PATCH", body });
+}
+export async function dcDeleteSubmission(id) {
+  return apiFetch(`/data-collection/submissions/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+// ── Submission entries (upsert per item) ──
+export async function dcUpsertEntry(submissionId, body) {
+  return apiFetch(`/data-collection/submissions/${encodeURIComponent(submissionId)}/entries`, { method: "POST", body });
+}
+export async function dcDeleteEntry(entryId) {
+  return apiFetch(`/data-collection/entries/${encodeURIComponent(entryId)}`, { method: "DELETE" });
+}
+
+// ── Submission CSV download ──
+// Streams the file with an authenticated fetch and triggers a browser save.
+export async function dcDownloadSubmissionCsv(submissionId) {
+  const workerUrl = getWorkerUrl();
+  if (!workerUrl) throw new Error("Worker URL not configured");
+  let jwt = getJwt();
+  if (jwt && isTokenExpiringSoon(jwt)) {
+    const newToken = await refreshAccessToken();
+    if (newToken) jwt = newToken;
+  }
+  const url = `${workerUrl}/data-collection/submissions/${encodeURIComponent(submissionId)}/csv`;
+  let res = await fetch(url, {
+    headers: jwt ? { "Authorization": `Bearer ${jwt}` } : {},
+    credentials: "include",
+  });
+  if (res.status === 401) {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      res = await fetch(url, {
+        headers: { "Authorization": `Bearer ${newToken}` },
+        credentials: "include",
+      });
+    }
+  }
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    const err = new Error(txt || `HTTP ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  // Parse filename from Content-Disposition if present
+  const cd = res.headers.get("Content-Disposition") || "";
+  const m = cd.match(/filename="([^"]+)"/);
+  const filename = m ? m[1] : `wasabi-inventory-${submissionId}.csv`;
+  const blob = await res.blob();
+  const dlUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = dlUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(dlUrl);
+}
+
+// ── Share links ──
+export async function dcListShareLinks(extRef) {
+  return apiFetch(`/data-collection/${encodeURIComponent(extRef)}/share-links`);
+}
+export async function dcCreateShareLink(extRef, body) {
+  return apiFetch(`/data-collection/${encodeURIComponent(extRef)}/share-links`, { method: "POST", body });
+}
+export async function dcUpdateShareLink(id, body) {
+  return apiFetch(`/data-collection/share-links/${encodeURIComponent(id)}`, { method: "PATCH", body });
+}
+export async function dcDeleteShareLink(id) {
+  return apiFetch(`/data-collection/share-links/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** Build a shareable URL a lead can open on an iPad without logging in. */
+export function dcShareLinkUrl(extensionSlug, token) {
+  const base = typeof window !== "undefined" ? window.location.origin : "";
+  return `${base}/collect/${encodeURIComponent(extensionSlug)}?t=${encodeURIComponent(token)}`;
+}
+

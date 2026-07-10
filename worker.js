@@ -40,6 +40,14 @@ import {
   handleAddSnapshotLink, handleListSnapshotLinks,
 } from './worker/handlers/extensions.js';
 import {
+  handleListDcItems, handleGetDcItem, handleCreateDcItem, handleUpdateDcItem, handleDeleteDcItem,
+  handleListDcSubmissions, handleGetDcSubmission, handleCreateDcSubmission,
+  handleUpdateDcSubmission, handleDeleteDcSubmission, handleGetDcSubmissionCsv,
+  handleUpsertDcEntry, handleDeleteDcEntry,
+  handleListDcShareLinks, handleCreateDcShareLink, handleUpdateDcShareLink, handleDeleteDcShareLink,
+  handleShareLinkContext, handleShareLinkSubmit,
+} from './worker/handlers/data-collection.js';
+import {
   handleListForms, handleCreateForm, handleGetForm, handleUpdateForm, handleDeleteForm,
   handleListConnectionsForRecord, handleCreateConnection, handleDeleteFormConnection,
   handleCreateSubmission, handleUpdateSubmission, handleDeleteSubmission,
@@ -163,6 +171,23 @@ export default {
           }
           return await handleServeSnapshotHtml(env, extServeMatch[1], extServeMatch[2], preUser, cors);
         }
+      }
+
+      // ─── Data Collection share-link routes (pre-auth) ───
+      // Anonymous submission entry point for iPads without a Wasabi account.
+      // Auth is via the ?t=<token> query param, validated in the handler.
+      //   GET  /collect/:slug            — return extension config + scoped items
+      //   POST /collect/:slug/submissions — anonymous submission write
+      const collectCtxMatch  = path.match(/^\/collect\/([^/]+)\/?$/);
+      const collectSubMatch  = path.match(/^\/collect\/([^/]+)\/submissions\/?$/);
+      if (collectCtxMatch && request.method === "GET") {
+        const token = url.searchParams.get("t");
+        return await handleShareLinkContext(env, collectCtxMatch[1], token, jsonResponse);
+      }
+      if (collectSubMatch && request.method === "POST") {
+        const token = url.searchParams.get("t");
+        const body = await request.json();
+        return await handleShareLinkSubmit(env, collectSubMatch[1], token, body, jsonResponse);
       }
 
       // Google OAuth callback (browser redirect — no auth header)
@@ -1022,6 +1047,80 @@ export default {
       }
       if (extByIdMatch && request.method === "DELETE") {
         return await handleDeleteExtension(env, decodeURIComponent(extByIdMatch[1]), jsonResponse);
+      }
+
+      // ─── Data Collection extension routes (authenticated) ───
+      // Items — Master Item Sheet CRUD (scoped to an extension)
+      const dcItemsByExtMatch = path.match(/^\/data-collection\/([^/]+)\/items\/?$/);
+      const dcItemByIdMatch   = path.match(/^\/data-collection\/items\/([^/]+)\/?$/);
+      if (dcItemsByExtMatch && request.method === "GET") {
+        return await handleListDcItems(env, decodeURIComponent(dcItemsByExtMatch[1]), url, jsonResponse);
+      }
+      if (dcItemsByExtMatch && request.method === "POST") {
+        const body = await request.json();
+        return await handleCreateDcItem(env, decodeURIComponent(dcItemsByExtMatch[1]), body, user, jsonResponse);
+      }
+      if (dcItemByIdMatch && request.method === "GET") {
+        return await handleGetDcItem(env, decodeURIComponent(dcItemByIdMatch[1]), jsonResponse);
+      }
+      if (dcItemByIdMatch && request.method === "PATCH") {
+        const body = await request.json();
+        return await handleUpdateDcItem(env, decodeURIComponent(dcItemByIdMatch[1]), body, user, jsonResponse);
+      }
+      if (dcItemByIdMatch && request.method === "DELETE") {
+        return await handleDeleteDcItem(env, decodeURIComponent(dcItemByIdMatch[1]), jsonResponse);
+      }
+
+      // Submissions
+      const dcSubsByExtMatch  = path.match(/^\/data-collection\/([^/]+)\/submissions\/?$/);
+      const dcSubByIdMatch    = path.match(/^\/data-collection\/submissions\/([^/]+)\/?$/);
+      const dcSubCsvMatch     = path.match(/^\/data-collection\/submissions\/([^/]+)\/csv\/?$/);
+      const dcSubEntriesMatch = path.match(/^\/data-collection\/submissions\/([^/]+)\/entries\/?$/);
+      const dcEntryByIdMatch  = path.match(/^\/data-collection\/entries\/([^/]+)\/?$/);
+      if (dcSubsByExtMatch && request.method === "GET") {
+        return await handleListDcSubmissions(env, decodeURIComponent(dcSubsByExtMatch[1]), url, jsonResponse);
+      }
+      if (dcSubsByExtMatch && request.method === "POST") {
+        const body = await request.json();
+        return await handleCreateDcSubmission(env, decodeURIComponent(dcSubsByExtMatch[1]), body, user, jsonResponse);
+      }
+      if (dcSubCsvMatch && request.method === "GET") {
+        return await handleGetDcSubmissionCsv(env, decodeURIComponent(dcSubCsvMatch[1]));
+      }
+      if (dcSubByIdMatch && request.method === "GET") {
+        return await handleGetDcSubmission(env, decodeURIComponent(dcSubByIdMatch[1]), jsonResponse);
+      }
+      if (dcSubByIdMatch && request.method === "PATCH") {
+        const body = await request.json();
+        return await handleUpdateDcSubmission(env, decodeURIComponent(dcSubByIdMatch[1]), body, user, jsonResponse);
+      }
+      if (dcSubByIdMatch && request.method === "DELETE") {
+        return await handleDeleteDcSubmission(env, decodeURIComponent(dcSubByIdMatch[1]), jsonResponse);
+      }
+      if (dcSubEntriesMatch && request.method === "POST") {
+        const body = await request.json();
+        return await handleUpsertDcEntry(env, decodeURIComponent(dcSubEntriesMatch[1]), body, user, jsonResponse);
+      }
+      if (dcEntryByIdMatch && request.method === "DELETE") {
+        return await handleDeleteDcEntry(env, decodeURIComponent(dcEntryByIdMatch[1]), jsonResponse);
+      }
+
+      // Share links
+      const dcShareByExtMatch = path.match(/^\/data-collection\/([^/]+)\/share-links\/?$/);
+      const dcShareByIdMatch  = path.match(/^\/data-collection\/share-links\/([^/]+)\/?$/);
+      if (dcShareByExtMatch && request.method === "GET") {
+        return await handleListDcShareLinks(env, decodeURIComponent(dcShareByExtMatch[1]), jsonResponse);
+      }
+      if (dcShareByExtMatch && request.method === "POST") {
+        const body = await request.json();
+        return await handleCreateDcShareLink(env, decodeURIComponent(dcShareByExtMatch[1]), body, user, jsonResponse);
+      }
+      if (dcShareByIdMatch && request.method === "PATCH") {
+        const body = await request.json();
+        return await handleUpdateDcShareLink(env, decodeURIComponent(dcShareByIdMatch[1]), body, user, jsonResponse);
+      }
+      if (dcShareByIdMatch && request.method === "DELETE") {
+        return await handleDeleteDcShareLink(env, decodeURIComponent(dcShareByIdMatch[1]), jsonResponse);
       }
 
       // ─── Function Executions (Audit Trail) ───
