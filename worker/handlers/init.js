@@ -607,7 +607,10 @@ async function handleInit(env, jsonResponse) {
         // Sidebar page: a page_config with page_type=data_collection_extension
         // gets routed by App.jsx to DataCollectionView. Config carries the
         // extension slug so the view knows which DC extension to render.
+        // Parent is the existing "Inventory Management" workspace so users
+        // find it in a natural home (not in the virtual Uncategorized bucket).
         const invPageId = 'system_inventory_collection';
+        const invParentId = '62fcde4f-04d7-4c09-b0d9-b8462cba3e71';
         const invPageConfig = {
           extension_slug: 'inventory-collection',
           _dataCollectionExtension: true,
@@ -616,12 +619,15 @@ async function handleInit(env, jsonResponse) {
         };
         await env.DB.prepare(
           `INSERT INTO page_configs (id, parent_id, title, icon, page_type, sort_order, config, created_by, created_at, updated_at)
-           VALUES (?, NULL, 'Inventory', 'inventory', 'data_collection_extension', 8500, ?, NULL, datetime('now'), datetime('now'))
+           VALUES (?, ?, 'Inventory Workbooks', 'package', 'data_collection_extension', 100, ?, NULL, datetime('now'), datetime('now'))
            ON CONFLICT(id) DO UPDATE SET
+             parent_id = excluded.parent_id,
+             title = excluded.title,
+             icon = excluded.icon,
              config = excluded.config,
              page_type = excluded.page_type,
              updated_at = datetime('now')`
-        ).bind(invPageId, JSON.stringify(invPageConfig)).run();
+        ).bind(invPageId, invParentId, JSON.stringify(invPageConfig)).run();
         await env.DB.prepare(
           "INSERT INTO connections (key, value, metadata, updated_at) VALUES ('inventory_collection_bootstrap', ?, '{}', datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')"
         ).bind(INVENTORY_BOOTSTRAP_VERSION).run();
