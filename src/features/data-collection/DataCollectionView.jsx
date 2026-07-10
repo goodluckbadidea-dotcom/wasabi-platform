@@ -237,17 +237,18 @@ function buildStyles() { return {
     minHeight: 0,
   },
   topBar: {
-    height: 52,
-    minHeight: 52,
-    borderBottom: `1px solid ${C.edgeLine}`,
-    // Transparent so the app-level radial bgGradient flows through the top
-    // bar and the workspace below it as one continuous surface. Setting a
-    // solid `C.dark` here creates a visible seam against the gradient.
+    // Match Wasabi's canonical PanelHeader dimensions so my top bar's
+    // hairline lands on the same y as the Tasks / other panel headers.
+    // PANEL_HEADER_HEIGHT = 48, borderBottom uses C.darkBorder (stronger
+    // than edgeLine), asymmetric padding 0 16px 0 20px.
+    height: 48,
+    minHeight: 48,
+    borderBottom: `1px solid ${C.darkBorder}`,
     background: "transparent",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "0 20px",
+    padding: "0 16px 0 20px",
     gap: 16,
   },
   brand: {
