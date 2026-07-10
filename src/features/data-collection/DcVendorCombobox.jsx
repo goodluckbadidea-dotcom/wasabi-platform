@@ -8,10 +8,12 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { C, FONT, MONO, RADIUS } from "../../design/tokens.js";
+import { useTheme } from "../../context/ThemeContext.jsx";
 import { vendorSwatchFor } from "./dcHelpers.js";
 import { apiFetch, listRows } from "../../lib/api.js";
 
 export default function DcVendorCombobox({ value, onChange, extension }) {
+  useTheme();
   const [open, setOpen] = useState(false);
   const [vendors, setVendors] = useState([]);
   const [loaded, setLoaded] = useState(false);
@@ -195,7 +197,7 @@ export default function DcVendorCombobox({ value, onChange, extension }) {
   );
 }
 
-const styles = {
+function buildStyles() { return {
   wrap: { position: "relative", width: "100%" },
   trigger: {
     display: "flex",
@@ -332,3 +334,6 @@ const styles = {
     flexShrink: 0,
   },
 };
+}
+
+const styles = new Proxy({}, { get: (_, k) => buildStyles()[k] });

@@ -6,7 +6,9 @@
 import React, { useMemo } from "react";
 import { C, FONT, MONO, RADIUS } from "../../design/tokens.js";
 
+import { useTheme } from "../../context/ThemeContext.jsx";
 export default function DcTilesLanding({ extension, markets, submissions, items, onOpenMaster, onOpenHistory, onOpenMarket }) {
+  useTheme();
   // Compute per-market status from submissions (most-recent per market)
   const marketStatus = useMemo(() => {
     const map = {};
@@ -123,7 +125,7 @@ export default function DcTilesLanding({ extension, markets, submissions, items,
   );
 }
 
-const styles = {
+function buildStyles() { return {
   container: {
     maxWidth: 1360,
     width: "100%",
@@ -268,3 +270,6 @@ const styles = {
     fontFamily: FONT,
   },
 };
+}
+
+const styles = new Proxy({}, { get: (_, k) => buildStyles()[k] });

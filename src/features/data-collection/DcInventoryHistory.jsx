@@ -5,10 +5,12 @@
 
 import React, { useMemo, useState } from "react";
 import { C, FONT, MONO, RADIUS } from "../../design/tokens.js";
+import { useTheme } from "../../context/ThemeContext.jsx";
 import { formatDay } from "./dcHelpers.js";
 import { dcDownloadSubmissionCsv, dcDeleteSubmission } from "../../lib/api.js";
 
 export default function DcInventoryHistory({ extension, submissions, submissionsLoaded, markets, onSubmissionsChanged }) {
+  useTheme();
   const [query, setQuery] = useState("");
   const [pendingDelete, setPendingDelete] = useState(null);
   const [busyId, setBusyId] = useState(null);
@@ -229,7 +231,7 @@ function DeleteConfirmModal({ submission, onCancel, onConfirm }) {
   );
 }
 
-const styles = {
+function buildStyles() { return {
   container: { maxWidth: 1360, margin: "0 auto", padding: "24px 24px 60px" },
   head: { paddingBottom: 20 },
   h1: {
@@ -449,3 +451,6 @@ const styles = {
     minHeight: 40,
   },
 };
+}
+
+const styles = new Proxy({}, { get: (_, k) => buildStyles()[k] });

@@ -11,6 +11,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { C, FONT, MONO, RADIUS } from "../../design/tokens.js";
+import { useTheme } from "../../context/ThemeContext.jsx";
 import { TYPE_LABELS, computeTotal } from "./dcHelpers.js";
 import { dcCreateSubmission, dcUpdateSubmission, dcUpsertEntry, dcListSubmissions, dcGetSubmission } from "../../lib/api.js";
 
@@ -25,6 +26,7 @@ function useDebouncedCallback(fn, delay = 600) {
 }
 
 export default function DcWorkbook({ extension, market, items, onSubmitted, onBack }) {
+  useTheme();
   const config = extension?.ext_config || {};
   const pages = Array.isArray(config.pages) ? config.pages : [];
   const channels = Array.isArray(config.channels) ? config.channels : [];
@@ -461,7 +463,7 @@ function ReviewRow({ label, val, warning }) {
   );
 }
 
-const styles = {
+function buildStyles() { return {
   container: {
     maxWidth: 1360,
     margin: "0 auto",
@@ -849,3 +851,6 @@ const styles = {
     background: `color-mix(in srgb, ${C.surface} 60%, ${C.bg})`,
   },
 };
+}
+
+const styles = new Proxy({}, { get: (_, k) => buildStyles()[k] });

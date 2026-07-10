@@ -5,9 +5,11 @@
 
 import React, { useEffect, useState } from "react";
 import { C, FONT, MONO, RADIUS } from "../../design/tokens.js";
+import { useTheme } from "../../context/ThemeContext.jsx";
 import { dcListShareLinks, dcCreateShareLink, dcUpdateShareLink, dcShareLinkUrl } from "../../lib/api.js";
 
 export default function DcShareLinksModal({ extension, onClose }) {
+  useTheme();
   const [links, setLinks] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [label, setLabel] = useState("");
@@ -160,7 +162,7 @@ export default function DcShareLinksModal({ extension, onClose }) {
   );
 }
 
-const styles = {
+function buildStyles() { return {
   overlay: {
     position: "fixed",
     inset: 0,
@@ -308,3 +310,6 @@ const styles = {
     whiteSpace: "nowrap",
   },
 };
+}
+
+const styles = new Proxy({}, { get: (_, k) => buildStyles()[k] });
