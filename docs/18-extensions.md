@@ -1,21 +1,36 @@
-# Extensions — Custom-Coded Reports
+# Extensions — Typed Appendages Attached to Wasabi
 
-**Status:** In development. Feature wired end-to-end and deployed; the
-authoring workflow and parse rules in this doc are canonical as of
-2026-05-27.
+**Status:** In development. Feature wired end-to-end and deployed.
+Data Collection type shipped 2026-07-10; see §Data Collection below.
 
-**See also:** `memory/project_extensions_feature.md` for current
-inventory-production-v2 state, complete feature spec of the live report,
-and cumulative gotchas (25+ entries).
+**See also:**
+- `memory/project_extensions_feature.md` — current `inventory-production-v2`
+  state, MCP-Generated feature spec, cumulative gotchas.
+- `memory/project_data_collection_extension.md` — Data Collection
+  architecture + Inventory extension state.
 
 ## What this is
 
-Extensions is Wasabi's generic report-generation feature. A user designs a
-report visually as a self-contained HTML mockup with sample data, hands it
-off to Claude in an MCP-enabled session, and Wasabi turns it into a live,
-re-renderable report template. After that initial bootstrap, future report
-runs ("snapshots") are generated from real source data parsed by Claude
-and pushed into the template via MCP.
+An **extension** is a self-contained appendage attached to Wasabi. Two
+broad types exist today:
+
+| type | authoring | UI | storage |
+|---|---|---|---|
+| `mcp_generated` (default) | Claude in an MCP session using a local HTML mockup | sandboxed iframe rendered from `{{DATA}}` template + DATA blob | `extensions` row + `extension_snapshots` rows (DATA blob per snapshot, rendered HTML in R2) |
+| `data_collection` | in-app (Master Item Sheet + admin UI) | native React (no iframe) | `extensions` row + four `dc_*` tables (items, submissions, submission_entries, share_links) |
+
+Both types share the `extensions` table, distinguished by
+`extensions.type`. The two paths never conflict — snapshot generation
+refuses to run on a `data_collection` extension and vice versa.
+
+## MCP-Generated (`mcp_generated`)
+
+The classic Extensions workflow: a user designs a report visually as a
+self-contained HTML mockup with sample data, hands it off to Claude in an
+MCP-enabled session, and Wasabi turns it into a live, re-renderable report
+template. After that initial bootstrap, future report runs ("snapshots")
+are generated from real source data parsed by Claude and pushed into the
+template via MCP.
 
 The same workflow produces **any** report — an inventory snapshot, a
 financial summary, a project handoff, a research synthesis. The platform
@@ -394,7 +409,153 @@ has substantial domain-specific logic. Documented in full in
 The `markets[*].sellThrough` schema field is required for any market that
 should render the Stockout Risk section. Shape: `{[sku]: {avg, target}}`.
 
+## Data Collection (`data_collection`)
+
+Data Collection extensions are Wasabi-native input surfaces backed by
+four extension-owned D1 tables. The **Inventory** extension (slug
+`inventory-collection`) is the first live instance — iPad-optimized
+weekly count workbooks per market that pull rows from a shared Master
+Item Sheet and submit page-scoped fills as timestamped submissions.
+
+### Data model
+
+Four tables per Data Collection extension, all keyed by
+`extensions.id` (the extension's row).
+
+| table | purpose | key columns |
+|---|---|---|
+| `dc_items` | Master Item Sheet catalog | `sku`, `description`, `channel`, `markets` (JSON array), `type_key`, `vendor_ref` (Vendor CRM row id), `vendor_name`, `count_mode` (case/unit/weight), `case_size`, `weight_unit` |
+| `dc_submissions` | one row per workbook page fill | `market`, `page`, `category`, `status` (draft/submitted), `counter_name`, `share_link_id`, `count_date`, `submitted_at` |
+| `dc_submission_entries` | one row per counted item within a submission | `submission_id`, `item_id`, `count_mode`, `cases_count`, `units_count`, `weight_value`, `case_size_snapshot`, `total_units` |
+| `dc_share_links` | anonymous submission tokens for iPads without accounts | `token` (unique), `label`, `scope_market`, `scope_page`, `submission_limit`, `submission_count`, `revoked_at` |
+
+Unique index on `(submission_id, item_id)` in `dc_submission_entries`
+enforces at most one entry per item per submission (upsert-per-item is
+the client's write pattern).
+
+### Extension config (`extensions.ext_config`)
+
+JSON blob per DC extension. For `inventory-collection`:
+
+```json
+{
+  "vendor_crm_page_id": "b44ace79-05fb-4402-bcba-1f52cef2af97",
+  "vendor_name_field": "Vendor Name",
+  "markets":    [{"key":"OR","label":"Drops OR"}, ...],
+  "channels":   [{"key":"drops","label":"Drops"}, {"key":"smoky","label":"Smoky Flower"}],
+  "pages":      [{"key":"packaging","label":"Packaging","has_categories":true}, ...],
+  "item_types": [{"key":"tins","label":"Tins"}, ...]
+}
+```
+
+The frontend reads `ext_config` on load and drives every dimension of
+the UI from it — no hardcoded market/page/category lists in the React
+components.
+
+### Worker routes
+
+| method + path | purpose | auth |
+|---|---|---|
+| `GET /data-collection/:extRef/items` | list items (filters: channel, market, type, archived, q) | JWT |
+| `POST /data-collection/:extRef/items` | create item | JWT |
+| `GET/PATCH/DELETE /data-collection/items/:id` | CRUD one item | JWT |
+| `GET/POST /data-collection/:extRef/submissions` | list / create submission | JWT |
+| `GET/PATCH/DELETE /data-collection/submissions/:id` | CRUD one submission | JWT |
+| `GET /data-collection/submissions/:id/csv` | CSV export | JWT |
+| `POST /data-collection/submissions/:id/entries` | upsert entry by item_id | JWT |
+| `DELETE /data-collection/entries/:id` | delete entry | JWT |
+| `GET/POST /data-collection/:extRef/share-links` | list / create share link | JWT |
+| `PATCH/DELETE /data-collection/share-links/:id` | update (revoke) / delete | JWT |
+| `GET /collect/:slug?t=<token>` | public: extension context + scoped items | share-link token |
+| `POST /collect/:slug/submissions?t=<token>` | public: anonymous submission | share-link token |
+
+All handlers live in [worker/handlers/data-collection.js](../worker/handlers/data-collection.js).
+
+### Frontend routing
+
+Data Collection extensions render via
+[src/features/data-collection/DataCollectionView.jsx](../src/features/data-collection/DataCollectionView.jsx),
+not `ExtensionViewer`. App.jsx picks the component based on the page's
+`page_type`:
+
+- `data_collection_extension` → `DataCollectionView`
+- (Reports DB row with a snapshot) → `ExtensionViewer`
+
+The sidebar page for the Inventory extension is bootstrapped in
+`init.js` with id `system_inventory_collection`, page_type
+`data_collection_extension`, parent `62fcde4f-…` (the existing Inventory
+Management workspace), config carrying `extension_slug:
+"inventory-collection"`.
+
+The public `/collect/:slug` route bypasses auth via a short-circuit in
+[main.jsx](../src/main.jsx) — the route guard swaps the App root for
+`DcCollectView` before the auth stack runs.
+
+### Component tree (all files in `src/features/data-collection/`)
+
+- `DataCollectionView.jsx` — top-level workspace switcher (tiles /
+  master / history / market workbook)
+- `DcTilesLanding.jsx` — landing tiles (Master Item Sheet, Inventory
+  History, market workbook tiles with progress bars)
+- `DcMasterItemSheet.jsx` — read-only catalog table + toolbar
+- `DcItemDrawer.jsx` — Wasabi-style side drawer for editing / creating
+  an item (SKU, description, channel, markets multi-select, type,
+  vendor combobox, counted-as toggle, conditional units-per-case /
+  weight-unit / none field)
+- `DcVendorCombobox.jsx` — searchable vendor picker backed by the
+  workspace Vendor CRM (`listRows(vendorPageId)`); "+ New vendor" posts
+  a new row to the CRM
+- `DcInventoryHistory.jsx` — row-card list of every saved submission
+  with download CSV / edit / delete per card; delete opens a
+  confirmation modal
+- `DcWorkbook.jsx` — market workbook fill UI with page + category pill
+  tabs, per-item-type sections, debounced auto-save on every input
+  change, sticky footer with counter / date / save state / submit
+- `DcShareLinksModal.jsx` — create / list / revoke share links
+- `DcCollectView.jsx` — public share-link submission surface (no auth)
+- `dcHelpers.js` — colors, labels, `computeTotal()`, market chip helper
+
+### Theme reactivity (styles Proxy)
+
+DC components use a Proxy pattern so `styles.foo` recomputes from the
+current mutable `C` token object on every access — theme cycling with
+`applyTheme()` mutates C in place, and the Proxy hits `buildStyles()`
+fresh. Main components add `useTheme()` to trigger re-renders on cycle.
+Direct `const styles = {…}` at module scope would freeze theme values
+at import time and produce stuck accents on switch.
+
+```js
+function buildStyles() { return { root: { color: C.text } /* ... */ }; }
+const styles = new Proxy({}, { get: (_, k) => buildStyles()[k] });
+```
+
+### The `type` guard
+
+- `handleGenerateSnapshot` refuses to run on `data_collection` extensions
+  (400 with a clear error message).
+- `handleDeleteExtension` on a `data_collection` extension refuses if any
+  submissions exist; empty catalog + orphan share links are dropped
+  automatically. Archive instead of deleting an extension with history.
+
+### Bootstrap versioning gotcha
+
+Both bootstraps (Reports DB, Inventory extension) live inside the "full
+init" block of `handleInit`, which is gated by a fast-path early-return:
+
+```js
+if (row?.value === CURRENT_SCHEMA_VERSION) return jsonResponse({ ok: true, ... });
+```
+
+Bumping just `INVENTORY_BOOTSTRAP_VERSION` from `v1` to `v2` does NOT
+re-run the bootstrap on an existing DB because the schema-version
+fast-path short-circuits before reaching the bootstrap block. To
+actually refresh `ext_config`, either PATCH the extension row directly
+(`PATCH /extensions/inventory-collection`) or bump
+`CURRENT_SCHEMA_VERSION` to force a full init.
+
 ## Open work
+
+### MCP-Generated (`inventory-production-v2` etc.)
 
 Tracked in `memory/project_extensions_feature.md` § "What's open for next
 session." Highlights:
@@ -407,3 +568,38 @@ session." Highlights:
 - **`wasabi_extensions preview` action** (render template + sample_data
   without persisting a snapshot) is a planned but not-yet-implemented
   developer convenience.
+
+### Data Collection (`inventory-collection`)
+
+Tracked in `memory/project_data_collection_extension.md`. Highlights:
+
+- **Seed the Master Item Sheet.** Empty on landing; needs the OR SKU
+  list (Tins × supplier, Masterpacks × pack size, Compliance Labels,
+  Tamper Seals, Cover-up Labels, Drams, Paper Packages) plus Kitchen +
+  Marketing rows. Options: hand-add via the drawer, or programmatic
+  seed via `dcCreateItem` calls in a one-off script.
+- **Phase 6 — wire `inventory-production-v2` to pull from `dc_*` tables**
+  instead of parsing CSVs. Path B per the plan: MCP still pushes the
+  DATA blob to the report, but the source is `dc_submissions` +
+  `dc_submission_entries` queried via `wasabi_data` instead of Claude
+  parsing CSV files each week.
+- **iPad hardware test.** All UX was built against a browser at iPad
+  dimensions; needs a real hardware pass for touch target sizes,
+  keyboard behavior, share-link authentication flow.
+- **Admin-only Share Links visibility.** Anyone with the extension open
+  can currently create share links from the top-bar button; scope to
+  workspace admins before wider rollout.
+- **Master Item Sheet: "+ New Item" mid-count.** Deferred per V1 scope
+  (Graham: "Locked for now. We will build after V1 is live"). Requires
+  a modal accessible from the workbook fill UI that creates the item
+  in the master, then makes it available in the current fill session.
+- **Editing a submitted history record.** The edit pencil on history
+  cards currently shows a stub alert. Wire it to reopen the workbook
+  in edit mode with counts pre-filled, and let save either update the
+  same submission or spawn a new one.
+- **Bootstrap gating.** See "Bootstrap versioning gotcha" above. Options
+  for a future dev session:
+  1. Move Reports + Inventory bootstraps ABOVE the schema-version
+     fast-path (small cost per init).
+  2. Track bootstrap versions separately in `connections` with their
+     own version comparison, independent of `schema_version`.
