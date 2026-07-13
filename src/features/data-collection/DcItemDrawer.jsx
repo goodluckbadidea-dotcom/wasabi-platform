@@ -311,6 +311,10 @@ function buildStyles() { return {
   drawer: {
     width: 520,
     maxWidth: "96vw",
+    // Explicit viewport height so the flex layout below can clamp the body
+    // and pin the footer at the bottom regardless of content length.
+    height: "100vh",
+    maxHeight: "100vh",
     background: C.surface,
     borderLeft: `1px solid ${C.border}`,
     display: "flex",
@@ -357,6 +361,9 @@ function buildStyles() { return {
     padding: "22px 22px 28px",
     overflowY: "auto",
     flex: 1,
+    // Critical for flex-scroll: without minHeight:0, the body would take its
+    // intrinsic content height and push the footer off-screen.
+    minHeight: 0,
     display: "flex",
     flexDirection: "column",
     gap: 18,
