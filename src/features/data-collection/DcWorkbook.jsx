@@ -365,7 +365,8 @@ function Row({ item, entry, onChange }) {
     <tr style={isCounted ? { ...styles.tr, ...styles.trCounted } : styles.tr}>
       <td style={styles.td}>
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          <span style={styles.itemCode}>{item.sku}{item.description ? ` · ${item.description}` : ""}</span>
+          <span style={styles.itemCode}>{item.sku}</span>
+          {item.description && <span style={styles.itemDesc}>{item.description}</span>}
         </div>
       </td>
       <td style={styles.td}>
@@ -641,6 +642,12 @@ function buildStyles() { return {
     fontSize: 14,
     fontWeight: 500,
     color: C.text,
+  },
+  itemDesc: {
+    fontFamily: FONT,
+    fontSize: 11.5,
+    color: C.muted,
+    lineHeight: 1.3,
   },
   vendorLabel: {
     fontSize: 12,
