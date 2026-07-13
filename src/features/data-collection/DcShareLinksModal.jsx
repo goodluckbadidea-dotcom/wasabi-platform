@@ -108,17 +108,20 @@ export default function DcShareLinksModal({ extension, onClose }) {
               style={{ ...styles.input, flex: 2 }}
               autoComplete="off"
             />
-            <select value={scopeMarket} onChange={(e) => setScopeMarket(e.target.value)} style={{ ...styles.select, flex: 1 }}>
-              <option value="">Any market</option>
+            <select value={scopeMarket} onChange={(e) => setScopeMarket(e.target.value)} style={{ ...styles.select, flex: 1 }} required>
+              <option value="">Pick a market…</option>
               {markets.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
             </select>
             <select value={scopePage} onChange={(e) => setScopePage(e.target.value)} style={{ ...styles.select, flex: 1 }}>
               <option value="">Any page</option>
               {pages.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
             </select>
-            <button onClick={create} disabled={creating || !label.trim()} style={{ ...styles.newBtn, opacity: creating || !label.trim() ? 0.5 : 1 }}>
+            <button onClick={create} disabled={creating || !label.trim() || !scopeMarket} style={{ ...styles.newBtn, opacity: (creating || !label.trim() || !scopeMarket) ? 0.5 : 1 }}>
               {creating ? "…" : "+ Create"}
             </button>
+          </div>
+          <div style={{ fontSize: 11, color: C.muted, marginTop: -8 }}>
+            Every share link is scoped to one market — each iPad is stationed at a single location. Page scope is optional.
           </div>
 
           <div style={styles.list}>
