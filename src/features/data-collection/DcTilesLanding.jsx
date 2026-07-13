@@ -221,7 +221,7 @@ function buildStyles() { return {
     alignItems: "center",
     gap: 6,
     fontSize: 11,
-    fontFamily: MONO,
+    fontFamily: FONT,
     letterSpacing: "0.03em",
   },
   statusDot: { width: 6, height: 6, borderRadius: "50%" },
@@ -241,7 +241,7 @@ function buildStyles() { return {
   progressMeta: {
     display: "flex",
     justifyContent: "flex-end",
-    fontFamily: MONO,
+    fontFamily: FONT,
     fontSize: 10,
     color: C.muted,
     letterSpacing: "0.04em",

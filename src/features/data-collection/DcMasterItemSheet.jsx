@@ -184,7 +184,7 @@ function renderCond(item) {
       </span>
     );
   }
-  return <span style={{ color: C.muted, fontFamily: MONO, fontSize: 12 }}>— counted directly</span>;
+  return <span style={{ color: C.muted, fontFamily: FONT, fontSize: 12 }}>— counted directly</span>;
 }
 
 function FilterButton({ label, value, options, onChange }) {
@@ -368,7 +368,7 @@ function buildStyles() { return {
     fontSize: 13,
   },
   skuCode: {
-    fontFamily: MONO,
+    fontFamily: FONT,
     fontSize: 13,
     fontWeight: 500,
     color: C.text,
@@ -403,7 +403,7 @@ function buildStyles() { return {
     minWidth: 26,
     padding: "2px 7px",
     borderRadius: RADIUS.pill,
-    fontFamily: MONO,
+    fontFamily: FONT,
     fontSize: 9,
     fontWeight: 600,
     letterSpacing: "0.04em",
@@ -434,7 +434,7 @@ function buildStyles() { return {
     display: "inline-flex",
     alignItems: "baseline",
     gap: 6,
-    fontFamily: MONO,
+    fontFamily: FONT,
     fontSize: 13,
     color: C.text,
     fontWeight: 500,

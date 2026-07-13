@@ -138,7 +138,7 @@ export default function DcShareLinksModal({ extension, onClose }) {
                       {link.scope_market ? `${link.scope_market} · ` : "Any market · "}
                       {link.scope_page || "any page"}
                       {" · "}
-                      <span style={{ fontFamily: MONO }}>{link.submission_count} submitted</span>
+                      <span style={{ fontFamily: FONT }}>{link.submission_count} submitted</span>
                     </div>
                     <div style={styles.linkUrl}>{url}</div>
                   </div>
@@ -288,7 +288,7 @@ function buildStyles() { return {
   },
   linkScope: { fontSize: 11, color: C.textMid, marginTop: 3 },
   linkUrl: {
-    fontFamily: MONO,
+    fontFamily: FONT,
     fontSize: 11,
     color: C.muted,
     marginTop: 4,

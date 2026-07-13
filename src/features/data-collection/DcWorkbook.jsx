@@ -216,7 +216,7 @@ export default function DcWorkbook({ extension, market, items, onSubmitted, onBa
             ))}
           </div>
           <div style={styles.progressStrip}>
-            <span style={{ fontFamily: MONO, color: C.text, fontVariantNumeric: "tabular-nums" }}>{counted} of {total} rows counted</span>
+            <span style={{ fontFamily: FONT, color: C.text, fontVariantNumeric: "tabular-nums" }}>{counted} of {total} rows counted</span>
             <div style={styles.progressBar}>
               <div style={{ ...styles.progressFill, width: `${pct}%` }} />
             </div>
@@ -227,7 +227,7 @@ export default function DcWorkbook({ extension, market, items, onSubmitted, onBa
 
       {!hasCategories && (
         <div style={styles.progressStripSolo}>
-          <span style={{ fontFamily: MONO, color: C.text, fontVariantNumeric: "tabular-nums" }}>{counted} of {total} rows counted</span>
+          <span style={{ fontFamily: FONT, color: C.text, fontVariantNumeric: "tabular-nums" }}>{counted} of {total} rows counted</span>
           <div style={styles.progressBar}>
             <div style={{ ...styles.progressFill, width: `${pct}%` }} />
           </div>
@@ -413,8 +413,8 @@ function Row({ item, entry, onChange }) {
             style={styles.numInputGhost}
           />
         )}
-        {mode === "weight" && <span style={{ color: C.muted, fontFamily: MONO, fontSize: 11 }}>{item.weight_unit || "—"}</span>}
-        {mode === "unit" && <span style={{ color: C.muted, fontFamily: MONO, fontSize: 11 }}>—</span>}
+        {mode === "weight" && <span style={{ color: C.muted, fontFamily: FONT, fontSize: 11 }}>{item.weight_unit || "—"}</span>}
+        {mode === "unit" && <span style={{ color: C.muted, fontFamily: FONT, fontSize: 11 }}>—</span>}
       </td>
       <td style={{ ...styles.td, ...styles.tdTotal }}>{totalDisplay}</td>
     </tr>
@@ -557,7 +557,7 @@ function buildStyles() { return {
     borderRadius: 2,
   },
   pct: {
-    fontFamily: MONO,
+    fontFamily: FONT,
     fontVariantNumeric: "tabular-nums",
     color: C.text,
     fontWeight: 600,
@@ -584,7 +584,7 @@ function buildStyles() { return {
     color: C.text,
   },
   sectionCount: {
-    fontFamily: MONO,
+    fontFamily: FONT,
     fontSize: 11,
     color: C.muted,
     fontVariantNumeric: "tabular-nums",
@@ -631,7 +631,7 @@ function buildStyles() { return {
   tdTotal: {
     textAlign: "right",
     paddingRight: 24,
-    fontFamily: MONO,
+    fontFamily: FONT,
     color: C.text,
     fontSize: 13,
     fontWeight: 500,
@@ -651,7 +651,7 @@ function buildStyles() { return {
     border: `1px solid ${C.border}`,
     borderRadius: RADIUS.md,
     color: C.text,
-    fontFamily: MONO,
+    fontFamily: FONT,
     fontSize: 14,
     padding: "9px 12px",
     textAlign: "right",
@@ -666,7 +666,7 @@ function buildStyles() { return {
     border: `1px solid transparent`,
     borderRadius: RADIUS.md,
     color: C.textMid,
-    fontFamily: MONO,
+    fontFamily: FONT,
     fontSize: 13,
     padding: "9px 10px",
     textAlign: "right",
@@ -736,7 +736,7 @@ function buildStyles() { return {
     width: 180,
   },
   footerValue: {
-    fontFamily: MONO,
+    fontFamily: FONT,
     fontSize: 14,
     fontWeight: 500,
     color: C.textMid,
@@ -759,7 +759,7 @@ function buildStyles() { return {
     flexShrink: 0,
   },
   footerProgress: {
-    fontFamily: MONO,
+    fontFamily: FONT,
     fontSize: 12,
     color: C.textMid,
     fontVariantNumeric: "tabular-nums",
@@ -831,7 +831,7 @@ function buildStyles() { return {
     fontSize: 13,
   },
   reviewLabel: { color: C.textMid },
-  reviewVal: { fontFamily: MONO, color: C.text, fontVariantNumeric: "tabular-nums", fontWeight: 500 },
+  reviewVal: { fontFamily: FONT, color: C.text, fontVariantNumeric: "tabular-nums", fontWeight: 500 },
   warn: {
     marginTop: 14,
     padding: "12px 14px",
