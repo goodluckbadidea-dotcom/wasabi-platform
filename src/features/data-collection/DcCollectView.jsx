@@ -368,7 +368,7 @@ function buildStyles() { return {
   },
   headerRight: { display: "flex", alignItems: "center", gap: 12 },
   progressText: {
-    fontFamily: MONO,
+    fontFamily: FONT,
     color: C.textMid,
     fontVariantNumeric: "tabular-nums",
     fontSize: 12,
@@ -440,7 +440,7 @@ function buildStyles() { return {
   tdTotal: {
     textAlign: "right",
     paddingRight: 24,
-    fontFamily: MONO,
+    fontFamily: FONT,
     color: C.text,
     fontSize: 13,
     fontWeight: 500,
@@ -461,7 +461,7 @@ function buildStyles() { return {
     border: `1px solid ${C.border}`,
     borderRadius: RADIUS.md,
     color: C.text,
-    fontFamily: MONO,
+    fontFamily: FONT,
     fontSize: 14,
     padding: "9px 12px",
     textAlign: "right",
@@ -520,7 +520,7 @@ function buildStyles() { return {
     width: 180,
   },
   footerValue: {
-    fontFamily: MONO,
+    fontFamily: FONT,
     fontSize: 14,
     fontWeight: 500,
     color: C.textMid,

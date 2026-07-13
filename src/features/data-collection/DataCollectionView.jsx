@@ -309,7 +309,7 @@ function buildStyles() { return {
     cursor: "pointer",
   },
   crumb: {
-    fontFamily: MONO,
+    fontFamily: FONT,
     fontSize: 11,
     color: C.textMid,
     letterSpacing: "0.06em",

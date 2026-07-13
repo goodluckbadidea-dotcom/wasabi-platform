@@ -417,7 +417,7 @@ function buildStyles() { return {
     fontSize: 11,
     minWidth: 40,
     minHeight: 30,
-    fontFamily: MONO,
+    fontFamily: FONT,
     fontWeight: 600,
     letterSpacing: "0.04em",
     background: C.dark,
@@ -483,7 +483,7 @@ function buildStyles() { return {
   footerMeta: {
     fontSize: 11,
     color: C.muted,
-    fontFamily: MONO,
+    fontFamily: FONT,
   },
   primaryBtn: {
     background: C.accent,

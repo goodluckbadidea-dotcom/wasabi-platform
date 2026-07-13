@@ -286,7 +286,7 @@ function buildStyles() { return {
   },
   dateCol: { display: "flex", flexDirection: "column", gap: 2 },
   dateDay: {
-    fontFamily: MONO,
+    fontFamily: FONT,
     fontSize: 18,
     fontWeight: 500,
     color: C.text,
@@ -305,7 +305,7 @@ function buildStyles() { return {
     padding: "3px 9px",
     background: `color-mix(in srgb, ${C.accent} 15%, transparent)`,
     color: C.accent,
-    fontFamily: MONO,
+    fontFamily: FONT,
     fontSize: 10,
     fontWeight: 700,
     letterSpacing: "0.08em",
@@ -313,7 +313,7 @@ function buildStyles() { return {
     border: `1px solid color-mix(in srgb, ${C.accent} 20%, transparent)`,
   },
   counter: {
-    fontFamily: MONO,
+    fontFamily: FONT,
     fontSize: 11,
     color: C.muted,
     letterSpacing: "0.03em",
@@ -404,7 +404,7 @@ function buildStyles() { return {
   confirmSub: {
     fontSize: 12,
     color: C.textMid,
-    fontFamily: MONO,
+    fontFamily: FONT,
     letterSpacing: "0.02em",
   },
   confirmBody: {
