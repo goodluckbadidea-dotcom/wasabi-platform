@@ -24,6 +24,10 @@ export default function DcCollectView({ extensionSlug }) {
   const [submitted, setSubmitted] = useState(false);
   const [page, setPage] = useState("");
   const [category, setCategory] = useState("");
+  // Market picker state. Initialized from link.scope_market when ctx loads;
+  // if the link is unscoped, we render a picker at the top so the counter
+  // must choose before entering any values (each iPad = one market).
+  const [pickedMarket, setPickedMarket] = useState("");
 
   // Parse token from URL
   const token = useMemo(() => {
@@ -61,21 +65,26 @@ export default function DcCollectView({ extensionSlug }) {
 
   const config = ctx?.extension?.ext_config || {};
   const link = ctx?.share_link || {};
-  const market = link.scope_market || "";
+  const market = link.scope_market || pickedMarket || "";
   const marketLabel = (config.markets || []).find((m) => m.key === market)?.label || market;
   const pageDef = (config.pages || []).find((p) => p.key === page);
   const hasCategories = !!pageDef?.has_categories;
+  const needsMarketPick = !link.scope_market && !pickedMarket;
 
-  // Filter items to the scoped market + active page/category
+  // Filter items to the scoped market + active page/category.
+  // Backend already filters by scope_market when the link is scoped, but for
+  // an unscoped link the server returned every item — client filters here.
   const filteredItems = useMemo(() => {
     return (ctx?.items || []).filter((it) => {
+      if (!market) return false;
+      if (Array.isArray(it.markets) && !it.markets.includes(market)) return false;
       if (page === "kitchen" && it.type_key !== "kitchen") return false;
       if (page === "sales" && it.type_key !== "marketing") return false;
       if (page === "packaging" && (it.type_key === "kitchen" || it.type_key === "marketing")) return false;
       if (hasCategories && it.channel && it.channel !== category) return false;
       return true;
     });
-  }, [ctx, page, category, hasCategories]);
+  }, [ctx, market, page, category, hasCategories]);
 
   const bySection = useMemo(() => {
     const groups = {};
@@ -161,60 +170,97 @@ export default function DcCollectView({ extensionSlug }) {
     </div>
   );
 
+  const pct = total === 0 ? 0 : Math.round((counted / total) * 100);
+
   return (
     <div style={styles.root}>
       <div style={styles.header}>
         <div style={styles.headerInner}>
-          <div>
-            <div style={styles.kicker}>Wasabi · Inventory · Share-link submit</div>
-            <h1 style={styles.h1}>{marketLabel || market} <span style={styles.kicker}>· {link.label || "Guest link"}</span></h1>
+          <div style={styles.headerLeft}>
+            {market ? (
+              <>
+                <span style={styles.marketPill}>{market}</span>
+                <h1 style={styles.h1}>{marketLabel || market}</h1>
+              </>
+            ) : (
+              <h1 style={styles.h1}>Inventory count</h1>
+            )}
+            <span style={styles.linkLabel}>· {link.label || "Guest link"}</span>
           </div>
           <div style={styles.headerRight}>
-            <div style={styles.progressText}>{counted} of {total} rows</div>
+            {market && (
+              <div style={styles.progressText}>
+                <strong style={{ color: C.text }}>{counted}</strong> of {total} rows
+                {total > 0 ? ` · ${pct}%` : ""}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       <div style={styles.body}>
-        {/* Page tabs — hidden if link is page-scoped */}
-        {!link.scope_page && (
-          <nav style={styles.pillTabs}>
-            {(config.pages || []).map((p) => (
-              <button
-                key={p.key}
-                onClick={() => setPage(p.key)}
-                style={{ ...styles.pillTab, ...(page === p.key ? styles.pillTabOn : {}) }}
-              >{p.label}</button>
-            ))}
-          </nav>
-        )}
-
-        {/* Category tabs — Packaging only */}
-        {hasCategories && (
-          <nav style={{ ...styles.pillTabs, marginTop: 12 }}>
-            {(config.channels || []).map((c) => (
-              <button
-                key={c.key}
-                onClick={() => setCategory(c.key)}
-                style={{ ...styles.pillTab, ...(category === c.key ? styles.pillTabOn : {}) }}
-              >{c.label}</button>
-            ))}
-          </nav>
-        )}
-
-        <main style={styles.sections}>
-          {(config.item_types || [])
-            .filter((t) => bySection[t.key]?.length)
-            .map((t) => (
-              <Section key={t.key} title={TYPE_LABELS[t.key] || t.label} items={bySection[t.key]} entries={entries} onChange={onEntryChange} />
-            ))}
-          {total === 0 && (
-            <div style={styles.emptyPage}>
-              No items to count for {marketLabel || market} · {pageDef?.label || page}
-              {hasCategories ? ` · ${config.channels.find(c => c.key === category)?.label || category}` : ""}.
+        {needsMarketPick && (
+          <div style={styles.marketPickerCard}>
+            <div style={styles.pickerKicker}>Choose a market to count</div>
+            <div style={styles.pickerSub}>This link isn't scoped to a specific market. Pick the one you're counting for — the item list will filter to only that market's SKUs.</div>
+            <div style={styles.pickerChoices}>
+              {(config.markets || []).map((m) => (
+                <button
+                  key={m.key}
+                  onClick={() => setPickedMarket(m.key)}
+                  style={styles.pickerChoice}
+                >
+                  <span style={styles.pickerChoiceKey}>{m.key}</span>
+                  <span style={styles.pickerChoiceLabel}>{m.label}</span>
+                </button>
+              ))}
             </div>
-          )}
-        </main>
+          </div>
+        )}
+
+        {!needsMarketPick && (
+          <>
+            {/* Page tabs — hidden if link is page-scoped */}
+            {!link.scope_page && (
+              <nav style={styles.pillTabs}>
+                {(config.pages || []).map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => setPage(p.key)}
+                    style={{ ...styles.pillTab, ...(page === p.key ? styles.pillTabOn : {}) }}
+                  >{p.label}</button>
+                ))}
+              </nav>
+            )}
+
+            {/* Category tabs — Packaging only */}
+            {hasCategories && (
+              <nav style={{ ...styles.pillTabs, marginTop: 12 }}>
+                {(config.channels || []).map((c) => (
+                  <button
+                    key={c.key}
+                    onClick={() => setCategory(c.key)}
+                    style={{ ...styles.pillTab, ...(category === c.key ? styles.pillTabOn : {}) }}
+                  >{c.label}</button>
+                ))}
+              </nav>
+            )}
+
+            <main style={styles.sections}>
+              {(config.item_types || [])
+                .filter((t) => bySection[t.key]?.length)
+                .map((t) => (
+                  <Section key={t.key} title={TYPE_LABELS[t.key] || t.label} items={bySection[t.key]} entries={entries} onChange={onEntryChange} />
+                ))}
+              {total === 0 && (
+                <div style={styles.emptyPage}>
+                  No items to count for {marketLabel || market} · {pageDef?.label || page}
+                  {hasCategories ? ` · ${config.channels.find(c => c.key === category)?.label || category}` : ""}.
+                </div>
+              )}
+            </main>
+          </>
+        )}
       </div>
 
       <footer style={styles.footer}>
@@ -258,10 +304,11 @@ function Section({ title, items, entries, onChange }) {
         <table style={styles.table}>
           <thead>
             <tr>
-              <th style={{ ...styles.th, width: "50%" }}>Item</th>
-              <th style={{ ...styles.th, width: "25%" }}>Vendor</th>
-              <th style={{ ...styles.th, ...styles.thNum, width: "12%" }}>Count</th>
-              <th style={{ ...styles.th, ...styles.thNum, width: "13%", paddingRight: 24 }}>Total</th>
+              <th style={{ ...styles.th, width: "40%" }}>Item</th>
+              <th style={{ ...styles.th, width: "20%" }}>Vendor</th>
+              <th style={{ ...styles.th, ...styles.thNum, width: "12%" }}>Cases / Units</th>
+              <th style={{ ...styles.th, ...styles.thNum, width: "14%" }}>Units per case</th>
+              <th style={{ ...styles.th, ...styles.thNum, width: "14%", paddingRight: 24 }}>Total units</th>
             </tr>
           </thead>
           <tbody>
@@ -277,9 +324,16 @@ function Section({ title, items, entries, onChange }) {
 
 function Row({ item, entry, onChange }) {
   const mode = item.count_mode || "case";
-  const totalDisplay = entry?.total_units != null ? Math.round(Number(entry.total_units)).toLocaleString() : "—";
+  const isCounted =
+    ((mode === "case" || mode === "roll") && entry?.cases_count != null && Number(entry.cases_count) !== 0) ||
+    (mode === "unit" && entry?.units_count != null && Number(entry.units_count) !== 0) ||
+    (mode === "weight" && entry?.weight_value != null && Number(entry.weight_value) !== 0);
+
+  const totalDisplay = entry?.total_units != null ? Math.round(Number(entry.total_units)).toLocaleString() :
+                       (mode === "weight" && entry?.weight_value != null ? `${entry.weight_value} ${entry.weight_unit || item.weight_unit || ""}` : "—");
+
   return (
-    <tr>
+    <tr style={isCounted ? { ...styles.tr, ...styles.trCounted } : styles.tr}>
       <td style={styles.td}>
         <span style={styles.itemCode}>{item.sku}{item.description ? ` · ${item.description}` : ""}</span>
       </td>
@@ -300,6 +354,11 @@ function Row({ item, entry, onChange }) {
             onChange={(e) => onChange(item, { weight_value: e.target.value === "" ? null : Number(e.target.value), count_mode: "weight", weight_unit: item.weight_unit })} />
         )}
       </td>
+      <td style={{ ...styles.td, ...styles.tdNum }}>
+        {(mode === "case" || mode === "roll") && <span style={styles.roCaseSize}>{item.case_size ?? "—"}</span>}
+        {mode === "weight" && <span style={styles.roCaseSize}>{item.weight_unit || "—"}</span>}
+        {mode === "unit" && <span style={styles.roCaseSize}>—</span>}
+      </td>
       <td style={{ ...styles.td, ...styles.tdTotal }}>{totalDisplay}</td>
     </tr>
   );
@@ -307,12 +366,15 @@ function Row({ item, entry, onChange }) {
 
 function buildStyles() { return {
   root: {
-    minHeight: "100vh",
+    // Fixed viewport so header/footer stay pinned and body scrolls between.
+    height: "100vh",
+    maxHeight: "100vh",
     background: C.bg,
     color: C.text,
     fontFamily: FONT,
     display: "flex",
     flexDirection: "column",
+    overflow: "hidden",
   },
   centered: {
     minHeight: "100vh",
@@ -341,7 +403,10 @@ function buildStyles() { return {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: 20,
+    flexWrap: "wrap",
   },
+  headerLeft: { display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" },
   kicker: {
     fontSize: 10,
     fontWeight: 700,
@@ -349,22 +414,124 @@ function buildStyles() { return {
     textTransform: "uppercase",
     color: C.accent,
   },
+  marketPill: {
+    fontFamily: FONT,
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: "0.14em",
+    textTransform: "uppercase",
+    color: C.accent,
+    background: `color-mix(in srgb, ${C.accent} 14%, transparent)`,
+    padding: "5px 11px",
+    borderRadius: RADIUS.pill,
+  },
   h1: {
     fontFamily: FONT,
     fontSize: 22,
     fontWeight: 700,
     letterSpacing: "-0.02em",
     color: C.text,
-    marginTop: 4,
+  },
+  linkLabel: {
+    fontFamily: FONT,
+    fontSize: 12,
+    fontWeight: 500,
+    color: C.textMid,
   },
   headerRight: { display: "flex", alignItems: "center", gap: 12 },
   progressText: {
     fontFamily: FONT,
     color: C.textMid,
     fontVariantNumeric: "tabular-nums",
-    fontSize: 12,
+    fontSize: 13,
   },
-  body: { maxWidth: 1360, margin: "0 auto", padding: "24px 24px 100px", flex: 1, width: "100%" },
+  // Body scrolls between the sticky header and the sticky footer. Fixed
+  // total viewport (100vh) minus a bottom pad big enough to clear the
+  // sticky footer + typical mobile safe-area.
+  body: {
+    maxWidth: 1360,
+    margin: "0 auto",
+    padding: "24px 24px 140px",
+    flex: 1,
+    width: "100%",
+    minHeight: 0,
+    overflowY: "auto",
+  },
+
+  // Market picker (shown when the share link is unscoped)
+  marketPickerCard: {
+    background: C.surface,
+    border: `1px solid ${C.border}`,
+    borderRadius: RADIUS.lg,
+    padding: 28,
+    maxWidth: 640,
+    margin: "0 auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: 14,
+  },
+  pickerKicker: {
+    fontFamily: FONT,
+    fontSize: 12,
+    fontWeight: 700,
+    letterSpacing: "0.12em",
+    textTransform: "uppercase",
+    color: C.accent,
+  },
+  pickerSub: {
+    fontFamily: FONT,
+    fontSize: 14,
+    color: C.textMid,
+    lineHeight: 1.5,
+  },
+  pickerChoices: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+    gap: 10,
+    marginTop: 6,
+  },
+  pickerChoice: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 4,
+    padding: "14px 16px",
+    background: C.dark,
+    border: `1px solid ${C.border}`,
+    borderRadius: RADIUS.md,
+    fontFamily: FONT,
+    cursor: "pointer",
+    color: C.text,
+    minHeight: 68,
+    transition: "border-color 0.15s, background 0.15s",
+  },
+  pickerChoiceKey: {
+    fontFamily: FONT,
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: "0.12em",
+    color: C.accent,
+  },
+  pickerChoiceLabel: {
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: 600,
+    color: C.text,
+  },
+
+  // Row state + read-only cells (mirrors DcWorkbook)
+  tr: {},
+  trCounted: { boxShadow: `inset 3px 0 0 ${C.accent}` },
+  roCaseSize: {
+    display: "inline-block",
+    padding: "9px 10px",
+    fontFamily: FONT,
+    fontSize: 13,
+    color: C.textMid,
+    fontVariantNumeric: "tabular-nums",
+    minWidth: 60,
+    textAlign: "right",
+  },
   pillTabs: {
     display: "flex",
     gap: 4,
