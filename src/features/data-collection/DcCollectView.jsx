@@ -97,7 +97,7 @@ export default function DcCollectView({ extensionSlug }) {
 
   const counted = Object.values(entries).filter((e) => {
     if (!e) return false;
-    if (e.count_mode === "case") return e.cases_count != null && Number(e.cases_count) !== 0;
+    if ((e.count_mode === "case" || e.count_mode === "roll")) return e.cases_count != null && Number(e.cases_count) !== 0;
     if (e.count_mode === "unit") return e.units_count != null && Number(e.units_count) !== 0;
     if (e.count_mode === "weight") return e.weight_value != null && Number(e.weight_value) !== 0;
     return false;
@@ -135,7 +135,7 @@ export default function DcCollectView({ extensionSlug }) {
           count_date: new Date().toISOString().slice(0, 10),
           entries: Object.values(entries).filter((e) => {
             if (!e) return false;
-            if (e.count_mode === "case") return e.cases_count != null;
+            if ((e.count_mode === "case" || e.count_mode === "roll")) return e.cases_count != null;
             if (e.count_mode === "unit") return e.units_count != null;
             if (e.count_mode === "weight") return e.weight_value != null;
             return false;
@@ -296,9 +296,9 @@ function Row({ item, entry, onChange }) {
         <span style={styles.vendorLabel}>{item.vendor_name || "—"}</span>
       </td>
       <td style={{ ...styles.td, ...styles.tdNum }}>
-        {mode === "case" && (
+        {(mode === "case" || mode === "roll") && (
           <input type="number" step="any" defaultValue={entry?.cases_count ?? ""} placeholder="0" style={styles.numInput}
-            onChange={(e) => onChange(item, { cases_count: e.target.value === "" ? null : Number(e.target.value), count_mode: "case", case_size_snapshot: item.case_size ?? null })} />
+            onChange={(e) => onChange(item, { cases_count: e.target.value === "" ? null : Number(e.target.value), count_mode: mode, case_size_snapshot: item.case_size ?? null })} />
         )}
         {mode === "unit" && (
           <input type="number" step="any" defaultValue={entry?.units_count ?? ""} placeholder="0" style={styles.numInput}

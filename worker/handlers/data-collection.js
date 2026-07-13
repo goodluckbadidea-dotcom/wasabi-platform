@@ -64,7 +64,7 @@ function rowToShareLink(row) {
 // Compute total_units from cases + case_size (case mode) or units_count (unit mode).
 // For weight mode, leave null — weight is its own thing, not a unit count.
 function computeTotalUnits(mode, casesCount, caseSize, unitsCount) {
-  if (mode === 'case') {
+  if (mode === 'case' || mode === 'roll') {
     const c = Number(casesCount);
     const s = Number(caseSize);
     if (!isFinite(c) || !isFinite(s)) return null;
@@ -134,9 +134,11 @@ export async function handleCreateDcItem(env, extensionRef, body, user, jsonResp
   const sku = String(body.sku || '').trim();
   if (!sku) return jsonResponse({ _error: 'sku required' }, 400);
 
-  const countMode = ['case', 'unit', 'weight'].includes(body.count_mode) ? body.count_mode : 'case';
-  if (countMode === 'case' && body.case_size == null) {
-    return jsonResponse({ _error: 'case_size required when count_mode is case' }, 400);
+  const countMode = ['case', 'unit', 'weight', 'roll'].includes(body.count_mode) ? body.count_mode : 'case';
+  // Case + Roll both use case_size as the per-unit multiplier — the label
+  // differs (units-per-case vs units-per-roll) but storage is shared.
+  if ((countMode === 'case' || countMode === 'roll') && body.case_size == null) {
+    return jsonResponse({ _error: `case_size required when count_mode is ${countMode}` }, 400);
   }
   if (countMode === 'weight' && !body.weight_unit) {
     return jsonResponse({ _error: 'weight_unit required when count_mode is weight' }, 400);
@@ -160,7 +162,7 @@ export async function handleCreateDcItem(env, extensionRef, body, user, jsonResp
     body.vendor_ref || '',
     body.vendor_name || '',
     countMode,
-    countMode === 'case' ? Number(body.case_size) : null,
+    (countMode === 'case' || countMode === 'roll') ? Number(body.case_size) : null,
     countMode === 'weight' ? body.weight_unit : null,
     body.notes || '',
     body.sort_order || 0,

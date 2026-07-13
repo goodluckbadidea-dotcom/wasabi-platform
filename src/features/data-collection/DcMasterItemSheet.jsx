@@ -168,11 +168,11 @@ function MarketsCluster({ markets, allMarkets }) {
 
 function renderCond(item) {
   const mode = item.count_mode || "case";
-  if (mode === "case") {
+  if (mode === "case" || mode === "roll") {
     return (
       <span style={styles.roCond}>
         <span>{item.case_size ?? "—"}</span>
-        <span style={styles.roCondUnit}>units / case</span>
+        <span style={styles.roCondUnit}>units / {mode}</span>
       </span>
     );
   }

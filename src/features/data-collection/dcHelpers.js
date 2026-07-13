@@ -74,13 +74,19 @@ export const MODE_LABELS = {
   case:   "Case",
   unit:   "Unit",
   weight: "Weight",
+  roll:   "Roll",
 };
+
+// Modes that use a "count × units-per-X" multiplier (share the same shape
+// as Case). Both are backed by `case_size` on the item — differ only in
+// user-facing label / semantics.
+export const MULTIPLIER_MODES = new Set(["case", "roll"]);
 
 export const WEIGHT_UNITS = ["lbs", "oz", "g", "kg"];
 
 // Compute derived total units for a count entry (mirrors backend logic)
 export function computeTotal(mode, casesCount, caseSize, unitsCount) {
-  if (mode === "case") {
+  if (mode === "case" || mode === "roll") {
     const c = Number(casesCount);
     const s = Number(caseSize);
     if (!isFinite(c) || !isFinite(s)) return null;

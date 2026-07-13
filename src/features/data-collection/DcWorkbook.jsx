@@ -156,7 +156,7 @@ export default function DcWorkbook({ extension, market, items, onSubmitted, onBa
 
   const counted = Object.values(entries).filter((e) => {
     if (!e) return false;
-    if (e.count_mode === "case") return e.cases_count != null && Number(e.cases_count) !== 0;
+    if ((e.count_mode === "case" || e.count_mode === "roll")) return e.cases_count != null && Number(e.cases_count) !== 0;
     if (e.count_mode === "unit") return e.units_count != null && Number(e.units_count) !== 0;
     if (e.count_mode === "weight") return e.weight_value != null && Number(e.weight_value) !== 0;
     return false;
@@ -317,7 +317,7 @@ function Section({ title, items, entries, onChange }) {
   const countedIn = items.filter((it) => {
     const e = entries[it.id];
     if (!e) return false;
-    if (e.count_mode === "case") return e.cases_count != null && Number(e.cases_count) !== 0;
+    if ((e.count_mode === "case" || e.count_mode === "roll")) return e.cases_count != null && Number(e.cases_count) !== 0;
     if (e.count_mode === "unit") return e.units_count != null && Number(e.units_count) !== 0;
     if (e.count_mode === "weight") return e.weight_value != null && Number(e.weight_value) !== 0;
     return false;
@@ -372,12 +372,12 @@ function Row({ item, entry, onChange }) {
         <span style={styles.vendorLabel}>{item.vendor_name || "—"}</span>
       </td>
       <td style={{ ...styles.td, ...styles.tdNum }}>
-        {mode === "case" && (
+        {(mode === "case" || mode === "roll") && (
           <input
             type="number"
             step="any"
             defaultValue={entry?.cases_count ?? ""}
-            onChange={(e) => onChange(item, { cases_count: e.target.value === "" ? null : Number(e.target.value), count_mode: "case", case_size_snapshot: item.case_size ?? null })}
+            onChange={(e) => onChange(item, { cases_count: e.target.value === "" ? null : Number(e.target.value), count_mode: mode, case_size_snapshot: item.case_size ?? null })}
             placeholder="0"
             style={styles.numInput}
           />
@@ -404,11 +404,11 @@ function Row({ item, entry, onChange }) {
         )}
       </td>
       <td style={{ ...styles.td, ...styles.tdNum }}>
-        {/* Case size is locked here — set once per item in the Master Item
-            Sheet, and snapshotted onto the entry when the counter first
-            touches the row. Editing at count time would let counters
+        {/* Case/roll size is locked here — set once per item in the Master
+            Item Sheet, and snapshotted onto the entry when the counter
+            first touches the row. Editing at count time would let counters
             silently drift item metadata. */}
-        {mode === "case" && (
+        {(mode === "case" || mode === "roll") && (
           <span style={styles.roCaseSize}>
             {item.case_size ?? "—"}
           </span>
