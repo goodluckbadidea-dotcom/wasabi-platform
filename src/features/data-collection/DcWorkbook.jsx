@@ -404,17 +404,17 @@ function Row({ item, entry, onChange }) {
         )}
       </td>
       <td style={{ ...styles.td, ...styles.tdNum }}>
+        {/* Case size is locked here — set once per item in the Master Item
+            Sheet, and snapshotted onto the entry when the counter first
+            touches the row. Editing at count time would let counters
+            silently drift item metadata. */}
         {mode === "case" && (
-          <input
-            type="number"
-            step="any"
-            defaultValue={entry?.case_size_snapshot ?? item.case_size ?? ""}
-            onChange={(e) => onChange(item, { case_size_snapshot: e.target.value === "" ? null : Number(e.target.value), count_mode: "case" })}
-            style={styles.numInputGhost}
-          />
+          <span style={styles.roCaseSize}>
+            {item.case_size ?? "—"}
+          </span>
         )}
-        {mode === "weight" && <span style={{ color: C.muted, fontFamily: FONT, fontSize: 11 }}>{item.weight_unit || "—"}</span>}
-        {mode === "unit" && <span style={{ color: C.muted, fontFamily: FONT, fontSize: 11 }}>—</span>}
+        {mode === "weight" && <span style={styles.roCaseSize}>{item.weight_unit || "—"}</span>}
+        {mode === "unit" && <span style={styles.roCaseSize}>—</span>}
       </td>
       <td style={{ ...styles.td, ...styles.tdTotal }}>{totalDisplay}</td>
     </tr>
@@ -674,6 +674,18 @@ function buildStyles() { return {
     outline: "none",
     fontVariantNumeric: "tabular-nums",
     minHeight: 40,
+  },
+  // Read-only display for the Units-per-case column in the workbook fill
+  // view. Case size is defined in the Master Item Sheet, not per fill.
+  roCaseSize: {
+    display: "inline-block",
+    padding: "9px 10px",
+    fontFamily: FONT,
+    fontSize: 13,
+    color: C.textMid,
+    fontVariantNumeric: "tabular-nums",
+    minWidth: 60,
+    textAlign: "right",
   },
   emptyPage: {
     background: C.surface,
