@@ -11,16 +11,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { C, FONT, MONO, RADIUS } from "../../design/tokens.js";
 import { useTheme } from "../../context/ThemeContext.jsx";
 import { TYPE_LABELS, computeTotal } from "./dcHelpers.js";
-
-function getWorkerBase() {
-  // Same env resolution the api.js uses. For public routes, we don't need
-  // JWT so we just hit the worker URL directly.
-  if (typeof window === "undefined") return "";
-  const stored = localStorage.getItem("wasabi_worker_url");
-  if (stored) return stored;
-  // Fallback: same origin
-  return window.location.origin;
-}
+import { getWorkerUrl } from "../../lib/api.js";
 
 export default function DcCollectView({ extensionSlug }) {
   useTheme();
@@ -47,7 +38,7 @@ export default function DcCollectView({ extensionSlug }) {
       setLoading(true);
       setError(null);
       try {
-        const workerBase = getWorkerBase();
+        const workerBase = getWorkerUrl();
         const url = `${workerBase}/collect/${encodeURIComponent(extensionSlug)}?t=${encodeURIComponent(token)}`;
         const res = await fetch(url);
         const body = await res.json();
@@ -122,7 +113,7 @@ export default function DcCollectView({ extensionSlug }) {
     if (submitting) return;
     setSubmitting(true);
     try {
-      const workerBase = getWorkerBase();
+      const workerBase = getWorkerUrl();
       const url = `${workerBase}/collect/${encodeURIComponent(extensionSlug)}/submissions?t=${encodeURIComponent(token)}`;
       const res = await fetch(url, {
         method: "POST",
