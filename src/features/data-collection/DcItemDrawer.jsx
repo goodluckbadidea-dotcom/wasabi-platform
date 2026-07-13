@@ -61,7 +61,7 @@ export default function DcItemDrawer({ extension, item, onClose, onSaved }) {
 
   const canSave = useMemo(() => {
     if (!sku.trim()) return false;
-    if (countMode === "case" && (caseSize === "" || Number.isNaN(Number(caseSize)))) return false;
+    if ((countMode === "case" || countMode === "roll") && (caseSize === "" || Number.isNaN(Number(caseSize)))) return false;
     if (countMode === "weight" && !weightUnit) return false;
     return true;
   }, [sku, countMode, caseSize, weightUnit]);
@@ -79,7 +79,7 @@ export default function DcItemDrawer({ extension, item, onClose, onSaved }) {
       vendor_ref: vendor.ref,
       vendor_name: vendor.name,
       count_mode: countMode,
-      case_size: countMode === "case" ? Number(caseSize) : null,
+      case_size: (countMode === "case" || countMode === "roll") ? Number(caseSize) : null,
       weight_unit: countMode === "weight" ? weightUnit : null,
     };
     try {
@@ -197,11 +197,12 @@ export default function DcItemDrawer({ extension, item, onClose, onSaved }) {
 
           <Field label="Counted as" hint={
             countMode === "case" ? "Count in whole or partial cases; the units-per-case field below drives derived totals."
+            : countMode === "roll" ? "Count in whole or partial rolls (e.g. compliance labels, tamper seals); the units-per-roll field below drives derived totals."
             : countMode === "unit" ? "Counted individually — enter total units on hand at fill time."
             : "Weight-based item (e.g. sugar in lbs). No unit / case conversion."
           }>
             <div style={styles.seg}>
-              {["case", "unit", "weight"].map((m) => (
+              {["case", "roll", "unit", "weight"].map((m) => (
                 <button
                   key={m}
                   type="button"
@@ -219,21 +220,22 @@ export default function DcItemDrawer({ extension, item, onClose, onSaved }) {
 
           <Field label={
             countMode === "case" ? "Units per case"
+            : countMode === "roll" ? "Units per roll"
             : countMode === "weight" ? "Weight unit"
             : "No unit needed"
           }>
             <div style={styles.condBox}>
-              {countMode === "case" && (
+              {(countMode === "case" || countMode === "roll") && (
                 <div style={styles.condInline}>
                   <input
                     type="number"
                     step="any"
                     value={caseSize}
                     onChange={(e) => setCaseSize(e.target.value)}
-                    placeholder="e.g. 600"
+                    placeholder={countMode === "roll" ? "e.g. 3850" : "e.g. 600"}
                     style={{ ...styles.input, maxWidth: 180 }}
                   />
-                  <span style={styles.condHint}>units / case</span>
+                  <span style={styles.condHint}>units / {countMode}</span>
                 </div>
               )}
               {countMode === "weight" && (
