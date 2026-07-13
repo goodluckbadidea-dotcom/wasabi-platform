@@ -299,7 +299,13 @@ function Field({ label, hint, children }) {
 function buildStyles() { return {
   overlay: {
     position: "fixed",
-    inset: 0,
+    // Stop 68px above the viewport bottom to clear Wasabi's BottomBar
+    // (src/core/BottomBar.jsx BAR_HEIGHT), otherwise the drawer's footer
+    // — Save / Cancel — sits behind it and is unreachable.
+    top: 0,
+    right: 0,
+    bottom: 68,
+    left: 0,
     background: "rgba(0,0,0,0.55)",
     backdropFilter: "blur(6px)",
     WebkitBackdropFilter: "blur(6px)",
@@ -311,10 +317,10 @@ function buildStyles() { return {
   drawer: {
     width: 520,
     maxWidth: "96vw",
-    // Explicit viewport height so the flex layout below can clamp the body
-    // and pin the footer at the bottom regardless of content length.
-    height: "100vh",
-    maxHeight: "100vh",
+    // Drawer height matches the (viewport - BottomBar) overlay height, so
+    // the flex layout below can clamp the body and pin the footer.
+    height: "100%",
+    maxHeight: "100%",
     background: C.surface,
     borderLeft: `1px solid ${C.border}`,
     display: "flex",
