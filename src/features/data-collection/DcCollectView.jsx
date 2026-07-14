@@ -247,11 +247,24 @@ export default function DcCollectView({ extensionSlug }) {
             )}
 
             <main style={styles.sections}>
-              {(config.item_types || [])
-                .filter((t) => bySection[t.key]?.length)
-                .map((t) => (
-                  <Section key={t.key} title={TYPE_LABELS[t.key] || t.label} items={bySection[t.key]} entries={entries} onChange={onEntryChange} />
-                ))}
+              {(config.item_types || []).flatMap((t) => {
+                const typeItems = bySection[t.key] || [];
+                if (typeItems.length === 0) return [];
+                const modeOrder = ["case", "roll", "unit", "weight"];
+                return modeOrder
+                  .map((m) => ({ mode: m, items: typeItems.filter((it) => (it.count_mode || "case") === m) }))
+                  .filter((g) => g.items.length > 0)
+                  .map((g) => (
+                    <Section
+                      key={`${t.key}:${g.mode}`}
+                      title={TYPE_LABELS[t.key] || t.label}
+                      mode={g.mode}
+                      items={g.items}
+                      entries={entries}
+                      onChange={onEntryChange}
+                    />
+                  ));
+              })}
               {total === 0 && (
                 <div style={styles.emptyPage}>
                   No items to count for {marketLabel || market} · {pageDef?.label || page}
@@ -294,11 +307,22 @@ export default function DcCollectView({ extensionSlug }) {
   );
 }
 
-function Section({ title, items, entries, onChange }) {
+function Section({ title, mode, items, entries, onChange }) {
+  const primaryHeader = mode === "case"   ? "Cases"
+                       : mode === "roll"   ? "Rolls"
+                       : mode === "unit"   ? "Units on hand"
+                       :                     "Weight";
+  const perHeader     = mode === "case"   ? "Units per case"
+                       : mode === "roll"   ? "Units per roll"
+                       : mode === "weight" ? "Unit"
+                       :                     "";
+  const totalHeader   = mode === "weight" ? "Weight" : "Total units";
+  const modeLabel     = (mode || "case").toUpperCase();
   return (
     <section style={styles.section}>
       <div style={styles.sectionHead}>
         <h2 style={styles.sectionH2}>{title}</h2>
+        <span style={styles.sectionModePill}>{modeLabel}</span>
       </div>
       <div style={styles.sectionCard}>
         <table style={styles.table}>
@@ -306,9 +330,9 @@ function Section({ title, items, entries, onChange }) {
             <tr>
               <th style={{ ...styles.th, width: "40%" }}>Item</th>
               <th style={{ ...styles.th, width: "20%" }}>Vendor</th>
-              <th style={{ ...styles.th, ...styles.thNum, width: "12%" }}>Cases / Units</th>
-              <th style={{ ...styles.th, ...styles.thNum, width: "14%" }}>Units per case</th>
-              <th style={{ ...styles.th, ...styles.thNum, width: "14%", paddingRight: 24 }}>Total units</th>
+              <th style={{ ...styles.th, ...styles.thNum, width: "12%" }}>{primaryHeader}</th>
+              <th style={{ ...styles.th, ...styles.thNum, width: "14%" }}>{perHeader || "—"}</th>
+              <th style={{ ...styles.th, ...styles.thNum, width: "14%", paddingRight: 24 }}>{totalHeader}</th>
             </tr>
           </thead>
           <tbody>
@@ -561,7 +585,20 @@ function buildStyles() { return {
   },
   sections: { display: "flex", flexDirection: "column", gap: 32, marginTop: 24 },
   section: {},
-  sectionHead: { marginBottom: 12 },
+  sectionHead: { marginBottom: 12, display: "flex", alignItems: "baseline", gap: 12 },
+  sectionModePill: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "3px 10px",
+    background: `color-mix(in srgb, ${C.accent} 14%, transparent)`,
+    color: C.accent,
+    border: `1px solid color-mix(in srgb, ${C.accent} 24%, transparent)`,
+    borderRadius: RADIUS.pill,
+    fontFamily: FONT,
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+  },
   sectionH2: {
     fontFamily: FONT,
     fontSize: 15,

@@ -235,19 +235,28 @@ export default function DcWorkbook({ extension, market, items, onSubmitted, onBa
         </div>
       )}
 
-      {/* Sections */}
+      {/* Sections — split by (type, mode) so every column header is
+          accurate to what the counter is entering. If a type mixes case,
+          roll, unit, and weight items, each becomes its own block. */}
       <main style={styles.sections}>
-        {itemTypes
-          .filter((t) => bySection[t.key]?.length)
-          .map((t) => (
-            <Section
-              key={t.key}
-              title={TYPE_LABELS[t.key] || t.label}
-              items={bySection[t.key]}
-              entries={entries}
-              onChange={onEntryChange}
-            />
-          ))}
+        {itemTypes.flatMap((t) => {
+          const typeItems = bySection[t.key] || [];
+          if (typeItems.length === 0) return [];
+          const modeOrder = ["case", "roll", "unit", "weight"];
+          return modeOrder
+            .map((m) => ({ mode: m, items: typeItems.filter((it) => (it.count_mode || "case") === m) }))
+            .filter((g) => g.items.length > 0)
+            .map((g) => (
+              <Section
+                key={`${t.key}:${g.mode}`}
+                title={TYPE_LABELS[t.key] || t.label}
+                mode={g.mode}
+                items={g.items}
+                entries={entries}
+                onChange={onEntryChange}
+              />
+            ));
+        })}
         {total === 0 && (
           <div style={styles.emptyPage}>
             <div style={{ fontWeight: 600, marginBottom: 6, color: C.textMid }}>Nothing to count here yet.</div>
@@ -313,7 +322,10 @@ export default function DcWorkbook({ extension, market, items, onSubmitted, onBa
 }
 
 // ── Section ──
-function Section({ title, items, entries, onChange }) {
+// One section per (item type × count mode) pair — column labels then
+// describe exactly what's in the block. All items in `items` share the
+// same `mode`; the parent guarantees this by grouping in flatMap above.
+function Section({ title, mode, items, entries, onChange }) {
   const countedIn = items.filter((it) => {
     const e = entries[it.id];
     if (!e) return false;
@@ -322,10 +334,23 @@ function Section({ title, items, entries, onChange }) {
     if (e.count_mode === "weight") return e.weight_value != null && Number(e.weight_value) !== 0;
     return false;
   }).length;
+
+  const primaryHeader = mode === "case"   ? "Cases"
+                       : mode === "roll"   ? "Rolls"
+                       : mode === "unit"   ? "Units on hand"
+                       :                     "Weight";
+  const perHeader     = mode === "case"   ? "Units per case"
+                       : mode === "roll"   ? "Units per roll"
+                       : mode === "weight" ? "Unit"
+                       :                     "";
+  const totalHeader   = mode === "weight" ? "Weight" : "Total units";
+  const modeLabel     = mode.toUpperCase();
+
   return (
     <section style={styles.section}>
       <div style={styles.sectionHead}>
         <h2 style={styles.sectionH2}>{title}</h2>
+        <span style={styles.sectionModePill}>{modeLabel}</span>
         <span style={styles.sectionCount}>{countedIn} of {items.length} counted</span>
       </div>
       <div style={styles.sectionCard}>
@@ -334,9 +359,9 @@ function Section({ title, items, entries, onChange }) {
             <tr>
               <th style={{ ...styles.th, width: "40%" }}>Item</th>
               <th style={{ ...styles.th, width: "20%" }}>Vendor</th>
-              <th style={{ ...styles.th, ...styles.thNum, width: "12%" }}>{"Cases / Units"}</th>
-              <th style={{ ...styles.th, ...styles.thNum, width: "14%" }}>Units per case</th>
-              <th style={{ ...styles.th, ...styles.thNum, width: "14%", paddingRight: 24 }}>Total units</th>
+              <th style={{ ...styles.th, ...styles.thNum, width: "12%" }}>{primaryHeader}</th>
+              <th style={{ ...styles.th, ...styles.thNum, width: "14%" }}>{perHeader || "—"}</th>
+              <th style={{ ...styles.th, ...styles.thNum, width: "14%", paddingRight: 24 }}>{totalHeader}</th>
             </tr>
           </thead>
           <tbody>
@@ -591,6 +616,19 @@ function buildStyles() { return {
     fontVariantNumeric: "tabular-nums",
     marginLeft: "auto",
     letterSpacing: "0.04em",
+  },
+  sectionModePill: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "3px 10px",
+    background: `color-mix(in srgb, ${C.accent} 14%, transparent)`,
+    color: C.accent,
+    border: `1px solid color-mix(in srgb, ${C.accent} 24%, transparent)`,
+    borderRadius: RADIUS.pill,
+    fontFamily: FONT,
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: "0.08em",
   },
   sectionCard: {
     background: C.surface,
