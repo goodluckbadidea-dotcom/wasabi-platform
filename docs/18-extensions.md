@@ -424,7 +424,7 @@ Four tables per Data Collection extension, all keyed by
 
 | table | purpose | key columns |
 |---|---|---|
-| `dc_items` | Master Item Sheet catalog | `sku`, `description`, `channel`, `markets` (JSON array), `type_key`, `vendor_ref` (Vendor CRM row id), `vendor_name`, `count_mode` (case/unit/weight), `case_size`, `weight_unit` |
+| `dc_items` | Master Item Sheet catalog | `sku`, `description`, `channel`, `markets` (JSON array), `type_key`, `vendor_ref` (Vendor CRM row id), `vendor_name`, `count_mode` (`case`/`unit`/`weight`/`roll`), `case_size`, `weight_unit` |
 | `dc_submissions` | one row per workbook page fill | `market`, `page`, `category`, `status` (draft/submitted), `counter_name`, `share_link_id`, `count_date`, `submitted_at` |
 | `dc_submission_entries` | one row per counted item within a submission | `submission_id`, `item_id`, `count_mode`, `cases_count`, `units_count`, `weight_value`, `case_size_snapshot`, `total_units` |
 | `dc_share_links` | anonymous submission tokens for iPads without accounts | `token` (unique), `label`, `scope_market`, `scope_page`, `submission_limit`, `submission_count`, `revoked_at` |
@@ -432,6 +432,12 @@ Four tables per Data Collection extension, all keyed by
 Unique index on `(submission_id, item_id)` in `dc_submission_entries`
 enforces at most one entry per item per submission (upsert-per-item is
 the client's write pattern).
+
+`case` and `roll` share the same shape — both are backed by `case_size`
+on the item and both compute `total_units = count × case_size`. They
+differ only in user-facing labels (Cases vs. Rolls, Units per case vs.
+Units per roll). Compliance labels use `roll`; everything else that
+ships in a case uses `case`. See `MULTIPLIER_MODES` in `dcHelpers.js`.
 
 ### Extension config (`extensions.ext_config`)
 
@@ -509,11 +515,24 @@ The public `/collect/:slug` route bypasses auth via a short-circuit in
   with download CSV / edit / delete per card; delete opens a
   confirmation modal
 - `DcWorkbook.jsx` — market workbook fill UI with page + category pill
-  tabs, per-item-type sections, debounced auto-save on every input
-  change, sticky footer with counter / date / save state / submit
-- `DcShareLinksModal.jsx` — create / list / revoke share links
-- `DcCollectView.jsx` — public share-link submission surface (no auth)
-- `dcHelpers.js` — colors, labels, `computeTotal()`, market chip helper
+  tabs, per-item-type sections split further by `count_mode` (so column
+  headers accurately describe what's being counted — Cases / Rolls /
+  Units on hand / Weight), debounced auto-save on every input change,
+  sticky footer with counter / date / save state / submit. The
+  `Units per case` column is display-only in the fill UI — case size
+  is editable only in the Master Item Sheet drawer.
+- `DcShareLinksModal.jsx` — create / list / revoke share links. `Pick a
+  market…` is required at creation time (Create is disabled until a
+  market is chosen); every iPad is stationed at one location, so an
+  unscoped link would be a footgun.
+- `DcCollectView.jsx` — public share-link submission surface (no auth).
+  Mirrors `DcWorkbook`'s layout — same pill nav, market pill in the top
+  bar, sections split by `(type, count_mode)`, two-line item cell,
+  sticky footer. Uses `getWorkerUrl()` from `api.js` (NOT
+  `window.location.origin` — the Pages URL is not the worker URL).
+  Unscoped share links render a market picker card before the workbook.
+- `dcHelpers.js` — colors, labels, `computeTotal()` (case/roll share
+  logic), `MULTIPLIER_MODES` set, `MODE_LABELS`, market chip helper
 
 ### Theme reactivity (styles Proxy)
 
@@ -528,6 +547,32 @@ at import time and produce stuck accents on switch.
 function buildStyles() { return { root: { color: C.text } /* ... */ }; }
 const styles = new Proxy({}, { get: (_, k) => buildStyles()[k] });
 ```
+
+### Shared UX conventions
+
+A few patterns are load-bearing across the DC surface — matching them
+keeps the app / share-link / drawer views consistent:
+
+- **Item cell = two lines.** SKU code on top (regular `FONT`, not
+  `MONO`), description below in smaller muted text. Applies to Master
+  Sheet, `DcWorkbook`, and `DcCollectView`. Never concatenate SKU +
+  description with a middle-dot separator.
+- **No `MONO` / DM Mono in user-facing labels.** Everything is
+  `fontFamily: FONT` (Outfit). DM Mono has fallen back to Courier on
+  Graham's setup multiple times — the memory
+  [`feedback_no_monospace_labels.md`](../../.claude/…/memory/) captures
+  the rule.
+- **Sections split by `(type, count_mode)`.** Each item has exactly one
+  mode, so a "Cases / Units" combined header is ambiguous when items
+  of the same type mix modes. Split, then title with mode-specific
+  labels (`Cases`, `Rolls`, `Units on hand`, `Weight`).
+- **Drawer + modal footer must clear the BottomBar.** The Wasabi
+  BottomBar is a fixed `68px` bar. Overlays that render a sticky footer
+  need `bottom: 68` on the overlay (or equivalent max-height math), and
+  the scrollable body needs `minHeight: 0` to actually flex-scroll. The
+  Item Drawer landed on: overlay `bottom: 68`, drawer `height: 100%`,
+  body `minHeight: 0`. Reuse this shape for any new drawer or modal
+  that adds a sticky footer.
 
 ### The `type` guard
 
@@ -603,3 +648,9 @@ Tracked in `memory/project_data_collection_extension.md`. Highlights:
      fast-path (small cost per init).
   2. Track bootstrap versions separately in `connections` with their
      own version comparison, independent of `schema_version`.
+- **BottomBar clearance audit.** The Item Drawer got the
+  `overlay bottom: 68 + body minHeight: 0` fix (see "Shared UX
+  conventions"). The same pattern likely needs to be applied to
+  `DcShareLinksModal` and the delete-confirm modal inside
+  `DcInventoryHistory` before iPads run into the same "no visible
+  action button" symptom. Not verified on hardware yet.
