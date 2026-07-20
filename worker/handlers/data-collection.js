@@ -147,12 +147,19 @@ export async function handleCreateDcItem(env, extensionRef, body, user, jsonResp
   const id = body.id || `dci_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
   const markets = Array.isArray(body.markets) ? body.markets : [];
 
+  // Explicit report-mapping fields. Both nullable — null means "does not
+  // feed the inventory-production-v2 report at all" (e.g. drams, kitchen).
+  // report_pack_format is only meaningful for masterpack items (type_key='mp').
+  const reportSku = body.report_sku ? String(body.report_sku).trim() || null : null;
+  const reportPackFormat = body.report_pack_format ? String(body.report_pack_format).trim() || null : null;
+
   await env.DB.prepare(
     `INSERT INTO dc_items
        (id, extension_id, sku, description, channel, markets, type_key,
-        vendor_ref, vendor_name, count_mode, case_size, weight_unit, notes,
-        sort_order, archived, created_by, created_at, updated_at, updated_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, datetime('now'), datetime('now'), ?)`
+        vendor_ref, vendor_name, count_mode, case_size, weight_unit,
+        report_sku, report_pack_format,
+        notes, sort_order, archived, created_by, created_at, updated_at, updated_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, datetime('now'), datetime('now'), ?)`
   ).bind(
     id, ext.id, sku,
     body.description || '',
@@ -164,6 +171,8 @@ export async function handleCreateDcItem(env, extensionRef, body, user, jsonResp
     countMode,
     (countMode === 'case' || countMode === 'roll') ? Number(body.case_size) : null,
     countMode === 'weight' ? body.weight_unit : null,
+    reportSku,
+    reportPackFormat,
     body.notes || '',
     body.sort_order || 0,
     user?.sub || '',
@@ -183,6 +192,15 @@ export async function handleUpdateDcItem(env, id, body, user, jsonResponse) {
   const scalars = ['sku', 'description', 'channel', 'type_key', 'vendor_ref', 'vendor_name', 'count_mode', 'weight_unit', 'notes'];
   for (const k of scalars) {
     if (k in body) { sets.push(`${k} = ?`); vals.push(body[k]); }
+  }
+  // Nullable report-mapping fields: an explicit empty-string / null clears the
+  // mapping (item stops feeding the report), a real string sets it.
+  for (const k of ['report_sku', 'report_pack_format']) {
+    if (k in body) {
+      const v = body[k];
+      const norm = v == null || v === '' ? null : String(v).trim() || null;
+      sets.push(`${k} = ?`); vals.push(norm);
+    }
   }
   if ('markets' in body) {
     const arr = Array.isArray(body.markets) ? body.markets : [];
@@ -237,14 +255,29 @@ export async function handleListDcSubmissions(env, extensionRef, url, jsonRespon
   const counter = url.searchParams.get('counter');
   const limit   = Math.min(Number(url.searchParams.get('limit')) || 200, 1000);
 
-  const conditions = ['extension_id = ?'];
+  // Build WHERE conditions against the `s.` alias from the start so we can
+  // JOIN in a per-submission `counted_count` subquery cleanly.
+  const conditions = ['s.extension_id = ?'];
   const params = [ext.id];
-  if (market)  { conditions.push('market = ?');       params.push(market); }
-  if (page)    { conditions.push('page = ?');         params.push(page); }
-  if (status_) { conditions.push('status = ?');       params.push(status_); }
-  if (counter) { conditions.push('counter_name LIKE ?'); params.push(`%${counter}%`); }
+  if (market)  { conditions.push('s.market = ?');           params.push(market); }
+  if (page)    { conditions.push('s.page = ?');             params.push(page); }
+  if (status_) { conditions.push('s.status = ?');           params.push(status_); }
+  if (counter) { conditions.push('s.counter_name LIKE ?');  params.push(`%${counter}%`); }
 
-  const query = `SELECT * FROM dc_submissions WHERE ${conditions.join(' AND ')} ORDER BY COALESCE(submitted_at, created_at) DESC LIMIT ?`;
+  // counted_count = number of entries on this submission with at least one
+  // non-zero value. Used by DcTilesLanding to render a real progress bar per
+  // market tile without loading every entry client-side.
+  const query = `
+    SELECT s.*,
+      (SELECT COUNT(*) FROM dc_submission_entries e
+       WHERE e.submission_id = s.id
+         AND (COALESCE(e.cases_count, 0) > 0
+              OR COALESCE(e.units_count, 0) > 0
+              OR COALESCE(e.weight_value, 0) > 0)) AS counted_count
+    FROM dc_submissions s
+    WHERE ${conditions.join(' AND ')}
+    ORDER BY COALESCE(s.submitted_at, s.created_at) DESC
+    LIMIT ?`;
   params.push(limit);
   const { results } = await env.DB.prepare(query).bind(...params).all();
   return jsonResponse({ submissions: (results || []).map(rowToSubmission) });

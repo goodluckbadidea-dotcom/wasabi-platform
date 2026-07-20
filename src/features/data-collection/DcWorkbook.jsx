@@ -12,7 +12,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { C, FONT, MONO, RADIUS } from "../../design/tokens.js";
 import { useTheme } from "../../context/ThemeContext.jsx";
-import { TYPE_LABELS, computeTotal } from "./dcHelpers.js";
+import { TYPE_LABELS, computeTotal, filterItemsForScope } from "./dcHelpers.js";
 import { dcCreateSubmission, dcUpdateSubmission, dcUpsertEntry, dcListSubmissions, dcGetSubmission } from "../../lib/api.js";
 
 // Debounce helper — 600ms after last keystroke before write
@@ -44,22 +44,12 @@ export default function DcWorkbook({ extension, market, items, onSubmitted, onBa
   const [reviewOpen, setReviewOpen] = useState(false);
 
   // ── Filter items for the active page + category ──
-  const filteredItems = useMemo(() => {
-    return (items || []).filter((it) => {
-      if (!Array.isArray(it.markets) || !it.markets.includes(market.key)) return false;
-      if (hasCategories && it.channel && it.channel !== activeCategory) {
-        // Some items may have empty channel — treat them as generic
-        return false;
-      }
-      // Filter by page — items with type_key that belongs to this page
-      // Simple rule: kitchen types → kitchen page, marketing → sales page,
-      // everything else → packaging page.
-      if (activePage === "kitchen"    && it.type_key !== "kitchen") return false;
-      if (activePage === "sales"      && it.type_key !== "marketing") return false;
-      if (activePage === "packaging"  && (it.type_key === "kitchen" || it.type_key === "marketing")) return false;
-      return true;
-    });
-  }, [items, market, activePage, activeCategory, hasCategories]);
+  // Shared with DcTilesLanding via filterItemsForScope so the tile progress
+  // denominator matches the workbook's row count exactly.
+  const filteredItems = useMemo(
+    () => filterItemsForScope(items, market.key, activePage, activeCategory, hasCategories),
+    [items, market, activePage, activeCategory, hasCategories]
+  );
 
   // Group items by type
   const bySection = useMemo(() => {

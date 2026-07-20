@@ -69,22 +69,23 @@ export default function DcMasterItemSheet({ extension, items, itemsLoaded, onIte
           <table style={styles.table}>
             <thead>
               <tr>
-                <th style={{ ...styles.th, width: "20%" }}>SKU / Item</th>
-                <th style={{ ...styles.th, width: "11%" }}>Product Line</th>
-                <th style={{ ...styles.th, width: "17%" }}>Markets</th>
-                <th style={{ ...styles.th, width: "11%" }}>Type</th>
-                <th style={{ ...styles.th, width: "13%" }}>Vendor</th>
-                <th style={{ ...styles.th, width: "10%" }}>Counted as</th>
-                <th style={{ ...styles.th, width: "12%" }}>Case / Unit / Weight</th>
+                <th style={{ ...styles.th, width: "18%" }}>SKU / Item</th>
+                <th style={{ ...styles.th, width: "9%" }}>Product Line</th>
+                <th style={{ ...styles.th, width: "14%" }}>Markets</th>
+                <th style={{ ...styles.th, width: "10%" }}>Type</th>
+                <th style={{ ...styles.th, width: "12%" }}>Vendor</th>
+                <th style={{ ...styles.th, width: "8%" }}>Counted as</th>
+                <th style={{ ...styles.th, width: "10%" }}>Case / Unit / Weight</th>
+                <th style={{ ...styles.th, width: "13%" }}>Report SKU</th>
                 <th style={{ ...styles.th, ...styles.thActions, width: 60 }} />
               </tr>
             </thead>
             <tbody>
               {!itemsLoaded && (
-                <tr><td colSpan={8} style={styles.emptyRow}>Loading items…</td></tr>
+                <tr><td colSpan={9} style={styles.emptyRow}>Loading items…</td></tr>
               )}
               {itemsLoaded && filtered.length === 0 && (
-                <tr><td colSpan={8} style={styles.emptyRow}>
+                <tr><td colSpan={9} style={styles.emptyRow}>
                   {items.length === 0
                     ? "No items yet — click + New Item to add the first."
                     : "No items match your filters."}
@@ -104,6 +105,7 @@ export default function DcMasterItemSheet({ extension, items, itemsLoaded, onIte
                   <td style={styles.td}><ReadPill color={vendorSwatchFor(item.vendor_name || item.vendor_ref)} label={item.vendor_name || "—"} /></td>
                   <td style={styles.td}><span style={styles.modePill}>{(item.count_mode || "case").toUpperCase()}</span></td>
                   <td style={styles.td}>{renderCond(item)}</td>
+                  <td style={styles.td}>{renderReportMapping(item)}</td>
                   <td style={{ ...styles.td, ...styles.tdActions }}>
                     <button style={styles.actionBtn} onClick={() => setDrawerItem({ item })} title="Edit">
                       <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -185,6 +187,27 @@ function renderCond(item) {
     );
   }
   return <span style={{ color: C.muted, fontFamily: FONT, fontSize: 12 }}>— counted directly</span>;
+}
+
+// ── Report mapping cell ──
+// Shows the canonical report SKU (+ pack format for masterpacks) an item
+// feeds into on Inventory & Production. Unmapped items render with a soft
+// "Not mapped" pill so gaps are visible at a glance during backfill.
+function renderReportMapping(item) {
+  if (!item.report_sku) {
+    return <span style={{ color: C.muted, fontFamily: FONT, fontSize: 11, fontStyle: "italic" }}>Not mapped</span>;
+  }
+  const isPack = (item.type_key === "mp");
+  return (
+    <span style={{ display: "inline-flex", flexDirection: "column", gap: 2 }}>
+      <span style={{ fontFamily: FONT, fontSize: 12, fontWeight: 600, color: C.text }}>{item.report_sku}</span>
+      {isPack && (
+        <span style={{ fontFamily: FONT, fontSize: 10, color: C.muted, letterSpacing: "0.04em" }}>
+          {item.report_pack_format || <em style={{ color: C.warning }}>pack format missing</em>}
+        </span>
+      )}
+    </span>
+  );
 }
 
 function FilterButton({ label, value, options, onChange }) {

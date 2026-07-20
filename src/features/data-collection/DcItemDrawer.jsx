@@ -8,7 +8,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { C, FONT, MONO, RADIUS } from "../../design/tokens.js";
 import { useTheme } from "../../context/ThemeContext.jsx";
-import { WEIGHT_UNITS } from "./dcHelpers.js";
+import { WEIGHT_UNITS, REPORT_SKU_CODES, REPORT_PACK_FORMATS } from "./dcHelpers.js";
 import { dcCreateItem, dcUpdateItem, dcDeleteItem } from "../../lib/api.js";
 import DcVendorCombobox from "./DcVendorCombobox.jsx";
 
@@ -33,8 +33,14 @@ export default function DcItemDrawer({ extension, item, onClose, onSaved }) {
   const [countMode, setCountMode] = useState(item?.count_mode || "case");
   const [caseSize, setCaseSize] = useState(item?.case_size ?? "");
   const [weightUnit, setWeightUnit] = useState(item?.weight_unit || "lbs");
+  const [reportSku, setReportSku] = useState(item?.report_sku || "");
+  const [reportPackFormat, setReportPackFormat] = useState(item?.report_pack_format || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+
+  // report_pack_format is only meaningful for masterpack items; hide it
+  // otherwise so users don't accidentally set it on tins/labels/etc.
+  const showPackFormat = typeKey === "mp";
 
   useEffect(() => {
     // Focus the SKU input when the drawer opens
@@ -81,6 +87,10 @@ export default function DcItemDrawer({ extension, item, onClose, onSaved }) {
       count_mode: countMode,
       case_size: (countMode === "case" || countMode === "roll") ? Number(caseSize) : null,
       weight_unit: countMode === "weight" ? weightUnit : null,
+      // Explicit report mapping — empty string clears the mapping (item stops
+      // feeding inventory-production-v2). Only send pack_format for MP items.
+      report_sku: reportSku || null,
+      report_pack_format: showPackFormat ? (reportPackFormat || null) : null,
     };
     try {
       if (isNew) await dcCreateItem(extension.slug, body);
@@ -194,6 +204,42 @@ export default function DcItemDrawer({ extension, item, onClose, onSaved }) {
               extension={extension}
             />
           </Field>
+
+          <Field
+            label="Report SKU"
+            hint={
+              <>Which canonical SKU this item's counts feed into on the <strong>Inventory &amp; Production</strong> report. Leave as <em>Not mapped</em> for items that don't belong on the report (drams, kitchen, marketing, cover-up labels, etc.). Never guess — an unmapped item shows as a visible gap rather than a wrong number.</>
+            }
+          >
+            <select
+              value={reportSku}
+              onChange={(e) => setReportSku(e.target.value)}
+              style={styles.select}
+            >
+              <option value="">— Not mapped —</option>
+              {REPORT_SKU_CODES.map((code) => (
+                <option key={code} value={code}>{code}</option>
+              ))}
+            </select>
+          </Field>
+
+          {showPackFormat && (
+            <Field
+              label="Report pack format"
+              hint={<>Which pack size this masterpack item represents on the report. Required for masterpacks; leave <em>Not mapped</em> to keep the item out of the report's on-site packs breakdown.</>}
+            >
+              <select
+                value={reportPackFormat}
+                onChange={(e) => setReportPackFormat(e.target.value)}
+                style={styles.select}
+              >
+                <option value="">— Not mapped —</option>
+                {REPORT_PACK_FORMATS.map((f) => (
+                  <option key={f.key} value={f.key}>{f.label}</option>
+                ))}
+              </select>
+            </Field>
+          )}
 
           <Field label="Counted as" hint={
             countMode === "case" ? "Count in whole or partial cases; the units-per-case field below drives derived totals."

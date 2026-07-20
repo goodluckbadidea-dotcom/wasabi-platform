@@ -7,8 +7,13 @@ import React, { useMemo } from "react";
 import { C, FONT, MONO, RADIUS } from "../../design/tokens.js";
 
 import { useTheme } from "../../context/ThemeContext.jsx";
+import { filterItemsForScope } from "./dcHelpers.js";
+
 export default function DcTilesLanding({ extension, markets, submissions, items, onOpenMaster, onOpenHistory, onOpenMarket }) {
   useTheme();
+  const config = extension?.ext_config || {};
+  const pages = Array.isArray(config.pages) ? config.pages : [];
+
   // Compute per-market status from submissions (most-recent per market)
   const marketStatus = useMemo(() => {
     const map = {};
@@ -31,13 +36,24 @@ export default function DcTilesLanding({ extension, markets, submissions, items,
     let pct = 0;
     let subtitle = "No draft";
     if (s) {
+      // Real progress: counted_count is filled by the backend (SELECT of
+      // entries with any non-zero value). Total is the number of items that
+      // would appear in this submission's (market, page, category) workbook,
+      // computed via the same filter DcWorkbook uses. This keeps the tile
+      // number identical to what shows in the fill footer.
+      const pageDef = pages.find((p) => p.key === s.page);
+      const hasCategories = !!pageDef?.has_categories;
+      const scoped = filterItemsForScope(items || [], m.key, s.page, s.category || "", hasCategories);
+      const counted = Number(s.counted_count) || 0;
+      const total   = scoped.length;
+      pct = total === 0 ? 0 : Math.min(100, Math.round((counted / total) * 100));
+
       if (s.status === "draft") {
         state = "in-progress";
-        pct = 40;
-        subtitle = `${s.page ? s.page[0].toUpperCase() + s.page.slice(1) : "Draft"} · ${s.counter_name || "In progress"}`;
+        const pageLabel = pageDef?.label || (s.page ? s.page[0].toUpperCase() + s.page.slice(1) : "Draft");
+        subtitle = `${pageLabel} · ${counted}/${total} rows · ${s.counter_name || "In progress"}`;
       } else {
         state = "done";
-        pct = 100;
         subtitle = `Submitted ${s.submitted_at ? s.submitted_at.slice(0, 10) : ""} · ${s.counter_name || ""}`.trim();
       }
     }

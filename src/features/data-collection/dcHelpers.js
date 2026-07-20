@@ -123,6 +123,44 @@ export function marketChip(m) {
   return String(m || "").length <= 2 ? String(m || "").toUpperCase() : String(m).slice(0, 2).toUpperCase();
 }
 
+// ─── Report-mapping (inventory-production-v2 feed) ───
+// Canonical short SKU codes the inventory-production-v2 report expects.
+// 22 tin/label SKUs = 11 flavors × {DS = Drops Singles 2ct, D20 = Drops 20ct}.
+// Also used for masterpack items — the pack format goes in report_pack_format.
+export const REPORT_SKU_CODES = [
+  "DSCH", "DSWM", "DSLI", "DSOR", "DSLE", "DSBC", "DSBB", "DSBLK", "DSCB", "DSRB", "DSSB",
+  "D20CH", "D20WM", "D20LI", "D20OR", "D20LE", "D20BC", "D20BB", "D20BLK", "D20CB", "D20RB", "D20SB",
+];
+
+// Pack format enum for masterpack items. mp10c is a HEMP-only cartridge pack.
+export const REPORT_PACK_FORMATS = [
+  { key: "mp10",  label: "10pk Masterpack" },
+  { key: "mp10c", label: "10pk Cartridge (HEMP)" },
+  { key: "mp25",  label: "25pk Masterpack" },
+  { key: "mp50",  label: "50pk Masterpack" },
+];
+
+// ─── Workbook/tile item filter ───
+// Given the full items list, return only those in scope for a given
+// (market, page, category?) tuple. Extracted from DcWorkbook so DcTilesLanding
+// can compute total-rows for a market's active-draft progress bar without
+// duplicating the filter rules.
+//
+// Page → type_key rule (simple + stable):
+//   kitchen page   → type_key === 'kitchen'
+//   sales page     → type_key === 'marketing'
+//   packaging page → anything except 'kitchen' / 'marketing'
+export function filterItemsForScope(items, market, page, category, hasCategories) {
+  return (items || []).filter((it) => {
+    if (!Array.isArray(it.markets) || !it.markets.includes(market)) return false;
+    if (hasCategories && it.channel && it.channel !== category) return false;
+    if (page === "kitchen"   && it.type_key !== "kitchen")   return false;
+    if (page === "sales"     && it.type_key !== "marketing") return false;
+    if (page === "packaging" && (it.type_key === "kitchen" || it.type_key === "marketing")) return false;
+    return true;
+  });
+}
+
 // Format big numbers with commas + optional decimal trim
 export function fmtNum(n, opts = {}) {
   if (n == null || n === "") return opts.emptyDash ? "—" : "";

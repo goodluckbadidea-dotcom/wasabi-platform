@@ -451,9 +451,11 @@ CREATE TABLE IF NOT EXISTS dc_items (
   type_key TEXT DEFAULT '',              -- item-type ("tins" | "mp" | "labels" | "tamper" | "cover" | "dram" | "paper" | "kitchen" | "marketing")
   vendor_ref TEXT DEFAULT '',            -- Vendor CRM row id (table_rows.id in the vendor page)
   vendor_name TEXT DEFAULT '',           -- denormalized cache for display without a join
-  count_mode TEXT NOT NULL DEFAULT 'case', -- 'case' | 'unit' | 'weight'
-  case_size REAL DEFAULT NULL,           -- units-per-case when count_mode='case'
+  count_mode TEXT NOT NULL DEFAULT 'case', -- 'case' | 'unit' | 'weight' | 'roll'
+  case_size REAL DEFAULT NULL,           -- units-per-case when count_mode='case' or 'roll'
   weight_unit TEXT DEFAULT NULL,         -- 'lbs' | 'oz' | 'g' | 'kg' when count_mode='weight'
+  report_sku TEXT DEFAULT NULL,          -- canonical report SKU code (e.g. 'DSCH', 'D20LI') for items that feed inventory-production-v2. NULL = not mapped to any report
+  report_pack_format TEXT DEFAULT NULL,  -- pack format for masterpack items only ('mp10' | 'mp25' | 'mp50' | 'mp10c'). NULL for non-pack items
   notes TEXT DEFAULT '',
   sort_order INTEGER DEFAULT 0,
   archived INTEGER DEFAULT 0,

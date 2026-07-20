@@ -46,7 +46,7 @@ async function handleInit(env, jsonResponse) {
   // ── Schema version fast path ──
   // Skip all DDL if the schema is already at the current version.
   // Reduces ~92 sequential D1 queries to 3 on returning page loads.
-  const CURRENT_SCHEMA_VERSION = "16";
+  const CURRENT_SCHEMA_VERSION = "17";
   try {
     const row = await env.DB.prepare(
       "SELECT value FROM connections WHERE key = 'schema_version'"
@@ -302,6 +302,8 @@ async function handleInit(env, jsonResponse) {
         count_mode TEXT NOT NULL DEFAULT 'case',
         case_size REAL DEFAULT NULL,
         weight_unit TEXT DEFAULT NULL,
+        report_sku TEXT DEFAULT NULL,
+        report_pack_format TEXT DEFAULT NULL,
         notes TEXT DEFAULT '',
         sort_order INTEGER DEFAULT 0,
         archived INTEGER DEFAULT 0,
@@ -314,6 +316,7 @@ async function handleInit(env, jsonResponse) {
       "CREATE INDEX IF NOT EXISTS idx_dc_items_sku ON dc_items(sku)",
       "CREATE INDEX IF NOT EXISTS idx_dc_items_type ON dc_items(extension_id, type_key)",
       "CREATE INDEX IF NOT EXISTS idx_dc_items_channel ON dc_items(extension_id, channel)",
+      "CREATE INDEX IF NOT EXISTS idx_dc_items_report_sku ON dc_items(extension_id, report_sku)",
       // Submissions — one per workbook page fill
       `CREATE TABLE IF NOT EXISTS dc_submissions (
         id TEXT PRIMARY KEY,
@@ -373,6 +376,21 @@ async function handleInit(env, jsonResponse) {
       )`,
       "CREATE INDEX IF NOT EXISTS idx_dc_share_ext ON dc_share_links(extension_id)",
       "CREATE INDEX IF NOT EXISTS idx_dc_share_active ON dc_share_links(extension_id, revoked_at)",
+      // ─── Schema v17: dc_items report-mapping columns ───
+      // Explicit per-item mapping to the inventory-production-v2 report:
+      //   report_sku         — canonical short SKU (e.g. 'DSCH', 'D20LI') that
+      //                        this DC item's counts should feed into. NULL for
+      //                        items that don't map to the report (drams, kitchen,
+      //                        marketing, cover-up labels, etc.).
+      //   report_pack_format — pack size for masterpack items only ('mp10' |
+      //                        'mp25' | 'mp50' | 'mp10c'). NULL for tins,
+      //                        labels, seals, and everything else.
+      // Combined with type_key, these two fields fully determine where a
+      // counted value lands in the report DATA blob. See docs/18-extensions.md
+      // § Data Collection → Report SKU mapping.
+      "ALTER TABLE dc_items ADD COLUMN report_sku TEXT DEFAULT NULL",
+      "ALTER TABLE dc_items ADD COLUMN report_pack_format TEXT DEFAULT NULL",
+      "CREATE INDEX IF NOT EXISTS idx_dc_items_report_sku ON dc_items(extension_id, report_sku)",
     ];
     for (const sql of migrations) {
       try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }
