@@ -493,7 +493,7 @@ function buildStyles() { return {
   container: {
     maxWidth: 1360,
     margin: "0 auto",
-    padding: "24px 24px 100px",
+    padding: "24px 24px 200px",
     position: "relative",
   },
   head: { paddingBottom: 12 },
@@ -742,10 +742,10 @@ function buildStyles() { return {
     alignItems: "center",
     justifyContent: "center",
   },
-  // Sticky footer
+  // Sticky footer — sits above Wasabi's fixed 68px BottomBar
   footer: {
     position: "fixed",
-    left: 0, right: 0, bottom: 0,
+    left: 0, right: 0, bottom: 68,
     zIndex: 40,
     background: `color-mix(in srgb, ${C.bg} 90%, transparent)`,
     backdropFilter: "saturate(1.4) blur(14px)",
