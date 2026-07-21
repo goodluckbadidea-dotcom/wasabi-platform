@@ -12,7 +12,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { C, FONT, MONO, RADIUS } from "../../design/tokens.js";
 import { useTheme } from "../../context/ThemeContext.jsx";
-import { TYPE_LABELS, computeTotal, filterItemsForScope } from "./dcHelpers.js";
+import { TYPE_LABELS, computeTotal, filterItemsForScope, isEntryCounted } from "./dcHelpers.js";
 import { dcCreateSubmission, dcUpdateSubmission, dcUpsertEntry, dcListSubmissions, dcGetSubmission } from "../../lib/api.js";
 
 // Debounce helper — 600ms after last keystroke before write
@@ -144,13 +144,7 @@ export default function DcWorkbook({ extension, market, items, onSubmitted, onBa
     writeEntry(item.id, patch);
   };
 
-  const counted = Object.values(entries).filter((e) => {
-    if (!e) return false;
-    if ((e.count_mode === "case" || e.count_mode === "roll")) return e.cases_count != null && Number(e.cases_count) !== 0;
-    if (e.count_mode === "unit") return e.units_count != null && Number(e.units_count) !== 0;
-    if (e.count_mode === "weight") return e.weight_value != null && Number(e.weight_value) !== 0;
-    return false;
-  }).length;
+  const counted = Object.values(entries).filter(isEntryCounted).length;
   const total = filteredItems.length;
   const pct = total === 0 ? 0 : Math.round((counted / total) * 100);
   const canSubmit = counted > 0;
@@ -316,14 +310,7 @@ export default function DcWorkbook({ extension, market, items, onSubmitted, onBa
 // describe exactly what's in the block. All items in `items` share the
 // same `mode`; the parent guarantees this by grouping in flatMap above.
 function Section({ title, mode, items, entries, onChange }) {
-  const countedIn = items.filter((it) => {
-    const e = entries[it.id];
-    if (!e) return false;
-    if ((e.count_mode === "case" || e.count_mode === "roll")) return e.cases_count != null && Number(e.cases_count) !== 0;
-    if (e.count_mode === "unit") return e.units_count != null && Number(e.units_count) !== 0;
-    if (e.count_mode === "weight") return e.weight_value != null && Number(e.weight_value) !== 0;
-    return false;
-  }).length;
+  const countedIn = items.filter((it) => isEntryCounted(entries[it.id])).length;
 
   const primaryHeader = mode === "case"   ? "Cases"
                        : mode === "roll"   ? "Rolls"
@@ -368,10 +355,7 @@ function Section({ title, mode, items, entries, onChange }) {
 // ── Row ──
 function Row({ item, entry, onChange }) {
   const mode = item.count_mode || "case";
-  const isCounted =
-    (mode === "case" && entry?.cases_count != null && Number(entry.cases_count) !== 0) ||
-    (mode === "unit" && entry?.units_count != null && Number(entry.units_count) !== 0) ||
-    (mode === "weight" && entry?.weight_value != null && Number(entry.weight_value) !== 0);
+  const isCounted = isEntryCounted(entry);
 
   const totalDisplay = entry?.total_units != null ? Math.round(Number(entry.total_units)).toLocaleString() :
                        (mode === "weight" && entry?.weight_value != null ? `${entry.weight_value} ${entry.weight_unit || item.weight_unit || ""}` : "—");

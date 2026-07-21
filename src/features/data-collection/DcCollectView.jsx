@@ -10,7 +10,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { C, FONT, MONO, RADIUS } from "../../design/tokens.js";
 import { useTheme } from "../../context/ThemeContext.jsx";
-import { TYPE_LABELS, computeTotal } from "./dcHelpers.js";
+import { TYPE_LABELS, computeTotal, isEntryCounted } from "./dcHelpers.js";
 import { getWorkerUrl } from "../../lib/api.js";
 
 export default function DcCollectView({ extensionSlug }) {
@@ -95,13 +95,7 @@ export default function DcCollectView({ extensionSlug }) {
     return groups;
   }, [filteredItems]);
 
-  const counted = Object.values(entries).filter((e) => {
-    if (!e) return false;
-    if ((e.count_mode === "case" || e.count_mode === "roll")) return e.cases_count != null && Number(e.cases_count) !== 0;
-    if (e.count_mode === "unit") return e.units_count != null && Number(e.units_count) !== 0;
-    if (e.count_mode === "weight") return e.weight_value != null && Number(e.weight_value) !== 0;
-    return false;
-  }).length;
+  const counted = Object.values(entries).filter(isEntryCounted).length;
   const total = filteredItems.length;
 
   const onEntryChange = (item, patch) => {
@@ -348,10 +342,7 @@ function Section({ title, mode, items, entries, onChange }) {
 
 function Row({ item, entry, onChange }) {
   const mode = item.count_mode || "case";
-  const isCounted =
-    ((mode === "case" || mode === "roll") && entry?.cases_count != null && Number(entry.cases_count) !== 0) ||
-    (mode === "unit" && entry?.units_count != null && Number(entry.units_count) !== 0) ||
-    (mode === "weight" && entry?.weight_value != null && Number(entry.weight_value) !== 0);
+  const isCounted = isEntryCounted(entry);
 
   const totalDisplay = entry?.total_units != null ? Math.round(Number(entry.total_units)).toLocaleString() :
                        (mode === "weight" && entry?.weight_value != null ? `${entry.weight_value} ${entry.weight_unit || item.weight_unit || ""}` : "—");

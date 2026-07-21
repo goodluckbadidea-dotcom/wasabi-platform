@@ -84,6 +84,19 @@ export const MULTIPLIER_MODES = new Set(["case", "roll"]);
 
 export const WEIGHT_UNITS = ["lbs", "oz", "g", "kg"];
 
+// Whether an entry represents a completed count. A physical zero on hand
+// IS a valid count — the check has to distinguish "value not set" from
+// "value set to 0". Kept in one place so the workbook, share-link view,
+// row-level indicators, review modal, and progress bars all agree.
+export function isEntryCounted(entry) {
+  if (!entry) return false;
+  const mode = entry.count_mode;
+  if (mode === "case" || mode === "roll") return entry.cases_count  != null && entry.cases_count  !== "";
+  if (mode === "unit")                    return entry.units_count  != null && entry.units_count  !== "";
+  if (mode === "weight")                  return entry.weight_value != null && entry.weight_value !== "";
+  return false;
+}
+
 // Compute derived total units for a count entry (mirrors backend logic)
 export function computeTotal(mode, casesCount, caseSize, unitsCount) {
   if (mode === "case" || mode === "roll") {

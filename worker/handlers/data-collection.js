@@ -264,16 +264,20 @@ export async function handleListDcSubmissions(env, extensionRef, url, jsonRespon
   if (status_) { conditions.push('s.status = ?');           params.push(status_); }
   if (counter) { conditions.push('s.counter_name LIKE ?');  params.push(`%${counter}%`); }
 
-  // counted_count = number of entries on this submission with at least one
-  // non-zero value. Used by DcTilesLanding to render a real progress bar per
-  // market tile without loading every entry client-side.
+  // counted_count = number of entries where the value field for the entry's
+  // count_mode is set (NOT NULL). A physical zero on hand is a valid count
+  // (user typed 0, meaning "nothing here right now"), so we can't filter by
+  // > 0. Mirrors the client-side isEntryCounted() helper in dcHelpers.js.
   const query = `
     SELECT s.*,
       (SELECT COUNT(*) FROM dc_submission_entries e
        WHERE e.submission_id = s.id
-         AND (COALESCE(e.cases_count, 0) > 0
-              OR COALESCE(e.units_count, 0) > 0
-              OR COALESCE(e.weight_value, 0) > 0)) AS counted_count
+         AND (
+           (e.count_mode IN ('case','roll') AND e.cases_count  IS NOT NULL) OR
+           (e.count_mode = 'unit'           AND e.units_count  IS NOT NULL) OR
+           (e.count_mode = 'weight'         AND e.weight_value IS NOT NULL)
+         )
+      ) AS counted_count
     FROM dc_submissions s
     WHERE ${conditions.join(' AND ')}
     ORDER BY COALESCE(s.submitted_at, s.created_at) DESC
@@ -507,10 +511,14 @@ export async function handleDeleteDcEntry(env, id, jsonResponse) {
 // Compute the count value a single entry contributes to the report. Mirrors
 // DcWorkbook's counted-total logic. For case/roll modes we prefer the stored
 // total_units (client-computed at fill time from cases × case_size_snapshot);
-// falling back to a fresh multiplication only if total_units is null.
+// falling back to a fresh multiplication only if total_units is null. Returns
+// null when the entry's value field for its mode isn't set at all — that's
+// the "not counted" signal. A stored 0 is a REAL count (user said the shelf
+// is empty) and returns 0, not null.
 function entryCountValue(row) {
   const mode = row.count_mode;
   if (mode === 'case' || mode === 'roll') {
+    if (row.cases_count == null) return null;
     if (row.total_units != null) return Number(row.total_units);
     const cases = Number(row.cases_count);
     const size  = Number(row.case_size_snapshot);
@@ -594,9 +602,13 @@ export async function handleDcReportAggregate(env, extensionRef, url, jsonRespon
 
   for (const r of results || []) {
     const val = entryCountValue(r);
-    if (val == null) continue;               // unusable — skip silently
-    if (val === 0) continue;                 // zero counts don't overwrite
+    if (val == null) continue;               // not counted — value field was never set
 
+    // NOTE: 0 is a legitimate count — a physically empty shelf. We DO write
+    // it into the market bucket so the refresh workflow can overwrite a
+    // previously non-zero DATA field with the new, accurate 0. If we
+    // skipped 0s here, stale on-site numbers would linger after a shelf
+    // was emptied. The refresh merge is where "0 vs unchanged" gets decided.
     const bucket = ensureMarket(r.market);
 
     if (r.type_key === 'tins' && r.report_sku) {
