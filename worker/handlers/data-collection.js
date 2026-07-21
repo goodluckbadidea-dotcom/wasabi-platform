@@ -501,6 +501,145 @@ export async function handleDeleteDcEntry(env, id, jsonResponse) {
 }
 
 // ═════════════════════════════════════════════════════════════════════
+// Report aggregation — DC → inventory-production-v2 on-site feed
+// ═════════════════════════════════════════════════════════════════════
+
+// Compute the count value a single entry contributes to the report. Mirrors
+// DcWorkbook's counted-total logic. For case/roll modes we prefer the stored
+// total_units (client-computed at fill time from cases × case_size_snapshot);
+// falling back to a fresh multiplication only if total_units is null.
+function entryCountValue(row) {
+  const mode = row.count_mode;
+  if (mode === 'case' || mode === 'roll') {
+    if (row.total_units != null) return Number(row.total_units);
+    const cases = Number(row.cases_count);
+    const size  = Number(row.case_size_snapshot);
+    if (!isFinite(cases) || !isFinite(size)) return null;
+    return cases * size;
+  }
+  if (mode === 'unit')   return row.units_count  != null ? Number(row.units_count)  : null;
+  if (mode === 'weight') return row.weight_value != null ? Number(row.weight_value) : null;
+  return null;
+}
+
+// GET /data-collection/:extRef/report-aggregate?include_drafts=0
+//
+// Pivots DC counts into the shape inventory-production-v2 expects at
+// `DATA.markets[<mkt>].onSite`. For each (market, page, category) scope we
+// take the SINGLE most-recent submission (submitted only, unless
+// ?include_drafts=1) — the report tracks current on-hand, not historical.
+//
+// Response:
+//   {
+//     extension_slug, generated_at,
+//     source_submissions: [ { market, page, category, submission_id,
+//                             submitted_at, status } ],
+//     markets: {
+//       <MKT>: { onSite: { tins: {SKU:qty}, labels: {SKU:qty},
+//                           packs: {SKU: {pack: qty}}, seals: qty } }
+//     },
+//     warnings: [ "..." ]
+//   }
+//
+// Endpoint is pure — no merging with existing snapshot data happens here.
+// The refresh workflow (MCP session) reads this and decides how to fold
+// the numbers into DATA.markets[m].onSite.
+export async function handleDcReportAggregate(env, extensionRef, url, jsonResponse) {
+  const { ext, error, status } = await resolveDcExtension(env, extensionRef);
+  if (error) return jsonResponse(error, status);
+
+  const includeDrafts = url.searchParams.get('include_drafts') === '1';
+  // Note: bind() sanitizes params. IN (?) doesn't accept lists, so branch on
+  // includeDrafts and inline the literal — safe because it's not user-supplied.
+  const statusClause = includeDrafts
+    ? "s.status IN ('draft','submitted')"
+    : "s.status = 'submitted'";
+
+  const sql = `
+    WITH latest AS (
+      SELECT s.id, s.market, s.page, s.category, s.status,
+             s.submitted_at, s.created_at,
+             ROW_NUMBER() OVER (
+               PARTITION BY s.market, s.page, s.category
+               ORDER BY COALESCE(s.submitted_at, s.created_at) DESC
+             ) AS rn
+      FROM dc_submissions s
+      WHERE s.extension_id = ? AND ${statusClause}
+    )
+    SELECT l.id            AS submission_id,
+           l.market, l.page, l.category, l.status,
+           l.submitted_at, l.created_at,
+           e.item_id, e.count_mode, e.cases_count, e.units_count,
+           e.weight_value, e.case_size_snapshot, e.total_units,
+           i.report_sku, i.report_pack_format, i.type_key, i.sku AS item_sku
+    FROM latest l
+    JOIN dc_submission_entries e ON e.submission_id = l.id
+    JOIN dc_items              i ON i.id = e.item_id
+    WHERE l.rn = 1
+      AND (i.report_sku IS NOT NULL OR i.type_key = 'tamper')
+  `;
+
+  const { results } = await env.DB.prepare(sql).bind(ext.id).all();
+
+  const markets = {};
+  const sourceMap = {};
+  const warnings = [];
+
+  const ensureMarket = (m) => {
+    if (!markets[m]) {
+      markets[m] = { onSite: { tins: {}, labels: {}, packs: {}, seals: 0 } };
+    }
+    return markets[m].onSite;
+  };
+
+  for (const r of results || []) {
+    const val = entryCountValue(r);
+    if (val == null) continue;               // unusable — skip silently
+    if (val === 0) continue;                 // zero counts don't overwrite
+
+    const bucket = ensureMarket(r.market);
+
+    if (r.type_key === 'tins' && r.report_sku) {
+      bucket.tins[r.report_sku] = (bucket.tins[r.report_sku] || 0) + val;
+    } else if (r.type_key === 'labels' && r.report_sku) {
+      bucket.labels[r.report_sku] = (bucket.labels[r.report_sku] || 0) + val;
+    } else if (r.type_key === 'mp' && r.report_sku && r.report_pack_format) {
+      if (!bucket.packs[r.report_sku]) bucket.packs[r.report_sku] = {};
+      bucket.packs[r.report_sku][r.report_pack_format] =
+        (bucket.packs[r.report_sku][r.report_pack_format] || 0) + val;
+    } else if (r.type_key === 'tamper') {
+      bucket.seals = (bucket.seals || 0) + val;
+    } else if (r.type_key === 'mp' && r.report_sku && !r.report_pack_format) {
+      warnings.push(`MP item without pack format skipped: ${r.item_sku} (mkt=${r.market})`);
+    }
+
+    // Track the source submission per (market,page,category) — for report metadata
+    const key = `${r.market}::${r.page}::${r.category || ''}`;
+    if (!sourceMap[key]) {
+      sourceMap[key] = {
+        market: r.market,
+        page: r.page,
+        category: r.category || '',
+        submission_id: r.submission_id,
+        submitted_at: r.submitted_at,
+        status: r.status,
+      };
+    }
+  }
+
+  return jsonResponse({
+    extension_slug: ext.slug,
+    generated_at: nowIso(),
+    include_drafts: includeDrafts,
+    source_submissions: Object.values(sourceMap).sort((a, b) =>
+      a.market.localeCompare(b.market) || a.page.localeCompare(b.page)
+    ),
+    markets,
+    warnings,
+  });
+}
+
+// ═════════════════════════════════════════════════════════════════════
 // Share links — anonymous submission tokens
 // ═════════════════════════════════════════════════════════════════════
 

@@ -44,6 +44,7 @@ import {
   handleListDcSubmissions, handleGetDcSubmission, handleCreateDcSubmission,
   handleUpdateDcSubmission, handleDeleteDcSubmission, handleGetDcSubmissionCsv,
   handleUpsertDcEntry, handleDeleteDcEntry,
+  handleDcReportAggregate,
   handleListDcShareLinks, handleCreateDcShareLink, handleUpdateDcShareLink, handleDeleteDcShareLink,
   handleShareLinkContext, handleShareLinkSubmit,
 } from './worker/handlers/data-collection.js';
@@ -1103,6 +1104,12 @@ export default {
       }
       if (dcEntryByIdMatch && request.method === "DELETE") {
         return await handleDeleteDcEntry(env, decodeURIComponent(dcEntryByIdMatch[1]), jsonResponse);
+      }
+
+      // Report aggregation — feeds inventory-production-v2 refresh workflow
+      const dcAggMatch = path.match(/^\/data-collection\/([^/]+)\/report-aggregate\/?$/);
+      if (dcAggMatch && request.method === "GET") {
+        return await handleDcReportAggregate(env, decodeURIComponent(dcAggMatch[1]), url, jsonResponse);
       }
 
       // Share links
