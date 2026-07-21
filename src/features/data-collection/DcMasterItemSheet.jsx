@@ -5,7 +5,7 @@
 import React, { useMemo, useState } from "react";
 import { C, FONT, MONO, RADIUS } from "../../design/tokens.js";
 import { useTheme } from "../../context/ThemeContext.jsx";
-import { CHANNEL_COLORS, CHANNEL_LABELS, TYPE_COLORS, TYPE_LABELS, vendorSwatchFor } from "./dcHelpers.js";
+import { CHANNEL_COLORS, CHANNEL_LABELS, TYPE_COLORS, TYPE_LABELS, vendorSwatchFor, computeReportDestination } from "./dcHelpers.js";
 import DcItemDrawer from "./DcItemDrawer.jsx";
 
 export default function DcMasterItemSheet({ extension, items, itemsLoaded, onItemsChanged }) {
@@ -190,20 +190,47 @@ function renderCond(item) {
 }
 
 // ── Report mapping cell ──
-// Shows the canonical report SKU (+ pack format for masterpacks) an item
-// feeds into on Inventory & Production. Unmapped items render with a soft
-// "Not mapped" pill so gaps are visible at a glance during backfill.
+// Shows exactly where this item's counts will land on the
+// inventory-production-v2 report. Reads the effective destination from
+// computeReportDestination() so the drawer preview and this column speak
+// the same language.
+//   Mapped tin:      "D20CH"  small: "Tin"
+//   Mapped label:    "D20CH"  small: "Compliance Label"
+//   Mapped pack:     "D20CH"  small: "10pk pack" (or 25pk / 50pk / cartridge)
+//   Aggregated:      "Tamper Seal"  small: "→ onSite.seals"
+//   Missing sku:     italic "Not mapped" (in-scope type but no SKU set)
+//   Missing pack:    "D20CH"  small warning: "pack format missing"
+//   Out of scope:    italic muted "—" (drams, kitchen, marketing, cover)
 function renderReportMapping(item) {
-  if (!item.report_sku) {
-    return <span style={{ color: C.muted, fontFamily: FONT, fontSize: 11, fontStyle: "italic" }}>Not mapped</span>;
+  const dest = computeReportDestination(item);
+
+  if (dest.kind === "not_in_report") {
+    return <span style={{ color: C.muted, fontFamily: FONT, fontSize: 11 }}>—</span>;
   }
-  const isPack = (item.type_key === "mp");
+  if (dest.kind === "aggregated") {
+    return (
+      <span style={{ display: "inline-flex", flexDirection: "column", gap: 2 }}>
+        <span style={{ fontFamily: FONT, fontSize: 12, fontWeight: 600, color: C.text }}>{dest.roleLabel}</span>
+        <span style={{ fontFamily: FONT, fontSize: 10, color: C.muted, letterSpacing: "0.02em" }}>→ onSite.seals</span>
+      </span>
+    );
+  }
+  if (dest.kind === "missing_sku") {
+    return <span style={{ color: C.warning, fontFamily: FONT, fontSize: 11, fontStyle: "italic" }}>Not mapped</span>;
+  }
+  // mapped OR missing_pack — both have a sku to show at the top
+  const sku = dest.sku;
+  const missingPack = dest.kind === "missing_pack";
   return (
     <span style={{ display: "inline-flex", flexDirection: "column", gap: 2 }}>
-      <span style={{ fontFamily: FONT, fontSize: 12, fontWeight: 600, color: C.text }}>{item.report_sku}</span>
-      {isPack && (
-        <span style={{ fontFamily: FONT, fontSize: 10, color: C.muted, letterSpacing: "0.04em" }}>
-          {item.report_pack_format || <em style={{ color: C.warning }}>pack format missing</em>}
+      <span style={{ fontFamily: FONT, fontSize: 12, fontWeight: 600, color: C.text }}>{sku}</span>
+      {missingPack ? (
+        <span style={{ fontFamily: FONT, fontSize: 10, color: C.warning, letterSpacing: "0.02em" }}>
+          Pack format missing
+        </span>
+      ) : (
+        <span style={{ fontFamily: FONT, fontSize: 10, color: C.textMid, letterSpacing: "0.02em" }}>
+          {dest.roleLabel}
         </span>
       )}
     </span>

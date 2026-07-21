@@ -8,7 +8,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { C, FONT, MONO, RADIUS } from "../../design/tokens.js";
 import { useTheme } from "../../context/ThemeContext.jsx";
-import { WEIGHT_UNITS, REPORT_SKU_CODES, REPORT_PACK_FORMATS } from "./dcHelpers.js";
+import { WEIGHT_UNITS, REPORT_SKU_CODES, REPORT_PACK_FORMATS, computeReportDestination } from "./dcHelpers.js";
 import { dcCreateItem, dcUpdateItem, dcDeleteItem } from "../../lib/api.js";
 import DcVendorCombobox from "./DcVendorCombobox.jsx";
 
@@ -88,8 +88,11 @@ export default function DcItemDrawer({ extension, item, onClose, onSaved }) {
       case_size: (countMode === "case" || countMode === "roll") ? Number(caseSize) : null,
       weight_unit: countMode === "weight" ? weightUnit : null,
       // Explicit report mapping — empty string clears the mapping (item stops
-      // feeding inventory-production-v2). Only send pack_format for MP items.
-      report_sku: reportSku || null,
+      // feeding inventory-production-v2). Tamper seals aggregate by type_key
+      // alone and never carry a report_sku. Only masterpacks carry a pack
+      // format. Both are force-nulled when they don't apply so a stale value
+      // from a type change can never linger silently.
+      report_sku: (typeKey === "tamper" ? null : (reportSku || null)),
       report_pack_format: showPackFormat ? (reportPackFormat || null) : null,
     };
     try {
@@ -215,18 +218,23 @@ export default function DcItemDrawer({ extension, item, onClose, onSaved }) {
               value={reportSku}
               onChange={(e) => setReportSku(e.target.value)}
               style={styles.select}
+              disabled={typeKey === "tamper"}
             >
               <option value="">— Not mapped —</option>
               {REPORT_SKU_CODES.map((code) => (
                 <option key={code} value={code}>{code}</option>
               ))}
             </select>
+            {/* Live destination preview — refreshes as you tweak SKU / pack format. */}
+            <MappingPreview
+              item={{ ...item, type_key: typeKey, report_sku: reportSku, report_pack_format: reportPackFormat }}
+            />
           </Field>
 
           {showPackFormat && (
             <Field
               label="Report pack format"
-              hint={<>Which pack size this masterpack item represents on the report. Required for masterpacks; leave <em>Not mapped</em> to keep the item out of the report's on-site packs breakdown.</>}
+              hint={<>Which pack size this masterpack item represents on the report. Required for masterpacks — without it, the count won't land in the report's packs breakdown.</>}
             >
               <select
                 value={reportPackFormat}
@@ -343,6 +351,106 @@ function Field({ label, hint, children }) {
     </div>
   );
 }
+
+// ── Live mapping-destination preview ──
+// Sits directly under the Report SKU dropdown and tells the counter exactly
+// where a submitted count for this item will land in the
+// inventory-production-v2 DATA blob. Reacts to SKU + pack-format changes as
+// they happen so the effect of every edit is visible before Save.
+function MappingPreview({ item }) {
+  const dest = computeReportDestination(item);
+  const swatch = (color, label, body) => (
+    <div style={{
+      marginTop: 8,
+      padding: "10px 12px",
+      background: `color-mix(in srgb, ${color} 10%, transparent)`,
+      border: `1px solid color-mix(in srgb, ${color} 30%, ${C.border})`,
+      borderRadius: RADIUS.md,
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+    }}>
+      <span style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 22, height: 22,
+        borderRadius: "50%",
+        background: color,
+        color: "#0A1114",
+        fontFamily: FONT,
+        fontSize: 12,
+        fontWeight: 700,
+      }}>{label}</span>
+      <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+        {body}
+      </div>
+    </div>
+  );
+
+  if (dest.kind === "not_in_report") {
+    return swatch(C.muted, "—",
+      <span style={{ fontFamily: FONT, fontSize: 12, color: C.textMid }}>
+        This item type isn't on the Inventory &amp; Production report. Counts still save in DC.
+      </span>
+    );
+  }
+  if (dest.kind === "aggregated") {
+    return swatch(C.accent, "✓",
+      <>
+        <span style={{ fontFamily: FONT, fontSize: 12, fontWeight: 600, color: C.text }}>
+          Feeds aggregated seals total
+        </span>
+        <span style={{ fontFamily: FONT, fontSize: 11, color: C.textMid }}>
+          <code style={codeStyle}>{dest.dataPath}</code> · per market counted
+        </span>
+      </>
+    );
+  }
+  if (dest.kind === "missing_sku") {
+    return swatch(C.warning, "!",
+      <>
+        <span style={{ fontFamily: FONT, fontSize: 12, fontWeight: 600, color: C.text }}>
+          Not mapped — counts won't appear in the report
+        </span>
+        <span style={{ fontFamily: FONT, fontSize: 11, color: C.textMid }}>
+          Pick a Report SKU above, or leave unmapped if this item shouldn't feed the report.
+        </span>
+      </>
+    );
+  }
+  if (dest.kind === "missing_pack") {
+    return swatch(C.warning, "!",
+      <>
+        <span style={{ fontFamily: FONT, fontSize: 12, fontWeight: 600, color: C.text }}>
+          Pack format required for masterpacks
+        </span>
+        <span style={{ fontFamily: FONT, fontSize: 11, color: C.textMid }}>
+          <code style={codeStyle}>{dest.sku}</code> is set, but the counts can't land without a pack format (10pk, 25pk, 50pk, or cartridge).
+        </span>
+      </>
+    );
+  }
+  // mapped
+  return swatch(C.success, "✓",
+    <>
+      <span style={{ fontFamily: FONT, fontSize: 12, fontWeight: 600, color: C.text }}>
+        {dest.roleLabel} · <code style={codeStyle}>{dest.sku}</code>
+      </span>
+      <span style={{ fontFamily: FONT, fontSize: 11, color: C.textMid }}>
+        Feeds <code style={codeStyle}>{dest.dataPath}</code> · per market counted
+      </span>
+    </>
+  );
+}
+
+const codeStyle = {
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  fontSize: 11,
+  background: "color-mix(in srgb, currentColor 8%, transparent)",
+  padding: "1px 5px",
+  borderRadius: 4,
+};
 
 function buildStyles() { return {
   overlay: {

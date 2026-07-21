@@ -140,6 +140,87 @@ export const REPORT_PACK_FORMATS = [
   { key: "mp50",  label: "50pk Masterpack" },
 ];
 
+// Short human label for a pack format key, used in the Master Sheet column
+// and in the drawer's "destination" preview line.
+export function packFormatShortLabel(key) {
+  if (!key) return "";
+  if (key === "mp10")  return "10pk pack";
+  if (key === "mp10c") return "10pk cartridge";
+  if (key === "mp25")  return "25pk pack";
+  if (key === "mp50")  return "50pk pack";
+  return key;
+}
+
+// Compute where a DC item's counts land in the inventory-production-v2 DATA
+// blob. Returns:
+//   { kind: 'mapped',      section, sku, pack?, roleLabel, dataPath }
+//   { kind: 'aggregated',  section, roleLabel, dataPath }   // tamper only
+//   { kind: 'missing_sku', section }                        // in-scope type, no report_sku
+//   { kind: 'missing_pack', section, sku }                  // mp with sku but no format
+//   { kind: 'not_in_report' }                               // dram, kitchen, marketing, cover, paper
+//
+// Consumed by DcItemDrawer (preview beneath the dropdown) and
+// DcMasterItemSheet (Report SKU column) so both surfaces speak the same
+// language about a given item's fate at refresh time.
+export function computeReportDestination(item) {
+  if (!item) return { kind: "not_in_report" };
+  const tk = item.type_key;
+
+  // Tamper seals aggregate — no per-SKU key. report_sku stays null on these.
+  if (tk === "tamper") {
+    return {
+      kind: "aggregated",
+      section: "seals",
+      roleLabel: "Tamper Seal",
+      dataPath: "markets.<market>.onSite.seals",
+    };
+  }
+
+  // Out of report scope entirely — drams / kitchen / marketing / cover /
+  // paper. Counts still save in DC, they just aren't forwarded to the report.
+  if (tk !== "tins" && tk !== "labels" && tk !== "mp") {
+    return { kind: "not_in_report" };
+  }
+
+  if (!item.report_sku) {
+    return { kind: "missing_sku", section: tk };
+  }
+  const sku = item.report_sku;
+
+  if (tk === "tins") {
+    return {
+      kind: "mapped",
+      section: "tins",
+      sku,
+      roleLabel: "Tin",
+      dataPath: `markets.<market>.onSite.tins.${sku}`,
+    };
+  }
+  if (tk === "labels") {
+    return {
+      kind: "mapped",
+      section: "labels",
+      sku,
+      roleLabel: "Compliance Label",
+      dataPath: `markets.<market>.onSite.labels.${sku}`,
+    };
+  }
+  // Masterpacks need both sku and pack format to land unambiguously.
+  if (tk === "mp") {
+    if (!item.report_pack_format) return { kind: "missing_pack", section: "packs", sku };
+    const pack = item.report_pack_format;
+    return {
+      kind: "mapped",
+      section: "packs",
+      sku,
+      pack,
+      roleLabel: packFormatShortLabel(pack),
+      dataPath: `markets.<market>.onSite.packs.${sku}.${pack}`,
+    };
+  }
+  return { kind: "not_in_report" };
+}
+
 // ─── Workbook/tile item filter ───
 // Given the full items list, return only those in scope for a given
 // (market, page, category?) tuple. Extracted from DcWorkbook so DcTilesLanding
