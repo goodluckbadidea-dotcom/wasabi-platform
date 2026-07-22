@@ -418,6 +418,76 @@ export async function handleGenerateSnapshot(env, extensionRef, body, user, json
   return jsonResponse({ ok: true, id: snapshotId, slug, html_key: htmlKey, status: 'draft' }, 201);
 }
 
+// Resolve a snapshot's Reports DB row id, self-healing if the FK is dangling.
+// Prior sessions have left snapshots pointing at deleted table_rows (see
+// project_extensions_feature.md "reports row FK dangling" note). Rather than
+// require a one-off manual repair every time, we look up any system_reports
+// row whose cells contain this snapshot's id and repair the FK on the fly.
+// Returns the resolved row id, or null when no matching row exists.
+async function resolveReportsRowId(env, snap) {
+  if (snap.reports_row_id) {
+    // A "valid" FK must point to a non-archived system_reports row whose
+    // cells still reference THIS snapshot. Anything else (archived row,
+    // stale snapshot_id, wrong table, missing row entirely) is treated as
+    // dangling and re-resolved via json_extract on the cells column.
+    const target = await env.DB.prepare(
+      `SELECT id, cells, archived FROM table_rows WHERE id = ? AND table_id = '${REPORTS_PAGE_ID}'`
+    ).bind(snap.reports_row_id).first();
+    if (target && target.archived !== 1) {
+      const cellsJson = safeParseJSON(target.cells) || {};
+      if (cellsJson.snapshot_id === snap.id) return snap.reports_row_id;
+    }
+  }
+  // Dangling FK — search by snapshot_id. json_extract is cleaner + faster
+  // than LIKE, and avoids D1's "LIKE pattern too complex" refusal on the
+  // large JSON payloads stored in cells.
+  const found = await env.DB.prepare(
+    `SELECT id FROM table_rows
+     WHERE table_id = '${REPORTS_PAGE_ID}'
+       AND COALESCE(archived, 0) = 0
+       AND json_extract(cells, '$.snapshot_id') = ?
+     LIMIT 1`
+  ).bind(snap.id).first();
+  if (!found) return null;
+  // Repair the FK so subsequent updates find it directly.
+  try {
+    await env.DB.prepare(
+      'UPDATE extension_snapshots SET reports_row_id = ? WHERE id = ?'
+    ).bind(found.id, snap.id).run();
+  } catch (err) {
+    console.error('[extensions] FK repair failed (non-fatal):', err.message || err);
+  }
+  return found.id;
+}
+
+// Mirror any user-visible snapshot change into its linked Reports DB row.
+// `changes` may include: status ('draft'|'published'), visibility
+// ('workspace'|'public'), title, summary, and dataChanged (bool — refreshes
+// generated_at when true). Cells not present in `changes` are preserved.
+async function mirrorToReportsRow(env, snap, changes) {
+  const rowId = await resolveReportsRowId(env, snap);
+  if (!rowId) return; // no linked row to mirror into
+  try {
+    const before = await env.DB.prepare(
+      'SELECT cells FROM table_rows WHERE id = ?'
+    ).bind(rowId).first();
+    if (!before) return;
+    const cells = safeParseJSON(before.cells) || {};
+    if ('status'     in changes) cells.status     = changes.status === 'published' ? 'Published' : 'Draft';
+    if ('visibility' in changes) cells.visibility = changes.visibility === 'public' ? 'Public' : 'Workspace';
+    if ('title'      in changes) cells.title      = changes.title;
+    if ('summary'    in changes) cells.summary    = changes.summary;
+    if (changes.dataChanged) {
+      cells.generated_at = new Date().toISOString().slice(0, 10);
+    }
+    await env.DB.prepare(
+      "UPDATE table_rows SET cells = ?, updated_at = datetime('now') WHERE id = ?"
+    ).bind(JSON.stringify(cells), rowId).run();
+  } catch (err) {
+    console.error('[extensions] mirror to Reports row failed:', err.message || err);
+  }
+}
+
 export async function handleUpdateSnapshot(env, id, body, jsonResponse) {
   const row = await env.DB.prepare('SELECT * FROM extension_snapshots WHERE id = ?').bind(id).first();
   if (!row) return jsonResponse({ _error: 'Snapshot not found' }, 404);
@@ -449,27 +519,31 @@ export async function handleUpdateSnapshot(env, id, body, jsonResponse) {
     sets.push('data = ?'); vals.push(dataJson);
   }
 
-  if (sets.length === 0) return jsonResponse({ _error: 'No valid fields to update' }, 400);
-  vals.push(id);
+  // `summary` lives only on the mirror row, not on the snapshot itself, so
+  // a summary-only PATCH is legitimate — no snapshot columns change but the
+  // Reports row cells do. Treat mirror-only fields as valid work.
+  const dataChanged     = 'data' in body;
+  const mirrorAffecting = dataChanged || 'status' in body || 'visibility' in body || 'title' in body || 'summary' in body;
+  if (sets.length === 0 && !mirrorAffecting) {
+    return jsonResponse({ _error: 'No valid fields to update' }, 400);
+  }
 
-  await env.DB.prepare(`UPDATE extension_snapshots SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run();
+  if (sets.length > 0) {
+    vals.push(id);
+    await env.DB.prepare(`UPDATE extension_snapshots SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run();
+  }
 
-  // Mirror status/visibility changes into the linked Reports DB row if present
-  if (row.reports_row_id && ('status' in body || 'visibility' in body || 'title' in body)) {
-    try {
-      const rowsBefore = await env.DB.prepare('SELECT cells FROM table_rows WHERE id = ?').bind(row.reports_row_id).first();
-      if (rowsBefore) {
-        const cells = safeParseJSON(rowsBefore.cells) || {};
-        if ('status' in body) cells.status = body.status === 'published' ? 'Published' : 'Draft';
-        if ('visibility' in body) cells.visibility = body.visibility === 'public' ? 'Public' : 'Workspace';
-        if ('title' in body) cells.title = body.title;
-        await env.DB.prepare(
-          "UPDATE table_rows SET cells = ?, updated_at = datetime('now') WHERE id = ?"
-        ).bind(JSON.stringify(cells), row.reports_row_id).run();
-      }
-    } catch (err) {
-      console.error('[extensions] failed to mirror to Reports row:', err.message || err);
-    }
+  // Mirror any user-visible change into the Reports DB row. Fires on data
+  // changes too (refreshes generated_at) so the Reports table reflects when
+  // the snapshot last got new numbers, not just when its status flipped.
+  if (mirrorAffecting) {
+    await mirrorToReportsRow(env, row, {
+      ...('status'     in body ? { status:     body.status     } : {}),
+      ...('visibility' in body ? { visibility: body.visibility } : {}),
+      ...('title'      in body ? { title:      body.title      } : {}),
+      ...('summary'    in body ? { summary:    body.summary    } : {}),
+      dataChanged,
+    });
   }
 
   return jsonResponse({ ok: true, id });
@@ -497,19 +571,8 @@ export async function handlePublishSnapshot(env, id, user, jsonResponse) {
     "UPDATE extension_snapshots SET status = 'published', published_at = datetime('now'), published_by = ? WHERE id = ?"
   ).bind(user?.sub || '', id).run();
 
-  // Reflect into the Reports row
-  if (row.reports_row_id) {
-    try {
-      const before = await env.DB.prepare('SELECT cells FROM table_rows WHERE id = ?').bind(row.reports_row_id).first();
-      const cells = before ? (safeParseJSON(before.cells) || {}) : {};
-      cells.status = 'Published';
-      await env.DB.prepare(
-        "UPDATE table_rows SET cells = ?, updated_at = datetime('now') WHERE id = ?"
-      ).bind(JSON.stringify(cells), row.reports_row_id).run();
-    } catch (err) {
-      console.error('[extensions] failed to mark Reports row published:', err.message || err);
-    }
-  }
+  // Reflect into the Reports row (auto-repairs FK if dangling)
+  await mirrorToReportsRow(env, row, { status: 'published' });
 
   return jsonResponse({ ok: true, id, status: 'published' });
 }
