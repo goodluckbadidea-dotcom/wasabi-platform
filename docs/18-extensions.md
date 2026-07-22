@@ -203,6 +203,34 @@ gets a row there. The user sees Drafts and Published reports in one place.
 Clicking a Reports DB row opens the snapshot in `ExtensionViewer.jsx`
 (sandboxed iframe + Wasabi theme handshake via postMessage).
 
+### Reports-row mirror (self-healing FK)
+
+Each `extension_snapshots` row carries a `reports_row_id` foreign key to
+its mirror row in the `system_reports` Wasabi table. When a snapshot is
+updated (`PATCH /extensions/snapshots/:id`) or published
+(`POST /extensions/snapshots/:id/publish`), the worker mirrors the
+change into the corresponding Reports row so the workspace-wide Reports
+table stays fresh.
+
+**Fires on:** `status`, `visibility`, `title`, `summary`, and `data`.
+- `data` changes refresh `cells.generated_at` to today.
+- `summary` is a **mirror-only** field (lives on the Reports row, not on
+  the snapshot). A `summary`-only PATCH is a valid request; use it to
+  update the Reports table blurb without generating a new HTML render.
+
+**Self-heal.** Prior cleanup incidents have left snapshots pointing at
+archived-or-orphaned Reports rows. `resolveReportsRowId(env, snap)`
+validates the FK (must be a non-archived `system_reports` row whose
+`cells.snapshot_id` still matches this snapshot) and falls back to a
+`json_extract(cells, '$.snapshot_id') = ?` search when the FK is stale,
+repairing the FK on the fly. As a result, mirror updates are robust
+against dangling FKs — no manual repair required.
+
+**Gotcha — do not `LIKE ?` against the `cells` column.** D1 refuses
+`LIKE` on the (large) `cells` JSON blobs with `"LIKE or GLOB pattern too
+complex"`. Use `json_extract(cells, '$.field')` instead — the SQLite
+JSON1 extension is available on D1 and is both cleaner and faster.
+
 ---
 
 ## Visibility
@@ -370,9 +398,23 @@ row via `wasabi_extensions update`.
 
 ## Schema version
 
-Current: **v12** (2026-05-22) — added `definition` TEXT column on
-`extensions` + `markets[*].sellThrough` (per-SKU `{avg, target}`) on the
-inventory-production data_schema (template-level addition).
+Current: **v17** (2026-07-22) — `dc_items` gained two nullable columns
+that map each Data Collection item to a canonical destination on the
+`inventory-production-v2` report:
+
+- `report_sku TEXT DEFAULT NULL` — the report's short SKU
+  (`DSCH`/`D20LI`/etc.); `NULL` = not on the report
+- `report_pack_format TEXT DEFAULT NULL` —
+  `mp10`/`mp10c`/`mp25`/`mp50` for masterpack items only
+
+See § Data Collection → **Report SKU mapping** below.
+
+Older schema landmarks:
+- **v16** (2026-07-10) — added `extensions.type` + `extensions.ext_config`
+  + the four `dc_*` tables (Data Collection type).
+- **v12** (2026-05-22) — added `definition` TEXT column on `extensions`
+  and `markets[*].sellThrough` (per-SKU `{avg, target}`) on the
+  `inventory-production-v2` data_schema.
 
 When adding new columns or tables to the extensions subsystem, follow the
 standard pattern documented in `docs/06-deployment.md`:
@@ -424,7 +466,7 @@ Four tables per Data Collection extension, all keyed by
 
 | table | purpose | key columns |
 |---|---|---|
-| `dc_items` | Master Item Sheet catalog | `sku`, `description`, `channel`, `markets` (JSON array), `type_key`, `vendor_ref` (Vendor CRM row id), `vendor_name`, `count_mode` (`case`/`unit`/`weight`/`roll`), `case_size`, `weight_unit` |
+| `dc_items` | Master Item Sheet catalog | `sku`, `description`, `channel`, `markets` (JSON array), `type_key`, `vendor_ref` (Vendor CRM row id), `vendor_name`, `count_mode` (`case`/`unit`/`weight`/`roll`), `case_size`, `weight_unit`, `report_sku` (nullable, schema v17), `report_pack_format` (nullable, schema v17) |
 | `dc_submissions` | one row per workbook page fill | `market`, `page`, `category`, `status` (draft/submitted), `counter_name`, `share_link_id`, `count_date`, `submitted_at` |
 | `dc_submission_entries` | one row per counted item within a submission | `submission_id`, `item_id`, `count_mode`, `cases_count`, `units_count`, `weight_value`, `case_size_snapshot`, `total_units` |
 | `dc_share_links` | anonymous submission tokens for iPads without accounts | `token` (unique), `label`, `scope_market`, `scope_page`, `submission_limit`, `submission_count`, `revoked_at` |
@@ -438,6 +480,90 @@ on the item and both compute `total_units = count × case_size`. They
 differ only in user-facing labels (Cases vs. Rolls, Units per case vs.
 Units per roll). Compliance labels use `roll`; everything else that
 ships in a case uses `case`. See `MULTIPLIER_MODES` in `dcHelpers.js`.
+
+### "Counted" rule
+
+A submitted `0` is a valid count — the shelf is physically empty. The
+"not counted" signal is `IS NULL` on the mode's value field, not
+`= 0`. Shared client helper `isEntryCounted(entry)` in `dcHelpers.js`
+enforces this rule everywhere: the workbook footer, per-section header
+counter, row-level highlight, share-link view, and the server-side
+`counted_count` subquery in `handleListDcSubmissions`. **Do not
+re-inline this check** — the four sites that had duplicated it drifted
+into three different rules before consolidation.
+
+### Report SKU mapping (schema v17)
+
+Each `dc_items` row can carry an explicit mapping to a canonical
+destination on the `inventory-production-v2` report:
+
+- `report_sku` (nullable) — the report's short SKU code, one of the
+  22 canonical codes: `DSCH`, `DSWM`, `DSLI`, `DSOR`, `DSLE`, `DSBC`,
+  `DSBB`, `DSBLK`, `DSCB`, `DSRB`, `DSSB`, and the `D20*` mirror set.
+  `NULL` = item is not on the report.
+- `report_pack_format` (nullable) — for masterpack items only:
+  `mp10` / `mp10c` / `mp25` / `mp50`.
+
+Combined with the existing `type_key`, these two fields fully
+determine routing at aggregation time (see § Report aggregation below).
+Both are editable from the Master Item Sheet drawer; a live
+`MappingPreview` shows the effective destination as the counter
+changes fields. Tamper items have `report_sku` force-nulled on save —
+they aggregate by `type_key='tamper'` alone into
+`onSite.seals` (per market, not per SKU). See
+`computeReportDestination(item)` in `dcHelpers.js` for the discriminated
+return that drawer + Master Sheet column both consume.
+
+### Report aggregation
+
+`GET /data-collection/:extRef/report-aggregate` returns the DC counts
+in the shape `inventory-production-v2` expects at
+`DATA.markets[<mkt>].onSite` — pivoted from the LATEST submitted
+submission per `(market, page, category)` tuple. Add
+`?include_drafts=1` to include in-progress drafts (useful for preview
+during a fill-in-progress refresh); default is submitted-only.
+
+Response shape:
+
+```json
+{
+  "extension_slug": "inventory-collection",
+  "generated_at": "2026-07-22 ...",
+  "include_drafts": false,
+  "source_submissions": [
+    { "market": "OR", "page": "packaging", "category": "drops",
+      "submission_id": "dcs_...", "submitted_at": "...", "status": "submitted" }
+  ],
+  "markets": {
+    "OR": { "onSite": {
+      "tins":  { "DSCH": 9200, ... },
+      "labels": { "DSCH": 98280, ... },
+      "packs": { "DSCH": { "mp50": 2660 }, "D20CH": { "mp10": 9432, "mp25": 1520 } },
+      "seals": 0
+    }}
+  },
+  "warnings": [ "MP item without pack format skipped: ..." ]
+}
+```
+
+The endpoint is pure — no merging with existing snapshot data. The
+refresh workflow (MCP session) reads the aggregation and overlays it
+onto `DATA.markets[<mkt>].onSite`, replacing each market's on-site
+object in full. `warnings` is populated when in-scope items are
+missing their required mapping fields (e.g. an `mp` item with a
+`report_sku` but no `report_pack_format`).
+
+Count derivation per entry (`entryCountValue()` in
+`worker/handlers/data-collection.js`):
+- `case`/`roll`: prefer stored `total_units`; fallback
+  `cases_count × case_size_snapshot`. `cases_count IS NULL` → null
+  (not counted).
+- `unit`: `units_count`
+- `weight`: `weight_value`
+
+`0` values are included in the aggregation — an explicit "shelf is
+empty" count must overwrite last week's stale non-zero number when the
+refresh workflow merges the output.
 
 ### Extension config (`extensions.ext_config`)
 
@@ -470,6 +596,7 @@ components.
 | `GET /data-collection/submissions/:id/csv` | CSV export | JWT |
 | `POST /data-collection/submissions/:id/entries` | upsert entry by item_id | JWT |
 | `DELETE /data-collection/entries/:id` | delete entry | JWT |
+| `GET /data-collection/:extRef/report-aggregate?include_drafts=0` | pivoted `markets[m].onSite.{tins,labels,packs,seals}` from latest submission per `(market, page, category)` — feeds `inventory-production-v2` refresh (see § Report aggregation) | JWT |
 | `GET/POST /data-collection/:extRef/share-links` | list / create share link | JWT |
 | `PATCH/DELETE /data-collection/share-links/:id` | update (revoke) / delete | JWT |
 | `GET /collect/:slug?t=<token>` | public: extension context + scoped items | share-link token |
@@ -618,16 +745,17 @@ session." Highlights:
 
 Tracked in `memory/project_data_collection_extension.md`. Highlights:
 
-- **Seed the Master Item Sheet.** Empty on landing; needs the OR SKU
-  list (Tins × supplier, Masterpacks × pack size, Compliance Labels,
-  Tamper Seals, Cover-up Labels, Drams, Paper Packages) plus Kitchen +
-  Marketing rows. Options: hand-add via the drawer, or programmatic
-  seed via `dcCreateItem` calls in a one-off script.
-- **Phase 6 — wire `inventory-production-v2` to pull from `dc_*` tables**
-  instead of parsing CSVs. Path B per the plan: MCP still pushes the
-  DATA blob to the report, but the source is `dc_submissions` +
-  `dc_submission_entries` queried via `wasabi_data` instead of Claude
-  parsing CSV files each week.
+- ~~**Seed the Master Item Sheet.**~~ **DONE 2026-07-13** — 114 items
+  seeded across all 5 markets. 87 in-scope items backfilled with
+  `report_sku` (+ `report_pack_format` for masterpacks) on 2026-07-22.
+- ~~**Phase 6 — wire `inventory-production-v2` to pull from `dc_*` tables**~~
+  **DONE 2026-07-22** — `GET /data-collection/:extRef/report-aggregate`
+  returns the `markets[m].onSite` shape the refresh workflow overlays
+  onto the report DATA. See § Report aggregation above. Old CSV
+  pipeline retired.
+- **NY / NV / HEMP DC counts.** OR + CA landed via the pipeline on
+  7/21; the other three markets are still on last-known-good on-site
+  values until fresh counts get submitted from those iPads.
 - **iPad hardware test.** All UX was built against a browser at iPad
   dimensions; needs a real hardware pass for touch target sizes,
   keyboard behavior, share-link authentication flow.
