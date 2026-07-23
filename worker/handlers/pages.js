@@ -211,11 +211,22 @@ async function handleReorderPages(env, body, jsonResponse) {
 
 async function handleDeletePage(env, id, jsonResponse) {
   try {
-    // Collect all IDs to delete (the page itself + any children)
-    const children = await env.DB.prepare(
-      "SELECT id FROM page_configs WHERE parent_id = ?"
-    ).bind(id).all();
-    const allIds = [id, ...(children.results || []).map((r) => r.id)];
+    // Collect the FULL descendant closure (not just direct children) so a
+    // "Delete permanently" on a workspace containing nested folders removes
+    // every grandchild page too. The old one-level lookup left deeply
+    // nested pages orphaned in the DB.
+    const allIds = [id];
+    let frontier = [id];
+    while (frontier.length) {
+      const placeholders = frontier.map(() => '?').join(',');
+      const children = await env.DB.prepare(
+        `SELECT id FROM page_configs WHERE parent_id IN (${placeholders})`
+      ).bind(...frontier).all();
+      const next = (children.results || []).map((r) => r.id);
+      if (!next.length) break;
+      allIds.push(...next);
+      frontier = next;
+    }
 
     for (const pid of allIds) {
       // Remove table schema
@@ -249,10 +260,12 @@ async function handleDeletePage(env, id, jsonResponse) {
       "DELETE FROM neurons WHERE id NOT IN (SELECT DISTINCT neuron_id FROM neuron_nodes)"
     ).run();
 
-    // Remove child page configs
-    await env.DB.prepare("DELETE FROM page_configs WHERE parent_id = ?").bind(id).run();
-    // Remove the page config itself
-    await env.DB.prepare("DELETE FROM page_configs WHERE id = ?").bind(id).run();
+    // Delete every page in the closure. Batch keeps this atomic and avoids
+    // the previous parent-id sweep that could miss deeper descendants.
+    const delStmts = allIds.map((pid) =>
+      env.DB.prepare("DELETE FROM page_configs WHERE id = ?").bind(pid)
+    );
+    await env.DB.batch(delStmts);
 
     return jsonResponse({ ok: true, id, deleted_children: allIds.length - 1 });
   } catch (err) {
