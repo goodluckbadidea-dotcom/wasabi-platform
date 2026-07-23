@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS page_configs (
   page_type TEXT NOT NULL,
   sort_order INTEGER DEFAULT 0,
   config TEXT DEFAULT '{}',
+  archived_at TEXT DEFAULT NULL,
+  archived_by TEXT DEFAULT NULL,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -38,6 +40,8 @@ CREATE TABLE IF NOT EXISTS table_rows (
   cell_versions TEXT DEFAULT '{}',
   sort_order INTEGER DEFAULT 0,
   archived INTEGER DEFAULT 0,
+  archived_at TEXT DEFAULT NULL,
+  archived_by TEXT DEFAULT NULL,
   metadata TEXT DEFAULT '{}',
   sync_dirty INTEGER DEFAULT 0,
   sync_retry_count INTEGER DEFAULT 0,
@@ -343,6 +347,8 @@ CREATE TABLE IF NOT EXISTS relationship_types (
 // ─── D1 Indexes ───
 export const D1_INDEXES = `
 CREATE INDEX IF NOT EXISTS idx_rows_table ON table_rows(table_id, archived);
+CREATE INDEX IF NOT EXISTS idx_rows_archived_at ON table_rows(table_id, archived_at);
+CREATE INDEX IF NOT EXISTS idx_pages_archived_at ON page_configs(archived_at);
 CREATE INDEX IF NOT EXISTS idx_notif_status ON notifications(status);
 CREATE INDEX IF NOT EXISTS idx_record_notes_lookup ON record_notes(record_id, page_config_id);
 CREATE INDEX IF NOT EXISTS idx_record_comments_lookup ON record_comments(record_id, page_config_id);

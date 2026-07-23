@@ -27,7 +27,7 @@ import { useUserSync } from "../context/UserSyncContext.jsx";
 import { focusRing } from "../design/interactions.js";
 import { savePageConfig, createFolderConfig, createWorkspaceConfig, createDashboardConfig } from "../config/pageConfig.js";
 import {
-  IconGear, IconBrain, IconBell, IconMail, IconCalendar, IconRefresh, IconUsers,
+  IconGear, IconBrain, IconBell, IconMail, IconCalendar, IconRefresh, IconUsers, IconArchive,
 } from "../design/icons.jsx";
 import { isAdmin } from "../lib/roles.js";
 import {
@@ -230,7 +230,7 @@ export default function BottomBar({ isThinking, onCreatePage, onSearchClick }) {
   const ICON = 22;
 
   // Workspace highlight rule: Workspaces icon is also lit when viewing a user-built page.
-  const SYSTEM_PAGES = new Set(["system", "wasabi", "inbox", "inbox-unified", "automations", "functions", "build", "knowledge-base", "workspaces", "calendar", "notifications", "knowledge", "team-priorities"]);
+  const SYSTEM_PAGES = new Set(["system", "wasabi", "inbox", "inbox-unified", "automations", "functions", "build", "knowledge-base", "workspaces", "calendar", "notifications", "knowledge", "team-priorities", "archive"]);
   const isWsActive = activeRightPane === "workspaces" ||
     (activeRightPane && !SYSTEM_PAGES.has(activeRightPane) && pages.some((p) => p.id === activeRightPane));
 
@@ -482,6 +482,21 @@ export default function BottomBar({ isThinking, onCreatePage, onSearchClick }) {
           onMouseLeave={(e) => { if (activeRightPane !== "team-priorities") e.currentTarget.style.background = "transparent"; }}
         >
           <IconUsers size={ICON} color={iconColor(activeRightPane === "team-priorities")} />
+        </button>
+      )}
+
+      {/* Archive (admin only) — parallel to Trash: safe/reversible removal */}
+      {isAdmin(identity) && (
+        <button
+          onClick={() => { setActiveRightPane("archive"); setActiveFolder(null); }}
+          title="Archive"
+          aria-label="Archive"
+          {...focusRing()}
+          style={itemBtnStyle(activeRightPane === "archive")}
+          onMouseEnter={(e) => { if (activeRightPane !== "archive") e.currentTarget.style.background = C.darkSurf2; }}
+          onMouseLeave={(e) => { if (activeRightPane !== "archive") e.currentTarget.style.background = "transparent"; }}
+        >
+          <IconArchive size={ICON} color={iconColor(activeRightPane === "archive")} />
         </button>
       )}
 

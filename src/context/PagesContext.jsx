@@ -101,10 +101,15 @@ export function PagesProvider({ children }) {
 
   // ── Page tree ──
   const pageTree = useMemo(() => {
-    const folderList = pages.filter((p) => p.type === "folder");
+    // Filter out archived pages from the visible tree — they still live in
+    // `pages` (so link resolvers etc. can find them by id) but the sidebar
+    // and every derived view should treat them as gone. Archive view fetches
+    // them directly from /archive.
+    const visiblePages = pages.filter((p) => !p.archived_at);
+    const folderList = visiblePages.filter((p) => p.type === "folder");
     const SYSTEM_PAGE_TYPES = new Set(["color-defaults", "color-view-config"]);
     const isSystemPage = (p) => p._systemInternal || SYSTEM_PAGE_TYPES.has(p.page_type) || (p.name && (p.name.startsWith("User Tasks") || p.name.startsWith("Zen Tasks")));
-    const pageList = pages.filter((p) => (p.type === "page" || !p.type) && !isSystemPage(p));
+    const pageList = visiblePages.filter((p) => (p.type === "page" || !p.type) && !isSystemPage(p));
     const folderIdSet = new Set(folderList.map((f) => f.id));
 
     function buildViewNodes(page) {
@@ -273,6 +278,23 @@ export function PagesProvider({ children }) {
     });
   }, []);
 
+  // Re-pull pages from D1 without a page reload. Used by ArchiveView after
+  // an archive/unarchive so the sidebar tree picks up the flag flip.
+  const reloadPages = useCallback(async () => {
+    try {
+      const configs = await loadPageConfigs();
+      setPages(configs);
+    } catch (err) {
+      console.warn("[Pages] reload failed:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handler = () => { reloadPages(); };
+    window.addEventListener("wasabi:refresh-pages", handler);
+    return () => window.removeEventListener("wasabi:refresh-pages", handler);
+  }, [reloadPages]);
+
   const value = {
     pages,
     pagesLoaded,
@@ -289,6 +311,7 @@ export function PagesProvider({ children }) {
     updateQueueItem,
     removeQueueItem,
     reorderQueue,
+    reloadPages,
   };
 
   return <PagesContext.Provider value={value}>{children}</PagesContext.Provider>;

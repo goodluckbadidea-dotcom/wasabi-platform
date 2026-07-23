@@ -295,9 +295,10 @@ export async function listRows(tableId, { limit, offset, archived, topLevelOnly 
   return apiFetch(`/tables/${tableId}/rows${qs ? `?${qs}` : ""}`, { method: "GET" });
 }
 
-export async function searchRecords(query, { limit } = {}) {
+export async function searchRecords(query, { limit, includeArchived } = {}) {
   const params = new URLSearchParams({ q: query });
   if (limit) params.set("limit", String(limit));
+  if (includeArchived) params.set("include_archived", "true");
   return apiFetch(`/search/records?${params.toString()}`, { method: "GET" });
 }
 
@@ -1583,5 +1584,22 @@ export async function dcDeleteShareLink(id) {
 export function dcShareLinkUrl(extensionSlug, token) {
   const base = typeof window !== "undefined" ? window.location.origin : "";
   return `${base}/collect/${encodeURIComponent(extensionSlug)}?t=${encodeURIComponent(token)}`;
+}
+
+// ── Archive (admin-only) ──
+export async function listArchived() {
+  return apiFetch(`/archive`);
+}
+export async function archivePage(pageId) {
+  return apiFetch(`/pages/${encodeURIComponent(pageId)}/archive`, { method: "POST" });
+}
+export async function unarchivePage(pageId) {
+  return apiFetch(`/pages/${encodeURIComponent(pageId)}/unarchive`, { method: "POST" });
+}
+export async function archiveRow(tableId, rowId) {
+  return apiFetch(`/tables/${encodeURIComponent(tableId)}/rows/${encodeURIComponent(rowId)}/archive`, { method: "POST" });
+}
+export async function unarchiveRow(tableId, rowId) {
+  return apiFetch(`/tables/${encodeURIComponent(tableId)}/rows/${encodeURIComponent(rowId)}/unarchive`, { method: "POST" });
 }
 

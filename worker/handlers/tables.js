@@ -176,12 +176,16 @@ async function handleListRows(env, tableId, url, jsonResponse) {
   const limit = Math.min(parseInt(url.searchParams.get("limit")) || 100, 10000);
   const offset = parseInt(url.searchParams.get("offset")) || 0;
   const includeArchived = url.searchParams.get("archived") === "true";
+  // `include_user_archived=true` opts into rows the user archived via the
+  // Archive UI (archived_at set). Default: hidden from all normal views.
+  const includeUserArchived = url.searchParams.get("include_user_archived") === "true";
   const parentRowId = url.searchParams.get("parent_row_id");
 
   try {
     let sql = "SELECT * FROM table_rows WHERE table_id = ?";
     const binds = [tableId];
     if (!includeArchived) sql += " AND archived = 0";
+    if (!includeUserArchived) sql += " AND archived_at IS NULL";
     if (parentRowId !== null && parentRowId !== undefined) {
       if (parentRowId === "null" || parentRowId === "") {
         sql += " AND parent_row_id IS NULL";

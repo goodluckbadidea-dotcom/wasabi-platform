@@ -15,10 +15,13 @@ import NeuronTopicDialog from "./NeuronTopicDialog.jsx";
 export default function SearchModal({ open, onClose }) {
   const { pages, setActiveRightPane } = usePlatform();
   const [query, setQuery] = useState("");
-  const [dbResults, setDbResults] = useState([]); // { pageId, pageName, rowId, title, tableId }
+  const [dbResults, setDbResults] = useState([]); // { pageId, pageName, rowId, title, tableId, archived? }
   const [topicResults, setTopicResults] = useState([]); // { id, name, memberCount, members }
   const [searching, setSearching] = useState(false);
   const [openTopic, setOpenTopic] = useState(null); // a neuron object when its dialog is open
+  // Archived results are fetched alongside active ones (server splits via
+  // `archived` flag), hidden by default under a collapsible.
+  const [showArchived, setShowArchived] = useState(false);
   const inputRef = useRef(null);
   const dbSearchTimer = useRef(null);
 
@@ -39,6 +42,7 @@ export default function SearchModal({ open, onClose }) {
       setTopicResults([]);
       setSearching(false);
       setOpenTopic(null);
+      setShowArchived(false);
     }
   }, [open]);
 
@@ -59,7 +63,10 @@ export default function SearchModal({ open, onClose }) {
   // Exact substring first; if that comes back light AND the query is long
   // enough, supplement with fuzzy matches sorted by similarity. Pages are
   // already in memory so this stays cheap.
-  const pageResults = useMemo(() => {
+  //
+  // We keep archived pages in the pool but tag them with `archived: true`
+  // so the render step can split into "active" and "archived" sections.
+  const pageResultsAll = useMemo(() => {
     if (!query || query.length < 1) return [];
     const q = query.toLowerCase();
     const visible = pages.filter((p) => !p._systemInternal);
@@ -68,7 +75,7 @@ export default function SearchModal({ open, onClose }) {
 
     const normQuery = normalizeForFuzzy(query);
     if (exact.length >= 5 || normQuery.length < FUZZY_MIN_QUERY_LENGTH) {
-      return exact.slice(0, 10);
+      return exact.slice(0, 20);
     }
     const fuzzyHits = [];
     for (const p of visible) {
@@ -77,8 +84,10 @@ export default function SearchModal({ open, onClose }) {
       if (score >= FUZZY_THRESHOLD) fuzzyHits.push({ page: p, score });
     }
     fuzzyHits.sort((a, b) => b.score - a.score);
-    return [...exact, ...fuzzyHits.map((h) => h.page)].slice(0, 10);
+    return [...exact, ...fuzzyHits.map((h) => h.page)].slice(0, 20);
   }, [query, pages]);
+  const pageResults = useMemo(() => pageResultsAll.filter((p) => !p.archived_at).slice(0, 10), [pageResultsAll]);
+  const archivedPageResults = useMemo(() => pageResultsAll.filter((p) => p.archived_at).slice(0, 10), [pageResultsAll]);
 
   // ── Debounced record + neuron search ──
   // Runs both queries in parallel against the worker. Each table's title
@@ -95,8 +104,10 @@ export default function SearchModal({ open, onClose }) {
     let cancelled = false;
     dbSearchTimer.current = setTimeout(async () => {
       try {
+        // Pull active + archived in one request. The server sets an
+        // `archived` boolean on each hit; the render step splits them.
         const [recs, neus] = await Promise.all([
-          searchRecords(query, { limit: 50 }).catch((e) => {
+          searchRecords(query, { limit: 100, includeArchived: true }).catch((e) => {
             console.error("[SearchModal] record search error:", e);
             return { results: [] };
           }),
@@ -132,12 +143,16 @@ export default function SearchModal({ open, onClose }) {
   };
 
   const inactiveColor = C.darkText + "BB";
+  const activeDbResults = useMemo(() => dbResults.filter((r) => !r.archived), [dbResults]);
+  const archivedDbResults = useMemo(() => dbResults.filter((r) => r.archived), [dbResults]);
+  const archivedCount = archivedPageResults.length + archivedDbResults.length;
   const noResults =
     query.length >= 2 &&
     !searching &&
     pageResults.length === 0 &&
-    dbResults.length === 0 &&
-    topicResults.length === 0;
+    activeDbResults.length === 0 &&
+    topicResults.length === 0 &&
+    archivedCount === 0;
 
   return (
     <div
@@ -264,11 +279,11 @@ export default function SearchModal({ open, onClose }) {
             </>
           )}
 
-          {/* Database record matches */}
-          {dbResults.length > 0 && (
+          {/* Database record matches (active only) */}
+          {activeDbResults.length > 0 && (
             <>
               <div style={sectionHeaderStyle(inactiveColor)}>Records</div>
-              {dbResults.map((r) => (
+              {activeDbResults.map((r) => (
                 <button
                   key={`${r.tableId}-${r.rowId}`}
                   onClick={() => handlePageClick(r.pageId)}
@@ -317,8 +332,70 @@ export default function SearchModal({ open, onClose }) {
             </>
           )}
 
+          {/* Archived (collapsible — hidden by default). Both pages and
+              records land here when they have archived_at set OR belong to
+              an archived page. Existing links / neurons keep resolving to
+              archived items elsewhere; this section only affects search. */}
+          {query.length >= 1 && archivedCount > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <button
+                onClick={() => setShowArchived((v) => !v)}
+                style={{
+                  ...resultRowStyle(),
+                  color: inactiveColor,
+                  fontSize: 11,
+                  fontFamily: FONT,
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+              >
+                <span>{showArchived ? "▾" : "▸"}</span>
+                <span>Show archived results ({archivedCount})</span>
+              </button>
+              {showArchived && (
+                <div style={{ opacity: 0.55, marginTop: 4 }}>
+                  {archivedPageResults.map((p) => (
+                    <button
+                      key={`arch-page-${p.id}`}
+                      onClick={() => handlePageClick(p.id)}
+                      style={resultRowStyle()}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    >
+                      <span style={{ fontSize: 13, color: C.darkText, fontFamily: FONT, fontWeight: 500 }}>
+                        {p.name}
+                      </span>
+                      <span style={{ marginLeft: "auto", fontSize: 10, color: inactiveColor, fontFamily: FONT, textTransform: "uppercase" }}>
+                        page · archived
+                      </span>
+                    </button>
+                  ))}
+                  {archivedDbResults.map((r) => (
+                    <button
+                      key={`arch-rec-${r.tableId}-${r.rowId}`}
+                      onClick={() => handlePageClick(r.pageId)}
+                      style={{ ...resultRowStyle(), flexDirection: "column", alignItems: "flex-start", gap: 2 }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    >
+                      <span style={{ fontSize: 13, color: C.darkText, fontFamily: FONT, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
+                        {r.title}
+                      </span>
+                      <span style={{ fontSize: 10, color: inactiveColor, fontFamily: FONT, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                        {r.pageName} · archived
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Searching */}
-          {searching && pageResults.length === 0 && dbResults.length === 0 && topicResults.length === 0 && (
+          {searching && pageResults.length === 0 && activeDbResults.length === 0 && topicResults.length === 0 && (
             <div style={{ fontSize: 12, color: inactiveColor, fontFamily: FONT, textAlign: "center", padding: "20px 0" }}>
               Searching...
             </div>

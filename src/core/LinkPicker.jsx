@@ -148,10 +148,14 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
 
   useEffect(() => { searchRef.current?.focus(); }, []);
 
-  // Filter pages by search
+  // Filter pages by search. Archived pages are excluded from new link
+  // targets — existing links to them still resolve elsewhere, but users
+  // don't get offered archived items when picking a new target.
   const filteredPages = useMemo(() => {
     const q = search.toLowerCase().trim();
-    return pages.filter((p) => !q || (p.name || "").toLowerCase().includes(q));
+    return pages.filter((p) =>
+      !p.archived_at && (!q || (p.name || "").toLowerCase().includes(q))
+    );
   }, [pages, search]);
 
   // Get linkable views for selected page

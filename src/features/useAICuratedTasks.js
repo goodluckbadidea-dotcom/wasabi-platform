@@ -554,6 +554,10 @@ export default function useAICuratedTasks({ dismissedIds, completedCount, userTa
 
       for (const page of pages) {
         if (page._systemInternal) continue;
+        // Archived pages contribute no tasks to the zen list. The user has
+        // explicitly said "this project is done" — we do not want stale
+        // tasks polluting the AI curation.
+        if (page.archived_at) continue;
         const pt = page.page_type || page.pageType;
 
         // All data lives in D1 — linked_notion databases are synced to D1,

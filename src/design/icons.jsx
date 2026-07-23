@@ -304,6 +304,16 @@ export function IconTrash({ size = 20, color = d, ...rest }) {
   );
 }
 
+export function IconArchive({ size = 20, color = d, ...rest }) {
+  return (
+    <Icon size={size} {...rest}>
+      <rect x="3" y="4" width="18" height="4" rx="1" stroke={color} strokeWidth="1.5" fill="none" />
+      <path d="M5 8v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8" stroke={color} strokeWidth="1.5" fill="none" />
+      <line x1="10" y1="12" x2="14" y2="12" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+    </Icon>
+  );
+}
+
 export function IconExport({ size = 20, color = d, ...rest }) {
   return (
     <Icon size={size} {...rest}>

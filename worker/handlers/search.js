@@ -114,11 +114,16 @@ function buildTitlePaths(columns, subColumns) {
 export async function handleSearchRecords(env, url, jsonResponse) {
   const query = (url.searchParams.get("q") || "").trim();
   const limit = Math.min(parseInt(url.searchParams.get("limit")) || 50, 200);
+  // Archive-aware search: when `include_archived=true`, rows with
+  // archived_at set are returned alongside active ones and each result
+  // carries an `archived` boolean so the caller can visually split them.
+  // Default: hide archived rows entirely (matches historical behavior).
+  const includeArchived = url.searchParams.get("include_archived") === "true";
   if (!query) return jsonResponse({ results: [] });
 
   try {
     const [pagesRes, schemasRes] = await Promise.all([
-      env.DB.prepare("SELECT id, title, icon, page_type, config FROM page_configs").all(),
+      env.DB.prepare("SELECT id, title, icon, page_type, config, archived_at FROM page_configs").all(),
       env.DB.prepare("SELECT id, columns, sub_columns FROM table_schemas").all(),
     ]);
 
@@ -139,7 +144,13 @@ export async function handleSearchRecords(env, url, jsonResponse) {
       if (cfg._systemInternal) continue;
       const paths = pathsByTableId.get(p.id);
       if (!paths || paths.length === 0) continue;
-      candidates.push({ id: p.id, name: p.title, icon: p.icon || "", paths });
+      // Skip archived pages entirely unless include_archived was passed.
+      // When included, tag rows from archived pages so the caller can
+      // display them under the archived section even if the row itself
+      // is not individually archived.
+      const pageArchived = !!p.archived_at;
+      if (pageArchived && !includeArchived) continue;
+      candidates.push({ id: p.id, name: p.title, icon: p.icon || "", paths, pageArchived });
     }
 
     const pattern = `%${query.toLowerCase()}%`;
@@ -156,11 +167,13 @@ export async function handleSearchRecords(env, url, jsonResponse) {
       const remaining = limit - results.length;
       const titleExpr = buildTitleExpr(c.paths);
       try {
+        const archivedClause = includeArchived ? "" : "AND archived_at IS NULL";
         const rowsRes = await env.DB.prepare(
-          `SELECT id, ${titleExpr} AS title, updated_at
+          `SELECT id, ${titleExpr} AS title, updated_at, archived_at
              FROM table_rows
             WHERE table_id = ?
               AND archived = 0
+              ${archivedClause}
               AND ${titleExpr} IS NOT NULL
               AND LOWER(${titleExpr}) LIKE ?
             ORDER BY updated_at DESC
@@ -185,6 +198,7 @@ export async function handleSearchRecords(env, url, jsonResponse) {
             title: String(r.title || ""),
             tableId: c.id,
             updatedAt: r.updated_at,
+            archived: !!(r.archived_at || c.pageArchived),
           });
         }
       } catch (err) {
@@ -205,11 +219,13 @@ export async function handleSearchRecords(env, url, jsonResponse) {
       for (const c of candidates) {
         const titleExpr = buildTitleExpr(c.paths);
         try {
+          const fuzzyArchivedClause = includeArchived ? "" : "AND archived_at IS NULL";
           const rowsRes = await env.DB.prepare(
-            `SELECT id, ${titleExpr} AS title, updated_at
+            `SELECT id, ${titleExpr} AS title, updated_at, archived_at
                FROM table_rows
               WHERE table_id = ?
                 AND archived = 0
+                ${fuzzyArchivedClause}
                 AND ${titleExpr} IS NOT NULL
               ORDER BY updated_at DESC
               LIMIT ${FUZZY_PER_TABLE_LIMIT}`
@@ -235,6 +251,7 @@ export async function handleSearchRecords(env, url, jsonResponse) {
                 updatedAt: r.updated_at,
                 fuzzy: true,
                 fuzzyScore: score,
+                archived: !!(r.archived_at || c.pageArchived),
               });
             }
           }

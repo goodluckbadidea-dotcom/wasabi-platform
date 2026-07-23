@@ -318,6 +318,8 @@ export function d1ToFrontend(d1Page) {
     page_type: pt,
     pageType: ["document", "linked_sheet", "database", "linked_notion", "dashboard"].includes(pt) ? pt : undefined,
     sort_order: d1Page.sort_order || 0,
+    archived_at: d1Page.archived_at || null,
+    archived_by: d1Page.archived_by || null,
     ...config,
   };
 }

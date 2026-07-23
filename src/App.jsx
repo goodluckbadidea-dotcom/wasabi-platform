@@ -75,6 +75,7 @@ const KnowledgeHub = lazyWithRetry(() => import("./features/KnowledgeHub.jsx"));
 const ExtensionViewer = lazyWithRetry(() => import("./features/ExtensionViewer.jsx"));
 const DataCollectionView = lazyWithRetry(() => import("./features/data-collection/DataCollectionView.jsx"));
 const TeamPrioritiesView = lazyWithRetry(() => import("./features/TeamPrioritiesView.jsx"));
+const ArchiveView = lazyWithRetry(() => import("./features/ArchiveView.jsx"));
 
 // Inject CSS animations + global interaction styles on app load
 injectAnimations();
@@ -512,6 +513,20 @@ function AppContent() {
             </div>
           }>
             <TeamPrioritiesView />
+          </React.Suspense>
+        </ErrorBoundary>
+      );
+    }
+    // Archive (admin — see archived pages/rows, unarchive or delete permanently)
+    if (activeRightPane === "archive") {
+      return (
+        <ErrorBoundary fallbackLabel="Archive">
+          <React.Suspense fallback={
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.darkMuted, fontSize: 14 }}>
+              Loading...
+            </div>
+          }>
+            <ArchiveView />
           </React.Suspense>
         </ErrorBoundary>
       );

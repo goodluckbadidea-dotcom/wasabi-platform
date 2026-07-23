@@ -20,7 +20,8 @@ import NewRecordModal from "./NewRecordModal.jsx";
 import { useLinks } from "../context/LinksContext.jsx";
 import LinkPicker from "../core/LinkPicker.jsx";
 // isNeuronsMode, dispatchNeuronSelect, NeuronBadge now imported by table/TableRow.jsx
-import { listUserDirectory, updateRowOwner, notionProxy, getRecordBadgeCounts, deleteRow, getTableSchema, updateTableSchema, updateSubColumnSchema, reparentRow } from "../lib/api.js";
+import { listUserDirectory, updateRowOwner, notionProxy, getRecordBadgeCounts, deleteRow, getTableSchema, updateTableSchema, updateSubColumnSchema, reparentRow, archiveRow } from "../lib/api.js";
+import { isAdmin } from "../lib/roles.js";
 import { assignOptionColor } from "../lib/dataSource.js";
 import { useTreeData } from "../lib/useTreeData.js";
 import { getPinToken } from "../components/PinLockOverlay.jsx";
@@ -79,7 +80,8 @@ import RowContextMenu from "./table/RowContextMenu.jsx";
 export default function Table({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onSaveFilters, onViewConfigChange, initialDetailRecordId, onInitialDetailConsumed }) {
   const styles = getStyles();
   const ghostInputStyle = getGhostInputStyle();
-  const { user } = usePlatform();
+  const { user, identity } = usePlatform();
+  const canArchive = isAdmin(identity);
   const collab = useCollaboration();
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState(config.sort?.field || config.sortField || null);
@@ -451,6 +453,18 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
       console.error("[Table] Move to top failed:", err);
     }
   }, [pageConfig?.id, data, onRefresh]);
+
+  // Archive a row (admin-only). Cascades to sub-items server-side.
+  const handleArchiveRow = useCallback(async (row) => {
+    if (!row || !pageConfig?.id) return;
+    try {
+      await archiveRow(pageConfig.id, row.id);
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      console.error("[Table] Archive row failed:", err);
+      alert(`Archive failed: ${err?.message || "Unknown error"}`);
+    }
+  }, [pageConfig?.id, onRefresh]);
 
   // ── Sub-Item Independent Schema ──
   const subColumns = useMemo(() => schema?._subColumns || [], [schema]);
@@ -1496,6 +1510,8 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
       <RowContextMenu
         menu={rowCtxMenu}
         onMoveToTop={handleMoveToTop}
+        onArchive={handleArchiveRow}
+        canArchive={canArchive}
         onClose={() => setRowCtxMenu(null)}
       />
 

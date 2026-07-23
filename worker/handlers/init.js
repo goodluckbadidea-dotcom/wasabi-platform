@@ -46,7 +46,7 @@ async function handleInit(env, jsonResponse) {
   // ── Schema version fast path ──
   // Skip all DDL if the schema is already at the current version.
   // Reduces ~92 sequential D1 queries to 3 on returning page loads.
-  const CURRENT_SCHEMA_VERSION = "17";
+  const CURRENT_SCHEMA_VERSION = "18";
   try {
     const row = await env.DB.prepare(
       "SELECT value FROM connections WHERE key = 'schema_version'"
@@ -391,6 +391,21 @@ async function handleInit(env, jsonResponse) {
       "ALTER TABLE dc_items ADD COLUMN report_sku TEXT DEFAULT NULL",
       "ALTER TABLE dc_items ADD COLUMN report_pack_format TEXT DEFAULT NULL",
       "CREATE INDEX IF NOT EXISTS idx_dc_items_report_sku ON dc_items(extension_id, report_sku)",
+      // ─── Schema v18: Archive feature ───
+      // User-initiated archive is a separate concept from the existing
+      // `archived` soft-delete flag on table_rows (that one is a permanent
+      // delete-hide from context menus). `archived_at` records when a page
+      // or row was moved to the Archive view via the new Archive action;
+      // `archived_by` records the user id. Rows/pages with archived_at
+      // set are hidden from all normal views but stay queryable in the
+      // Archive UI, feed into neuron context as [ARCHIVED] with a
+      // downweighted score, and can be restored via unarchive.
+      "ALTER TABLE page_configs ADD COLUMN archived_at TEXT DEFAULT NULL",
+      "ALTER TABLE page_configs ADD COLUMN archived_by TEXT DEFAULT NULL",
+      "ALTER TABLE table_rows ADD COLUMN archived_at TEXT DEFAULT NULL",
+      "ALTER TABLE table_rows ADD COLUMN archived_by TEXT DEFAULT NULL",
+      "CREATE INDEX IF NOT EXISTS idx_pages_archived_at ON page_configs(archived_at)",
+      "CREATE INDEX IF NOT EXISTS idx_rows_archived_at ON table_rows(table_id, archived_at)",
     ];
     for (const sql of migrations) {
       try { await env.DB.prepare(sql).run(); } catch (_) { /* column already exists */ }

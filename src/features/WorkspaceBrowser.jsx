@@ -8,10 +8,12 @@ import { C, FONT, RADIUS, Z } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
 import { useNavigation } from "../context/NavigationContext.jsx";
-import { IconFolder, IconSearch, IconChevronRight, IconGlobe, IconGear, IconTrash } from "../design/icons.jsx";
+import { IconFolder, IconSearch, IconChevronRight, IconGlobe, IconGear, IconTrash, IconArchive } from "../design/icons.jsx";
 import { useRecordDrawer } from "./RecordDrawerContext.jsx";
 import RecordDrawer from "./RecordDrawer.jsx";
-import { deletePageConfig, reorderPages, updatePageConfig as apiUpdatePage } from "../lib/api.js";
+import { deletePageConfig, reorderPages, updatePageConfig as apiUpdatePage, archivePage } from "../lib/api.js";
+import { isAdmin } from "../lib/roles.js";
+import { usePages } from "../context/PagesContext.jsx";
 import PanelHeader from "../core/PanelHeader.jsx";
 
 // ── Card hover helpers ──
@@ -105,7 +107,7 @@ function ConfirmDialog({ title, message, warning, onConfirm, onCancel }) {
 }
 
 // ── Overflow Menu (positioned relative to trigger) ──
-function OverflowMenu({ item, onDelete, onMove, onRename, folders, onClose, tileRect }) {
+function OverflowMenu({ item, onDelete, onArchive, canArchive, onMove, onRename, folders, onClose, tileRect }) {
   const ref = useRef(null);
   const [showMoveSub, setShowMoveSub] = useState(false);
 
@@ -234,6 +236,19 @@ function OverflowMenu({ item, onDelete, onMove, onRename, folders, onClose, tile
       {/* Separator */}
       <div style={{ height: 1, background: C.darkBorder, margin: "2px 8px" }} />
 
+      {/* Archive (admin only) — parallel to Delete, non-destructive */}
+      {canArchive && (
+        <button
+          onClick={() => { onArchive(item); onClose(); }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          style={{ ...btnStyle, color: C.darkText }}
+        >
+          <IconArchive size={14} color={C.darkMuted} />
+          Archive
+        </button>
+      )}
+
       {/* Delete */}
       <button
         onClick={() => { onDelete(item); onClose(); }}
@@ -249,7 +264,9 @@ function OverflowMenu({ item, onDelete, onMove, onRename, folders, onClose, tile
 }
 
 export default function WorkspaceBrowser() {
-  const { pageTree, pages, setActiveRightPane, setActiveFolder, removePage, updatePageConfig } = usePlatform();
+  const { pageTree, pages, identity, setActiveRightPane, setActiveFolder, removePage, updatePageConfig } = usePlatform();
+  const { reloadPages } = usePages();
+  const canArchive = isAdmin(identity);
   const { targetFolderPath, setTargetFolderPath } = useNavigation();
   const { openDrawer } = useRecordDrawer();
 
@@ -423,6 +440,18 @@ export default function WorkspaceBrowser() {
   const handleDeleteRequest = useCallback((item) => {
     setDeleteTarget(item);
   }, []);
+
+  // ── Archive flow (admin only). Cascades to descendants on the server. ──
+  const handleArchive = useCallback(async (item) => {
+    try {
+      await archivePage(item.id);
+      // Sidebar tree filters archived pages out — reload to pick up the flag.
+      await reloadPages();
+    } catch (err) {
+      console.error("[WorkspaceBrowser] Archive failed:", err);
+      alert(`Archive failed: ${err?.message || "Unknown error"}`);
+    }
+  }, [reloadPages]);
 
   const handleDeleteConfirm = useCallback(async () => {
     if (!deleteTarget) return;
@@ -952,6 +981,8 @@ export default function WorkspaceBrowser() {
           item={menuItem}
           tileRect={menuTileRect}
           onDelete={handleDeleteRequest}
+          onArchive={handleArchive}
+          canArchive={canArchive}
           onMove={handleMove}
           onRename={handleRename}
           folders={allFolders}

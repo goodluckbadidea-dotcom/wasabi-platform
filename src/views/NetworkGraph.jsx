@@ -183,6 +183,13 @@ function render(ctx, sim, width, height, hoveredNode, activeNodes, dpr) {
     const color = getNodeColor(n.type);
     const isActive = activeNodes.has(n.id);
     const isHovered = hoveredNode?.id === n.id;
+    const isArchived = !!n.archived;
+
+    // Archived nodes render at a low canvas-level alpha so every stroke,
+    // fill, icon, and label goes ghostly together without touching per-op
+    // colors. Keeps hover/active still readable through the dim.
+    ctx.save();
+    if (isArchived) ctx.globalAlpha = 0.35;
 
     // Glow for active nodes
     if (isActive) {
@@ -202,7 +209,12 @@ function render(ctx, sim, width, height, hoveredNode, activeNodes, dpr) {
     ctx.fill();
     ctx.strokeStyle = isHovered ? "#fff" : color;
     ctx.lineWidth = isHovered ? 2.5 : 1.5;
+    // Dashed outline is an additional signal for archived nodes so users
+    // reading the graph in grayscale (or with low-vision settings) still
+    // see the distinction beyond the alpha dim.
+    if (isArchived) ctx.setLineDash([3, 3]); else ctx.setLineDash([]);
     ctx.stroke();
+    ctx.setLineDash([]);
 
     // Icon character
     const icon = n.type === "automation" ? "\u26A1" : n.type === "neuron" ? "\u25C6" : "\u25CF";
@@ -212,13 +224,17 @@ function render(ctx, sim, width, height, hoveredNode, activeNodes, dpr) {
     ctx.fillStyle = isActive ? "#fff" : color;
     ctx.fillText(icon, n.x, n.y);
 
-    // Label
+    // Label \u2014 archived nodes get an "archived" suffix so the state is
+    // discoverable via text, not just visual.
     ctx.font = `${isHovered ? 11 : 10}px 'Outfit', sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     ctx.fillStyle = isHovered ? C.darkText : C.darkMuted;
-    const label = n.label.length > 18 ? n.label.slice(0, 16) + "..." : n.label;
+    let label = n.label.length > 18 ? n.label.slice(0, 16) + "..." : n.label;
+    if (isArchived) label += " (archived)";
     ctx.fillText(label, n.x, n.y + r + 5);
+
+    ctx.restore();
   });
 
   ctx.restore();
@@ -272,17 +288,22 @@ export default function NetworkGraph({ automationEngine }) {
           });
         });
 
-        // Neuron nodes
+        // Neuron nodes. A neuron itself is dimmed when EVERY page node
+        // under it is archived — a fully-archived neuron shouldn't visually
+        // compete with active work but still needs to be discoverable.
         neurons.forEach((neuron) => {
+          const nodeList = neuron.nodes || [];
+          const neuronArchived = nodeList.length > 0 && nodeList.every((nd) => nd.archived);
           nodes.push({
             id: `neuron_${neuron.id}`,
             label: neuron.name || "Untitled Neuron",
             type: "neuron",
             data: neuron,
+            archived: neuronArchived,
           });
 
           // Edges from neuron to its page nodes
-          (neuron.nodes || []).forEach((pageNode) => {
+          nodeList.forEach((pageNode) => {
             const pageId = `page_${pageNode.node_id}`;
             if (!nodes.find((n) => n.id === pageId)) {
               nodes.push({
@@ -290,6 +311,7 @@ export default function NetworkGraph({ automationEngine }) {
                 label: pageNode.node_label || "Page",
                 type: "page",
                 data: pageNode,
+                archived: !!pageNode.archived,
               });
             }
             edges.push({

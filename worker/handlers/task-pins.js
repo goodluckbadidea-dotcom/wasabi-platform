@@ -7,11 +7,19 @@
 // Read query used by both handlers. LEFT JOIN so the pinner's display_name
 // travels with the pin — saves the frontend a separate /users fetch on
 // every zen list render.
+//
+// Also filters out pins whose source task_id points at an archived row
+// (archived_at IS NOT NULL). The pin row stays in the DB — if the row is
+// unarchived later, the pin reappears automatically. Rows soft-deleted via
+// the existing `archived = 1` flag are already handled by the caller's
+// task-completion logic (clearPinsForCompletedTask).
 const LIST_QUERY = `
   SELECT tp.*, u.display_name AS pinned_by_name
   FROM task_pins tp
   LEFT JOIN users u ON tp.pinned_by_user_id = u.id
+  LEFT JOIN table_rows tr ON tr.id = tp.task_id
   WHERE tp.target_user_id = ?
+    AND (tr.id IS NULL OR tr.archived_at IS NULL)
   ORDER BY tp.pin_order ASC, tp.created_at ASC
 `;
 

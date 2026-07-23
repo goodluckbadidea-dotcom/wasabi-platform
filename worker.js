@@ -28,6 +28,7 @@ import { handleFigmaStatus, handleFigmaProjects, handleFigmaFiles, handleFigmaFi
 import { runAutomationTick, checkAutomationTriggers, runNeuronPruneTick } from './worker/automation/engine.js';
 import { runSyncFlushTick, handleSyncConfigure, handleSyncPush, handleSyncPull, handleSyncStatus, handleSyncDelete, handleDisconnect, handleSyncBackup, handleSyncBootstrap, handleSyncFlush, getNotionKeyFromDB, invalidateSummaryCache } from './worker/handlers/notion-sync.js';
 import { handleListPages, handleCreatePage, handleGetSummaryCache, handleSetSummaryCache, handleGetPage, handleUpdatePage, handleReorderPages, handleDeletePage } from './worker/handlers/pages.js';
+import { handleArchivePage, handleUnarchivePage, handleArchiveRow, handleUnarchiveRow, handleListArchived } from './worker/handlers/archive.js';
 import { handleGetSchema, handleUpdateSchema, handleListRows, handleCreateRows, handleUpdateRow, handleDeleteRow, handleQueryTable } from './worker/handlers/tables.js';
 import { handleSearchRecords, handleSearchNeurons } from './worker/handlers/search.js';
 import { handleListRelationships, handleCreateRelationship, handleDeleteRelationship, handleRebuildRelationships } from './worker/handlers/relationships.js';
@@ -603,6 +604,27 @@ export default {
       if (path === "/pages/reorder" && request.method === "POST") {
         const body = await request.json();
         return await handleReorderPages(env, body, jsonResponse);
+      }
+
+      // ─── Archive (admin-only) ───
+      if (path === "/archive" && request.method === "GET") {
+        return await handleListArchived(env, user, jsonResponse);
+      }
+      const archivePageMatch = path.match(/^\/pages\/([^/]+)\/archive$/);
+      if (archivePageMatch && request.method === "POST") {
+        return await handleArchivePage(env, archivePageMatch[1], user, jsonResponse);
+      }
+      const unarchivePageMatch = path.match(/^\/pages\/([^/]+)\/unarchive$/);
+      if (unarchivePageMatch && request.method === "POST") {
+        return await handleUnarchivePage(env, unarchivePageMatch[1], user, jsonResponse);
+      }
+      const archiveRowMatch = path.match(/^\/tables\/([^/]+)\/rows\/([^/]+)\/archive$/);
+      if (archiveRowMatch && request.method === "POST") {
+        return await handleArchiveRow(env, archiveRowMatch[1], archiveRowMatch[2], user, jsonResponse);
+      }
+      const unarchiveRowMatch = path.match(/^\/tables\/([^/]+)\/rows\/([^/]+)\/unarchive$/);
+      if (unarchiveRowMatch && request.method === "POST") {
+        return await handleUnarchiveRow(env, unarchiveRowMatch[1], unarchiveRowMatch[2], user, jsonResponse);
       }
 
       // ─── Table Row CRUD ───
@@ -1223,10 +1245,11 @@ export default {
 
         const neuronIds = neurons.map(n => n.id);
 
-        // 2. Fetch nodes + joined row data
+        // 2. Fetch nodes + joined row data. Also pull each row's archived_at
+        // so the caller can tag archived nodes and downweight them.
         const placeholders = neuronIds.map(() => "?").join(",");
         const { results: nodesWithRows } = await env.DB.prepare(
-          `SELECT nn.*, tr.cells, tr.table_id
+          `SELECT nn.*, tr.cells, tr.table_id, tr.archived_at AS row_archived_at
            FROM neuron_nodes nn
            LEFT JOIN table_rows tr ON nn.node_id = tr.id
            WHERE nn.neuron_id IN (${placeholders})
@@ -1241,13 +1264,14 @@ export default {
           if (["page", "folder", "document"].includes(nd.node_type)) configIdsNeeded.add(nd.node_id);
         }
 
-        // 4. Fetch page configs for column definitions and page names
+        // 4. Fetch page configs for column definitions, page names, and
+        // archived_at (used to tag nodes that live inside archived pages).
         let configMap = {};
         if (configIdsNeeded.size > 0) {
           const cfgIds = [...configIdsNeeded];
           const cfgPlaceholders = cfgIds.map(() => "?").join(",");
           const { results: configs } = await env.DB.prepare(
-            `SELECT id, title, config FROM page_configs WHERE id IN (${cfgPlaceholders})`
+            `SELECT id, title, config, archived_at FROM page_configs WHERE id IN (${cfgPlaceholders})`
           ).bind(...cfgIds).all();
           for (const c of configs) configMap[c.id] = c;
         }
@@ -1297,6 +1321,16 @@ export default {
           const pageCfg = configMap[nd.page_config_id] || configMap[nd.table_id];
           const pageName = pageCfg?.title || null;
 
+          // A node is "archived" if either the row itself is archived OR
+          // its containing page is. Pages/folders/documents are archived
+          // iff their own page_config has archived_at set.
+          const selfPage = configMap[nd.node_id];
+          const archived = !!(
+            nd.row_archived_at ||
+            pageCfg?.archived_at ||
+            selfPage?.archived_at
+          );
+
           nodesByNeuron[nd.neuron_id].push({
             node_id: nd.node_id,
             node_type: nd.node_type,
@@ -1304,6 +1338,7 @@ export default {
             page_config_id: nd.page_config_id,
             page_name: pageName,
             hydrated,
+            archived,
           });
         }
 
@@ -1317,13 +1352,26 @@ export default {
       }
 
       // GET /neurons/graph — full dump for Wasabi agent
+      // Each node carries a computed `archived` flag: true if the node
+      // points at a row or page that has been archived. Consumers use this
+      // to visually dim archived nodes in the network graph and to tag
+      // archived nodes in prompt context.
       if (path === "/neurons/graph" && request.method === "GET") {
         const { results: neurons } = await env.DB.prepare("SELECT * FROM neurons ORDER BY updated_at DESC").all();
-        const { results: nodes } = await env.DB.prepare("SELECT * FROM neuron_nodes ORDER BY neuron_id, created_at").all();
+        const { results: nodes } = await env.DB.prepare(`
+          SELECT nn.*, tr.archived_at AS row_archived_at, pc.archived_at AS page_archived_at
+          FROM neuron_nodes nn
+          LEFT JOIN table_rows tr ON tr.id = nn.node_id
+          LEFT JOIN page_configs pc ON pc.id = nn.node_id
+          ORDER BY nn.neuron_id, nn.created_at
+        `).all();
         const nodesByNeuron = {};
         for (const node of nodes) {
           if (!nodesByNeuron[node.neuron_id]) nodesByNeuron[node.neuron_id] = [];
-          nodesByNeuron[node.neuron_id].push(node);
+          nodesByNeuron[node.neuron_id].push({
+            ...node,
+            archived: !!(node.row_archived_at || node.page_archived_at),
+          });
         }
         return jsonResponse({ neurons: neurons.map(n => ({ ...n, nodes: nodesByNeuron[n.id] || [] })) });
       }

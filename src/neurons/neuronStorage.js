@@ -165,6 +165,11 @@ export function loadCachedHydratedNeurons() {
 
 // ─── Context Summary Builder ───
 
+// Archived nodes get an explicit prefix so Claude spatially and lexically
+// separates historical from current context. "tins" (archived) will not
+// blend with "tins round 2" (active) in the answer.
+const ARCHIVED_PREFIX = "[ARCHIVED — historical reference only] ";
+
 /** Format a single hydrated neuron into prompt-friendly markdown. */
 function formatHydratedNeuron(n) {
   const name = n.name || "(unnamed)";
@@ -180,7 +185,8 @@ function formatHydratedNeuron(n) {
         .join(", ");
       if (entries) fieldsPart = ` — ${entries}`;
     }
-    return `  - ${label} ${typeBadge}${pagePart}]${fieldsPart}`;
+    const prefix = nd.archived ? ARCHIVED_PREFIX : "";
+    return `  - ${prefix}${label} ${typeBadge}${pagePart}]${fieldsPart}`;
   }).join("\n");
   return `### ${name} (id: ${n.id})\n${nodeList}`;
 }
@@ -265,6 +271,13 @@ export function buildFilteredNeuronContext(query, maxNeurons = 15) {
     ).join("\n");
   }
 
+  // Archived nodes contribute at a fraction of their normal weight so a
+  // neuron composed entirely of archived nodes still surfaces (for
+  // historical questions) but never outranks an active neuron on the same
+  // keyword. Combined with the [ARCHIVED] prefix in the formatter, this
+  // keeps historical context available without polluting current answers.
+  const ARCHIVED_WEIGHT = 0.3;
+
   // Score each neuron
   const scored = source.map((n) => {
     let score = 0;
@@ -275,14 +288,16 @@ export function buildFilteredNeuronContext(query, maxNeurons = 15) {
       if (nameLower.includes(kw)) score += 3;
 
       // Node label match: +2, hydrated value match: +1
+      // Archived nodes contribute at ARCHIVED_WEIGHT.
       for (const nd of (n.nodes || [])) {
+        const w = nd.archived ? ARCHIVED_WEIGHT : 1;
         const label = (nd.node_label || "").toLowerCase();
-        if (label.includes(kw)) score += 2;
+        if (label.includes(kw)) score += 2 * w;
 
         if (nd.hydrated) {
           for (const v of Object.values(nd.hydrated)) {
             if (v != null && String(v).toLowerCase().includes(kw)) {
-              score += 1;
+              score += 1 * w;
               break; // one point per node per keyword max
             }
           }

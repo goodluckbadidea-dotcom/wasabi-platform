@@ -29,7 +29,7 @@ function useClampedMenuPosition(menu) {
   return { ref, pos };
 }
 
-export default function RowContextMenu({ menu, onMoveToTop, onClose }) {
+export default function RowContextMenu({ menu, onMoveToTop, onArchive, canArchive, onClose }) {
   const ctxItem = getCtxItem();
   const { ref, pos } = useClampedMenuPosition(menu);
   if (!menu || !pos) return null;
@@ -56,7 +56,17 @@ export default function RowContextMenu({ menu, onMoveToTop, onClose }) {
           >
             {"⤴"} Move to top level
           </div>
-        ) : (
+        ) : null}
+        {canArchive && (
+          <div
+            style={ctxItem}
+            onClick={() => { onArchive?.(menu.row); onClose(); }}
+            {...hoverBg()}
+          >
+            📦 Archive
+          </div>
+        )}
+        {!isSubItem && !canArchive && (
           <div style={{ ...ctxItem, color: C.darkMuted, cursor: "default" }}>
             Top-level row
           </div>
