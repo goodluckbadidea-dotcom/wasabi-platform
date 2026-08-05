@@ -10,7 +10,7 @@ import { hoverBg } from "../design/interactions.js";
 import { getPageTitle } from "../notion/properties.js";
 // debounce now imported by table/hooks/useTableData.js
 import {
-  IconTrash, IconExpand, IconPlus, IconConnect,
+  IconTrash, IconArchive, IconExpand, IconPlus, IconConnect,
   IconCalendar, IconCheck, IconCheckSquare, IconLink, IconMail, IconPhone,
   IconStatusDot, IconArrowDown, IconUser,
 } from "../design/icons.jsx";
@@ -728,14 +728,33 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     });
   }, [displayList]);
 
-  // ── Bulk Delete ──
+  // ── Bulk Delete (permanent) ──
   const handleBulkDelete = useCallback(async () => {
     if (!onDelete || selectedRows.size === 0) return;
-    const confirmed = window.confirm(`Archive ${selectedRows.size} selected record${selectedRows.size !== 1 ? "s" : ""}?`);
+    const confirmed = window.confirm(
+      `Permanently delete ${selectedRows.size} selected record${selectedRows.size !== 1 ? "s" : ""}? This cannot be undone.`
+    );
     if (!confirmed) return;
     await onDelete([...selectedRows]);
     setSelectedRows(new Set());
   }, [onDelete, selectedRows]);
+
+  // ── Bulk Archive (soft, reversible; admin only) ──
+  const handleBulkArchive = useCallback(async () => {
+    if (!canArchive || selectedRows.size === 0 || !pageConfig?.id) return;
+    const n = selectedRows.size;
+    const confirmed = window.confirm(
+      `Archive ${n} selected record${n !== 1 ? "s" : ""}? They can be restored later from the Archive view.`
+    );
+    if (!confirmed) return;
+    const ids = [...selectedRows];
+    for (const rowId of ids) {
+      try { await archiveRow(pageConfig.id, rowId); }
+      catch (err) { console.error("Archive failed for row", rowId, err); }
+    }
+    setSelectedRows(new Set());
+    onRefresh?.();
+  }, [canArchive, selectedRows, pageConfig, onRefresh]);
 
   // ── Sub-Item: Delete with cascade + dependency awareness ──
   const handleDeleteWithCascade = useCallback(async (rowIds) => {
@@ -1065,6 +1084,23 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           >
             Clear
           </button>
+          {canArchive && pageConfig?.id && (
+            <button
+              onClick={handleBulkArchive}
+              style={{
+                ...S.btnGhost,
+                fontSize: 11,
+                padding: "3px 10px",
+                color: C.darkText,
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <IconArchive size={12} color={C.darkText} />
+              Archive
+            </button>
+          )}
           {onDelete && (
             <button
               onClick={handleBulkDelete}

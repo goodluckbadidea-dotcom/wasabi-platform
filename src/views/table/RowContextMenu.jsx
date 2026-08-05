@@ -10,6 +10,7 @@ import React, { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { C, FONT, RADIUS, SHADOW } from "../../design/tokens.js";
 import { hoverBg } from "../../design/interactions.js";
+import { IconArchive } from "../../design/icons.jsx";
 import { getCtxItem } from "./tableStyles.js";
 
 function useClampedMenuPosition(menu) {
@@ -59,11 +60,12 @@ export default function RowContextMenu({ menu, onMoveToTop, onArchive, canArchiv
         ) : null}
         {canArchive && (
           <div
-            style={ctxItem}
+            style={{ ...ctxItem, display: "flex", alignItems: "center", gap: 8 }}
             onClick={() => { onArchive?.(menu.row); onClose(); }}
             {...hoverBg()}
           >
-            📦 Archive
+            <IconArchive size={14} color={C.darkText} />
+            Archive
           </div>
         )}
         {!isSubItem && !canArchive && (
