@@ -1,8 +1,8 @@
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { C, FONT, MONO, RADIUS } from "../../design/tokens.js";
 import { ANIM } from "../../design/animations.js";
 import { usePlatform } from "../../context/PlatformContext.jsx";
-import { getConnections, setConnection as apiSetConnection, deleteConnection as apiDeleteConnection, checkHealth, getGoogleAuthUrl, getGoogleStatus, disconnectGoogle } from "../../lib/api.js";
+import { getConnections, setConnection as apiSetConnection, deleteConnection as apiDeleteConnection, checkHealth, getGoogleAuthUrl, getGoogleStatus, disconnectGoogle, getFigmaStatus } from "../../lib/api.js";
 import ConnectionRow, { CONNECTION_DEFS } from "./components/ConnectionRow.jsx";
 import GoogleConnectionRow from "./components/GoogleConnectionRow.jsx";
 
@@ -24,6 +24,28 @@ export default function ConnectionsTab() {
   // ── Worker health ──
   const [health, setHealth] = useState(null);
 
+  // ── Figma live token check ──
+  // The connections list only proves a row exists in D1, not that the stored
+  // token still works. /figma/status actually calls Figma's /v1/me, so an
+  // expired or revoked PAT surfaces here instead of silently hiding the Figma
+  // features elsewhere in the app.
+  // figmaStatus = { state: "checking" | "ok" | "error", handle?, error? }
+  const [figmaStatus, setFigmaStatus] = useState({ state: "checking" });
+
+  const refreshFigmaStatus = useCallback(() => {
+    setFigmaStatus({ state: "checking" });
+    return getFigmaStatus()
+      .then((r) => setFigmaStatus(
+        r?.connected
+          ? { state: "ok", handle: r?.user?.handle || "" }
+          : { state: "error", error: r?.error || "" }
+      ))
+      .catch((err) => {
+        console.warn("[ConnectionsTab] getFigmaStatus:", err.message || err);
+        setFigmaStatus({ state: "error", error: err.message || "" });
+      });
+  }, []);
+
   // Load connections on mount
   useEffect(() => {
     if (connectionsFetched.current) return;
@@ -32,10 +54,11 @@ export default function ConnectionsTab() {
     Promise.all([
       getConnections().then((data) => setConnections(data.connections || [])),
       getGoogleStatus().then(setGoogleStatus).catch(err => console.warn("[ConnectionsTab] getGoogleStatus:", err.message || err)),
+      refreshFigmaStatus(),
     ])
       .catch((err) => console.warn("Failed to load connections:", err))
       .finally(() => setConnectionsLoading(false));
-  }, []);
+  }, [refreshFigmaStatus]);
 
   // Load health
   useEffect(() => {
@@ -133,7 +156,27 @@ export default function ConnectionsTab() {
     });
     // Update legacy user keys in PlatformContext
     updateConnectionKey(key, value);
-  }, [updateConnectionKey]);
+    // Re-validate immediately so a freshly pasted token confirms itself.
+    if (key === "figma") refreshFigmaStatus();
+  }, [updateConnectionKey, refreshFigmaStatus]);
+
+  // Presentation shape for the Figma row's live badge.
+  const figmaLive = useMemo(() => {
+    if (figmaStatus.state === "checking") {
+      return { state: "checking", label: "Checking..." };
+    }
+    if (figmaStatus.state === "ok") {
+      return {
+        state: "ok",
+        label: figmaStatus.handle ? `Connected as ${figmaStatus.handle}` : "Connected",
+      };
+    }
+    return {
+      state: "error",
+      label: "Token rejected",
+      detail: `Figma rejected this token${figmaStatus.error ? ` (${figmaStatus.error})` : ""}. Generate a new personal access token with the current_user:read, projects:read, file_content:read, file_comments:read and file_comments:write scopes, then click Update. Figma features stay hidden across the app until this is fixed.`,
+    };
+  }, [figmaStatus]);
 
   const handleDeleteConnection = useCallback(async (key) => {
     await apiDeleteConnection(key);
@@ -201,15 +244,21 @@ export default function ConnectionsTab() {
         </div>
       ) : (
         <>
-          {CONNECTION_DEFS.map((def) => (
-            <ConnectionRow
-              key={def.key}
-              def={def}
-              connected={connections.some((c) => c.key === def.key)}
-              onSave={handleSaveConnection}
-              onDelete={handleDeleteConnection}
-            />
-          ))}
+          {CONNECTION_DEFS.map((def) => {
+            const rowExists = connections.some((c) => c.key === def.key);
+            return (
+              <ConnectionRow
+                key={def.key}
+                def={def}
+                connected={rowExists}
+                // Only the Figma PAT has a live check today. Every other row
+                // keeps its existing row-exists behaviour.
+                liveStatus={def.key === "figma" && rowExists ? figmaLive : null}
+                onSave={handleSaveConnection}
+                onDelete={handleDeleteConnection}
+              />
+            );
+          })}
           <GoogleConnectionRow
             connected={googleStatus.connected}
             email={googleStatus.email}

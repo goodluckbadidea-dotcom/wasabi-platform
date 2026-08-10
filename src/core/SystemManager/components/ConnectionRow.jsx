@@ -9,10 +9,27 @@ const CONNECTION_DEFS = [
   { key: "figma_team_id", label: "Figma Team ID", placeholder: "123456789", description: "Team ID from your Figma team URL (figma.com/files/team/{id}).", inputType: "text" },
 ];
 
-function ConnectionRow({ def, connected, onSave, onDelete }) {
+// `connected` = a credential row exists in D1. That governs which actions show
+// (Add vs Update/Remove) — a dead token still needs Update/Remove, not Add.
+//
+// `liveStatus` (optional) = the result of actually exercising the credential
+// against the provider. When supplied it overrides the dot + status label, so a
+// stored-but-rejected token reads as broken instead of falsely "Connected".
+//   { state: "checking" | "ok" | "error", label: string, detail?: string }
+function ConnectionRow({ def, connected, liveStatus, onSave, onDelete }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const dotColor = liveStatus
+    ? (liveStatus.state === "ok" ? C.accent : liveStatus.state === "error" ? C.warning : C.darkMuted + "44")
+    : (connected ? C.accent : C.darkMuted + "44");
+  const statusColor = liveStatus
+    ? (liveStatus.state === "ok" ? C.accent : liveStatus.state === "error" ? C.warning : C.darkMuted)
+    : (connected ? C.accent : C.darkMuted);
+  const statusLabel = liveStatus
+    ? liveStatus.label
+    : (connected ? "Connected" : "Not connected");
 
   const handleSave = useCallback(async () => {
     if (!value.trim()) return;
@@ -51,15 +68,15 @@ function ConnectionRow({ def, connected, onSave, onDelete }) {
         {/* Status dot */}
         <span style={{
           width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
-          background: connected ? C.accent : C.darkMuted + "44",
+          background: dotColor,
         }} />
         {/* Name */}
         <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: C.darkText, fontFamily: FONT }}>
           {def.label}
         </span>
         {/* Status label */}
-        <span style={{ fontSize: 10, color: connected ? C.accent : C.darkMuted, fontFamily: FONT }}>
-          {connected ? "Connected" : "Not connected"}
+        <span style={{ fontSize: 10, color: statusColor, fontFamily: FONT }}>
+          {statusLabel}
         </span>
         {/* Actions */}
         {connected ? (
@@ -102,6 +119,16 @@ function ConnectionRow({ def, connected, onSave, onDelete }) {
       {!editing && (
         <p style={{ fontSize: 11, color: C.darkMuted, marginTop: 6, marginLeft: 18, lineHeight: 1.4 }}>
           {def.description}
+        </p>
+      )}
+
+      {/* Live-status detail — only rendered when the credential is rejected */}
+      {!editing && liveStatus?.detail && (
+        <p style={{
+          fontSize: 11, color: C.warning, fontFamily: FONT,
+          marginTop: 6, marginLeft: 18, lineHeight: 1.4,
+        }}>
+          {liveStatus.detail}
         </p>
       )}
 
