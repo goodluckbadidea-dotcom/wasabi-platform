@@ -607,7 +607,17 @@ export default function RecordDetail({ page, schema, onClose, onUpdate, onDelete
   // can render constrained to the right-pane wrapper and the Save-button
   // footer ends up hidden under BottomBar.
   return createPortal((
-    <div style={ds.overlay} onClick={onClose} onKeyDown={(e) => e.stopPropagation()}>
+    <div
+      style={ds.overlay}
+      // Close only on a click landing on the backdrop itself. The drawer below
+      // stops DOM propagation, but that does not cover descendants which portal
+      // out of this subtree (e.g. FigmaFilePicker via FigmaFilesEditor) —
+      // React still bubbles their events through the component tree, so an
+      // unguarded handler here closed the panel and discarded pendingChanges
+      // on any click inside those pickers. Mirrors the guard in core/Drawer.jsx.
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onKeyDown={(e) => e.stopPropagation()}
+    >
       <div style={{ ...ds.drawer, ...(isTablet ? { width: 400 } : {}) }} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div style={ds.header}>
