@@ -3,6 +3,7 @@
 // Pages → Views → Data Grid. Search bar filters pages by name.
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";
 import { ANIM } from "../design/animations.js";
 import { usePlatform } from "../context/PlatformContext.jsx";
@@ -479,7 +480,14 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
     }),
   };
 
-  return (
+  // Portal to document.body. RecordDetail portals its own overlay to the body,
+  // so while this picker stayed nested in the table's tree its z-index competed
+  // only inside that subtree — leaving it painted *under* RecordDetail's
+  // full-screen backdrop. Clicks meant for this dialog hit that backdrop
+  // instead, closing the record panel and discarding its buffered edits.
+  // As a body-level sibling, Z.modal + 1 correctly outranks RecordDetail's
+  // Z.modal and the picker both renders and receives clicks on top.
+  return createPortal((
     <div onClick={onCancel} style={s.overlay}>
       <div role="dialog" aria-modal="true" aria-label={mode === "target" ? "Send value to" : "Link cell value"} onClick={(e) => e.stopPropagation()} style={s.card}>
         {/* Header */}
@@ -630,5 +638,5 @@ export default function LinkPicker({ onSelect, onCancel, targetIsReadOnly, mode 
         </div>
       </div>
     </div>
-  );
+  ), document.body);
 }
