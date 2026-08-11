@@ -5,7 +5,8 @@
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { C, FONT, RADIUS } from "../design/tokens.js";
-import { listFilesByRecord, uploadFileToRecord, deleteFile, getFileUrl } from "../lib/api.js";
+import { listFilesByRecord, uploadFileToRecord, deleteFile, getFileLink } from "../lib/api.js";
+import FilePreviewModal from "./FilePreviewModal.jsx";
 
 const FILE_MAX_BYTES = 52428800; // 50MB
 
@@ -35,6 +36,11 @@ export default function RecordFiles({ recordId, pageConfigId }) {
   const [error, setError] = useState(null);
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlValue, setUrlValue] = useState("");
+  const [previewFile, setPreviewFile] = useState(null);
+  // fileId → signed URL, for image thumbnails only. An <img src> cannot carry
+  // the Authorization header, so the bare worker path 401s; each thumbnail
+  // needs its own short-lived signed URL.
+  const [thumbUrls, setThumbUrls] = useState({});
   const fileInputRef = useRef(null);
 
   const fetchFiles = useCallback(async () => {
@@ -52,6 +58,25 @@ export default function RecordFiles({ recordId, pageConfigId }) {
   }, [recordId]);
 
   useEffect(() => { fetchFiles(); }, [fetchFiles]);
+
+  // Mint thumbnail URLs for image attachments once the list arrives. Failures
+  // are non-fatal — the <img> simply stays hidden via its existing onError.
+  useEffect(() => {
+    const images = files.filter((f) => f.mime_type?.startsWith("image/") && !thumbUrls[f.id]);
+    if (images.length === 0) return;
+    let cancelled = false;
+    Promise.all(
+      images.map((f) =>
+        getFileLink(f.id)
+          .then((r) => [f.id, r?.url || ""])
+          .catch(() => [f.id, ""])
+      )
+    ).then((pairs) => {
+      if (cancelled) return;
+      setThumbUrls((prev) => ({ ...prev, ...Object.fromEntries(pairs) }));
+    });
+    return () => { cancelled = true; };
+  }, [files, thumbUrls]);
 
   const handleUpload = useCallback(async (e) => {
     const file = e.target.files?.[0];
@@ -164,32 +189,49 @@ export default function RecordFiles({ recordId, pageConfigId }) {
           const meta = typeof file.meta === "string" ? JSON.parse(file.meta || "{}") : (file.meta || {});
           const isUrl = file.mime_type === "text/x-url";
           const isImage = file.mime_type?.startsWith("image/");
-          const href = isUrl ? (meta.url || "") : getFileUrl(file.id);
+          // External URL attachments are genuine outside links — they stay
+          // plain anchors. Stored files open in the preview modal, which mints
+          // its own signed URLs.
+          const externalHref = isUrl ? (meta.url || "") : "";
           return (
             <div key={file.id} style={s.fileItem}>
               {/* Thumbnail for images, icon for everything else */}
               {isImage ? (
-                <a href={href} target="_blank" rel="noopener noreferrer" style={{ flexShrink: 0 }}>
-                  <img
-                    src={href}
-                    alt={file.name}
-                    style={s.thumbnail}
-                    onError={(e) => { e.target.style.display = "none"; }}
-                  />
-                </a>
+                <img
+                  src={thumbUrls[file.id] || ""}
+                  alt={file.name}
+                  style={s.thumbnail}
+                  onClick={() => setPreviewFile(file)}
+                  onError={(e) => { e.target.style.display = "none"; }}
+                />
               ) : (
                 <span style={s.fileIcon}>{getFileIcon(file.mime_type)}</span>
               )}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <a
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={s.fileName}
-                  title={file.name}
-                >
-                  {file.name}
-                </a>
+                {isUrl ? (
+                  <a
+                    href={externalHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={s.fileName}
+                    title={file.name}
+                  >
+                    {file.name}
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewFile(file)}
+                    style={{
+                      ...s.fileName,
+                      background: "transparent", border: "none", padding: 0,
+                      cursor: "pointer", textAlign: "left", width: "100%",
+                    }}
+                    title={`Preview ${file.name}`}
+                  >
+                    {file.name}
+                  </button>
+                )}
                 {!isUrl && (
                   <span style={s.fileSize}>{formatSize(file.size)}</span>
                 )}
@@ -205,6 +247,10 @@ export default function RecordFiles({ recordId, pageConfigId }) {
           );
         })}
       </div>
+
+      {previewFile && (
+        <FilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />
+      )}
     </div>
   );
 }

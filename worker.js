@@ -4,7 +4,7 @@
 
 import { NOTION_API, NOTION_VERSION, CLAUDE_API, D1_SCHEMA, D1_INDEXES } from './worker/schema.js';
 import { getCorsHeaders } from './worker/cors.js';
-import { signJwt, verifyJwt, buildAuthCookie, buildClearAuthCookie, hashPassword, verifyPassword, base64UrlEncode, base64UrlDecode, REFRESH_TOKEN_DAYS, ACCESS_TOKEN_MINS } from './worker/crypto.js';
+import { signJwt, verifyJwt, buildAuthCookie, buildClearAuthCookie, hashPassword, verifyPassword, base64UrlEncode, base64UrlDecode, verifyFileToken, REFRESH_TOKEN_DAYS, ACCESS_TOKEN_MINS } from './worker/crypto.js';
 import { extractUser, authenticate, checkRoutePermission, getFreshRole, checkPagePermission, checkPinProtection, ROLE_LEVEL, requireRole } from './worker/auth.js';
 import { checkRateLimit, recordRateLimitAttempt, clearRateLimit } from './worker/rate-limit.js';
 import { createJsonResponse, safeParseJSON, sleep, resolveRecordTitle } from './worker/utils.js';
@@ -17,7 +17,7 @@ import { handleListSessions, handleRevokeSession, handleLogoutOtherSessions, han
 import { handleListTaskActivity, handleGetTaskActivity, handleUpsertTaskActivity, handleLogInteraction, handleListInteractions, handleGetInteractionSummary } from './worker/handlers/interactions.js';
 import { handleListPinsForTarget, handleListMyPins, handleReplacePinsForTarget, handleDeletePin } from './worker/handlers/task-pins.js';
 import { handleGetDoc, handleSaveDoc, handleUpdateDocBlocks, handleExportDocNotion } from './worker/handlers/documents.js';
-import { handleFileUpload, handleListFiles, handleGetFile, handleDeleteFile } from './worker/handlers/files.js';
+import { handleFileUpload, handleListFiles, handleGetFile, handleGetFileLink, handleDeleteFile } from './worker/handlers/files.js';
 import { handleAuthRegister, handleAuthLogin, handleAuthMe, handleAuthRefresh } from './worker/handlers/auth.js';
 import { handleCreateInvite, handleUserDirectory, handleListUsers, handleDeleteUser, handleRestoreUser, handleHardDeleteUser, handleResetUserPassword, handleUpdateUser } from './worker/handlers/users.js';
 import { handleListCustomFunctions, handleCreateCustomFunction, handleGetCustomFunction, handleUpdateCustomFunction, handleDeleteCustomFunction, handleExternalApiProxy, validatePluginCodeServer } from './worker/handlers/custom-functions.js';
@@ -277,6 +277,33 @@ export default {
         const user = await extractUser(request, env);
         if (!user) return jsonResponse({ _error: "Not authenticated" }, 401);
         return await handleAuthRefresh(env, user, jsonResponse);
+      }
+
+      // ─── Signed file links (before auth gate) ───
+      // A browser cannot attach an Authorization header to an <iframe src>,
+      // <img src>, or a download navigation, so file bytes are served against a
+      // short-lived HMAC signature instead. The signature is minted only by
+      // GET /files/:id/link, which is itself behind the auth gate and runs the
+      // viewer permission check — so this path grants no access that the
+      // requesting user did not already have.
+      //
+      // Deliberately narrow: GET only, the exact /files/:id shape only, and the
+      // signature must match this file id, this download mode, and be unexpired.
+      // Anything that fails falls through to the normal gate below.
+      const signedFileMatch = path.match(/^\/files\/([^/]+)$/);
+      if (signedFileMatch && request.method === "GET" && url.searchParams.get("sig")) {
+        const wantsDownload = url.searchParams.get("download") === "1";
+        const validSig = await verifyFileToken(
+          signedFileMatch[1],
+          url.searchParams.get("sig"),
+          url.searchParams.get("exp"),
+          env,
+          { download: wantsDownload }
+        );
+        if (validSig) {
+          return await handleGetFile(env, null, signedFileMatch[1], jsonResponse, { download: wantsDownload });
+        }
+        return jsonResponse({ _error: "Link expired or invalid" }, 403);
       }
 
       // ─── Auth Gate ───
@@ -1890,6 +1917,21 @@ export default {
       // GET /files — list files, requires ?page_id= or ?record_id=
       if (path === "/files" && request.method === "GET") {
         return await handleListFiles(env, user, url.searchParams.get("page_id"), url.searchParams.get("record_id"), jsonResponse);
+      }
+      // GET /files/:id/link — mint a short-lived signed URL the browser can use
+      // directly in <iframe>/<img>/download contexts. Must sit above the bare
+      // /files/:id match, which would otherwise never see this path anyway
+      // (different shape) but keeps the read order obvious.
+      const fileLinkMatch = path.match(/^\/files\/([^/]+)\/link$/);
+      if (fileLinkMatch && request.method === "GET") {
+        return await handleGetFileLink(
+          env,
+          user,
+          fileLinkMatch[1],
+          url.origin,
+          url.searchParams.get("download") === "1",
+          jsonResponse
+        );
       }
       // GET /files/:id — download file (with page permission check)
       if (fileMatch && request.method === "GET") {

@@ -62,6 +62,52 @@ export async function verifyJwt(token, env) {
   }
 }
 
+// ─── Signed file links ───
+// Browsers cannot attach an Authorization header to a plain navigation, an
+// <img src>, or an <iframe src>, so file bytes can't be fetched the way the
+// rest of the API is. Instead the frontend asks an authenticated endpoint for a
+// short-lived signed URL, and only that signature admits the request.
+//
+// The signed payload is namespaced with a "file:" prefix and carries its own
+// expiry, so a file signature can never be replayed as a session token, and one
+// file's signature is not valid for any other file.
+
+const FILE_TOKEN_TTL_SECS = 15 * 60;
+
+function fileSigInput(fileId, exp, download) {
+  return new TextEncoder().encode(`file:${fileId}:${exp}:${download ? 1 : 0}`);
+}
+
+// Returns { sig, exp } — caller assembles the URL.
+export async function signFileToken(fileId, env, { download = false, ttlSecs = FILE_TOKEN_TTL_SECS } = {}) {
+  const key = await getJwtKey(env);
+  const exp = Math.floor(Date.now() / 1000) + ttlSecs;
+  const sig = await crypto.subtle.sign("HMAC", key, fileSigInput(fileId, exp, download));
+  return { sig: base64UrlEncode(sig), exp };
+}
+
+// Constant-time verification via crypto.subtle.verify. Returns true only for an
+// untampered signature that matches this exact file + mode and has not expired.
+export async function verifyFileToken(fileId, sig, exp, env, { download = false } = {}) {
+  try {
+    if (!sig || !exp) return false;
+    const expNum = Number(exp);
+    if (!Number.isFinite(expNum)) return false;
+    if (expNum < Math.floor(Date.now() / 1000)) return false;
+    const key = await getJwtKey(env);
+    return await crypto.subtle.verify(
+      "HMAC",
+      key,
+      base64UrlDecode(sig),
+      fileSigInput(fileId, expNum, download)
+    );
+  } catch {
+    return false;
+  }
+}
+
+export { FILE_TOKEN_TTL_SECS };
+
 // Build Set-Cookie header for JWT (HttpOnly, Secure, SameSite=None for cross-origin)
 export function buildAuthCookie(token, maxAgeSecs = 7 * 24 * 60 * 60) {
   return `wasabi_jwt=${token}; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=${maxAgeSecs}`;

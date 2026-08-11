@@ -1,5 +1,6 @@
 // ─── File storage handlers (R2) ───
 import { getFreshRole, checkPagePermission } from '../auth.js';
+import { signFileToken, FILE_TOKEN_TTL_SECS } from '../crypto.js';
 
 export async function handleFileUpload(request, env, jsonResponse) {
   try {
@@ -114,7 +115,41 @@ export async function handleListFiles(env, user, pageId, recordId, jsonResponse)
   }
 }
 
-export async function handleGetFile(env, user, id, jsonResponse) {
+// GET /files/:id/link — mint a short-lived signed URL for this file.
+// Authenticated normally (Bearer header), and runs the same viewer permission
+// check as handleGetFile, so signing never widens access. The returned URL is
+// what <iframe>, <img> and download anchors can actually use.
+export async function handleGetFileLink(env, user, id, origin, download, jsonResponse) {
+  try {
+    const row = await env.DB.prepare("SELECT id, name, mime_type, size, page_id FROM files WHERE id = ?").bind(id).first();
+    if (!row) return jsonResponse({ _error: "File not found" }, 404);
+
+    if (user && row.page_id) {
+      const allowed = await checkPagePermission(env, user, row.page_id, "viewer");
+      if (!allowed) return jsonResponse({ _error: "Access denied" }, 403);
+    }
+
+    const { sig, exp } = await signFileToken(id, env, { download });
+    const params = new URLSearchParams({ sig, exp: String(exp) });
+    if (download) params.set("download", "1");
+
+    return jsonResponse({
+      url: `${origin}/files/${id}?${params.toString()}`,
+      expires_at: exp,
+      ttl_secs: FILE_TOKEN_TTL_SECS,
+      name: row.name,
+      mime_type: row.mime_type,
+      size: row.size,
+    });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// `user` is null when the request arrived via a valid signed link — the
+// signature already proved the permission check passed at minting time, so the
+// row lookup below skips re-checking a user that isn't there.
+export async function handleGetFile(env, user, id, jsonResponse, { download = false } = {}) {
   try {
     const row = await env.DB.prepare("SELECT * FROM files WHERE id = ?").bind(id).first();
     if (!row) return jsonResponse({ _error: "File not found" }, 404);
@@ -128,12 +163,20 @@ export async function handleGetFile(env, user, id, jsonResponse) {
     const obj = await env.DOCS.get(row.r2_key);
     if (!obj) return jsonResponse({ _error: "File data not found in R2" }, 404);
 
+    // Quote-escape the filename so a name containing " can't break out of the
+    // header value, and supply RFC 5987 filename* for non-ASCII names.
+    const safeName = String(row.name || "download").replace(/["\\]/g, "_");
+    const disposition = download ? "attachment" : "inline";
+
     return new Response(obj.body, {
       headers: {
         ...jsonResponse.cors,
         "Content-Type": row.mime_type || "application/octet-stream",
-        "Content-Disposition": `inline; filename="${row.name}"`,
+        "Content-Disposition": `${disposition}; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(row.name || "download")}`,
         "Content-Length": String(row.size),
+        // Signed URLs are per-user and short-lived — never let a shared cache
+        // hold onto the bytes.
+        "Cache-Control": "private, max-age=300",
       },
     });
   } catch (err) {

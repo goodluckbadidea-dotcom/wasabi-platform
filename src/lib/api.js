@@ -841,6 +841,20 @@ export function getFileUrl(fileId) {
   return `${workerUrl}/files/${fileId}`;
 }
 
+// Ask the worker for a short-lived signed URL for this file.
+//
+// getFileUrl() above returns the bare worker path, which only works for calls
+// that can carry the Authorization header. A browser cannot attach that header
+// to an <img src>, an <iframe src>, or a download navigation — those requests
+// arrive unauthenticated and the worker rejects them. Use this instead wherever
+// the browser itself fetches the bytes.
+//
+// Returns { url, expires_at, ttl_secs, name, mime_type, size }.
+export async function getFileLink(fileId, { download = false } = {}) {
+  const qs = download ? "?download=1" : "";
+  return apiFetch(`/files/${fileId}/link${qs}`, { method: "GET" });
+}
+
 export async function deleteFile(fileId) {
   return apiFetch(`/files/${fileId}`, { method: "DELETE" });
 }

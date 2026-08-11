@@ -107,14 +107,23 @@ function FilesTab() {
     }
   }, []);
 
-  const handleDownload = useCallback((fileId, fileName) => {
-    const url = api.getFileUrl(fileId);
-    if (url) {
+  // The bare worker path cannot be used here: a download navigation carries no
+  // Authorization header, so it came back 401. Mint a signed URL instead — it
+  // responds with Content-Disposition: attachment, which is what actually
+  // drives the save (the `download` attribute is ignored cross-origin).
+  const handleDownload = useCallback(async (fileId, fileName) => {
+    try {
+      const res = await api.getFileLink(fileId, { download: true });
+      if (res?._error || !res?.url) {
+        console.error("Download failed:", res?._error || "No URL returned");
+        return;
+      }
       const a = document.createElement("a");
-      a.href = url;
+      a.href = res.url;
       a.download = fileName || "download";
-      a.target = "_blank";
       a.click();
+    } catch (err) {
+      console.error("Download failed:", err);
     }
   }, []);
 
