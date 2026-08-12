@@ -1,5 +1,6 @@
 // ─── Command Palette ───
-// Cmd+K searchable overlay: pages, system sections, shortcuts.
+// Cmd+B searchable overlay: pages, system sections, shortcuts.
+// (Cmd+K now opens SearchModal, which searches records and topics too.)
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { C, FONT, RADIUS, SHADOW, Z } from "../design/tokens.js";

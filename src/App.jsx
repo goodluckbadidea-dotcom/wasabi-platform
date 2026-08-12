@@ -256,10 +256,16 @@ function AppContent() {
 
   // ── Keyboard Shortcuts ──
   useKeyboardShortcuts([
+    // mod+k opens full search (pages + records + topics, with fuzzy matching) —
+    // the same modal as the bottom-bar search icon. The command palette, which
+    // only matches page names but also launches System Manager / Automations /
+    // New Page, moved to mod+b. Swapped rather than replaced: mod+k was the
+    // palette's only entry point, so overwriting it would have left the palette
+    // unreachable.
     {
       shortcut: "mod+k",
-      description: "Command palette",
-      handler: () => setCommandPaletteOpen((o) => !o),
+      description: "Search",
+      handler: () => setSearchOpen((o) => !o),
     },
     {
       shortcut: "mod+n",
@@ -268,8 +274,8 @@ function AppContent() {
     },
     {
       shortcut: "mod+b",
-      description: "Toggle search modal",
-      handler: () => setSearchOpen((o) => !o),
+      description: "Command palette",
+      handler: () => setCommandPaletteOpen((o) => !o),
     },
     {
       shortcut: "mod+.",

@@ -129,6 +129,14 @@ export default function SearchModal({ open, onClose }) {
     };
   }, [query]);
 
+  // These must sit ABOVE the `if (!open)` guard below. Hooks have to run in the
+  // same order on every render — with them below the early return, a closed
+  // modal ran fewer hooks than an open one, and opening it threw React error
+  // #310 ("Rendered more hooks than during the previous render"), crashing the
+  // app into the error boundary every single time.
+  const activeDbResults = useMemo(() => dbResults.filter((r) => !r.archived), [dbResults]);
+  const archivedDbResults = useMemo(() => dbResults.filter((r) => r.archived), [dbResults]);
+
   if (!open) return null;
 
   const handlePageClick = (pageId) => {
@@ -143,8 +151,6 @@ export default function SearchModal({ open, onClose }) {
   };
 
   const inactiveColor = C.darkText + "BB";
-  const activeDbResults = useMemo(() => dbResults.filter((r) => !r.archived), [dbResults]);
-  const archivedDbResults = useMemo(() => dbResults.filter((r) => r.archived), [dbResults]);
   const archivedCount = archivedPageResults.length + archivedDbResults.length;
   const noResults =
     query.length >= 2 &&

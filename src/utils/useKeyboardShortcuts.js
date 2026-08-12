@@ -122,10 +122,14 @@ export function formatShortcut(shortcut) {
  * Used for help display and documentation.
  */
 export const SHORTCUT_MAP = {
-  search: { shortcut: "mod+k", description: "Open search / command palette" },
+  search: { shortcut: "mod+k", description: "Open search (pages, records, topics)" },
   newPage: { shortcut: "mod+n", description: "New page (open builder)" },
   refresh: { shortcut: "mod+r", description: "Refresh current view" },
-  toggleSidebar: { shortcut: "mod+b", description: "Toggle sidebar" },
+  // This map is display-only — CommandPalette lists it as help text; the real
+  // bindings live in App.jsx. It previously advertised mod+b as "Toggle
+  // sidebar", which nothing implements, while App.jsx actually bound mod+b to
+  // the search modal. Corrected to match the real binding.
+  commandPalette: { shortcut: "mod+b", description: "Command palette" },
   toggleWasabi: { shortcut: "mod+.", description: "Toggle Wasabi panel" },
   inbox: { shortcut: "mod+i", description: "Open Inbox" },
   escape: { shortcut: "escape", description: "Close panel / cancel" },
