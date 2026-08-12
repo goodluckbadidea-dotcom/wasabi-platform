@@ -3,11 +3,12 @@
 // Two modes: Register (invite code + display name + password) or Login (name + password).
 // If VITE_WORKER_URL is not set, shows a configuration error.
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { C, FONT, FONT_DISPLAY, RADIUS, SHADOW } from "../design/tokens.js";
 import { S } from "../design/styles.js";
 import { ANIM } from "../design/animations.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import { authUsers } from "../lib/api.js";
 import WasabiFlame from "./WasabiFlame.jsx";
 import Spinner from "../components/Spinner.jsx";
 
@@ -20,6 +21,36 @@ export default function LoginScreen({ configError, loading }) {
   const [password, setPassword] = useState("");
   const [step, setStep] = useState("idle"); // "idle" | "loading" | "error"
   const [error, setError] = useState("");
+
+  // ── User picker ──
+  // Login mode shows a dropdown of existing display names instead of a text
+  // field. Registering still types a name, since the account doesn't exist yet.
+  // `manualEntry` is the escape hatch: it is forced on whenever the list is
+  // empty or the fetch failed, so a broken/blocked request can never lock
+  // anyone out of signing in.
+  const [userList, setUserList] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(true);
+  const [manualEntry, setManualEntry] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    authUsers()
+      .then((res) => {
+        if (cancelled) return;
+        const names = Array.isArray(res?.users) ? res.users.filter(Boolean) : [];
+        setUserList(names);
+        if (names.length === 0) setManualEntry(true);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.warn("[LoginScreen] Could not load user list:", err.message || err);
+        setManualEntry(true);
+      })
+      .finally(() => { if (!cancelled) setUsersLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const useDropdown = mode === "login" && !manualEntry && userList.length > 0;
 
   const handleRegister = useCallback(async () => {
     const code = inviteCode.trim();
@@ -113,17 +144,46 @@ export default function LoginScreen({ configError, loading }) {
 
         <div>
           <label style={{ ...S.label, color: C.darkMuted, display: "block", marginBottom: 6 }}>
-            Display Name
+            {useDropdown ? "User" : "Display Name"}
           </label>
-          <input
-            type="text"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="Your name"
-            style={inputStyle}
-            disabled={isLoading}
-            onKeyDown={handleKeyDown}
-          />
+          {useDropdown ? (
+            <>
+              <select
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                style={{ ...inputStyle, cursor: isLoading ? "default" : "pointer", appearance: "auto" }}
+                disabled={isLoading}
+                onKeyDown={handleKeyDown}
+              >
+                <option value="">Select your name...</option>
+                {userList.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => { setManualEntry(true); setDisplayName(""); }}
+                disabled={isLoading}
+                style={{
+                  background: "none", border: "none", padding: "6px 0 0", marginTop: 2,
+                  color: C.darkMuted, fontFamily: FONT, fontSize: 11,
+                  cursor: isLoading ? "default" : "pointer", textDecoration: "underline",
+                }}
+              >
+                Type a name instead
+              </button>
+            </>
+          ) : (
+            <input
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder={usersLoading && mode === "login" ? "Loading users..." : "Your name"}
+              style={inputStyle}
+              disabled={isLoading}
+              onKeyDown={handleKeyDown}
+            />
+          )}
         </div>
 
         <div>

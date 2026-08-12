@@ -157,3 +157,30 @@ export async function handleAuthRefresh(env, jwtPayload, jsonResponse) {
     return jsonResponse({ _error: err.message }, 500);
   }
 }
+
+// GET /auth/users — display names of accounts that can sign in.
+//
+// Deliberately unauthenticated: it backs the login screen's user picker, which
+// is needed before anyone has credentials. Returns ONLY display names — no ids,
+// roles, timestamps or password state — so it discloses the roster and nothing
+// more. Filtered to active accounts that have actually set a password, so
+// deleted users and unredeemed invites never appear.
+//
+// This does hand an attacker a list of valid names, leaving only the password
+// to guess. POST /auth/login is rate-limited per IP, which is what bounds that.
+export async function handleAuthUsers(env, jsonResponse) {
+  try {
+    const res = await env.DB.prepare(
+      `SELECT display_name FROM users
+        WHERE deleted_at IS NULL
+          AND password_hash IS NOT NULL
+          AND display_name IS NOT NULL
+        ORDER BY display_name COLLATE NOCASE ASC`
+    ).all();
+    return jsonResponse({ users: (res.results || []).map((r) => r.display_name) });
+  } catch (err) {
+    // Never block the login screen on this — the frontend falls back to a
+    // free-text name field when the list is empty or unavailable.
+    return jsonResponse({ users: [], _warning: err.message });
+  }
+}

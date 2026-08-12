@@ -18,7 +18,7 @@ import { handleListTaskActivity, handleGetTaskActivity, handleUpsertTaskActivity
 import { handleListPinsForTarget, handleListMyPins, handleReplacePinsForTarget, handleDeletePin } from './worker/handlers/task-pins.js';
 import { handleGetDoc, handleSaveDoc, handleUpdateDocBlocks, handleExportDocNotion } from './worker/handlers/documents.js';
 import { handleFileUpload, handleListFiles, handleGetFile, handleGetFileLink, handleDeleteFile } from './worker/handlers/files.js';
-import { handleAuthRegister, handleAuthLogin, handleAuthMe, handleAuthRefresh } from './worker/handlers/auth.js';
+import { handleAuthRegister, handleAuthLogin, handleAuthMe, handleAuthRefresh, handleAuthUsers } from './worker/handlers/auth.js';
 import { handleCreateInvite, handleUserDirectory, handleListUsers, handleDeleteUser, handleRestoreUser, handleHardDeleteUser, handleResetUserPassword, handleUpdateUser } from './worker/handlers/users.js';
 import { handleListCustomFunctions, handleCreateCustomFunction, handleGetCustomFunction, handleUpdateCustomFunction, handleDeleteCustomFunction, handleExternalApiProxy, validatePluginCodeServer } from './worker/handlers/custom-functions.js';
 import { handleListRules, handleCreateRule, handleGetRule, handleUpdateRule, handleDeleteRule, handleListFlows, handleCreateFlow, handleGetFlow, handleUpdateFlow, handleDeleteFlow, handleListFunctionExecutions, handleCreateFunctionExecution, handleListFlowExecutions, handleCreateFlowExecution, handleUpdateFlowExecution } from './worker/handlers/automations.js';
@@ -240,6 +240,12 @@ export default {
       // ─── D1 Bootstrap (always unauthenticated — tells frontend if login is needed) ───
       if (path === "/init" && request.method === "POST") {
         return await handleInit(env, jsonResponse);
+      }
+
+      // ─── Login user picker (before auth gate — needed before credentials) ───
+      // Display names only. See handleAuthUsers for the disclosure tradeoff.
+      if (path === "/auth/users" && request.method === "GET") {
+        return await handleAuthUsers(env, jsonResponse);
       }
 
       // ─── Auth Endpoints (before auth gate — users can't auth to reach auth) ───

@@ -136,7 +136,7 @@ export function clearConnection() {
 /**
  * Paths that don't require auth — they work without any JWT or refresh token.
  */
-const AUTH_EXEMPT_PATHS = new Set(["/init", "/auth/login", "/auth/register", "/auth/me", "/auth/refresh"]);
+const AUTH_EXEMPT_PATHS = new Set(["/init", "/auth/login", "/auth/register", "/auth/me", "/auth/refresh", "/auth/users"]);
 
 /**
  * Core fetch wrapper — adds auth header + handles errors.
@@ -1195,6 +1195,13 @@ export async function authLogin(displayName, password) {
     method: "POST",
     body: { display_name: displayName, password, _device_info: getDeviceInfo() },
   });
+}
+
+// Display names for the login screen's user picker. Unauthenticated by
+// necessity — it runs before anyone has credentials. Returns names only.
+// Callers must treat failure as non-fatal and fall back to a text field.
+export async function authUsers() {
+  return apiFetch("/auth/users", { method: "GET" });
 }
 
 export async function authMe() {
