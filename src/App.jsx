@@ -56,7 +56,7 @@ import WorkspaceSettings from "./views/WorkspaceSettings.jsx";
 import WidgetGrid from "./components/WidgetGrid.jsx";
 import { ErrorBoundary } from "./core/ErrorBoundary.jsx";
 import { createAutomationEngine } from "./agent/automations.js";
-import { getGoogleStatus } from "./lib/api.js";
+import { getGoogleStatus, getUserState, putUserState } from "./lib/api.js";
 import { cleanupGoogleNeuronNodes } from "./google/googleNeuronCleanup.js";
 import { loadCachedNeurons } from "./neurons/neuronStorage.js";
 import { useKeyboardShortcuts } from "./utils/useKeyboardShortcuts.js";
@@ -138,6 +138,13 @@ function AppContent() {
   const { toggleOverlay: toggleNeurons } = useNeurons();
 
   // ── UI State (persisted to localStorage) ──
+  // ── Per-user dashboard widgets ──
+  // Dashboard pages are shared rows in page_configs, so widgets stored on the
+  // page config were shared by the whole workspace — every user saw, and could
+  // overwrite, the same layout. Widgets now live in per-user state, keyed by
+  // page id so a user with several dashboards keeps them distinct.
+  const [dashboardWidgets, setDashboardWidgets] = useState({});
+  const dashboardWidgetsLoaded = useRef(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [viewStates, setViewStates] = useState(() => {
@@ -253,6 +260,35 @@ function AppContent() {
     setBuilderTemplate(null);
     setActiveRightPane("wasabi");
   }, [setActiveRightPane]);
+
+  // Load this user's dashboard widgets once identity is known.
+  useEffect(() => {
+    if (!identity?.id || dashboardWidgetsLoaded.current) return;
+    dashboardWidgetsLoaded.current = true;
+    getUserState()
+      .then(({ state }) => {
+        const map = state?.dashboard_widgets;
+        setDashboardWidgets(map && typeof map === "object" && !Array.isArray(map) ? map : {});
+      })
+      .catch((err) => console.warn("[App] getUserState (dashboard widgets):", err.message || err));
+  }, [identity]);
+
+  // Reset on user switch so one user's layout never bleeds into another's.
+  useEffect(() => {
+    if (!identity) {
+      dashboardWidgetsLoaded.current = false;
+      setDashboardWidgets({});
+    }
+  }, [identity]);
+
+  const handleUpdateDashboardWidgets = useCallback((pageId, widgets) => {
+    setDashboardWidgets((prev) => {
+      const next = { ...prev, [pageId]: widgets };
+      putUserState({ dashboard_widgets: next })
+        .catch((err) => console.warn("[App] putUserState (dashboard widgets):", err.message || err));
+      return next;
+    });
+  }, []);
 
   // ── Keyboard Shortcuts ──
   useKeyboardShortcuts([
@@ -576,9 +612,10 @@ function AppContent() {
     if (activePageConfig && (activePageConfig.page_type === "dashboard" || activePageConfig.pageType === "dashboard")) {
       return (
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", background: "transparent" }}>
+          {/* Widgets come from per-user state, not the shared page config. */}
           <WidgetGrid
-            widgets={activePageConfig.widgets || []}
-            onUpdateWidgets={(widgets) => updatePageConfig(activePageConfig.id, { widgets })}
+            widgets={dashboardWidgets[activePageConfig.id] || []}
+            onUpdateWidgets={(widgets) => handleUpdateDashboardWidgets(activePageConfig.id, widgets)}
           />
         </div>
       );

@@ -6,10 +6,17 @@ export async function handleGetUserState(env, user, jsonResponse) {
     if (row) {
       // Parse view_prefs JSON if present
       try { row.view_prefs = JSON.parse(row.view_prefs || "{}"); } catch { row.view_prefs = {}; }
+      // Dashboard widgets are per-user; the Dashboard page row itself is shared.
+      // Keyed by page id ({ [pageId]: widgets[] }) so a user with more than one
+      // dashboard page doesn't see the same widgets on both.
+      try {
+        const parsed = JSON.parse(row.dashboard_widgets || "{}");
+        row.dashboard_widgets = (parsed && typeof parsed === "object" && !Array.isArray(parsed)) ? parsed : {};
+      } catch { row.dashboard_widgets = {}; }
     }
-    return jsonResponse({ state: row || { user_id: user.sub, last_page: null, zen_tasks_table_id: null, view_prefs: {} } });
+    return jsonResponse({ state: row || { user_id: user.sub, last_page: null, zen_tasks_table_id: null, view_prefs: {}, dashboard_widgets: {} } });
   } catch (err) {
-    return jsonResponse({ state: { user_id: user.sub, last_page: null, zen_tasks_table_id: null, view_prefs: {} } });
+    return jsonResponse({ state: { user_id: user.sub, last_page: null, zen_tasks_table_id: null, view_prefs: {}, dashboard_widgets: {} } });
   }
 }
 
@@ -20,6 +27,13 @@ export async function handlePutUserState(env, user, body, jsonResponse) {
     if (body.last_page !== undefined) { sets.push("last_page = ?"); binds.push(body.last_page); }
     if (body.zen_tasks_table_id !== undefined) { sets.push("zen_tasks_table_id = ?"); binds.push(body.zen_tasks_table_id); }
     if (body.view_prefs !== undefined) { sets.push("view_prefs = ?"); binds.push(JSON.stringify(body.view_prefs)); }
+    // Whole map replace ({ [pageId]: widgets[] }). The client sends the full
+    // map, so a page whose key is absent keeps no stale entry.
+    if (body.dashboard_widgets !== undefined) {
+      const map = body.dashboard_widgets;
+      sets.push("dashboard_widgets = ?");
+      binds.push(JSON.stringify(map && typeof map === "object" && !Array.isArray(map) ? map : {}));
+    }
 
     // Two-step upsert: ensure row exists, then update only provided fields.
     // Previous single INSERT...ON CONFLICT clobbered zen_tasks_table_id with null

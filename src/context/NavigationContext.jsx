@@ -174,7 +174,10 @@ export function NavigationProvider({ children }) {
     hasAppliedLanding.current = true;
 
     const isDashboard = (p) => p.page_type === "dashboard" || p.pageType === "dashboard";
-    const dashboard = pages.find((p) => isDashboard(p) && p.config?.isGlobal)
+    // `isGlobal` sits at the top level on frontend page objects (see
+    // PagesContext), not under `config` — checking only `config.isGlobal` here
+    // silently never matched and always fell through to the first dashboard.
+    const dashboard = pages.find((p) => isDashboard(p) && (p.isGlobal || p.config?.isGlobal))
       || pages.find(isDashboard);
 
     setActiveLeftPaneRaw("tasks");

@@ -46,7 +46,7 @@ async function handleInit(env, jsonResponse) {
   // ── Schema version fast path ──
   // Skip all DDL if the schema is already at the current version.
   // Reduces ~92 sequential D1 queries to 3 on returning page loads.
-  const CURRENT_SCHEMA_VERSION = "18";
+  const CURRENT_SCHEMA_VERSION = "19";
   try {
     const row = await env.DB.prepare(
       "SELECT value FROM connections WHERE key = 'schema_version'"
@@ -128,6 +128,11 @@ async function handleInit(env, jsonResponse) {
       "CREATE INDEX IF NOT EXISTS idx_cell_links_source ON cell_links(source_page_id)",
       // Per-user view preferences (stored as JSON blob)
       "ALTER TABLE user_state ADD COLUMN view_prefs TEXT DEFAULT '{}'",
+      // Per-user dashboard widgets. The Dashboard page row is shared by the
+      // whole workspace, so widgets stored in its page config were shared too —
+      // every user read and overwrote the same layout. Widgets live here
+      // instead, keyed by user, while the page itself stays single.
+      "ALTER TABLE user_state ADD COLUMN dashboard_widgets TEXT DEFAULT '{}'",
       // Record model: file-per-record support
       "ALTER TABLE files ADD COLUMN record_id TEXT DEFAULT ''",
       "CREATE INDEX IF NOT EXISTS idx_files_record ON files(record_id)",
