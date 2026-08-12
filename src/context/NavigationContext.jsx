@@ -156,9 +156,45 @@ export function NavigationProvider({ children }) {
     }
   }, [pages, activeRightPane]);
 
+  // ── Landing view on app open ──
+  // Tasks on the left, the global dashboard on the right, both panes visible —
+  // every time the app opens, not just on a fresh sign-in.
+  //
+  // The dashboard is resolved by page_type rather than by id: dashboards are
+  // ordinary pages now, and the legacy pane key "dashboard" that the Phase 2
+  // migration wrote into wasabi_active_page matches no route at all, so anyone
+  // still carrying that value fell through to the Workspaces browser.
+  //
+  // Waits for `pages` so the dashboard can be found, and runs once per load so
+  // it never yanks the user away from somewhere they navigated to themselves.
+  const hasAppliedLanding = useRef(false);
+  useEffect(() => {
+    if (hasAppliedLanding.current) return;
+    if (!identity?.id || pages.length === 0) return;
+    hasAppliedLanding.current = true;
+
+    const isDashboard = (p) => p.page_type === "dashboard" || p.pageType === "dashboard";
+    const dashboard = pages.find((p) => isDashboard(p) && p.config?.isGlobal)
+      || pages.find(isDashboard);
+
+    setActiveLeftPaneRaw("tasks");
+    saveJSON("wasabi_active_left_pane", "tasks");
+    setPanelModeRaw("split");
+    saveJSON("wasabi_panel_mode", "split");
+    if (dashboard) {
+      setActiveRightPaneRaw(dashboard.id);
+      saveJSON("wasabi_active_page", dashboard.id);
+    }
+  }, [identity, pages]);
+
   // ── Restore per-user state from D1 on login ──
+  // Superseded by the landing view above, which is unconditional. `last_page`
+  // is still written on navigation (see the debounced save below), so flipping
+  // this back on restores resume-where-you-left-off without any other change.
+  const RESTORE_LAST_PAGE_ON_LOGIN = false;
   const hasRestoredUserState = useRef(false);
   useEffect(() => {
+    if (!RESTORE_LAST_PAGE_ON_LOGIN) return;
     if (!identity?.id || hasRestoredUserState.current) return;
     hasRestoredUserState.current = true;
     getUserState()
