@@ -22,6 +22,35 @@ const FUZZY_MIN_QUERY_LENGTH = 3;
 const FUZZY_EXACT_THRESHOLD = 5;       // exact-match count below which fuzzy fires
 const FUZZY_PER_TABLE_LIMIT = 500;     // candidates pulled per table for fuzzy
 const FUZZY_RESULT_CAP = 25;           // max fuzzy results merged into a search
+const EXACT_PER_TABLE_LIMIT = 200;     // exact-pass rows pulled per table before ranking
+
+// ── Relevance tiers ──
+// The LIKE pass matches a substring anywhere in a title, which makes "ts" hit
+// "Drops Display Mats" just as readily as "Drops Logo T-shirts". Results used
+// to come back ordered by updated_at, i.e. by edit date, so a weak match on a
+// recently-touched row outranked a strong match on an older one. These tiers
+// order by how well the title actually matches.
+const SCORE_EXACT = 1000;      // title is exactly the query
+const SCORE_PREFIX = 800;      // title starts with the query
+const SCORE_WORD = 600;        // query starts a word inside the title
+const SCORE_SUBSTRING = 200;   // query appears mid-word — weakest useful match
+
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function relevanceScore(title, lowerQuery) {
+  const t = String(title || "").toLowerCase();
+  if (!t || !lowerQuery) return 0;
+  if (t === lowerQuery) return SCORE_EXACT;
+  if (t.startsWith(lowerQuery)) return SCORE_PREFIX;
+  // Word-start: any non-letter/non-digit counts as a boundary, so "shirt"
+  // matches "T-shirts" across the hyphen and "log" matches "Drops Logo",
+  // while "ts" does not match "Mats".
+  if (new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegex(lowerQuery)}`, "u").test(t)) return SCORE_WORD;
+  if (t.includes(lowerQuery)) return SCORE_SUBSTRING;
+  return 0;
+}
 
 function normalizeForFuzzy(s) {
   return String(s || "")
@@ -166,7 +195,7 @@ export async function handleSearchRecords(env, url, jsonResponse) {
     }
 
     const pattern = `%${query.toLowerCase()}%`;
-    const results = [];
+    let results = [];
     const seen = new Set();  // page+row keys we've already returned (exact pass)
 
     const buildTitleExpr = (paths) => paths.length === 1
@@ -174,9 +203,11 @@ export async function handleSearchRecords(env, url, jsonResponse) {
       : `COALESCE(${paths.map(() => "json_extract(cells, ?)").join(", ")})`;
 
     // ── Pass 1: exact substring (SQL LIKE) ──
+    // Every candidate table is scanned before anything is cut. Truncating to
+    // `limit` mid-loop (as this used to) meant the best match could be dropped
+    // by a table that merely happened to be iterated first — ranking has to see
+    // the whole set to be meaningful.
     for (const c of candidates) {
-      if (results.length >= limit) break;
-      const remaining = limit - results.length;
       const titleExpr = buildTitleExpr(c.paths);
       try {
         const archivedClause = includeArchived ? "" : "AND archived_at IS NULL";
@@ -189,7 +220,7 @@ export async function handleSearchRecords(env, url, jsonResponse) {
               AND ${titleExpr} IS NOT NULL
               AND LOWER(${titleExpr}) LIKE ?
             ORDER BY updated_at DESC
-            LIMIT ${Math.max(1, Math.min(remaining, 200))}`
+            LIMIT ${EXACT_PER_TABLE_LIMIT}`
         ).bind(
           ...c.paths,            // SELECT
           c.id,                  // table_id
@@ -217,6 +248,23 @@ export async function handleSearchRecords(env, url, jsonResponse) {
         console.error(`[search/records] table ${c.id} (${c.name}) failed (exact):`, err.message);
       }
     }
+
+    // ── Rank the exact pass ──
+    // Score by match quality, then drop the weakest tier when anything better
+    // exists: if a real word-start match was found, mid-word substring noise
+    // ("t" hitting "Mats" via the t in Mats) is not worth showing. When only
+    // substring matches exist they are all kept, so a query never silently
+    // returns nothing that it used to return.
+    const lowerQuery = query.toLowerCase();
+    for (const r of results) r.score = relevanceScore(r.title, lowerQuery);
+    if (results.some((r) => r.score >= SCORE_WORD)) {
+      results = results.filter((r) => r.score >= SCORE_WORD);
+    }
+    results.sort((a, b) =>
+      (b.score - a.score) ||
+      String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""))
+    );
+    results = results.slice(0, limit);
 
     // ── Pass 2: fuzzy fallback ──
     // Only fires when the exact pass came back light AND the query is long

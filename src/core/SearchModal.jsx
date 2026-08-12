@@ -94,7 +94,11 @@ export default function SearchModal({ open, onClose }) {
   // cell is resolved schema-side; neurons match name OR member labels.
   useEffect(() => {
     if (dbSearchTimer.current) clearTimeout(dbSearchTimer.current);
-    if (!query || query.length < 2) {
+    // One character is enough now that the worker ranks by match quality — a
+    // single letter returns titles that start with it (or start a word with
+    // it), not every row that happens to contain it. The old 2-char floor
+    // meant typing "t" showed pages only, with no indication why.
+    if (!query) {
       setDbResults([]);
       setTopicResults([]);
       setSearching(false);
@@ -153,7 +157,7 @@ export default function SearchModal({ open, onClose }) {
   const inactiveColor = C.darkText + "BB";
   const archivedCount = archivedPageResults.length + archivedDbResults.length;
   const noResults =
-    query.length >= 2 &&
+    query.length >= 1 &&
     !searching &&
     pageResults.length === 0 &&
     activeDbResults.length === 0 &&
@@ -265,25 +269,10 @@ export default function SearchModal({ open, onClose }) {
             </div>
           )}
 
-          {/* Page name matches */}
-          {pageResults.length > 0 && (
-            <>
-              <div style={sectionHeaderStyle(inactiveColor)}>Pages</div>
-              {pageResults.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => handlePageClick(p.id)}
-                  style={resultRowStyle()}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                >
-                  <span style={{ fontSize: 13, color: C.darkText, fontFamily: FONT, fontWeight: 500 }}>
-                    {p.name}
-                  </span>
-                </button>
-              ))}
-            </>
-          )}
+          {/* Sections render Records → Topics → Pages. You are almost always
+              looking for a thing rather than the container it lives in, and a
+              fixed Pages-first order meant a weak page match outranked a strong
+              record match every time. */}
 
           {/* Database record matches (active only) */}
           {activeDbResults.length > 0 && (
@@ -335,6 +324,26 @@ export default function SearchModal({ open, onClose }) {
                   </button>
                 );
               })}
+            </>
+          )}
+
+          {/* Page name matches */}
+          {pageResults.length > 0 && (
+            <>
+              <div style={sectionHeaderStyle(inactiveColor)}>Pages</div>
+              {pageResults.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => handlePageClick(p.id)}
+                  style={resultRowStyle()}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = C.darkSurf2; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  <span style={{ fontSize: 13, color: C.darkText, fontFamily: FONT, fontWeight: 500 }}>
+                    {p.name}
+                  </span>
+                </button>
+              ))}
             </>
           )}
 
