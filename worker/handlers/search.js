@@ -88,26 +88,38 @@ function buildTitlePaths(columns, subColumns) {
     paths.push(path);
   };
 
-  // Prefer explicitly typed title columns from both schemas.
-  const titleCols = [
-    ...(columns || []).filter((c) => c?.type === "title"),
-    ...(subColumns || []).filter((c) => c?.type === "title"),
-  ];
-  for (const c of titleCols) {
-    push(c.id);
-    push(c.name);
+  // Top-level and sub-item titles are resolved INDEPENDENTLY.
+  //
+  // These used to share one list with a single "if nothing was found, fall
+  // back" check. A table whose sub-columns declared a `title` column but whose
+  // main columns did not (Production Tracker: sub-column "Name" is a title,
+  // main column "Project name" is typed `text`) satisfied that check with the
+  // sub-column alone, so the fallback never ran and the only paths searched
+  // were the sub-item ones. Parent rows store their title elsewhere, so every
+  // top-level record in such a table was silently unsearchable.
+  //
+  // The rule below mirrors d1SchemaToClassified() in src/lib/dataSource.js —
+  // "explicit title type if set, otherwise the first column is the title" —
+  // which is what the rest of the app (and the view settings panel) already
+  // treats as the title.
+  const cols = columns || [];
+  const subs = subColumns || [];
+
+  const topTitle = cols.find((c) => c?.type === "title") || cols[0];
+  if (topTitle) {
+    push(topTitle.id);
+    push(topTitle.name);
   }
 
-  // Fallback: first text-typed column (top-level, then sub).
-  if (titleCols.length === 0) {
-    const firstText = (columns || []).find((c) => c?.type === "text")
-      || (subColumns || []).find((c) => c?.type === "text");
-    if (firstText) {
-      push(firstText.id);
-      push(firstText.name);
-    }
+  const subTitle = subs.find((c) => c?.type === "title") || subs[0];
+  if (subTitle) {
+    push(subTitle.id);
+    push(subTitle.name);
   }
 
+  // Top-level paths come first, so COALESCE resolves a parent row to its own
+  // title; sub-item rows have no top-level keys and fall through to the sub
+  // paths. Both kinds stay searchable.
   return paths;
 }
 
