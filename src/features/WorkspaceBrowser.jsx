@@ -949,10 +949,13 @@ export default function WorkspaceBrowser() {
                     const n = item.pageCount || 0;
                     return `${n} page${n !== 1 ? "s" : ""}`;
                   }
-                  // Dashboard pages don't have a `views` array — count widgets.
+                  // Dashboard widgets are per-user now, and this card only has
+                  // the shared page config to read from — `item.widgets` is
+                  // whatever happens to be left on the shared row, identical
+                  // for everyone and unrelated to what the viewer actually has.
+                  // A label is honest where a count would not be.
                   if (item.page_type === "dashboard" || item.pageType === "dashboard") {
-                    const n = item.widgets?.length || 0;
-                    return `${n} widget${n !== 1 ? "s" : ""}`;
+                    return "Your dashboard";
                   }
                   const n = item.views?.length || 0;
                   return `${n} view${n !== 1 ? "s" : ""}`;
