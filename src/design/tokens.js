@@ -70,16 +70,16 @@ const _RAW_THEMES = [
     bgGradient: "radial-gradient(ellipse at 50% -10%, #22223A 0%, #080809 60%)",
   },
   {
-    id: "hinoki",
-    label: "Hinoki",
-    description: "Cypress wood \xb7 warm dark",
+    id: "murasaki",
+    label: "Murasaki",
+    description: "Twilight violet \xb7 ember dark",
     mode: "dark",
-    accent: "#C4944A",
-    bg: "#0B0906", surface: "#1C1710", surfaceRaised: "#302820",
-    border: "#4A3E2E",
-    textPrimary: "#F4EDD8", textSecondary: "#9E8E72", textMuted: "#8E7E64",
-    accentSoft: "#281F10",
-    bgGradient: "radial-gradient(ellipse at 50% -10%, #281E0A 0%, #0B0906 60%)",
+    accent: "#E8503A",
+    bg: "#150C2E", surface: "#1C1426", surfaceRaised: "#2A1F38",
+    border: "#3D2F52",
+    textPrimary: "#F5EFE9", textSecondary: "#A99BBA", textMuted: "#8A7CA0",
+    accentSoft: "#3A1520",
+    bgGradient: "radial-gradient(ellipse at 50% -10%, #4A2280 0%, #150C2E 60%)",
   },
   {
     id: "kori",
@@ -165,7 +165,10 @@ export const THEME_LIST = _RAW_THEMES.map((t) => ({
 }));
 
 // ── Resolve initial theme from localStorage (with migration) ──
-const _OLD_TO_NEW = { nigiri: "shoji", miso: "hinoki", nori: "sumi", tobiko: "sumi", uni: "kori" };
+// Murasaki replaced Hinoki. Anyone stored on `hinoki` (or on `miso`, which had
+// previously been migrated to it) is carried across — without this they would
+// fail the THEMES lookup in _resolveInitial and be silently reset to Obsidian.
+const _OLD_TO_NEW = { nigiri: "shoji", miso: "murasaki", hinoki: "murasaki", nori: "sumi", tobiko: "sumi", uni: "kori" };
 
 function _resolveInitial() {
   if (typeof localStorage === "undefined") return { name: "obsidian" };
@@ -259,10 +262,10 @@ const THEME_PALETTES = {
     "#968E86", "#968E86", "#8E7C5E", "#C4684A", "#B8A04A",
     "#7C9844", "#7080A8", "#8E7498", "#B8506A", "#B44448", "#9C7490",
   ],
-  // Hinoki: warm dark — amber-shifted, earthy warmth
-  hinoki: [
-    "#887A62", "#887A62", "#A49048", "#D08848", "#CCAE48",
-    "#8AAE40", "#6890A8", "#907CA0", "#CC5468", "#C84440", "#A87498",
+  // Murasaki: violet dark — ember/amber warms against a violet ground
+  murasaki: [
+    "#8478A0", "#8478A0", "#A08A58", "#E86A48", "#E0B45C",
+    "#7CB068", "#5C90D8", "#9C7CD0", "#D8507C", "#E8503A", "#B478C4",
   ],
   // Kori: cool light — cool-shifted, desaturated, darker for contrast on cool bg
   kori: [
@@ -607,7 +610,7 @@ export const RADIUS = {
 const _SHADOW_TINTS = {
   obsidian: { rgb: "0,8,24",   light: false },
   shoji:    { rgb: "12,8,4",   light: true },
-  hinoki:   { rgb: "18,10,0",  light: false },
+  murasaki: { rgb: "20,6,34",  light: false },
   kori:     { rgb: "0,6,20",   light: true },
   sumi:     { rgb: "6,8,16",   light: false },
 };
