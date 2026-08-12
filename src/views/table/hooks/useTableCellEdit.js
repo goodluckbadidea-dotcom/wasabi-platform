@@ -6,11 +6,12 @@ import { getFieldType } from "../../_viewHelpers.js";
 import { buildProp } from "../../../notion/properties.js";
 import { getTableSchema, updateTableSchema } from "../../../lib/api.js";
 import { assignOptionColor } from "../../../lib/dataSource.js";
+import { globalToast } from "../../../context/ToastContext.jsx";
 import { updateDatabase } from "../../../notion/client.js";
 
 export default function useTableCellEdit({
   schema, onUpdate, focusedCell, setFocusedCell, displayListLength,
-  canEditSchema, isNotionTable, notionDbId, pageConfig, onRefresh,
+  canEditSchema, canManageOptions, isNotionTable, notionDbId, pageConfig, onRefresh,
 }) {
   const [editCell, setEditCell] = useState(null); // { pageId, field }
   const [savingCells, setSavingCells] = useState({}); // { "pageId:field": true }
@@ -69,8 +70,12 @@ export default function useTableCellEdit({
   }, [schema, onUpdate, focusedCell, displayListLength, setFocusedCell]);
 
   // Create option handler for SelectPicker/MultiSelectPicker (adds to D1 schema)
+  // `canManageOptions` (permission) is checked alongside `canEditSchema`
+  // (source type). Adding an option is a schema write, which the worker gates
+  // behind `owner` — without the permission check this fires a request that
+  // always 403s.
   const handleCreateOption = useCallback(async (fieldName, newOptionName) => {
-    if (!canEditSchema || !pageConfig?.id) return;
+    if (!canEditSchema || canManageOptions === false || !pageConfig?.id) return;
     try {
       if (isNotionTable && notionDbId) {
         // Notion handles option auto-creation via page update
@@ -87,8 +92,17 @@ export default function useTableCellEdit({
         });
         await updateTableSchema(pageConfig.id, cols);
       }
-    } catch (err) { console.error("Create option failed:", err); }
-  }, [canEditSchema, isNotionTable, notionDbId, pageConfig?.id]);
+    } catch (err) {
+      console.error("Create option failed:", err);
+      globalToast(
+        err?.status === 403
+          ? "You don't have permission to add options to this column."
+          : `Could not add option: ${err?.message || "unknown error"}`,
+        "error"
+      );
+      throw err;  // don't let the caller commit a value with no backing option
+    }
+  }, [canEditSchema, canManageOptions, isNotionTable, notionDbId, pageConfig?.id]);
 
   // Checkbox direct toggle
   const handleCheckboxToggle = useCallback((pageId, field, currentValue) => {

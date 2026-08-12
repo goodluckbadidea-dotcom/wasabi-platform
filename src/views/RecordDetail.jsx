@@ -2302,6 +2302,12 @@ function SelectEditor({ value, options, onCommit, onCancel, multi, onCreateOptio
       } else {
         onCommit(name);
       }
+    } catch (err) {
+      // Creation failed (typically a 403 — schema edits need owner rights).
+      // Deliberately do NOT commit: writing the value anyway is what produced
+      // orphan statuses on records that no schema option backed. The caller
+      // has already shown the user a toast explaining why.
+      console.error("Create option failed:", err);
     } finally {
       setCreating(false);
     }

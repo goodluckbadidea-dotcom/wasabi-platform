@@ -22,6 +22,7 @@ import LinkPicker from "../core/LinkPicker.jsx";
 // isNeuronsMode, dispatchNeuronSelect, NeuronBadge now imported by table/TableRow.jsx
 import { listUserDirectory, updateRowOwner, notionProxy, getRecordBadgeCounts, deleteRow, getTableSchema, updateTableSchema, updateSubColumnSchema, reparentRow, archiveRow } from "../lib/api.js";
 import { isAdmin } from "../lib/roles.js";
+import { globalToast } from "../context/ToastContext.jsx";
 import { assignOptionColor } from "../lib/dataSource.js";
 import { useTreeData } from "../lib/useTreeData.js";
 import { getPinToken } from "../components/PinLockOverlay.jsx";
@@ -147,6 +148,13 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
     return "unknown";
   }, [pageConfig?.page_type, pageConfig?.pageType, pageConfig?.id, schema?.allFields?.length]);
   const canEditSchema = sourceType === "d1" || sourceType === "notion";
+  // Whether this user may change a column's options — a schema edit, which the
+  // worker gates behind `owner` on PATCH /pages/:id/schema (worker.js). In
+  // practice only an admin clears that check. `canEditSchema` above is about
+  // the data source being editable at all, not about who is asking, so it is
+  // not sufficient on its own: without this, editors were shown a "create
+  // option" affordance whose request always came back 403.
+  const canManageOptions = canEditSchema && isAdmin(identity);
   const isD1Table = sourceType === "d1";
   const isNotionTable = sourceType === "notion";
 
@@ -375,7 +383,16 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
       await updateTableSchema(pageConfig.id, cols);
       onRefresh?.();
     } catch (err) {
+      // A 403 here means the user lacks schema-edit rights. This used to be
+      // console-only, so the modal closed looking exactly like a success and
+      // the options silently never changed.
       console.error("Save options failed:", err);
+      globalToast(
+        err?.status === 403
+          ? "You don't have permission to change this column's options."
+          : `Could not save options: ${err?.message || "unknown error"}`,
+        "error"
+      );
     }
     setOptionsModalCol(null);
   }, [optionsModalCol, pageConfig, onRefresh]);
@@ -517,7 +534,19 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
       }
       onRefresh?.();
     } catch (err) {
+      // Surface the failure AND re-throw. Swallowing it here made the caller
+      // (SelectEditor.handleCreate) believe the option had been created, so it
+      // went on to commit the cell value — writing a status onto the record
+      // that no option in the schema backed, which then rendered as a colourless
+      // orphan pill. Re-throwing keeps the value unwritten.
       console.error("Create option failed:", err);
+      globalToast(
+        err?.status === 403
+          ? "You don't have permission to add options to this column."
+          : `Could not add option: ${err?.message || "unknown error"}`,
+        "error"
+      );
+      throw err;
     }
   }, [pageConfig, onRefresh]);
 
@@ -539,7 +568,7 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
   // ── Cell Edit Hook ──
   const cellEdit = useTableCellEdit({
     schema, onUpdate, focusedCell, setFocusedCell, displayListLength: displayList.length,
-    canEditSchema, isNotionTable, notionDbId, pageConfig, onRefresh,
+    canEditSchema, canManageOptions, isNotionTable, notionDbId, pageConfig, onRefresh,
   });
   const { editCell, setEditCell, savingCells, failedCells, initialChar, setInitialChar, handleEditCommit, handleCreateOption, handleCheckboxToggle } = cellEdit;
 
@@ -1417,7 +1446,10 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
             resolveLinksForView(pageConfig?.id, viewIdx).then(setResolvedLinks).catch(err => console.warn("[Table] resolveLinksForView:", err.message || err));
           }}
           onRefresh={onRefresh}
-          onCreateOption={(colName, optionName) => handleCreateSchemaOption(detailPage, colName, optionName)}
+          // Null when the user can't edit the schema — RecordDetail hides the
+          // "create option" affordance rather than offering an action whose
+          // request is guaranteed to 403.
+          onCreateOption={canManageOptions ? (colName, optionName) => handleCreateSchemaOption(detailPage, colName, optionName) : null}
           parentTitle={detailPage?._parentRowId ? getPageTitle(processedData.find(r => r.id === detailPage._parentRowId)) : undefined}
         />
       )}

@@ -234,24 +234,16 @@ export default function BottomBar({ isThinking, onCreatePage, onSearchClick }) {
   const isWsActive = activeRightPane === "workspaces" ||
     (activeRightPane && !SYSTEM_PAGES.has(activeRightPane) && pages.some((p) => p.id === activeRightPane));
 
+  // Always land at the top level, never inside a workspace.
+  //
+  // This used to walk the current page's ancestry and drill the browser into
+  // the folder containing it, so clicking Workspaces from a page inside "My
+  // Workspace" reopened "My Workspace" rather than the list of workspaces.
+  // WorkspaceBrowser also restores its last path from localStorage, so simply
+  // not setting a path would still land you wherever you were last — the empty
+  // path is set explicitly to override that too.
   const handleWorkspacesClick = () => {
-    if (activeRightPane && activeRightPane !== "workspaces" && !SYSTEM_PAGES.has(activeRightPane)) {
-      const pageConfig = pages.find((p) => p.id === activeRightPane);
-      if (pageConfig?.parentId) {
-        const byId = {};
-        for (const p of pages) byId[p.id] = p;
-        const folderPath = [];
-        let cur = byId[pageConfig.parentId];
-        const seen = new Set();
-        while (cur) {
-          if (seen.has(cur.id)) break;
-          seen.add(cur.id);
-          folderPath.unshift({ id: cur.id, name: cur.name || "Untitled" });
-          cur = cur.parentId ? byId[cur.parentId] : null;
-        }
-        setTargetFolderPath(folderPath);
-      }
-    }
+    setTargetFolderPath([]);
     setActiveRightPane("workspaces");
   };
 
