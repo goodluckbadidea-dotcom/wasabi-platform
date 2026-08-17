@@ -18,7 +18,7 @@ import PresenceAvatars from "../components/PresenceAvatars.jsx";
 import OwnerAvatars from "../components/OwnerAvatars.jsx";
 import { listUserDirectory } from "../lib/api.js";
 
-export default function Kanban({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, onViewConfigChange, pageConfig, initialDetailRecordId, onInitialDetailConsumed, resolvedLinks, onLinkField, onUnlinkField }) {
+export default function Kanban({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, onViewConfigChange, pageConfig, initialDetailRecordId, onInitialDetailConsumed, resolvedLinks, onLinkField, onUnlinkField, onCreateOption }) {
   const collab = useCollaboration();
 
   // Cell links are resolved once by ViewRenderer and passed in, so every
@@ -740,6 +740,7 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
         resolvedLinks={resolvedLinks}
         onLinkField={onLinkField}
         onUnlinkField={onUnlinkField}
+        onCreateOption={onCreateOption}
         onDelete={onDelete}
       />
     </div>

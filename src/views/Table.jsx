@@ -76,7 +76,7 @@ import RowContextMenu from "./table/RowContextMenu.jsx";
 
 // ─── Main Table Component ───
 
-export default function Table({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onSaveFilters, onViewConfigChange, initialDetailRecordId, onInitialDetailConsumed, resolvedLinks = new Map(), removeLink, onLinkField, onUnlinkField }) {
+export default function Table({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onSaveFilters, onViewConfigChange, initialDetailRecordId, onInitialDetailConsumed, resolvedLinks = new Map(), removeLink, onLinkField, onUnlinkField, onCreateOption }) {
   const styles = getStyles();
   const ghostInputStyle = getGhostInputStyle();
   const { user, identity } = usePlatform();
@@ -1437,7 +1437,9 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           // Null when the user can't edit the schema — RecordDetail hides the
           // "create option" affordance rather than offering an action whose
           // request is guaranteed to 403.
-          onCreateOption={canManageOptions ? (colName, optionName) => handleCreateSchemaOption(detailPage, colName, optionName) : null}
+          // Supplied by ViewRenderer so every view offers this identically;
+          // already null when the user lacks schema-edit rights.
+          onCreateOption={onCreateOption ? (colName, optionName) => onCreateOption(detailPage, colName, optionName) : null}
           parentTitle={detailPage?._parentRowId ? getPageTitle(processedData.find(r => r.id === detailPage._parentRowId)) : undefined}
         />
       )}

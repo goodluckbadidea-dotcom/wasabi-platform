@@ -6,6 +6,11 @@ import React, { Suspense, useState, useEffect, useCallback } from "react";
 import { C, RADIUS } from "../design/tokens.js";
 import { ErrorBoundary, ViewSkeleton } from "../core/ErrorBoundary.jsx";
 import { useLinks } from "../context/LinksContext.jsx";
+import { usePlatform } from "../context/PlatformContext.jsx";
+import { globalToast } from "../context/ToastContext.jsx";
+import { isAdmin } from "../lib/roles.js";
+import { assignOptionColor } from "../lib/dataSource.js";
+import { getTableSchema, updateTableSchema, updateSubColumnSchema } from "../lib/api.js";
 import LinkPicker from "../core/LinkPicker.jsx";
 import Table from "./Table.jsx";
 import Gantt from "./Gantt.jsx";
@@ -41,7 +46,7 @@ const VIEW_REGISTRY = {
  * Render a single view from a view config.
  * If viewConfig.config.databaseId is set, scopes data and schema to that database.
  */
-function ViewBlock({ viewConfig, data, schema, schemas, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onViewConfigChange, initialDetailRecordId, onInitialDetailConsumed, resolvedLinks, removeLink, onLinkField, onUnlinkField }) {
+function ViewBlock({ viewConfig, data, schema, schemas, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onViewConfigChange, initialDetailRecordId, onInitialDetailConsumed, resolvedLinks, removeLink, onLinkField, onUnlinkField, onCreateOption }) {
   const Component = VIEW_REGISTRY[viewConfig.type];
 
   if (!Component) {
@@ -87,6 +92,7 @@ function ViewBlock({ viewConfig, data, schema, schemas, onUpdate, onRefresh, onC
       removeLink={removeLink}
       onLinkField={onLinkField}
       onUnlinkField={onUnlinkField}
+      onCreateOption={onCreateOption}
     />
   );
 }
@@ -132,11 +138,59 @@ export default function ViewRenderer({ views = [], data, schema, schemas, onUpda
     refreshLinks();
   }, [removeLink, refreshLinks]);
 
+  // ── Creating select/status options from a record ──
+  // Also owned here for the same reason as links: this used to live in Table,
+  // so opening a record from a gantt, calendar, card or kanban view offered no
+  // way to add an option. Adding one is a schema write, which the worker gates
+  // behind `owner` — in practice only an admin clears it — so non-admins get a
+  // null handler and RecordDetail hides the affordance rather than offering an
+  // action guaranteed to 403.
+  const { identity } = usePlatform();
+  const canManageOptions = isAdmin(identity);
+
+  const handleCreateOption = useCallback(async (page, colName, optionName) => {
+    if (!pageConfig?.id || !optionName?.trim()) return;
+    const trimmed = optionName.trim();
+    const isSubItem = !!page?._parentRowId;
+    try {
+      const schemaRes = await getTableSchema(pageConfig.id);
+      const bucket = isSubItem ? "sub_columns" : "columns";
+      const cols = schemaRes?.[bucket] || [];
+      const updated = cols.map((c) => {
+        if (c.name !== colName) return c;
+        const existing = Array.isArray(c.options) ? c.options : [];
+        if (existing.some((o) => o.name === trimmed)) return c;
+        const newOpt = { name: trimmed, color: assignOptionColor(existing.length) };
+        if (c.type === "status") newOpt.category = "not_started";
+        return { ...c, options: [...existing, newOpt] };
+      });
+      if (isSubItem) {
+        await updateSubColumnSchema(pageConfig.id, updated);
+      } else {
+        await updateTableSchema(pageConfig.id, updated);
+      }
+      onRefresh?.();
+    } catch (err) {
+      // Surface the failure AND re-throw, so the caller does not commit a cell
+      // value whose option was never created (that produced orphan statuses
+      // with no matching option, rendering as colourless pills).
+      console.error("Create option failed:", err);
+      globalToast(
+        err?.status === 403
+          ? "You don't have permission to add options to this column."
+          : `Could not add option: ${err?.message || "unknown error"}`,
+        "error"
+      );
+      throw err;
+    }
+  }, [pageConfig?.id, onRefresh]);
+
   const linkProps = {
     resolvedLinks,
     removeLink,
     onLinkField: handleLinkField,
     onUnlinkField: handleUnlinkField,
+    onCreateOption: canManageOptions ? handleCreateOption : null,
   };
 
   const mainViews = views.filter((v) => v.position !== "sidebar" && v.position !== "bottom");

@@ -31,6 +31,9 @@ export default function RecordDetailPortals({
   resolvedLinks,
   onLinkField,
   onUnlinkField,
+  // Null when the user can't edit the schema — RecordDetail then hides the
+  // "create option" affordance instead of offering a guaranteed 403.
+  onCreateOption,
 }) {
   const { detailPage, closeDetail, showNewModal, newModalPrefill, closeNew } = hook;
 
@@ -47,6 +50,7 @@ export default function RecordDetailPortals({
           resolvedLinks={resolvedLinks}
           onLinkField={onLinkField ? (fieldName, fieldType) => onLinkField(detailPage.id, fieldName, fieldType) : null}
           onUnlinkField={onUnlinkField}
+          onCreateOption={onCreateOption ? (colName, optionName) => onCreateOption(detailPage, colName, optionName) : null}
         />
       )}
 

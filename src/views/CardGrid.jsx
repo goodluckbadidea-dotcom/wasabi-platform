@@ -13,7 +13,7 @@ import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.j
 import OwnerAvatars from "../components/OwnerAvatars.jsx";
 import { listUserDirectory } from "../lib/api.js";
 
-export default function CardGrid({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, onViewConfigChange, pageConfig, resolvedLinks, onLinkField, onUnlinkField }) {
+export default function CardGrid({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, onViewConfigChange, pageConfig, resolvedLinks, onLinkField, onUnlinkField, onCreateOption }) {
   const cellStyles = getCellStyles();
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState(config.activeFilters || {});
@@ -302,6 +302,7 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
         resolvedLinks={resolvedLinks}
         onLinkField={onLinkField}
         onUnlinkField={onUnlinkField}
+        onCreateOption={onCreateOption}
         onDelete={onDelete}
       />
     </div>

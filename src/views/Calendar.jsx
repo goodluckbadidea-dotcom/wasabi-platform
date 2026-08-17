@@ -246,7 +246,7 @@ const cal = {
 };
 
 // ── Main Component ──
-export default function Calendar({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, resolvedLinks, onLinkField, onUnlinkField }) {
+export default function Calendar({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, resolvedLinks, onLinkField, onUnlinkField, onCreateOption }) {
   // Cell links are resolved once by ViewRenderer and passed in, so every
   // view shows the same linked values and offers the same link actions.
 
@@ -638,6 +638,7 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
         resolvedLinks={resolvedLinks}
         onLinkField={onLinkField}
         onUnlinkField={onUnlinkField}
+        onCreateOption={onCreateOption}
         onDelete={onDelete}
       />
     </div>

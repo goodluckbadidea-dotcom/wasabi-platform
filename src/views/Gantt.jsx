@@ -144,7 +144,7 @@ function coerceLinkedDateValue(linkedValue) {
   return linkedValue;
 }
 
-export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onViewConfigChange, resolvedLinks, onLinkField, onUnlinkField }) {
+export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onViewConfigChange, resolvedLinks, onLinkField, onUnlinkField, onCreateOption }) {
   // Cell links are resolved once by ViewRenderer and passed in, so every
   // view shows the same linked values and offers the same link actions.
 
@@ -1379,6 +1379,7 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
           resolvedLinks={resolvedLinks}
           onLinkField={onLinkField ? (fieldName, fieldType) => onLinkField(detailPage.id, fieldName, fieldType) : null}
           onUnlinkField={onUnlinkField}
+          onCreateOption={onCreateOption ? (colName, optionName) => onCreateOption(detailPage, colName, optionName) : null}
         />
       )}
 
