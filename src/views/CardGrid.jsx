@@ -12,24 +12,15 @@ import ViewToolbar from "../components/ViewToolbar.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 import OwnerAvatars from "../components/OwnerAvatars.jsx";
 import { listUserDirectory } from "../lib/api.js";
-import { useLinks } from "../context/LinksContext.jsx";
 
-export default function CardGrid({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, onViewConfigChange, pageConfig }) {
+export default function CardGrid({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, onViewConfigChange, pageConfig, resolvedLinks, onLinkField, onUnlinkField }) {
   const cellStyles = getCellStyles();
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState(config.activeFilters || {});
   const record = useRecordDetail();
 
-  // Link resolution — values pulled from another record render here too.
-  const { resolveLinksForView } = useLinks();
-  const cardViewIdx = pageConfig?.views?.findIndex((v) => v === config) ?? 0;
-  const [resolvedLinks, setResolvedLinks] = useState(new Map());
-  useEffect(() => {
-    if (!pageConfig?.id) return;
-    resolveLinksForView(pageConfig.id, cardViewIdx)
-      .then(setResolvedLinks)
-      .catch((err) => console.warn("[CardGrid] resolveLinksForView:", err.message || err));
-  }, [pageConfig?.id, cardViewIdx, resolveLinksForView]);
+  // Cell links are resolved once by ViewRenderer and passed in, so every
+  // view shows the same linked values and offers the same link actions.
 
   // readField wrapper — returns the resolved linked value when the cell is
   // linked, otherwise falls through to the regular readField.
@@ -308,6 +299,9 @@ export default function CardGrid({ data = [], schema, config = {}, onUpdate, onR
         databaseId={config.databaseId || pageConfig?.databaseIds?.[0] || pageConfig?.id}
         onUpdate={onUpdate}
         onCreate={onCreate}
+        resolvedLinks={resolvedLinks}
+        onLinkField={onLinkField}
+        onUnlinkField={onUnlinkField}
         onDelete={onDelete}
       />
     </div>

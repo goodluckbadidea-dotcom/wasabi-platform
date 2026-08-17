@@ -2,9 +2,11 @@
 // Reads a page config and mounts the appropriate view components.
 // Supports per-view database scoping via viewConfig.config.databaseId.
 
-import React, { Suspense } from "react";
+import React, { Suspense, useState, useEffect, useCallback } from "react";
 import { C, RADIUS } from "../design/tokens.js";
 import { ErrorBoundary, ViewSkeleton } from "../core/ErrorBoundary.jsx";
+import { useLinks } from "../context/LinksContext.jsx";
+import LinkPicker from "../core/LinkPicker.jsx";
 import Table from "./Table.jsx";
 import Gantt from "./Gantt.jsx";
 import CardGrid from "./CardGrid.jsx";
@@ -39,7 +41,7 @@ const VIEW_REGISTRY = {
  * Render a single view from a view config.
  * If viewConfig.config.databaseId is set, scopes data and schema to that database.
  */
-function ViewBlock({ viewConfig, data, schema, schemas, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onViewConfigChange, initialDetailRecordId, onInitialDetailConsumed }) {
+function ViewBlock({ viewConfig, data, schema, schemas, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onViewConfigChange, initialDetailRecordId, onInitialDetailConsumed, resolvedLinks, removeLink, onLinkField, onUnlinkField }) {
   const Component = VIEW_REGISTRY[viewConfig.type];
 
   if (!Component) {
@@ -81,6 +83,10 @@ function ViewBlock({ viewConfig, data, schema, schemas, onUpdate, onRefresh, onC
       onViewConfigChange={onViewConfigChange}
       initialDetailRecordId={initialDetailRecordId}
       onInitialDetailConsumed={onInitialDetailConsumed}
+      resolvedLinks={resolvedLinks}
+      removeLink={removeLink}
+      onLinkField={onLinkField}
+      onUnlinkField={onUnlinkField}
     />
   );
 }
@@ -88,7 +94,51 @@ function ViewBlock({ viewConfig, data, schema, schemas, onUpdate, onRefresh, onC
 /**
  * Render all views for a page in a layout.
  */
+// ── Cell links ──
+// Links are resolved and stored against view index -1, and that is deliberate.
+// Table.jsx derived the index with
+//   pageConfig.views.findIndex((v) => v === config)
+// which compares view objects against the *inner* `config` object and so never
+// matches, yielding -1 every time. Every link in the database carries
+// target_view_idx = -1 as a result: cell links are page-wide in practice, not
+// per-view. Computing a real index here would resolve nothing and orphan all of
+// them, so the historical value is kept until that is migrated deliberately.
+const LINK_VIEW_IDX = -1;
+
 export default function ViewRenderer({ views = [], data, schema, schemas, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onViewConfigChange, initialDetailRecordId, onInitialDetailConsumed }) {
+  // Owned here rather than in Table so that every view which can open a record
+  // — Gantt, Calendar, CardGrid, Kanban — gets the same linking behaviour.
+  // Previously only Table passed these to RecordDetail, so opening the same
+  // record from a Timelines or Calendar view silently lost the link affordance.
+  const { resolveLinksForView, createLink, removeLink } = useLinks();
+  const [resolvedLinks, setResolvedLinks] = useState(new Map());
+  const [linkPickerCell, setLinkPickerCell] = useState(null); // { pageId, field, fieldType }
+
+  const refreshLinks = useCallback(() => {
+    if (!pageConfig?.id) return Promise.resolve();
+    return resolveLinksForView(pageConfig.id, LINK_VIEW_IDX)
+      .then(setResolvedLinks)
+      .catch((err) => console.warn("[ViewRenderer] resolveLinksForView:", err.message || err));
+  }, [pageConfig?.id, resolveLinksForView]);
+
+  useEffect(() => { refreshLinks(); }, [refreshLinks]);
+
+  const handleLinkField = useCallback((pageId, fieldName, fieldType) => {
+    setLinkPickerCell({ pageId, field: fieldName, fieldType });
+  }, []);
+
+  const handleUnlinkField = useCallback((linkId) => {
+    removeLink(linkId);
+    refreshLinks();
+  }, [removeLink, refreshLinks]);
+
+  const linkProps = {
+    resolvedLinks,
+    removeLink,
+    onLinkField: handleLinkField,
+    onUnlinkField: handleUnlinkField,
+  };
+
   const mainViews = views.filter((v) => v.position !== "sidebar" && v.position !== "bottom");
   const sideViews = views.filter((v) => v.position === "sidebar");
   const bottomViews = views.filter((v) => v.position === "bottom");
@@ -119,6 +169,7 @@ export default function ViewRenderer({ views = [], data, schema, schemas, onUpda
                 onDelete={onDelete}
                 pageConfig={pageConfig}
                 onViewConfigChange={onViewConfigChange}
+                {...linkProps}
                 {...(i === 0 ? { initialDetailRecordId, onInitialDetailConsumed } : {})}
               />
             </ErrorBoundary>
@@ -160,6 +211,7 @@ export default function ViewRenderer({ views = [], data, schema, schemas, onUpda
                   onCreate={onCreate}
                   onDelete={onDelete}
                   pageConfig={pageConfig}
+                  {...linkProps}
                 />
               </ErrorBoundary>
             ))}
@@ -188,11 +240,38 @@ export default function ViewRenderer({ views = [], data, schema, schemas, onUpda
                   onCreate={onCreate}
                   onDelete={onDelete}
                   pageConfig={pageConfig}
+                  {...linkProps}
                 />
               </ErrorBoundary>
             </div>
           ))}
         </div>
+      )}
+
+      {/* Shared by every view, so linking works the same from a table row, a
+          gantt bar, a calendar entry or a card. */}
+      {linkPickerCell && (
+        <LinkPicker
+          targetFieldType={linkPickerCell.fieldType}
+          onCancel={() => setLinkPickerCell(null)}
+          onSelect={async (selection) => {
+            const { sourceRef, sourcePageId, sourceViewIdx, sourceName, sourceFieldType } = selection;
+            await createLink({
+              name: sourceName,
+              sourcePage: sourcePageId,
+              sourceView: sourceViewIdx,
+              sourceRef,
+              targetPage: pageConfig?.id || "",
+              targetView: LINK_VIEW_IDX,
+              targetRef: { type: "notion", pageId: linkPickerCell.pageId, field: linkPickerCell.field },
+              direction: "one_way",
+              sourceFieldType: sourceFieldType || "",
+              targetFieldType: linkPickerCell.fieldType || "",
+            });
+            await refreshLinks();
+            setLinkPickerCell(null);
+          }}
+        />
       )}
     </div>
   );

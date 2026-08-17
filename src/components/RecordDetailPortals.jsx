@@ -24,6 +24,13 @@ export default function RecordDetailPortals({
   onUpdate,
   onCreate,
   onDelete,
+  // Cell linking, supplied by ViewRenderer. Without these RecordDetail hides
+  // the link affordance entirely, which is why records opened from Calendar,
+  // CardGrid or Kanban could not be linked while the same record opened from
+  // a table could.
+  resolvedLinks,
+  onLinkField,
+  onUnlinkField,
 }) {
   const { detailPage, closeDetail, showNewModal, newModalPrefill, closeNew } = hook;
 
@@ -37,6 +44,9 @@ export default function RecordDetailPortals({
           onUpdate={onUpdate}
           onDelete={onDelete ? (ids) => { onDelete(ids); closeDetail(); } : undefined}
           pageConfigId={pageConfigId}
+          resolvedLinks={resolvedLinks}
+          onLinkField={onLinkField ? (fieldName, fieldType) => onLinkField(detailPage.id, fieldName, fieldType) : null}
+          onUnlinkField={onUnlinkField}
         />
       )}
 

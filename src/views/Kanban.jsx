@@ -17,22 +17,12 @@ import { useCollaboration } from "../context/CollaborationContext.jsx";
 import PresenceAvatars from "../components/PresenceAvatars.jsx";
 import OwnerAvatars from "../components/OwnerAvatars.jsx";
 import { listUserDirectory } from "../lib/api.js";
-import { useLinks } from "../context/LinksContext.jsx";
 
-export default function Kanban({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, onViewConfigChange, pageConfig, initialDetailRecordId, onInitialDetailConsumed }) {
+export default function Kanban({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, onViewConfigChange, pageConfig, initialDetailRecordId, onInitialDetailConsumed, resolvedLinks, onLinkField, onUnlinkField }) {
   const collab = useCollaboration();
 
-  // Link resolution — same wiring as Table/Gantt/Calendar so values pulled
-  // from another record group, sort, and render here too.
-  const { resolveLinksForView } = useLinks();
-  const kanbanViewIdx = pageConfig?.views?.findIndex((v) => v === config) ?? 0;
-  const [resolvedLinks, setResolvedLinks] = useState(new Map());
-  useEffect(() => {
-    if (!pageConfig?.id) return;
-    resolveLinksForView(pageConfig.id, kanbanViewIdx)
-      .then(setResolvedLinks)
-      .catch((err) => console.warn("[Kanban] resolveLinksForView:", err.message || err));
-  }, [pageConfig?.id, kanbanViewIdx, resolveLinksForView]);
+  // Cell links are resolved once by ViewRenderer and passed in, so every
+  // view shows the same linked values and offers the same link actions.
 
   // readField wrapper — returns the resolved linked value when the cell is
   // linked, otherwise falls through to the regular readField.
@@ -747,6 +737,9 @@ export default function Kanban({ data = [], schema, config = {}, onUpdate, onRef
         databaseId={targetDatabaseId}
         onUpdate={onUpdate}
         onCreate={onCreate}
+        resolvedLinks={resolvedLinks}
+        onLinkField={onLinkField}
+        onUnlinkField={onUnlinkField}
         onDelete={onDelete}
       />
     </div>

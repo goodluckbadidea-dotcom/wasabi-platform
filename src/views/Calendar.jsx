@@ -12,7 +12,6 @@ import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.j
 import { DAY_NAMES, MONTH_NAMES_FULL } from "../utils/helpers.js";
 import OwnerAvatars from "../components/OwnerAvatars.jsx";
 import { listUserDirectory } from "../lib/api.js";
-import { useLinks } from "../context/LinksContext.jsx";
 
 // Convert a resolved linked value into a date-shaped value for the Calendar's
 // existing readProp/parseDateStr path. Date ranges resolve to "start – end".
@@ -247,18 +246,9 @@ const cal = {
 };
 
 // ── Main Component ──
-export default function Calendar({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig }) {
-  // Link resolution — same wiring as Table/Gantt so dates pulled from another
-  // record render here too.
-  const { resolveLinksForView } = useLinks();
-  const calViewIdx = pageConfig?.views?.findIndex((v) => v === config) ?? 0;
-  const [resolvedLinks, setResolvedLinks] = useState(new Map());
-  useEffect(() => {
-    if (!pageConfig?.id) return;
-    resolveLinksForView(pageConfig.id, calViewIdx)
-      .then(setResolvedLinks)
-      .catch((err) => console.warn("[Calendar] resolveLinksForView:", err.message || err));
-  }, [pageConfig?.id, calViewIdx, resolveLinksForView]);
+export default function Calendar({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, resolvedLinks, onLinkField, onUnlinkField }) {
+  // Cell links are resolved once by ViewRenderer and passed in, so every
+  // view shows the same linked values and offers the same link actions.
 
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
@@ -645,6 +635,9 @@ export default function Calendar({ data = [], schema, config = {}, onUpdate, onR
         databaseId={targetDatabaseId}
         onUpdate={onUpdate}
         onCreate={onCreate}
+        resolvedLinks={resolvedLinks}
+        onLinkField={onLinkField}
+        onUnlinkField={onUnlinkField}
         onDelete={onDelete}
       />
     </div>

@@ -17,8 +17,6 @@ import {
 import FilterChips from "./FilterChips.jsx";
 import RecordDetail from "./RecordDetail.jsx";
 import NewRecordModal from "./NewRecordModal.jsx";
-import { useLinks } from "../context/LinksContext.jsx";
-import LinkPicker from "../core/LinkPicker.jsx";
 // isNeuronsMode, dispatchNeuronSelect, NeuronBadge now imported by table/TableRow.jsx
 import { listUserDirectory, updateRowOwner, notionProxy, getRecordBadgeCounts, deleteRow, getTableSchema, updateTableSchema, updateSubColumnSchema, reparentRow, archiveRow } from "../lib/api.js";
 import { isAdmin } from "../lib/roles.js";
@@ -78,7 +76,7 @@ import RowContextMenu from "./table/RowContextMenu.jsx";
 
 // ─── Main Table Component ───
 
-export default function Table({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onSaveFilters, onViewConfigChange, initialDetailRecordId, onInitialDetailConsumed }) {
+export default function Table({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onSaveFilters, onViewConfigChange, initialDetailRecordId, onInitialDetailConsumed, resolvedLinks = new Map(), removeLink, onLinkField, onUnlinkField }) {
   const styles = getStyles();
   const ghostInputStyle = getGhostInputStyle();
   const { user, identity } = usePlatform();
@@ -198,18 +196,9 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
 
 
   // ── Cell Linking ──
-  const { resolveLinksForView, createLink, removeLink, getLinksForTarget } = useLinks();
-  const [resolvedLinks, setResolvedLinks] = useState(new Map());
-  const [linkPickerCell, setLinkPickerCell] = useState(null); // { pageId, field, fieldType }
-
-  // Resolve linked values for this view
-  const viewIdx = pageConfig?.views?.findIndex((v) => v === config) ?? 0;
-  useEffect(() => {
-    if (!pageConfig?.id) return;
-    resolveLinksForView(pageConfig.id, viewIdx)
-      .then(setResolvedLinks)
-      .catch(err => console.warn("[Table] resolveLinksForView:", err.message || err));
-  }, [pageConfig?.id, viewIdx, resolveLinksForView]);
+  // Owned by ViewRenderer now and passed in, so Gantt/Calendar/CardGrid/Kanban
+  // get identical behaviour — previously this lived here, which is why opening
+  // a record from any view other than the table lost the link affordance.
   const targetDatabaseId = config.databaseId || pageConfig?.databaseIds?.[0] || pageConfig?.id;
 
   // ── In-table title map (for depends_on column display) ──
@@ -1440,11 +1429,10 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           onDelete={onDelete ? (ids) => { onDelete(ids); setDetailPage(null); } : undefined}
           pageConfigId={pageConfig?.id}
           resolvedLinks={resolvedLinks}
-          onLinkField={(fieldName, fieldType) => setLinkPickerCell({ pageId: detailPage.id, field: fieldName, fieldType })}
-          onUnlinkField={(linkId) => {
-            removeLink(linkId);
-            resolveLinksForView(pageConfig?.id, viewIdx).then(setResolvedLinks).catch(err => console.warn("[Table] resolveLinksForView:", err.message || err));
-          }}
+          // RecordDetail calls back with (fieldName, fieldType); the record id
+          // is supplied here since only the view knows which record is open.
+          onLinkField={onLinkField ? (fieldName, fieldType) => onLinkField(detailPage.id, fieldName, fieldType) : null}
+          onUnlinkField={onUnlinkField}
           onRefresh={onRefresh}
           // Null when the user can't edit the schema — RecordDetail hides the
           // "create option" affordance rather than offering an action whose
@@ -1495,34 +1483,6 @@ export default function Table({ data = [], schema, config = {}, onUpdate, onRefr
           column={subOptionsModalCol}
           onSave={handleSaveSubOptions}
           onClose={() => setSubOptionsModalCol(null)}
-        />
-      )}
-
-      {linkPickerCell && (
-        <LinkPicker
-          targetFieldType={linkPickerCell.fieldType}
-          onCancel={() => setLinkPickerCell(null)}
-          onSelect={async (selection) => {
-            const { sourceRef, sourcePageId, sourceViewIdx, sourceName, sourceIsReadOnly, previewValue, sourceFieldType } = selection;
-            const targetRef = { type: "notion", pageId: linkPickerCell.pageId, field: linkPickerCell.field };
-            await createLink({
-              name: sourceName,
-              sourcePage: sourcePageId,
-              sourceView: sourceViewIdx,
-              sourceRef,
-              targetPage: pageConfig?.id || "",
-              targetView: viewIdx,
-              targetRef,
-              direction: "one_way",
-              sourceFieldType: sourceFieldType || "",
-              targetFieldType: linkPickerCell.fieldType || "",
-            });
-            // Refresh resolved links
-            resolveLinksForView(pageConfig?.id, viewIdx)
-              .then(setResolvedLinks)
-              .catch(err => console.warn("[Table] resolveLinksForView:", err.message || err));
-            setLinkPickerCell(null);
-          }}
         />
       )}
 

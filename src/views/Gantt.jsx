@@ -12,7 +12,6 @@ import NewRecordModal from "./NewRecordModal.jsx";
 import { isNeuronsMode, dispatchNeuronSelect } from "../neurons/NeuronsContext.jsx";
 import OwnerAvatars from "../components/OwnerAvatars.jsx";
 import { listUserDirectory } from "../lib/api.js";
-import { useLinks } from "../context/LinksContext.jsx";
 
 // ─── Constants ───
 
@@ -145,18 +144,9 @@ function coerceLinkedDateValue(linkedValue) {
   return linkedValue;
 }
 
-export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onViewConfigChange }) {
-  // Link resolution — same wiring as Table view so dates/values pulled from
-  // another record render here too.
-  const { resolveLinksForView } = useLinks();
-  const viewIdx = pageConfig?.views?.findIndex((v) => v === config) ?? 0;
-  const [resolvedLinks, setResolvedLinks] = useState(new Map());
-  useEffect(() => {
-    if (!pageConfig?.id) return;
-    resolveLinksForView(pageConfig.id, viewIdx)
-      .then(setResolvedLinks)
-      .catch((err) => console.warn("[Gantt] resolveLinksForView:", err.message || err));
-  }, [pageConfig?.id, viewIdx, resolveLinksForView]);
+export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefresh, onCreate, onDelete, pageConfig, onViewConfigChange, resolvedLinks, onLinkField, onUnlinkField }) {
+  // Cell links are resolved once by ViewRenderer and passed in, so every
+  // view shows the same linked values and offers the same link actions.
 
   const preferredZoomIndex = useMemo(() => {
     if (config.preferredZoom) {
@@ -1386,6 +1376,9 @@ export default function Gantt({ data = [], schema, config = {}, onUpdate, onRefr
           onUpdate={onUpdate}
           onDelete={onDelete ? (ids) => { onDelete(ids); setDetailPage(null); } : undefined}
           pageConfigId={pageConfig?.id}
+          resolvedLinks={resolvedLinks}
+          onLinkField={onLinkField ? (fieldName, fieldType) => onLinkField(detailPage.id, fieldName, fieldType) : null}
+          onUnlinkField={onUnlinkField}
         />
       )}
 
