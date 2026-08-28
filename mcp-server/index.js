@@ -19,14 +19,29 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { readFileSync, statSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // ── Load config ──
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const config = JSON.parse(readFileSync(join(__dirname, "config.json"), "utf-8"));
 const { workerUrl, apiKey } = config;
+
+// Text-shaped media types that survive a res.text() decode intact. An absent or
+// empty Content-Type is treated as textual so the guard below never fires on a
+// 204, an empty body, or a response that simply declares nothing — the goal is
+// to catch binary, not to tighten what the worker is allowed to send back.
+function isTextualContentType(contentType) {
+  const ct = String(contentType).split(";")[0].trim().toLowerCase();
+  if (!ct) return true;
+  if (ct.startsWith("text/")) return true;
+  // application/json, application/xml, application/javascript, application/x-ndjson,
+  // and structured-suffix types such as application/problem+json.
+  return /^application\/([a-z0-9.-]+\+)?(json|xml|javascript|x-ndjson)$/.test(ct);
+}
 
 // ── Core fetch helper ──
 async function wasabiFetch(path, method = "GET", body = null) {
@@ -39,6 +54,24 @@ async function wasabiFetch(path, method = "GET", body = null) {
   if (body && method !== "GET") opts.body = JSON.stringify(body);
 
   const res = await fetch(url, opts);
+
+  // Guard: everything below decodes with res.text(), which silently destroys
+  // binary — invalid UTF-8 bytes each become U+FFFD and valid multi-byte runs
+  // collapse, so the payload comes back shorter than it went in and cannot be
+  // recovered. No endpoint reached through this helper should return binary; if
+  // one does, fail loudly rather than hand back a corrupted body. File bytes
+  // have their own path that never touches this function: wasabi_files
+  // download (writes to disk) or get_url (signed link).
+  // Only applied to successful responses — on an error status the body is read
+  // as text either way to build the message below, and the status matters more.
+  const contentType = res.headers.get("content-type") || "";
+  if (res.ok && !isTextualContentType(contentType)) {
+    throw new Error(
+      `${method} ${path} \u2192 refusing to decode "${contentType}" as text; it would be corrupted. ` +
+      `For files, use wasabi_files with action "download" to write bytes to disk, or "get_url" for a signed link.`
+    );
+  }
+
   const text = await res.text();
   let data;
   try { data = JSON.parse(text); } catch { data = text; }
@@ -60,6 +93,71 @@ function parseJSON(str) {
   if (!str) return undefined;
   if (typeof str === "object") return str;
   try { return JSON.parse(str); } catch { return str; }
+}
+
+// ── File download helpers ──
+// wasabiFetch() decodes every response with res.text(), which destroys binary:
+// invalid UTF-8 bytes each become U+FFFD and valid multi-byte runs collapse, so
+// a PDF comes back shorter than it went in and unrecoverable. File bytes
+// therefore never travel through wasabiFetch — they are streamed to disk here
+// as an ArrayBuffer and only the resulting path is returned to the caller.
+
+const DEFAULT_DOWNLOAD_DIR = join(homedir(), "Downloads", "wasabi");
+
+// Stored file names come from user upload, so they may contain path separators
+// or leading dots. Flatten to a single safe segment before joining to a dir.
+function safeFileName(name) {
+  const flat = String(name || "download").replace(/[/\\]/g, "_").replace(/^\.+/, "_");
+  return flat.trim().slice(0, 200) || "download";
+}
+
+// `dest` may be a full file path, a directory, or omitted. A trailing slash or
+// an existing directory means "put it in here under its stored name".
+function resolveDest(dest, storedName) {
+  const fileName = safeFileName(storedName);
+  if (!dest) return join(DEFAULT_DOWNLOAD_DIR, fileName);
+
+  let target = dest.startsWith("~") ? join(homedir(), dest.slice(1)) : dest;
+  target = isAbsolute(target) ? target : resolve(process.cwd(), target);
+
+  const looksLikeDir = dest.endsWith("/") || (() => {
+    try { return statSync(target).isDirectory(); } catch { return false; }
+  })();
+
+  return looksLikeDir ? join(target, fileName) : target;
+}
+
+async function downloadFile(id, dest) {
+  if (!id) throw new Error("wasabi_files download requires `id`");
+
+  // The signed link carries its own HMAC, so the fetch below needs no API key.
+  const link = await wasabiFetch(`/files/${id}/link?download=1`);
+  if (!link || !link.url) throw new Error(`No signed URL returned for file ${id}`);
+
+  const res = await fetch(link.url);
+  if (!res.ok) throw new Error(`GET signed file url \u2192 ${res.status} ${res.statusText}`);
+
+  // arrayBuffer(), never text() — this is the whole point of the helper.
+  const bytes = Buffer.from(await res.arrayBuffer());
+
+  const path = resolveDest(dest, link.name || id);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, bytes);
+
+  // Surface a byte-count mismatch rather than letting a truncated file pass as
+  // good — silent corruption is exactly the failure this replaced.
+  const expected = typeof link.size === "number" ? link.size : null;
+  const complete = expected === null || bytes.length === expected;
+
+  return {
+    path,
+    name: link.name || basename(path),
+    mime_type: link.mime_type || null,
+    bytes: bytes.length,
+    expected_bytes: expected,
+    complete,
+    ...(complete ? {} : { warning: `Wrote ${bytes.length} bytes but the record says ${expected}. Treat this file as incomplete.` }),
+  };
 }
 
 // ── Auto-sync helper: check if a table needs sync pull ──
@@ -416,14 +514,15 @@ server.tool(
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_files",
-  "List or delete files stored in R2. Upload is not supported via MCP (use the web UI). Filter by page_id or record_id.",
+  "List, link, download, or delete files stored in R2. Upload is not supported via MCP (use the web UI). Filter by page_id or record_id. To analyse a PDF or image, use `download` \u2014 it writes the file to disk byte-for-byte and returns the path, so the bytes never pass through the conversation. `get_url` returns a short-lived signed link (15 min) that needs no auth header.",
   {
-    action: z.enum(["list", "get_url", "delete"]),
-    id: z.string().optional().describe("File ID (for get_url/delete)"),
+    action: z.enum(["list", "get_url", "download", "delete"]),
+    id: z.string().optional().describe("File ID (for get_url/download/delete)"),
     page_id: z.string().optional().describe("Filter files by page"),
     record_id: z.string().optional().describe("Filter files by record"),
+    dest: z.string().optional().describe("For `download` only: where to write the file. A file path, or a directory (trailing slash or an existing dir) to use the file's stored name. Defaults to ~/Downloads/wasabi/."),
   },
-  async ({ action, id, page_id, record_id }) => {
+  async ({ action, id, page_id, record_id, dest }) => {
     try {
       switch (action) {
         case "list": {
@@ -432,7 +531,8 @@ server.tool(
           if (record_id) params.set("record_id", record_id);
           return ok(await wasabiFetch(`/files?${params}`));
         }
-        case "get_url": return ok(await wasabiFetch(`/files/${id}`));
+        case "get_url": return ok(await wasabiFetch(`/files/${id}/link`));
+        case "download": return ok(await downloadFile(id, dest));
         case "delete": return ok(await wasabiFetch(`/files/${id}`, "DELETE"));
       }
     } catch (e) { return err(e); }
