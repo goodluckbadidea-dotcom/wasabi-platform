@@ -232,8 +232,12 @@ export default function ExtensionViewer({ snapshotId, onBack }) {
             srcDoc={html}
             // allow-scripts so the template's JS runs; no allow-same-origin so
             // it can't read the parent's storage/cookies. Theme handshake is
-            // via postMessage which works across origins.
-            sandbox="allow-scripts allow-popups"
+            // via postMessage which works across origins. allow-modals +
+            // allow-downloads let report templates open the print dialog
+            // (save-as-PDF) and download generated files (order CSVs) —
+            // added 2026-09-01 for the Inventory and Production Planner's
+            // order builder.
+            sandbox="allow-scripts allow-popups allow-modals allow-downloads"
             style={{
               width: "100%", height: "100%", border: "none",
               background: "transparent", display: "block",
