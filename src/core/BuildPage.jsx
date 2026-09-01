@@ -15,7 +15,7 @@ import * as api from "../lib/api.js";
 import { timeAgo } from "../utils/helpers.js";
 
 // ── Accent follows the active theme ──
-// C.accent is resolved at render-time (e.g. Obsidian → #5CC63A)
+// C.accent is resolved at render-time (e.g. Fuji → #9A7BD8)
 
 // ── Shared field styles ──
 // Returned from function so theme switches pick up fresh C values.

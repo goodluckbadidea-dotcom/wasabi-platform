@@ -58,16 +58,16 @@ const _RAW_THEMES = [
     bgGradient: "radial-gradient(ellipse at 50% -10%, #EDD8D0 0%, #F8F6F1 60%)",
   },
   {
-    id: "obsidian",
-    label: "Obsidian",
-    description: "Volcanic glass \xb7 OLED dark",
+    id: "fuji",
+    label: "Fuji",
+    description: "Wisteria \xb7 lavender dark",
     mode: "dark",
-    accent: WASABI,
-    bg: "#080809", surface: "#151518", surfaceRaised: "#24242A",
-    border: "#3A3A42",
-    textPrimary: "#F2F2F3", textSecondary: "#9898A4", textMuted: "#84849A",
-    accentSoft: "#142810",
-    bgGradient: "radial-gradient(ellipse at 50% -10%, #22223A 0%, #080809 60%)",
+    accent: "#9A7BD8",
+    bg: "#17141F", surface: "#221E2E", surfaceRaised: "#2C2740",
+    border: "#453D5E",
+    textPrimary: "#EDEAF6", textSecondary: "#A79FC0", textMuted: "#8B82A8",
+    accentSoft: "#2A2144",
+    bgGradient: "radial-gradient(ellipse at 50% -10%, #3A2C5E 0%, #17141F 60%)",
   },
   {
     id: "murasaki",
@@ -165,21 +165,22 @@ export const THEME_LIST = _RAW_THEMES.map((t) => ({
 }));
 
 // ── Resolve initial theme from localStorage (with migration) ──
-// Murasaki replaced Hinoki. Anyone stored on `hinoki` (or on `miso`, which had
-// previously been migrated to it) is carried across — without this they would
-// fail the THEMES lookup in _resolveInitial and be silently reset to Obsidian.
-const _OLD_TO_NEW = { nigiri: "shoji", miso: "murasaki", hinoki: "murasaki", nori: "sumi", tobiko: "sumi", uni: "kori" };
+// Fuji replaced Obsidian (2026-09-01); Murasaki had earlier replaced Hinoki.
+// Anyone stored on a retired id is carried across — without this they would
+// fail the THEMES lookup in _resolveInitial and be silently reset to the
+// default.
+const _OLD_TO_NEW = { nigiri: "shoji", miso: "murasaki", hinoki: "murasaki", nori: "sumi", tobiko: "sumi", uni: "kori", obsidian: "fuji" };
 
 function _resolveInitial() {
-  if (typeof localStorage === "undefined") return { name: "obsidian" };
+  if (typeof localStorage === "undefined") return { name: "fuji" };
   // Migrate from old single-key format
   const oldKey = localStorage.getItem("wasabi-theme");
   if (oldKey && !localStorage.getItem("wasabi-theme-name")) {
-    localStorage.setItem("wasabi-theme-name", "obsidian");
+    localStorage.setItem("wasabi-theme-name", "fuji");
     localStorage.removeItem("wasabi-theme");
     localStorage.removeItem("wasabi-theme-mode");
   }
-  let name = localStorage.getItem("wasabi-theme-name") || "obsidian";
+  let name = localStorage.getItem("wasabi-theme-name") || "fuji";
   // Migrate old theme names
   if (!THEMES[name] && _OLD_TO_NEW[name]) {
     name = _OLD_TO_NEW[name];
@@ -187,7 +188,7 @@ function _resolveInitial() {
   }
   // Remove stale mode key
   localStorage.removeItem("wasabi-theme-mode");
-  return { name: THEMES[name] ? name : "obsidian" };
+  return { name: THEMES[name] ? name : "fuji" };
 }
 
 let _currentThemeName = _resolveInitial().name;
@@ -252,10 +253,10 @@ function _paleTint(hex) {
 const _PALETTE_KEYS = ["default", "gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red", "orchid"];
 
 const THEME_PALETTES = {
-  // Obsidian: cool/neutral dark — vivid, slight cool undertone
-  obsidian: [
-    "#78788A", "#78788A", "#9A8A60", "#D88058", "#D4C462",
-    "#80C050", "#5C9CE8", "#9480C4", "#DC4878", "#D43E5C", "#B474B4",
+  // Fuji: lavender dark — cool violet undertone, accents read against #17141F
+  fuji: [
+    "#867EA0", "#867EA0", "#A08C64", "#D87858", "#D4BC5E",
+    "#7EB464", "#5C94DC", "#A186D8", "#D85288", "#D44656", "#B47CC0",
   ],
   // Shoji: warm light — muted, dusty, earthy, darker for contrast on cream bg
   shoji: [
@@ -291,7 +292,7 @@ function _buildInfoPalette(hexes) {
 // ── Global View Palette ──
 // Mutable informational palette, rebuilt on theme switch.
 // View configs store palette indices (0-11) in colorMapping.
-export const VIEW_PALETTE = _buildInfoPalette(THEME_PALETTES[_currentThemeName] || THEME_PALETTES.obsidian);
+export const VIEW_PALETTE = _buildInfoPalette(THEME_PALETTES[_currentThemeName] || THEME_PALETTES.fuji);
 
 // ── Timeline Palette (Gantt) ──
 // Mutable array derived from vivid VIEW_PALETTE entries.
@@ -550,7 +551,7 @@ export function resolveUnifiedColor(value, opts = {}) {
 /** Apply a theme by name. Mode is inherent to the theme. Mutates C and all palettes in place. */
 export function applyTheme(name, _mode) {
   // _mode param accepted for backward compat but ignored — mode is locked per theme
-  const theme = THEMES[name] || THEMES.obsidian;
+  const theme = THEMES[name] || THEMES.fuji;
   _currentThemeName = name;
   _currentThemeMode = theme.mode;
   const tokens = theme[_currentThemeMode] || theme.dark;
@@ -564,7 +565,7 @@ export function applyTheme(name, _mode) {
   });
 
   // Rebuild info palette from theme-specific colors
-  const newPalette = _buildInfoPalette(THEME_PALETTES[name] || THEME_PALETTES.obsidian);
+  const newPalette = _buildInfoPalette(THEME_PALETTES[name] || THEME_PALETTES.fuji);
   for (let i = 0; i < newPalette.length; i++) {
     VIEW_PALETTE[i] = newPalette[i];
   }
@@ -608,7 +609,7 @@ export const RADIUS = {
 // Tinted per-theme for warm/cool temperature matching.
 // Mutable object — rebuilt by applyTheme() like C tokens.
 const _SHADOW_TINTS = {
-  obsidian: { rgb: "0,8,24",   light: false },
+  fuji:     { rgb: "16,10,32", light: false },
   shoji:    { rgb: "12,8,4",   light: true },
   murasaki: { rgb: "20,6,34",  light: false },
   kori:     { rgb: "0,6,20",   light: true },
@@ -616,7 +617,7 @@ const _SHADOW_TINTS = {
 };
 
 function _buildShadows(themeName) {
-  const tint = _SHADOW_TINTS[themeName] || _SHADOW_TINTS.obsidian;
+  const tint = _SHADOW_TINTS[themeName] || _SHADOW_TINTS.fuji;
   const r = tint.rgb;
   // Light themes get softer shadows; dark themes get deeper ones
   if (tint.light) {

@@ -8,7 +8,7 @@ import { rebuildStyles } from "../design/styles.js";
 import { injectScrollbarStyles, updateCSSCustomProperties } from "../design/animations.js";
 
 const ThemeContext = createContext({
-  themeName: "obsidian",
+  themeName: "fuji",
   themeMode: "dark",
   setThemeName: () => {},
   toggleMode: () => {},
