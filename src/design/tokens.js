@@ -46,16 +46,16 @@ function _buildTokens(t) {
 // ── Theme Definitions ──
 const _RAW_THEMES = [
   {
-    id: "shoji",
-    label: "Shoji",
-    description: "Washi paper \xb7 warm light",
+    id: "sakura",
+    label: "Sakura",
+    description: "Blossom \xb7 blush light",
     mode: "light",
-    accent: "#C0543A",
-    bg: "#F8F6F1", surface: "#EBE5D6", surfaceRaised: "#D8D0BE",
-    border: "#AEA898",
-    textPrimary: "#1A1714", textSecondary: "#524C44", textMuted: "#6D6558",
-    accentSoft: "#EDD8D0",
-    bgGradient: "radial-gradient(ellipse at 50% -10%, #EDD8D0 0%, #F8F6F1 60%)",
+    accent: "#C0517E",
+    bg: "#FAF5F7", surface: "#F0E4EA", surfaceRaised: "#E4D3DC",
+    border: "#BCA3B0",
+    textPrimary: "#221720", textSecondary: "#5C4654", textMuted: "#77606C",
+    accentSoft: "#F4D9E4",
+    bgGradient: "radial-gradient(ellipse at 50% -10%, #F4D9E4 0%, #FAF5F7 60%)",
   },
   {
     id: "fuji",
@@ -82,16 +82,16 @@ const _RAW_THEMES = [
     bgGradient: "radial-gradient(ellipse at 50% -10%, #4A2280 0%, #150C2E 60%)",
   },
   {
-    id: "kori",
-    label: "Kori",
-    description: "Glacier ice \xb7 cool light",
+    id: "ayame",
+    label: "Ayame",
+    description: "Iris \xb7 wisteria-cool light",
     mode: "light",
-    accent: "#2C72CC",
-    bg: "#F4F7FB", surface: "#E0E6F0", surfaceRaised: "#CCD4E2",
-    border: "#A0AAC0",
-    textPrimary: "#121820", textSecondary: "#48546C", textMuted: "#5A667E",
-    accentSoft: "#D4E4F6",
-    bgGradient: "radial-gradient(ellipse at 50% -10%, #D4E4F6 0%, #F4F7FB 60%)",
+    accent: "#7A5BC8",
+    bg: "#F5F3FA", surface: "#E8E4F1", surfaceRaised: "#D8D2E6",
+    border: "#A79DBE",
+    textPrimary: "#191426", textSecondary: "#4E4668", textMuted: "#6A6284",
+    accentSoft: "#E3D9F4",
+    bgGradient: "radial-gradient(ellipse at 50% -10%, #E3D9F4 0%, #F5F3FA 60%)",
   },
   {
     id: "sumi",
@@ -169,7 +169,13 @@ export const THEME_LIST = _RAW_THEMES.map((t) => ({
 // Anyone stored on a retired id is carried across — without this they would
 // fail the THEMES lookup in _resolveInitial and be silently reset to the
 // default.
-const _OLD_TO_NEW = { nigiri: "shoji", miso: "murasaki", hinoki: "murasaki", nori: "sumi", tobiko: "sumi", uni: "kori", obsidian: "fuji" };
+const _OLD_TO_NEW = {
+  nigiri: "sakura", shoji: "sakura",
+  uni: "ayame", kori: "ayame",
+  miso: "murasaki", hinoki: "murasaki",
+  nori: "sumi", tobiko: "sumi",
+  obsidian: "fuji",
+};
 
 function _resolveInitial() {
   if (typeof localStorage === "undefined") return { name: "fuji" };
@@ -258,20 +264,20 @@ const THEME_PALETTES = {
     "#867EA0", "#867EA0", "#A08C64", "#D87858", "#D4BC5E",
     "#7EB464", "#5C94DC", "#A186D8", "#D85288", "#D44656", "#B47CC0",
   ],
-  // Shoji: warm light — muted, dusty, earthy, darker for contrast on cream bg
-  shoji: [
-    "#968E86", "#968E86", "#8E7C5E", "#C4684A", "#B8A04A",
-    "#7C9844", "#7080A8", "#8E7498", "#B8506A", "#B44448", "#9C7490",
+  // Sakura: blush light — dusty rose undertone, darker for contrast on blush bg
+  sakura: [
+    "#96848E", "#96848E", "#8E7A62", "#C4684A", "#B29C4E",
+    "#78944C", "#6C7CAC", "#8E6C9C", "#BC4E74", "#B8444E", "#A06C94",
   ],
   // Murasaki: violet dark — ember/amber warms against a violet ground
   murasaki: [
     "#8478A0", "#8478A0", "#A08A58", "#E86A48", "#E0B45C",
     "#7CB068", "#5C90D8", "#9C7CD0", "#D8507C", "#E8503A", "#B478C4",
   ],
-  // Kori: cool light — cool-shifted, desaturated, darker for contrast on cool bg
-  kori: [
-    "#8490A4", "#8490A4", "#7C8474", "#C0703C", "#A89C54",
-    "#589860", "#4480CC", "#7474B4", "#B84868", "#BC3848", "#8C6CA4",
+  // Ayame: wisteria light — violet-shifted, darker for contrast on lavender bg
+  ayame: [
+    "#837CA0", "#837CA0", "#8A7C66", "#C06B44", "#A89A50",
+    "#5E9460", "#4E7CC8", "#7B62B8", "#B84A78", "#BC4052", "#9668A8",
   ],
   // Sumi: neutral dark — balanced, slight blue-gray undertone
   sumi: [
@@ -610,9 +616,9 @@ export const RADIUS = {
 // Mutable object — rebuilt by applyTheme() like C tokens.
 const _SHADOW_TINTS = {
   fuji:     { rgb: "16,10,32", light: false },
-  shoji:    { rgb: "12,8,4",   light: true },
+  sakura:   { rgb: "22,8,16",  light: true },
   murasaki: { rgb: "20,6,34",  light: false },
-  kori:     { rgb: "0,6,20",   light: true },
+  ayame:    { rgb: "14,8,28",  light: true },
   sumi:     { rgb: "6,8,16",   light: false },
 };
 
