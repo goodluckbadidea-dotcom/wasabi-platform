@@ -721,7 +721,16 @@ function AppContent() {
           }
           rightContent={
             <div
-              key={`${activeRightPane || "__home__"}-${themeName}`}
+              // Report snapshots keep their key stable across theme switches:
+              // the theme-keyed remount would reload the sandboxed iframe and
+              // wipe the report's UI state (sliders, open rows, order builder).
+              // ExtensionViewer subscribes to the theme context and re-posts
+              // tokens to the iframe, which restyles itself in place.
+              key={
+                typeof activeRightPane === "string" && activeRightPane.startsWith("extension-snapshot:")
+                  ? activeRightPane
+                  : `${activeRightPane || "__home__"}-${themeName}`
+              }
               style={{
                 flex: 1,
                 display: "flex",
