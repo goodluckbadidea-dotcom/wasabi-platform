@@ -7,14 +7,26 @@
 //
 // Loaded as a top-level "right pane" via App.jsx routing when the user
 // drills into a Reports DB row's snapshot.
+//
+// Open-record bridge: the sandboxed report can ask the host to open a
+// workspace record by posting { type: "wasabi:open-record", pageId, recordId }.
+// The viewer loads that table and shows the standard RecordDetail drawer over
+// the report; edits save through the same updateRecord path table views use,
+// and each saved field is echoed back as { type: "wasabi:record-saved",
+// recordId } so the report can mark its (frozen) tile as edited.
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { C, FONT } from "../design/tokens.js";
 import {
   getExtension, getSnapshot, fetchSnapshotHtml, publishSnapshot,
   getSnapshotHtmlUrl,
 } from "../lib/api.js";
 import { useTheme } from "../context/ThemeContext.jsx";
+import { usePlatform } from "../context/PlatformContext.jsx";
+import { fetchDataSource, updateRecord } from "../lib/dataSource.js";
+import { getPinToken } from "../components/PinLockOverlay.jsx";
+import { getPageTitle } from "../notion/properties.js";
+import RecordDetail from "../views/RecordDetail.jsx";
 import PanelHeader from "../core/PanelHeader.jsx";
 import { IconChevronLeft, IconLink, IconCheck, IconRefresh, IconWarning } from "../design/icons.jsx";
 
@@ -27,6 +39,10 @@ export default function ExtensionViewer({ snapshotId, onBack }) {
   const [error, setError] = useState(null);
   const [publishing, setPublishing] = useState(false);
   const iframeRef = useRef(null);
+  const { user, pages } = usePlatform();
+  // Record opened from the report: { pageConfig, schema, data, recordId }
+  const [drawer, setDrawer] = useState(null);
+  const [drawerNotice, setDrawerNotice] = useState(null);
 
   // Load snapshot metadata + rendered HTML in parallel
   useEffect(() => {
@@ -90,6 +106,71 @@ export default function ExtensionViewer({ snapshotId, onBack }) {
     post();
     return () => iframe.removeEventListener("load", post);
   }, [html, extension, themeCtx]);
+
+  const loadRecordSource = useCallback(async (pageId) => {
+    const pageConfig = (pages || []).find((p) => p.id === pageId);
+    if (!pageConfig) throw new Error("That table isn't available in this workspace.");
+    const { data, schema } = await fetchDataSource(pageConfig, user);
+    return { pageConfig, schema, data: data || [] };
+  }, [pages, user]);
+
+  const openRecord = useCallback(async (pageId, recordId) => {
+    setDrawerNotice("Opening record…");
+    try {
+      const src = await loadRecordSource(pageId);
+      if (!src.data.some((r) => r.id === recordId)) throw new Error("That record no longer exists in the table.");
+      setDrawer({ ...src, recordId });
+      setDrawerNotice(null);
+    } catch (err) {
+      setDrawerNotice(`Couldn't open record: ${err.message || err}`);
+    }
+  }, [loadRecordSource]);
+
+  // Only messages from this viewer's own iframe are honoured. The sandboxed
+  // iframe has an opaque ("null") origin, so match on source, not origin.
+  useEffect(() => {
+    const onMessage = (e) => {
+      const frame = iframeRef.current;
+      if (!frame || e.source !== frame.contentWindow) return;
+      const msg = e.data;
+      if (!msg || msg.type !== "wasabi:open-record") return;
+      if (typeof msg.pageId !== "string" || typeof msg.recordId !== "string") return;
+      openRecord(msg.pageId, msg.recordId);
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [openRecord]);
+
+  // Errors are left to throw so RecordDetail's own save alert reports them.
+  const handleDrawerUpdate = useCallback(async (id, fieldName, payload) => {
+    if (!drawer || !payload) return;
+    const rec = drawer.data.find((r) => r.id === id);
+    const isSubItem = rec ? !!rec._parentRowId : id !== drawer.recordId;
+    await updateRecord(drawer.pageConfig, id, fieldName, payload, user, null, {
+      pinToken: getPinToken(drawer.pageConfig.id), isSubItem,
+    });
+    setDrawer((d) => d && {
+      ...d,
+      data: d.data.map((p) => p.id !== id ? p : {
+        ...p,
+        properties: { ...p.properties, [fieldName]: { ...p.properties[fieldName], ...payload } },
+      }),
+    });
+    try {
+      iframeRef.current?.contentWindow?.postMessage({ type: "wasabi:record-saved", recordId: id }, "*");
+    } catch { /* iframe gone */ }
+  }, [drawer, user]);
+
+  const refreshDrawer = useCallback(async () => {
+    if (!drawer) return;
+    try {
+      const src = await loadRecordSource(drawer.pageConfig.id);
+      setDrawer((d) => d && { ...d, ...src });
+    } catch { /* keep showing what we have */ }
+  }, [drawer, loadRecordSource]);
+
+  const drawerRecord = drawer ? drawer.data.find((r) => r.id === drawer.recordId) : null;
+  const drawerParent = drawerRecord?._parentRowId ? drawer.data.find((r) => r.id === drawerRecord._parentRowId) : null;
 
   // Publish action — promotes Draft → Published (Reports row updates too)
   const handlePublish = async () => {
@@ -244,7 +325,34 @@ export default function ExtensionViewer({ snapshotId, onBack }) {
             }}
           />
         )}
+
+        {drawerNotice && (
+          <div
+            role="status"
+            onClick={() => setDrawerNotice(null)}
+            style={{
+              position: "absolute", left: "50%", bottom: 16, transform: "translateX(-50%)",
+              background: C.surface, color: C.text, border: `1px solid ${C.border}`,
+              borderRadius: 8, padding: "8px 14px", fontSize: 12, fontFamily: FONT,
+              boxShadow: "0 6px 20px rgba(0,0,0,0.2)", cursor: "pointer", maxWidth: "80%",
+            }}
+          >
+            {drawerNotice}
+          </div>
+        )}
       </div>
+
+      {drawerRecord && (
+        <RecordDetail
+          page={drawerRecord}
+          schema={drawerRecord._parentRowId && drawer.schema?._subSchema ? drawer.schema._subSchema : drawer.schema}
+          pageConfigId={drawer.pageConfig.id}
+          parentTitle={drawerParent ? getPageTitle(drawerParent) : undefined}
+          onUpdate={handleDrawerUpdate}
+          onRefresh={refreshDrawer}
+          onClose={() => setDrawer(null)}
+        />
+      )}
     </div>
   );
 }
