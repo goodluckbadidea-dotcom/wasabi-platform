@@ -257,14 +257,14 @@ server.tool(
   "wasabi_data",
   "Query, create, update, and delete table rows in D1 databases. Use wasabi_pages first to find table IDs. Default limit is 100 rows.",
   {
-    action: z.enum(["list", "query", "create", "update", "delete"]),
+    action: z.enum(["list", "query", "create", "update", "delete", "archive", "unarchive"]),
     table_id: z.string().describe("The table/database ID"),
-    row_id: z.string().optional().describe("Row ID (for update/delete)"),
+    row_id: z.string().optional().describe("Row ID (for update/delete/archive/unarchive). archive = the app's Archive (restorable from the Archive view, admin-only); unarchive restores it"),
     filters: z.string().optional().describe("JSON string of filter object for query action: {\"col id or name\": {\"op\": value}} with ops eq, ne, contains, not_contains, starts_with, ends_with, gt, gte, lt, lte, is_empty, is_not_empty (eq/ne null = empty/not-empty). Unknown columns or ops error loudly. NOTE: the worker filters within the first `limit` rows — raise limit to cover the table"),
     sorts: z.string().optional().describe("JSON string of sort array for query action: [{\"field\": \"col id or name\", \"direction\": \"asc|desc\"}]. _created_time/_last_edited_time sort on row timestamps"),
     limit: z.number().optional().describe("Max rows to return (default 100)"),
     offset: z.number().optional().describe("Pagination offset"),
-    rows: z.string().optional().describe("JSON string of array of row objects for create, each {\"cells\": {...}}"),
+    rows: z.string().optional().describe("JSON string of array of row objects for create, each {\"cells\": {...}}. Optional per row: \"owner_user_id\": [\"<user id>\"] — the new row's owner, set at creation (admin callers only; no 'assigned you' notification); \"parent_row_id\" for a sub-item"),
     data: z.string().optional().describe("JSON string of row data for update: {\"cells\": {...}} or a bare cells map. MERGES into existing cells by default; pass {\"cells\": {...}, \"merge_cells\": false} to replace the whole cells object"),
   },
   async ({ action, table_id, row_id, filters: rawFilters, sorts: rawSorts, limit, offset, rows: rawRows, data: rawData }) => {
@@ -320,6 +320,14 @@ server.tool(
           return ok(await wasabiFetch(`/tables/${table_id}/rows/${row_id}`, "PATCH", normalizeRowUpdateBody(data)));
         case "delete":
           return ok(await wasabiFetch(`/tables/${table_id}/rows/${row_id}`, "DELETE"));
+        case "archive":
+          // The app's Archive (sets archived_at; the row leaves normal views
+          // and can be restored from the Archive view). Admin-only on the
+          // worker. Never a delete — this is how bridge reverts undo a
+          // record they created.
+          return ok(await wasabiFetch(`/tables/${table_id}/rows/${row_id}/archive`, "POST"));
+        case "unarchive":
+          return ok(await wasabiFetch(`/tables/${table_id}/rows/${row_id}/unarchive`, "POST"));
       }
     } catch (e) { return err(e); }
   }
