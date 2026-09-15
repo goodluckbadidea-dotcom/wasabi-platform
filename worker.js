@@ -40,6 +40,7 @@ import {
   handlePublishSnapshot, handleGetSnapshotData, handleServeSnapshotHtml,
   handleAddSnapshotLink, handleListSnapshotLinks,
 } from './worker/handlers/extensions.js';
+import { handleRefreshSnapshot, handleGetRefreshDraft, handleDecideRefreshDraft } from './worker/handlers/extension-refresh.js';
 import {
   handleListDcItems, handleGetDcItem, handleCreateDcItem, handleUpdateDcItem, handleDeleteDcItem,
   handleListDcSubmissions, handleGetDcSubmission, handleCreateDcSubmission,
@@ -1070,6 +1071,9 @@ export default {
       const snapDataMatch = path.match(/^\/extensions\/snapshots\/([^/]+)\/data$/);
       const snapPublishMatch = path.match(/^\/extensions\/snapshots\/([^/]+)\/publish$/);
       const snapLinksMatch = path.match(/^\/extensions\/snapshots\/([^/]+)\/links$/);
+      const snapRefreshMatch = path.match(/^\/extensions\/snapshots\/([^/]+)\/refresh$/);
+      const snapDraftMatch = path.match(/^\/extensions\/snapshots\/([^/]+)\/draft$/);
+      const snapDecideMatch = path.match(/^\/extensions\/snapshots\/([^/]+)\/draft\/decide$/);
       if (path === "/extensions/snapshots" && request.method === "GET") {
         return await handleListSnapshots(env, url, null, jsonResponse);
       }
@@ -1078,6 +1082,18 @@ export default {
       }
       if (snapPublishMatch && request.method === "POST") {
         return await handlePublishSnapshot(env, decodeURIComponent(snapPublishMatch[1]), user, jsonResponse);
+      }
+      // AI-drafted, human-approved report refresh (see worker/handlers/extension-refresh.js)
+      if (snapRefreshMatch && request.method === "POST") {
+        const body = await request.json().catch(() => ({}));
+        return await handleRefreshSnapshot(env, decodeURIComponent(snapRefreshMatch[1]), body, user, jsonResponse);
+      }
+      if (snapDraftMatch && request.method === "GET") {
+        return await handleGetRefreshDraft(env, decodeURIComponent(snapDraftMatch[1]), user, jsonResponse);
+      }
+      if (snapDecideMatch && request.method === "POST") {
+        const body = await request.json().catch(() => ({}));
+        return await handleDecideRefreshDraft(env, decodeURIComponent(snapDecideMatch[1]), body, user, jsonResponse);
       }
       if (snapLinksMatch && request.method === "GET") {
         return await handleListSnapshotLinks(env, decodeURIComponent(snapLinksMatch[1]), jsonResponse);
