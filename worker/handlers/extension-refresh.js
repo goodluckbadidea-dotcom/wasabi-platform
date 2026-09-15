@@ -1,30 +1,51 @@
-// ─── Report refresh: AI-drafted, human-approved ───
-// Lets a report (extension snapshot) rebuild itself from its source table.
+// ─── Report update: facts from the tracker, text from Claude desktop, a person approves ───
+// Lets a report (extension snapshot) be brought up to date from its source table.
 // Only extensions whose ext_config.refresh.enabled is true take part.
 //
-//   POST /extensions/snapshots/:id/refresh       build a DRAFT (editor)
-//   GET  /extensions/snapshots/:id/draft         read the pending draft
-//   POST /extensions/snapshots/:id/draft/decide  approve / deny / edit (approvers only)
+// The Wasabi server never calls an AI model here. The written parts of the report
+// (each tile's summary / next / flag / vendor, and suggested groups) are drafted in
+// Claude desktop through the Wasabi MCP tool `wasabi_report_update`, and nothing the
+// team sees changes until an approver reviews the draft inside the report.
 //
-// Facts (status, dates, tracking, new or removed records) are rebuilt with
-// fixed rules. Claude only writes each tile's summary / next / flag / vendor
-// and may suggest merging tiles. Nothing the team sees changes until an
-// approver submits decisions. The draft lives in R2 beside the snapshot HTML,
-// and each approval archives the previous DATA blob under <snapshot>.history/.
+//   POST /extensions/snapshots/:id/refresh          refresh facts only, no AI (editor)
+//   GET  /extensions/snapshots/:id/refresh/context  everything Claude desktop needs to draft
+//   POST /extensions/snapshots/:id/draft            submit the text Claude desktop wrote (editor)
+//   GET  /extensions/snapshots/:id/draft            read the pending draft
+//   POST /extensions/snapshots/:id/draft/decide     approve / deny / edit (approvers only)
+//
+// The draft lives in R2 beside the snapshot HTML, and every change to the live report
+// archives the previous DATA blob under <snapshot>.history/ in R2.
 
-import Anthropic from '@anthropic-ai/sdk';
 import { safeParseJSON } from '../utils.js';
-import { decryptSecret } from '../crypto.js';
-import { checkRateLimit, recordRateLimitAttempt } from '../rate-limit.js';
 import { validateData, handleUpdateSnapshot } from './extensions.js';
 import { createNotificationInternal } from './notifications.js';
 
-const DEFAULT_MODEL = 'claude-opus-5';
-const REFRESH_LIMIT = 3;           // presses per window, per snapshot
-const REFRESH_WINDOW_SECS = 900;   // rate_limits rows are purged after 15 min
-// Claude Opus 5 list prices (USD per million tokens), for the cost shown after a run.
-const PRICE_PER_MTOK = { input: 5, output: 25 };
-const MAX_COMMENT_CHARS = 2500;
+const MAX_COMMENT_CHARS = 1500;
+const DEFAULT_PAGE_SIZE = 5;   // page 1 also carries the writing rules + report definition
+
+// Handed to Claude desktop with the context; the report's own definition follows it.
+const WRITING_RULES = `You write the text parts of a production report that a team reads in its weekly meeting. Each tile covers one project, sometimes several tracker records that are one job. You are given every tile's facts from the tracker, all comments on its records (email updates, meeting notes and people's own notes), and the tile's current text.
+
+For every tile, return text that describes the CURRENT state:
+- Use only what the facts and comments say. Never invent quantities, dates, names or prices. If sources conflict, say so plainly and briefly.
+- If nothing material changed since the current text was written, return the current text unchanged, word for word, with reason "no change".
+- summary: one to four plain-language sentences (roughly 60 words at most), most recent state first. Spell out product codes the way the comments and current text do (for example "Drop Singles" rather than "DS"). No emoji, no markdown.
+- next: the next concrete action and who owns it, if the comments say; otherwise an empty string.
+- flag: one short line only when the team should watch something (a date at risk or missed, missing tracking, conflicting numbers, an order on hold); otherwise an empty string.
+- vendor: the vendor or supplier named in the comments, else the current value, else an empty string.
+- reason: a few words on what prompted the change, for example "Sep 14 meeting notes".
+- A tile whose current summary is "No summary yet." is new and must get a real summary.
+
+Groups: if comments show that separate tiles are really one job (the same email thread, the same print run, shipped together), propose a group listing every tileId involved, a title, the combined text and the reason. Only propose groups you are confident about. Never propose a group for records that already share a tile.`;
+
+// Shape of what `wasabi_report_update submit` sends back.
+const OUTPUT_FORMAT = {
+  base_hash: 'string — copy from the context',
+  tiles: [{ tileId: 'string', summary: 'string', next: 'string', flag: 'string', vendor: 'string', reason: 'string' }],
+  groups: [{ tileIds: ['string'], title: 'string', summary: 'string', next: 'string', flag: 'string', vendor: 'string', reason: 'string' }],
+  author: 'optional — who drafted it, e.g. "Claude desktop"',
+  replace: 'optional boolean — replace a draft that is already waiting',
+};
 
 // ─── Context ───
 
@@ -56,6 +77,12 @@ function prettyDate(iso, withYear = true) {
   if (!iso) return '';
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', ...(withYear ? { year: 'numeric' } : {}), timeZone: 'UTC',
+  });
+}
+
+async function archiveCurrent(env, ctx) {
+  await env.DOCS.put(`${ctx.historyPrefix}${new Date().toISOString()}.json`, ctx.snap.data || '{}', {
+    httpMetadata: { contentType: 'application/json' },
   });
 }
 
@@ -280,116 +307,35 @@ function factChanges(prevData, buckets) {
   return out;
 }
 
-// ─── Claude: draft the text ───
-
-const TEXT_FIELDS = {
-  summary: { type: 'string' },
-  next: { type: 'string' },
-  flag: { type: 'string' },
-  vendor: { type: 'string' },
-  reason: { type: 'string' },
-};
-
-const OUTPUT_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['tiles', 'groups'],
-  properties: {
-    tiles: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['tileId', 'summary', 'next', 'flag', 'vendor', 'reason'],
-        properties: { tileId: { type: 'string' }, ...TEXT_FIELDS },
-      },
-    },
-    groups: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['tileIds', 'title', 'summary', 'next', 'flag', 'vendor', 'reason'],
-        properties: { tileIds: { type: 'array', items: { type: 'string' } }, title: { type: 'string' }, ...TEXT_FIELDS },
-      },
-    },
-  },
-};
-
-const SYSTEM_PROMPT = `You write the text parts of a production report that a team reads in its weekly meeting. Each tile covers one project, sometimes several tracker records that are one job. You are given every tile's facts from the tracker, all comments on its records (email updates, meeting notes and people's own notes), and the tile's current text.
-
-For every tile, return text that describes the CURRENT state:
-- Use only what the facts and comments say. Never invent quantities, dates, names or prices. If sources conflict, say so plainly and briefly.
-- If nothing material changed since the current text was written, return the current text unchanged, word for word, with reason "no change".
-- summary: one to five plain-language sentences, most recent state first. Spell out product codes the way the comments and current text do (for example "Drop Singles" rather than "DS"). No emoji, no markdown.
-- next: the next concrete action and who owns it, if the comments say; otherwise an empty string.
-- flag: one short line only when the team should watch something (a date at risk or missed, missing tracking, conflicting numbers, an order on hold); otherwise an empty string.
-- vendor: the vendor or supplier named in the comments, else the current value, else an empty string.
-- reason: a few words on what prompted the change, for example "Sep 14 meeting notes".
-
-Groups: if comments show that separate tiles are really one job (the same email thread, the same print run, shipped together), propose a group listing every tileId involved, a title, the combined text and the reason. Only propose groups you are confident about. Never propose a group for records that already share a tile.
-
-The report's own definition follows. Follow its style rules and glossary.`;
-
-async function getClaudeKey(env) {
-  const row = await env.DB.prepare("SELECT value FROM connections WHERE key = 'claude'").first();
-  return row?.value ? await decryptSecret(row.value, env) : null;
-}
-
-async function draftText(apiKey, cfg, definition, buckets, commentsByRecord, today) {
-  const input = {
+// Current report rebuilt with fresh facts; every tile keeps its current text.
+function rebuildReport(prevData, src, cfg) {
+  const buckets = buildBuckets(prevData, src.records, src.commentsByRecord, cfg);
+  const today = localISODate(cfg.timeZone);
+  return {
+    buckets,
+    facts: factChanges(prevData, buckets),
     today,
-    tiles: buckets.map((b) => ({
-      tileId: b.id,
-      title: b.title,
-      vendor: b.vendor,
-      groupNote: b.groupNote,
-      currentText: { summary: b.summary, next: b.next, flag: b.flag },
-      records: b.records.map((r) => ({
-        id: r.id,
-        name: r.name,
-        subItem: r.isSub,
-        status: r.status,
-        markets: r.markets,
-        inHandsTarget: r.target || null,
-        production: r.production,
-        shipping: r.shipping,
-        tracking: r.tracking,
-        comments: (commentsByRecord.get(r.id) || []).map((c) => ({
-          date: c.date, from: c.who, text: c.text.slice(0, MAX_COMMENT_CHARS),
-        })),
-      })),
-    })),
-  };
-
-  const client = new Anthropic({ apiKey, timeout: 240_000, maxRetries: 2 });
-  const stream = client.beta.messages.stream({
-    model: cfg.model || DEFAULT_MODEL,
-    max_tokens: 32000,
-    betas: ['server-side-fallback-2026-07-01'],
-    fallbacks: 'default',
-    output_config: {
-      format: { type: 'json_schema', schema: OUTPUT_SCHEMA },
-      ...(cfg.effort ? { effort: cfg.effort } : {}),
+    data: {
+      ...prevData,
+      reportDate: `Updated ${prettyDate(today)}`,
+      generatedAt: today,
+      statuses: src.statuses.length ? src.statuses : (prevData.statuses || []),
+      buckets,
     },
-    system: `${SYSTEM_PROMPT}\n\n<definition>\n${definition || ''}\n</definition>`,
-    messages: [{ role: 'user', content: JSON.stringify(input) }],
-  });
-  const msg = await stream.finalMessage();
-
-  if (msg.stop_reason === 'refusal') throw new Error('Claude declined to write this update');
-  if (msg.stop_reason === 'max_tokens') throw new Error('Claude ran out of room before finishing');
-  const text = (msg.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
-  const output = safeParseJSON(text);
-  if (!output || !Array.isArray(output.tiles) || !Array.isArray(output.groups)) {
-    throw new Error('Claude returned an unreadable answer');
-  }
-  const usage = { input_tokens: msg.usage?.input_tokens || 0, output_tokens: msg.usage?.output_tokens || 0 };
-  const costUSD = Math.round(((usage.input_tokens * PRICE_PER_MTOK.input + usage.output_tokens * PRICE_PER_MTOK.output) / 1e6) * 100) / 100;
-  return { output, model: msg.model, usage, costUSD };
+  };
 }
 
-// ─── Proposals ───
+// Tiles whose facts moved since their text was written are marked out of date.
+function markStaleTiles(prevData, buckets, facts) {
+  const changed = new Set(facts.map((f) => f.recordId));
+  const prevMembers = new Map((prevData?.buckets || []).map((b) => [b.id, (b.records || []).map((r) => r.id).join(',')]));
+  for (const b of buckets) {
+    const regrouped = prevMembers.has(b.id) && prevMembers.get(b.id) !== b.records.map((r) => r.id).join(',');
+    if (regrouped || b.records.some((r) => changed.has(r.id))) b.staleSummary = true;
+  }
+}
+
+// ─── Proposals from the text Claude desktop wrote ───
 
 const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
 const pickText = (o) => ({ summary: norm(o.summary), next: norm(o.next), flag: norm(o.flag), vendor: norm(o.vendor) });
@@ -399,7 +345,7 @@ function buildProposals(buckets, output) {
   const proposals = [];
 
   for (const t of output.tiles || []) {
-    const b = byId.get(t.tileId);
+    const b = byId.get(t?.tileId);
     if (!b) continue;
     const after = pickText(t);
     if (!after.summary) continue;
@@ -414,7 +360,7 @@ function buildProposals(buckets, output) {
   const grouped = new Set();
   let n = 0;
   for (const g of output.groups || []) {
-    const ids = [...new Set((g.tileIds || []).filter((id) => byId.has(id)))];
+    const ids = [...new Set((g?.tileIds || []).filter((id) => byId.has(id)))];
     if (ids.length < 2 || ids.some((id) => grouped.has(id))) continue;
     const after = { ...pickText(g), title: norm(g.title) || byId.get(ids[0]).title };
     if (!after.summary) continue;
@@ -508,59 +454,105 @@ function reportSummary(data) {
   return `${active} active projects.${watch.length ? ` Watch: ${watch.join(', ')}.` : ''}`;
 }
 
+// What Claude desktop reads for each tile.
+function contextTile(b, commentsByRecord) {
+  return {
+    tileId: b.id,
+    title: b.title,
+    status: b.status,
+    vendor: b.vendor,
+    groupNote: b.groupNote,
+    currentText: { summary: b.summary, next: b.next, flag: b.flag },
+    records: b.records.map((r) => ({
+      id: r.id,
+      name: r.name,
+      subItem: r.isSub,
+      status: r.status,
+      markets: r.markets,
+      inHandsTarget: r.target || null,
+      production: r.production,
+      shipping: r.shipping,
+      tracking: r.tracking,
+      comments: (commentsByRecord.get(r.id) || []).map((c) => ({
+        date: c.date, from: c.who, text: c.text.slice(0, MAX_COMMENT_CHARS),
+      })),
+    })),
+  };
+}
+
 // ─── Handlers ───
 
-export async function handleRefreshSnapshot(env, snapshotId, body, user, jsonResponse) {
+// The report's button: bring facts up to date instantly. No AI, no draft.
+export async function handleRefreshFacts(env, snapshotId, user, jsonResponse) {
+  const ctx = await loadContext(env, snapshotId);
+  if (ctx.error) return jsonResponse({ _error: ctx.error[0] }, ctx.error[1]);
+  if (await env.DOCS.head(ctx.draftKey)) {
+    return jsonResponse({ _error: 'An update is waiting for review. Review or discard it before refreshing.', pending: true }, 409);
+  }
+  const prevData = safeParseJSON(ctx.snap.data) || {};
+  const src = await loadSource(env, ctx.cfg);
+  const { buckets, facts, data } = rebuildReport(prevData, src, ctx.cfg);
+  markStaleTiles(prevData, buckets, facts);
+  data.updatedAt = new Date().toISOString();
+
+  await archiveCurrent(env, ctx);
+  const res = await handleUpdateSnapshot(env, snapshotId, { data, summary: reportSummary(data) }, jsonResponse);
+  if (res.status !== 200) return res;
+  return jsonResponse({ ok: true, changes: facts.length, facts });
+}
+
+// Everything Claude desktop needs to draft the text, a page of tiles at a time.
+export async function handleGetRefreshContext(env, snapshotId, url, jsonResponse) {
+  const ctx = await loadContext(env, snapshotId);
+  if (ctx.error) return jsonResponse({ _error: ctx.error[0] }, ctx.error[1]);
+  const prevData = safeParseJSON(ctx.snap.data) || {};
+  const src = await loadSource(env, ctx.cfg);
+  const { buckets, facts, today } = rebuildReport(prevData, src, ctx.cfg);
+
+  const pageSize = Math.max(1, Math.min(50, parseInt(url?.searchParams?.get('page_size') || '', 10) || DEFAULT_PAGE_SIZE));
+  const pages = Math.max(1, Math.ceil(buckets.length / pageSize));
+  const page = Math.max(1, Math.min(pages, parseInt(url?.searchParams?.get('page') || '1', 10) || 1));
+  const slice = buckets.slice((page - 1) * pageSize, page * pageSize);
+
+  return jsonResponse({
+    report: ctx.snap.title || ctx.ext.name,
+    base_hash: await sha256(ctx.snap.data),
+    today,
+    page,
+    pages,
+    total_tiles: buckets.length,
+    pending_draft: !!(await env.DOCS.head(ctx.draftKey)),
+    ...(page === 1 ? { writing_rules: WRITING_RULES, definition: ctx.ext.definition || '', output_format: OUTPUT_FORMAT, facts } : {}),
+    tiles: slice.map((b) => contextTile(b, src.commentsByRecord)),
+  });
+}
+
+// The text Claude desktop wrote becomes a draft for the approver.
+export async function handleSubmitDraft(env, snapshotId, body, user, jsonResponse) {
   const ctx = await loadContext(env, snapshotId);
   if (ctx.error) return jsonResponse({ _error: ctx.error[0] }, ctx.error[1]);
   const { snap, ext, cfg } = ctx;
 
-  if (!body?.replace && await env.DOCS.head(ctx.draftKey)) {
+  if (!Array.isArray(body?.tiles) || (body.groups != null && !Array.isArray(body.groups))) {
+    return jsonResponse({ _error: 'Expected { base_hash, tiles: [...], groups: [...] }' }, 400);
+  }
+  if (body.base_hash !== await sha256(snap.data)) {
+    return jsonResponse({ _error: 'The report changed after the context was read. Read it again and redo the draft.' }, 409);
+  }
+  if (!body.replace && await env.DOCS.head(ctx.draftKey)) {
     return jsonResponse({ _error: 'An update is already waiting for review.', pending: true }, 409);
   }
 
-  const rlKey = `ext-refresh:${snapshotId}`;
-  const rl = await checkRateLimit(env.DB, rlKey, REFRESH_LIMIT, REFRESH_WINDOW_SECS);
-  if (rl.limited) {
-    return jsonResponse({
-      _error: `Update has run ${REFRESH_LIMIT} times in the last 15 minutes. Try again in about ${Math.ceil(rl.retryAfter / 60)} min.`,
-    }, 429);
-  }
-  await recordRateLimitAttempt(env.DB, rlKey);
-
-  const apiKey = await getClaudeKey(env);
-  if (!apiKey) return jsonResponse({ _error: 'No Claude API key is connected to this workspace' }, 500);
-
   const prevData = safeParseJSON(snap.data) || {};
   const src = await loadSource(env, cfg);
-  const buckets = buildBuckets(prevData, src.records, src.commentsByRecord, cfg);
-  const today = localISODate(cfg.timeZone);
-  const baseData = {
-    ...prevData,
-    reportDate: `Updated ${prettyDate(today)}`,
-    generatedAt: today,
-    statuses: src.statuses.length ? src.statuses : (prevData.statuses || []),
-    buckets,
-  };
-
-  let ai;
-  try {
-    ai = await draftText(apiKey, cfg, ext.definition, buckets, src.commentsByRecord, today);
-  } catch (err) {
-    console.error('[extension-refresh] draft failed:', err?.message || err);
-    return jsonResponse({ _error: `Claude couldn't draft the update: ${err?.message || err}` }, 502);
-  }
-
+  const { buckets, facts, data: baseData } = rebuildReport(prevData, src, cfg);
   const draft = {
-    version: 1,
+    version: 2,
     createdAt: new Date().toISOString(),
-    createdBy: { id: user?.sub || '', name: user?.name || '' },
-    baseHash: await sha256(snap.data),
-    model: ai.model,
-    usage: ai.usage,
-    costUSD: ai.costUSD,
-    facts: factChanges(prevData, buckets),
-    proposals: buildProposals(buckets, ai.output),
+    createdBy: { id: user?.sub || '', name: norm(body.author) || user?.name || '' },
+    baseHash: body.base_hash,
+    facts,
+    proposals: buildProposals(buckets, { tiles: body.tiles, groups: body.groups || [] }),
     baseData,
   };
 
@@ -587,18 +579,11 @@ export async function handleRefreshSnapshot(env, snapshotId, body, user, jsonRes
       target_user_id: target,
       record_name: snap.title || ext.name,
       page_name: 'Reports',
-      actor_name: user?.name || '',
+      actor_name: draft.createdBy.name,
     });
   }
 
-  return jsonResponse({
-    ok: true,
-    proposals: draft.proposals.length,
-    facts: draft.facts.length,
-    model: ai.model,
-    usage: ai.usage,
-    costUSD: ai.costUSD,
-  });
+  return jsonResponse({ ok: true, proposals: draft.proposals.length, facts: facts.length });
 }
 
 export async function handleGetRefreshDraft(env, snapshotId, user, jsonResponse) {
@@ -638,10 +623,7 @@ export async function handleDecideRefreshDraft(env, snapshotId, body, user, json
   }
 
   const { data, counts } = composeApproved(draft, body?.decisions || {}, user);
-  // Keep the version being replaced so it can be restored.
-  await env.DOCS.put(`${ctx.historyPrefix}${new Date().toISOString()}.json`, ctx.snap.data || '{}', {
-    httpMetadata: { contentType: 'application/json' },
-  });
+  await archiveCurrent(env, ctx);   // keep the version being replaced so it can be restored
   const res = await handleUpdateSnapshot(env, snapshotId, { data, summary: reportSummary(data) }, jsonResponse);
   if (res.status !== 200) return res;
   await env.DOCS.delete(ctx.draftKey);
@@ -649,4 +631,7 @@ export async function handleDecideRefreshDraft(env, snapshotId, body, user, json
 }
 
 // Pure helpers, exported for local tests.
-export { loadSource, buildBuckets, factChanges, buildProposals, composeApproved, reportSummary };
+export {
+  loadSource, buildBuckets, factChanges, rebuildReport, markStaleTiles,
+  buildProposals, composeApproved, reportSummary, contextTile, WRITING_RULES,
+};

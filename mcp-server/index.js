@@ -1713,5 +1713,38 @@ server.resource(
 );
 
 // ── Start ──
+// ─── Report update (Claude desktop writes, a person approves in the report) ───
+server.tool(
+  "wasabi_report_update",
+  "Draft an update for a report that supports Update (e.g. Production Weekly (Beta)). The AI writing happens HERE in Claude desktop — the Wasabi server never calls an AI model. Flow: (1) action 'prepare' with the snapshot id, reading EVERY page (page 1..pages): returns the rebuilt facts, each tile with its records, comments and current text, plus writing_rules, the report's definition, output_format and base_hash (on page 1). (2) Write text for every tile following writing_rules (return the current text unchanged when nothing material changed; tiles reading 'No summary yet.' must get a summary); propose groups only with clear evidence. (3) action 'submit' with data = { base_hash, tiles: [{tileId, summary, next, flag, vendor, reason}], groups: [{tileIds, title, summary, next, flag, vendor, reason}], author: 'Claude desktop', replace? }. This saves a DRAFT and notifies the approver; nothing goes live until the approver reviews it inside the report. A 409 on submit means the report changed since prepare (read it again) or a draft is already waiting (ask Graham before sending replace: true). 'status' shows whether a draft is waiting. 'refresh_facts' updates tracker facts only (no AI, no draft) — the same as the report's button.",
+  {
+    action: z.enum(["prepare", "submit", "status", "refresh_facts"]),
+    id: z.string().describe("Snapshot id of the report"),
+    page: z.number().optional().describe("For prepare: page number (1-based). Read every page before writing."),
+    page_size: z.number().optional().describe("For prepare: tiles per page (default 10, max 50)"),
+    data: z.string().optional().describe("For submit: JSON string { base_hash, tiles, groups, author, replace? }"),
+  },
+  async ({ action, id, page, page_size, data: rawData }) => {
+    const snap = `/extensions/snapshots/${encodeURIComponent(id)}`;
+    try {
+      switch (action) {
+        case "prepare": {
+          const qs = new URLSearchParams();
+          if (page) qs.set("page", String(page));
+          if (page_size) qs.set("page_size", String(page_size));
+          return ok(await wasabiFetch(`${snap}/refresh/context${qs.toString() ? `?${qs}` : ""}`));
+        }
+        case "submit": {
+          const data = parseJSON(rawData);
+          if (!data) return err("data (JSON string) required for submit");
+          return ok(await wasabiFetch(`${snap}/draft`, "POST", data));
+        }
+        case "status": return ok(await wasabiFetch(`${snap}/draft`));
+        case "refresh_facts": return ok(await wasabiFetch(`${snap}/refresh`, "POST", {}));
+      }
+    } catch (e) { return err(e); }
+  }
+);
+
 const transport = new StdioServerTransport();
 await server.connect(transport);

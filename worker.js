@@ -40,7 +40,7 @@ import {
   handlePublishSnapshot, handleGetSnapshotData, handleServeSnapshotHtml,
   handleAddSnapshotLink, handleListSnapshotLinks,
 } from './worker/handlers/extensions.js';
-import { handleRefreshSnapshot, handleGetRefreshDraft, handleDecideRefreshDraft } from './worker/handlers/extension-refresh.js';
+import { handleRefreshFacts, handleGetRefreshContext, handleSubmitDraft, handleGetRefreshDraft, handleDecideRefreshDraft } from './worker/handlers/extension-refresh.js';
 import {
   handleListDcItems, handleGetDcItem, handleCreateDcItem, handleUpdateDcItem, handleDeleteDcItem,
   handleListDcSubmissions, handleGetDcSubmission, handleCreateDcSubmission,
@@ -1074,6 +1074,7 @@ export default {
       const snapRefreshMatch = path.match(/^\/extensions\/snapshots\/([^/]+)\/refresh$/);
       const snapDraftMatch = path.match(/^\/extensions\/snapshots\/([^/]+)\/draft$/);
       const snapDecideMatch = path.match(/^\/extensions\/snapshots\/([^/]+)\/draft\/decide$/);
+      const snapContextMatch = path.match(/^\/extensions\/snapshots\/([^/]+)\/refresh\/context$/);
       if (path === "/extensions/snapshots" && request.method === "GET") {
         return await handleListSnapshots(env, url, null, jsonResponse);
       }
@@ -1083,13 +1084,20 @@ export default {
       if (snapPublishMatch && request.method === "POST") {
         return await handlePublishSnapshot(env, decodeURIComponent(snapPublishMatch[1]), user, jsonResponse);
       }
-      // AI-drafted, human-approved report refresh (see worker/handlers/extension-refresh.js)
+      // Report update: facts refresh (no AI), context for Claude desktop, drafts written
+      // in Claude desktop and reviewed by an approver (see worker/handlers/extension-refresh.js)
       if (snapRefreshMatch && request.method === "POST") {
-        const body = await request.json().catch(() => ({}));
-        return await handleRefreshSnapshot(env, decodeURIComponent(snapRefreshMatch[1]), body, user, jsonResponse);
+        return await handleRefreshFacts(env, decodeURIComponent(snapRefreshMatch[1]), user, jsonResponse);
+      }
+      if (snapContextMatch && request.method === "GET") {
+        return await handleGetRefreshContext(env, decodeURIComponent(snapContextMatch[1]), url, jsonResponse);
       }
       if (snapDraftMatch && request.method === "GET") {
         return await handleGetRefreshDraft(env, decodeURIComponent(snapDraftMatch[1]), user, jsonResponse);
+      }
+      if (snapDraftMatch && request.method === "POST") {
+        const body = await request.json().catch(() => ({}));
+        return await handleSubmitDraft(env, decodeURIComponent(snapDraftMatch[1]), body, user, jsonResponse);
       }
       if (snapDecideMatch && request.method === "POST") {
         const body = await request.json().catch(() => ({}));
