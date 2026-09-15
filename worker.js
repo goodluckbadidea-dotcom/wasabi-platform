@@ -22,7 +22,7 @@ import { handleAuthRegister, handleAuthLogin, handleAuthMe, handleAuthRefresh, h
 import { handleCreateInvite, handleUserDirectory, handleListUsers, handleDeleteUser, handleRestoreUser, handleHardDeleteUser, handleResetUserPassword, handleUpdateUser } from './worker/handlers/users.js';
 import { handleListCustomFunctions, handleCreateCustomFunction, handleGetCustomFunction, handleUpdateCustomFunction, handleDeleteCustomFunction, handleExternalApiProxy, validatePluginCodeServer } from './worker/handlers/custom-functions.js';
 import { handleListRules, handleCreateRule, handleGetRule, handleUpdateRule, handleDeleteRule, handleListFlows, handleCreateFlow, handleGetFlow, handleUpdateFlow, handleDeleteFlow, handleListFunctionExecutions, handleCreateFunctionExecution, handleListFlowExecutions, handleCreateFlowExecution, handleUpdateFlowExecution } from './worker/handlers/automations.js';
-import { handleListComments, handleCreateComment, handleDeleteComment } from './worker/handlers/records.js';
+import { handleListComments, handleCreateComment, handleDeleteComment, handleGetNote, handleSetNote } from './worker/handlers/records.js';
 import { handleGoogleAuthUrl, handleGoogleCallback, handleGoogleStatus, handleGoogleDisconnect, handleGmailSummary, handleGmailSearch, handleGmailGetMessage, handleGmailGetThread, handleGmailUpdateDraft, handleGmailSend, handleGmailCreateDraft, handleGmailModify, handleCalendarSummary, handleCalendarList, handleCalendarListEvents, handleCalendarCreateEvent, handleCalendarUpdateEvent, handleCalendarDeleteEvent, handleCalendarFreeBusy, fetchGoogleSheetViaApi } from './worker/handlers/google.js';
 import { handleFigmaStatus, handleFigmaProjects, handleFigmaFiles, handleFigmaFile, handleFigmaImport, handleFigmaListComments, handleFigmaPostComment, handleFigmaDeleteComment, handleFigmaListLinksForRecord, handleFigmaListLinksForComment, handleFigmaCreateLink, handleFigmaDeleteLink } from './worker/handlers/figma.js';
 import { runAutomationTick, checkAutomationTriggers, runNeuronPruneTick } from './worker/automation/engine.js';
@@ -730,6 +730,19 @@ export default {
         if (request.method === "POST") {
           const body = await request.json();
           return await handleCreateComment(env, user, recordId, body, jsonResponse);
+        }
+      }
+
+      // ─── Record Notes ─── (table existed since v1; route added 2026-09-10)
+      const noteMatch = path.match(/^\/records\/([^/]+)\/notes$/);
+      if (noteMatch) {
+        const recordId = noteMatch[1];
+        if (request.method === "GET") {
+          return await handleGetNote(env, recordId, url.searchParams.get("page_config_id"), jsonResponse);
+        }
+        if (request.method === "PUT") {
+          const body = await request.json();
+          return await handleSetNote(env, recordId, body, jsonResponse);
         }
       }
 

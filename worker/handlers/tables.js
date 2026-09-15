@@ -885,10 +885,20 @@ async function handleQueryTable(env, tableId, body, jsonResponse) {
   try {
     const limit = Math.min(body.limit || 1000, 10000);
     const offset = body.offset || 0;
+    const hasFilters = Array.isArray(body.filters) && body.filters.length > 0;
+    const hasSorts = Array.isArray(body.sorts) && body.sorts.length > 0;
+
+    // When filtering or sorting, the fetch window must cover the whole table:
+    // filters previously ran AFTER `LIMIT`, so a filtered query silently
+    // missed matches beyond the first page. Pagination now applies to the
+    // FILTERED result instead. The plain-pagination path is unchanged.
+    const fetchAll = hasFilters || hasSorts;
+    const sqlLimit = fetchAll ? 10000 : limit;
+    const sqlOffset = fetchAll ? 0 : offset;
 
     const rows = await env.DB.prepare(
       `SELECT * FROM table_rows WHERE table_id = ? AND archived = 0
-       ORDER BY sort_order, created_at LIMIT ${limit} OFFSET ${offset}`
+       ORDER BY sort_order, created_at LIMIT ${sqlLimit} OFFSET ${sqlOffset}`
     ).bind(tableId).all();
 
     let parsed = rows.results.map((r) => ({
@@ -899,18 +909,100 @@ async function handleQueryTable(env, tableId, body, jsonResponse) {
     }));
 
     // Apply filters on JSON cells (worker-side)
-    if (body.filters && body.filters.length > 0) {
+    if (hasFilters) {
       parsed = applyRowFilters(parsed, body.filters);
     }
 
     // Apply sorts on JSON cells (worker-side)
-    if (body.sorts && body.sorts.length > 0) {
+    if (hasSorts) {
       parsed = applyRowSorts(parsed, body.sorts);
     }
 
-    return jsonResponse({ rows: parsed, total: parsed.length });
+    // total = matches after filtering; slice is the requested page of them.
+    const total = parsed.length;
+    if (fetchAll) parsed = parsed.slice(offset, offset + limit);
+
+    // Opt-in: attach text-cell link associations (cell_links) so API callers
+    // can see what the UI renders as a linked cell. Without this, a linked
+    // text cell reads as plain text (or "") and the association is invisible.
+    if (body.resolve_links) {
+      await attachCellLinks(env, tableId, parsed);
+    }
+
+    return jsonResponse({ rows: parsed, total });
   } catch (err) {
     return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+// Attach cell_links to rows: outgoing links (this row's cell is the link
+// source) under row.cell_links = { [column]: [...] }, incoming links (this
+// row is the target) under row.cell_links_in. Ref blobs come in two live
+// shapes: { type:"d1", record_id, column_name } and the legacy UI shape
+// { type:"notion"|absent, pageId, field } — which in practice also points at
+// D1 rows (pageId = row id, field = column NAME). Both resolve; anything
+// else is passed through raw under target.ref.
+function rowRef(ref) {
+  if (!ref || typeof ref !== "object") return null;
+  if (ref.type === "d1" && ref.record_id && ref.column_name) {
+    return { record_id: ref.record_id, column: ref.column_name };
+  }
+  if (ref.pageId && ref.field) {
+    return { record_id: ref.pageId, column: ref.field };
+  }
+  return null;
+}
+
+async function attachCellLinks(env, tableId, rows) {
+  if (!rows || rows.length === 0) return;
+
+  const describe = (l, ownRef, otherRef, otherRawRef, otherPageId) => ({
+    link_id: l.id,
+    direction: l.direction,
+    column: ownRef.column,
+    target: otherRef
+      ? { table_id: otherPageId, row_id: otherRef.record_id, column: otherRef.column }
+      : { table_id: otherPageId, ref: otherRawRef ?? null },
+  });
+
+  const attach = (map, recordId, entry) => {
+    if (!map.has(recordId)) map.set(recordId, {});
+    const cols = map.get(recordId);
+    (cols[entry.column] ||= []).push(entry);
+  };
+
+  const outgoing = new Map();
+  const incoming = new Map();
+
+  const srcLinks = await env.DB.prepare(
+    `SELECT id, source_ref, target_page_id, target_ref, direction
+       FROM cell_links WHERE active = 1 AND source_page_id = ?`
+  ).bind(tableId).all();
+  for (const l of (srcLinks.results || [])) {
+    let src, tgt;
+    try { src = JSON.parse(l.source_ref); tgt = JSON.parse(l.target_ref); } catch { continue; }
+    const own = rowRef(src);
+    if (!own) continue;
+    attach(outgoing, own.record_id, describe(l, own, rowRef(tgt), tgt, l.target_page_id));
+  }
+
+  const tgtLinks = await env.DB.prepare(
+    `SELECT id, source_page_id, source_ref, target_ref, direction
+       FROM cell_links WHERE active = 1 AND target_page_id = ?`
+  ).bind(tableId).all();
+  for (const l of (tgtLinks.results || [])) {
+    let src, tgt;
+    try { src = JSON.parse(l.source_ref); tgt = JSON.parse(l.target_ref); } catch { continue; }
+    const own = rowRef(tgt);
+    if (!own) continue;
+    attach(incoming, own.record_id, describe(l, own, rowRef(src), src, l.source_page_id));
+  }
+
+  for (const row of rows) {
+    const out = outgoing.get(row.id);
+    const inn = incoming.get(row.id);
+    if (out) row.cell_links = out;
+    if (inn) row.cell_links_in = inn;
   }
 }
 

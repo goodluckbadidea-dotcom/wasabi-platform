@@ -127,3 +127,45 @@ export async function handleDeleteComment(env, user, recordId, commentId, jsonRe
     return jsonResponse({ _error: err.message }, 500);
   }
 }
+
+// ─── Record notes ───
+// The record_notes table has existed since schema v1, but no route ever
+// served it — every notes read/write 404'd. One note per (record, page).
+
+export async function handleGetNote(env, recordId, pageConfigId, jsonResponse) {
+  try {
+    if (!pageConfigId) return jsonResponse({ _error: "page_config_id required" }, 400);
+    const note = await env.DB.prepare(
+      "SELECT * FROM record_notes WHERE record_id = ? AND page_config_id = ?"
+    ).bind(recordId, pageConfigId).first();
+    // A missing note is an empty note, not an error.
+    return jsonResponse({ note: note || null });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}
+
+export async function handleSetNote(env, recordId, body, jsonResponse) {
+  try {
+    const { page_config_id, content } = body || {};
+    if (!page_config_id || content === undefined) {
+      return jsonResponse({ _error: "page_config_id and content required" }, 400);
+    }
+    const existing = await env.DB.prepare(
+      "SELECT id FROM record_notes WHERE record_id = ? AND page_config_id = ?"
+    ).bind(recordId, page_config_id).first();
+    if (existing) {
+      await env.DB.prepare(
+        "UPDATE record_notes SET content = ?, updated_at = datetime('now') WHERE id = ?"
+      ).bind(content, existing.id).run();
+      return jsonResponse({ id: existing.id, ok: true, updated: true });
+    }
+    const id = crypto.randomUUID();
+    await env.DB.prepare(
+      "INSERT INTO record_notes (id, record_id, page_config_id, content) VALUES (?, ?, ?, ?)"
+    ).bind(id, recordId, page_config_id, content).run();
+    return jsonResponse({ id, ok: true, created: true });
+  } catch (err) {
+    return jsonResponse({ _error: err.message }, 500);
+  }
+}

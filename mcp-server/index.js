@@ -24,6 +24,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  applyPostSorts, buildColumnIndex, normalizeFields, normalizeFilters,
+  normalizeRowUpdateBody, normalizeSorts,
+} from "./lib/query-shape.js";
 
 // ── Load config ──
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -95,6 +99,15 @@ function parseJSON(str) {
   try { return JSON.parse(str); } catch { return str; }
 }
 
+// Fetches a table's schema and builds the column-resolution index used to
+// translate filter/sort/field tokens (ids or names) into the worker's query
+// shapes. Unknown tokens throw loudly instead of silently no-opping — see
+// lib/query-shape.js for why silence here is the worst failure mode.
+async function columnIndexFor(tableId) {
+  const schema = await wasabiFetch(`/pages/${tableId}/schema`);
+  return buildColumnIndex(schema);
+}
+
 // ── File download helpers ──
 // wasabiFetch() decodes every response with res.text(), which destroys binary:
 // invalid UTF-8 bytes each become U+FFFD and valid multi-byte runs collapse, so
@@ -103,6 +116,21 @@ function parseJSON(str) {
 // as an ArrayBuffer and only the resulting path is returned to the caller.
 
 const DEFAULT_DOWNLOAD_DIR = join(homedir(), "Downloads", "wasabi");
+
+// Content types for wasabi_files upload, keyed by extension. Anything not
+// listed uploads as application/octet-stream — stored fine, just not
+// previewable in-browser.
+const UPLOAD_MIME_BY_EXT = {
+  pdf: "application/pdf",
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+  webp: "image/webp", heic: "image/heic", tif: "image/tiff", tiff: "image/tiff",
+  svg: "image/svg+xml", psd: "image/vnd.adobe.photoshop",
+  ai: "application/postscript", eps: "application/postscript",
+  zip: "application/zip",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  csv: "text/csv", txt: "text/plain", md: "text/markdown", json: "application/json",
+  html: "text/html", mp4: "video/mp4", mov: "video/quicktime",
+};
 
 // Stored file names come from user upload, so they may contain path separators
 // or leading dots. Flatten to a single safe segment before joining to a dir.
@@ -232,12 +260,12 @@ server.tool(
     action: z.enum(["list", "query", "create", "update", "delete"]),
     table_id: z.string().describe("The table/database ID"),
     row_id: z.string().optional().describe("Row ID (for update/delete)"),
-    filters: z.string().optional().describe("JSON string of filter object for query action"),
-    sorts: z.string().optional().describe("JSON string of sort array for query action"),
+    filters: z.string().optional().describe("JSON string of filter object for query action: {\"col id or name\": {\"op\": value}} with ops eq, ne, contains, not_contains, starts_with, ends_with, gt, gte, lt, lte, is_empty, is_not_empty (eq/ne null = empty/not-empty). Unknown columns or ops error loudly. NOTE: the worker filters within the first `limit` rows — raise limit to cover the table"),
+    sorts: z.string().optional().describe("JSON string of sort array for query action: [{\"field\": \"col id or name\", \"direction\": \"asc|desc\"}]. _created_time/_last_edited_time sort on row timestamps"),
     limit: z.number().optional().describe("Max rows to return (default 100)"),
     offset: z.number().optional().describe("Pagination offset"),
-    rows: z.string().optional().describe("JSON string of array of row objects for create"),
-    data: z.string().optional().describe("JSON string of row data for update (cells object)"),
+    rows: z.string().optional().describe("JSON string of array of row objects for create, each {\"cells\": {...}}"),
+    data: z.string().optional().describe("JSON string of row data for update: {\"cells\": {...}} or a bare cells map. MERGES into existing cells by default; pass {\"cells\": {...}, \"merge_cells\": false} to replace the whole cells object"),
   },
   async ({ action, table_id, row_id, filters: rawFilters, sorts: rawSorts, limit, offset, rows: rawRows, data: rawData }) => {
     const filters = parseJSON(rawFilters);
@@ -263,22 +291,33 @@ server.tool(
           return ok(result);
         }
         case "query": {
-          let result = await wasabiFetch(`/tables/${table_id}/query`, "POST", { filters, sorts, limit: lim, offset });
+          // Translate documented filter/sort shapes into the worker's shapes,
+          // resolving names → column ids and throwing on unknown tokens. The
+          // old passthrough silently no-opped and returned every row.
+          const index = await columnIndexFor(table_id);
+          const workerFilters = normalizeFilters(filters, index);
+          const { workerSorts, postSorts } = normalizeSorts(sorts, index);
+          const q = { filters: workerFilters, sorts: workerSorts, limit: lim, offset };
+          let result = await wasabiFetch(`/tables/${table_id}/query`, "POST", q);
           let rowArr = result?.rows || (Array.isArray(result) ? result : []);
           // Auto-sync on empty query too
           if (rowArr.length === 0) {
             const syncInfo = await ensureSynced(table_id);
             if (syncInfo?.auto_synced) {
-              result = await wasabiFetch(`/tables/${table_id}/query`, "POST", { filters, sorts, limit: lim, offset });
-              return ok({ ...(typeof result === 'object' ? result : { rows: result }), _auto_synced: true });
+              result = await wasabiFetch(`/tables/${table_id}/query`, "POST", q);
+              rowArr = result?.rows || (Array.isArray(result) ? result : []);
+              return ok({ ...(typeof result === 'object' ? result : { rows: result }), rows: applyPostSorts(rowArr, postSorts), _auto_synced: true });
             }
           }
-          return ok(result);
+          return ok({ ...(typeof result === "object" ? result : {}), rows: applyPostSorts(rowArr, postSorts) });
         }
         case "create":
           return ok(await wasabiFetch(`/tables/${table_id}/rows`, "POST", { rows }));
         case "update":
-          return ok(await wasabiFetch(`/tables/${table_id}/rows/${row_id}`, "PATCH", data));
+          // merge_cells defaults to true: the worker otherwise REPLACES the
+          // whole cells object, which every caller here has assumed is a
+          // merge. Pass merge_cells:false explicitly for a full replace.
+          return ok(await wasabiFetch(`/tables/${table_id}/rows/${row_id}`, "PATCH", normalizeRowUpdateBody(data)));
         case "delete":
           return ok(await wasabiFetch(`/tables/${table_id}/rows/${row_id}`, "DELETE"));
       }
@@ -514,17 +553,37 @@ server.tool(
 // ═══════════════════════════════════════════
 server.tool(
   "wasabi_files",
-  "List, link, download, or delete files stored in R2. Upload is not supported via MCP (use the web UI). Filter by page_id or record_id. To analyse a PDF or image, use `download` \u2014 it writes the file to disk byte-for-byte and returns the path, so the bytes never pass through the conversation. `get_url` returns a short-lived signed link (15 min) that needs no auth header.",
+  "List, upload, link, download, or delete files stored in R2. Filter by page_id or record_id. `upload` sends a local file (max 50MB) to the worker's upload route; pass page_id/record_id to attach it. To analyse a PDF or image, use `download` \u2014 it writes the file to disk byte-for-byte and returns the path, so the bytes never pass through the conversation. `get_url` returns a short-lived signed link (15 min) that needs no auth header.",
   {
-    action: z.enum(["list", "get_url", "download", "delete"]),
+    action: z.enum(["list", "upload", "get_url", "download", "delete"]),
     id: z.string().optional().describe("File ID (for get_url/download/delete)"),
-    page_id: z.string().optional().describe("Filter files by page"),
-    record_id: z.string().optional().describe("Filter files by record"),
+    page_id: z.string().optional().describe("Filter files by page (list), or page to attach an upload to"),
+    record_id: z.string().optional().describe("Filter files by record (list), or record to attach an upload to"),
     dest: z.string().optional().describe("For `download` only: where to write the file. A file path, or a directory (trailing slash or an existing dir) to use the file's stored name. Defaults to ~/Downloads/wasabi/."),
+    file_path: z.string().optional().describe("For `upload` only: local path of the file to upload"),
   },
-  async ({ action, id, page_id, record_id, dest }) => {
+  async ({ action, id, page_id, record_id, dest, file_path }) => {
     try {
       switch (action) {
+        case "upload": {
+          if (!file_path) throw new Error("upload requires `file_path`");
+          const p = file_path.startsWith("~") ? join(homedir(), file_path.slice(1)) : file_path;
+          const buf = readFileSync(p);
+          if (buf.length > 50 * 1024 * 1024) {
+            throw new Error(`upload: file is ${(buf.length / 1048576).toFixed(1)}MB \u2014 the worker caps files at 50MB`);
+          }
+          const name = basename(p);
+          const ext = (name.split(".").pop() || "").toLowerCase();
+          // Bytes travel as base64 in the JSON body \u2014 the worker's POST /files
+          // decodes this shape natively; multipart is the browser path.
+          return ok(await wasabiFetch("/files", "POST", {
+            name,
+            data: buf.toString("base64"),
+            mime_type: UPLOAD_MIME_BY_EXT[ext] || "application/octet-stream",
+            page_id: page_id || "",
+            record_id: record_id || "",
+          }));
+        }
         case "list": {
           const params = new URLSearchParams();
           if (page_id) params.set("page_id", page_id);
@@ -902,17 +961,20 @@ server.tool(
   {
     action: z.enum(["add_comment", "set_note", "get_comments", "get_note"]),
     record_id: z.string().describe("Record ID to attach to"),
-    page_id: z.string().optional().describe("Page ID (required for notes)"),
+    page_id: z.string().optional().describe("Page ID (required for notes AND comments — comments are keyed by record + page)"),
     content: z.string().optional().describe("Comment text or note content (markdown supported)"),
     user_name: z.string().optional().describe("Display name for comment author (default: MCP)"),
   },
   async ({ action, record_id, page_id, content, user_name }) => {
     try {
       switch (action) {
-        case "add_comment":
+        case "add_comment": {
+          // The worker requires page_config_id (the table/page id) in the body.
+          if (!page_id) throw new Error("add_comment requires `page_id` (the record's table/page id)");
           return ok(await wasabiFetch(`/records/${record_id}/comments`, "POST", {
-            content, user_id: "mcp", user_name: user_name || "Cowork MCP",
+            page_config_id: page_id, content, user_id: "mcp", user_name: user_name || "Cowork MCP",
           }));
+        }
         case "set_note":
           return ok(await wasabiFetch(`/records/${record_id}/notes`, "PUT", {
             content, page_config_id: page_id,
@@ -934,17 +996,25 @@ server.tool(
   "Execute powerful queries against Wasabi tables using the query endpoint. Supports complex filters, sorts, and pagination. For advanced data questions that simple list/get can't answer.",
   {
     table_id: z.string().describe("Table ID to query"),
-    filters: z.string().optional().describe("JSON string of filter object: {\"field\": {\"op\": \"value\"}} where op is eq, ne, gt, lt, gte, lte, contains, starts_with, in"),
-    sorts: z.string().optional().describe("JSON string of sort array: [{\"field\": \"Name\", \"direction\": \"asc\"}]"),
+    filters: z.string().optional().describe("JSON string of filter object: {\"field\": {\"op\": value}} where field is a column id or name and op is eq, ne, gt, gte, lt, lte, contains, not_contains, starts_with, ends_with, is_empty, is_not_empty (eq/ne null = empty/not-empty). Unknown fields or ops error loudly. NOTE: the worker filters within the first `limit` rows — raise limit to cover the table"),
+    sorts: z.string().optional().describe("JSON string of sort array: [{\"field\": \"Name\", \"direction\": \"asc\"}] — field is a column id or name; _created_time/_last_edited_time sort on row timestamps"),
     limit: z.number().optional().describe("Max rows (default 100, max 5000)"),
     offset: z.number().optional().describe("Pagination offset"),
     fields: z.string().optional().describe("Comma-separated list of fields to return (default: all)"),
+    resolve_links: z.boolean().optional().describe("Attach text-cell link associations: rows gain cell_links (outgoing, keyed by column) and cell_links_in (incoming), each entry naming the linked table_id/row_id. This is how linked text cells (e.g. Production Tracker Vendor) resolve — the cell value alone reads as plain text"),
   },
-  async ({ table_id, filters: rawFilters, sorts: rawSorts, limit, offset, fields }) => {
+  async ({ table_id, filters: rawFilters, sorts: rawSorts, limit, offset, fields, resolve_links }) => {
     const filters = parseJSON(rawFilters);
     const sorts = parseJSON(rawSorts);
     try {
-      const body = { filters, sorts, limit: limit || 100, offset: offset || 0 };
+      // Resolve names → column ids and translate to the worker's query
+      // shapes; unknown columns/ops/fields throw instead of silently
+      // degrading to "all rows" / "empty cells".
+      const index = await columnIndexFor(table_id);
+      const workerFilters = normalizeFilters(filters, index);
+      const { workerSorts, postSorts } = normalizeSorts(sorts, index);
+      const fieldList = normalizeFields(fields, index);
+      const body = { filters: workerFilters, sorts: workerSorts, limit: limit || 100, offset: offset || 0, resolve_links: !!resolve_links };
       const result = await wasabiFetch(`/tables/${table_id}/query`, "POST", body);
       let rows = result?.rows || (Array.isArray(result) ? result : []);
 
@@ -957,12 +1027,15 @@ server.tool(
         }
       }
 
-      if (fields) {
-        const fieldList = fields.split(",").map((f) => f.trim());
+      rows = applyPostSorts(rows, postSorts);
+
+      if (fieldList) {
         rows = rows.map((r) => {
-          const cells = r.cells || r;
+          const cells = r.cells || {};
           const filtered = {};
-          for (const f of fieldList) if (f in cells) filtered[f] = cells[f];
+          // Project under the token the caller asked for; unset cells come
+          // back as explicit null rather than a silently missing key.
+          for (const f of fieldList) filtered[f.token] = cells[f.id] ?? null;
           return { ...r, cells: filtered };
         });
       }
@@ -1010,7 +1083,15 @@ server.tool(
     const filters = parseJSON(rawFilters);
     const updates = parseJSON(rawUpdates);
     try {
-      const result = await wasabiFetch(`/tables/${table_id}/query`, "POST", { filters, limit: 5000 });
+      const index = await columnIndexFor(table_id);
+      const workerFilters = normalizeFilters(filters, index);
+      // Before normalization, a malformed filter silently matched EVERY row —
+      // combined with a cells write that would have been a table-wide wipe.
+      if (workerFilters.length === 0) {
+        throw new Error("bulk_update: refusing to run with no effective filters — that would update every row in the table. Pass at least one filter.");
+      }
+      const patchBody = normalizeRowUpdateBody(updates); // merges cells by default
+      const result = await wasabiFetch(`/tables/${table_id}/query`, "POST", { filters: workerFilters, limit: 5000 });
       const rows = result?.rows || (Array.isArray(result) ? result : []);
 
       if (dry_run) return ok({ matched: rows.length, rows: rows.slice(0, 20), note: "Dry run — no changes made" });
@@ -1019,7 +1100,7 @@ server.tool(
       const errors = [];
       for (const row of rows) {
         try {
-          await wasabiFetch(`/tables/${table_id}/rows/${row.id}`, "PATCH", updates);
+          await wasabiFetch(`/tables/${table_id}/rows/${row.id}`, "PATCH", patchBody);
           updated++;
         } catch (e) { errors.push({ id: row.id, error: String(e) }); }
       }
@@ -1246,7 +1327,7 @@ server.tool(
   {
     action: z.enum(["get_note", "set_note", "get_comments", "add_comment", "delete_comment", "badge_counts", "view_history", "record_view"]),
     record_id: z.string().optional().describe("Record ID"),
-    page_id: z.string().optional().describe("Page config ID (for notes)"),
+    page_id: z.string().optional().describe("Page config ID — the record's table/page id (required for notes and comments)"),
     data: z.string().optional().describe("JSON string of content/comment data"),
     record_ids: z.string().optional().describe("JSON string array of record IDs (for badge_counts)"),
     since: z.string().optional().describe("ISO date for view_history filter"),
@@ -1258,8 +1339,20 @@ server.tool(
       switch (action) {
         case "get_note": return ok(await wasabiFetch(`/records/${record_id}/notes?page_config_id=${page_id}`));
         case "set_note": return ok(await wasabiFetch(`/records/${record_id}/notes`, "PUT", { content: data.content, page_config_id: page_id }));
-        case "get_comments": return ok(await wasabiFetch(`/records/${record_id}/comments`));
-        case "add_comment": return ok(await wasabiFetch(`/records/${record_id}/comments`, "POST", { content: data.content, user_id: data.user_id || "mcp", user_name: data.user_name || "Cowork MCP" }));
+        case "get_comments": {
+          // Comments are keyed by (record, page_config_id) — without the page
+          // the worker matches page_config_id = "" and returns nothing.
+          const pcid = page_id || data.page_config_id;
+          const qs = pcid ? `?page_config_id=${encodeURIComponent(pcid)}` : "";
+          return ok(await wasabiFetch(`/records/${record_id}/comments${qs}`));
+        }
+        case "add_comment": {
+          // The worker requires page_config_id (the table/page id) in the
+          // body; omitting it was a guaranteed 400.
+          const pcid = page_id || data.page_config_id;
+          if (!pcid) throw new Error("add_comment requires the page/table id — pass it as `page_id` (or data.page_config_id)");
+          return ok(await wasabiFetch(`/records/${record_id}/comments`, "POST", { page_config_id: pcid, content: data.content, user_id: data.user_id || "mcp", user_name: data.user_name || "Cowork MCP" }));
+        }
         case "delete_comment": return ok(await wasabiFetch(`/records/${record_id}/comments/${data.comment_id}`, "DELETE"));
         case "badge_counts": return ok(await wasabiFetch("/records/badge-counts", "POST", { record_ids }));
         case "view_history": {
