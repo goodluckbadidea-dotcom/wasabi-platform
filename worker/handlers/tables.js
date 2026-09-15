@@ -212,14 +212,31 @@ async function handleListRows(env, tableId, url, jsonResponse) {
   }
 }
 
+// Owners for a newly created row: the creator by default. An admin caller
+// (the MCP tool is admin) may name the owner(s) with row.owner_user_id — the
+// mail/meeting bridges create tracker records on Graham's behalf and set him
+// as owner at creation, which (unlike a later owner change) sends no
+// "assigned you" notification. Non-admins can't assign others at create time.
+function resolveCreateOwners(row, user) {
+  const requested = row?.owner_user_id;
+  if (requested != null && user?.role === "admin") {
+    const list = (Array.isArray(requested) ? requested : [requested])
+      .filter((o) => typeof o === "string" && o.trim())
+      .map((o) => o.trim());
+    if (list.length > 0) return list;
+  }
+  return user?.sub ? [user.sub] : [];
+}
+
 async function handleCreateRows(env, tableId, body, user, jsonResponse) {
   const rows = Array.isArray(body.rows) ? body.rows : [body];
   const created = [];
-  const ownerId = user?.sub ? JSON.stringify([user.sub]) : "default";
+  const createdOwners = [];
 
   try {
     for (const row of rows) {
       const id = row.id || crypto.randomUUID();
+      const owners = resolveCreateOwners(row, user);
       await env.DB.prepare(
         `INSERT INTO table_rows (id, table_id, cells, sort_order, metadata, sync_dirty, owner_user_id, parent_row_id, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, 1, ?, ?, datetime('now'), datetime('now'))`
@@ -229,10 +246,11 @@ async function handleCreateRows(env, tableId, body, user, jsonResponse) {
         JSON.stringify(row.cells || {}),
         row.sort_order || 0,
         JSON.stringify(row.metadata || {}),
-        ownerId,
+        owners.length > 0 ? JSON.stringify(owners) : "default",
         row.parent_row_id || null
       ).run();
       created.push(id);
+      createdOwners.push(owners);
     }
 
     // Invalidate data summary cache for this table's pages
@@ -280,18 +298,17 @@ async function handleCreateRows(env, tableId, body, user, jsonResponse) {
       }
     } catch (err) { console.error("[relationships] handleCreateRows part_of projection failed:", err.message || err); }
 
-    // Auto-assign parent owners: each new sub-item is owned by its creator
-    // (see ownerId above). Propagate that creator into each ancestor so the
-    // parent surfaces in the creator's curated task list immediately.
-    if (user?.sub) {
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        if (!row.parent_row_id) continue;
-        try {
-          await propagateOwnersToAncestors(env, tableId, row.parent_row_id, [user.sub], created[i], user);
-        } catch (err) {
-          console.error("[parent_owner] create propagation failed:", err.message || err);
-        }
+    // Auto-assign parent owners: each new sub-item is owned by its creator,
+    // or by the owners an admin named (see resolveCreateOwners). Propagate
+    // those owners into each ancestor so the parent surfaces in their
+    // curated task lists immediately.
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row.parent_row_id || !createdOwners[i]?.length) continue;
+      try {
+        await propagateOwnersToAncestors(env, tableId, row.parent_row_id, createdOwners[i], created[i], user);
+      } catch (err) {
+        console.error("[parent_owner] create propagation failed:", err.message || err);
       }
     }
 
