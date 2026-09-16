@@ -19,7 +19,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { C, FONT } from "../design/tokens.js";
 import {
   getExtension, getSnapshot, fetchSnapshotHtml, publishSnapshot,
-  getSnapshotHtmlUrl,
+  getSnapshotHtmlUrl, refreshSnapshotFacts, getSnapshotDraft, decideSnapshotDraft,
 } from "../lib/api.js";
 import { useTheme } from "../context/ThemeContext.jsx";
 import { usePlatform } from "../context/PlatformContext.jsx";
@@ -42,7 +42,7 @@ export default function ExtensionViewer({ snapshotId, onBack }) {
   const { user, pages } = usePlatform();
   // Record opened from the report: { pageConfig, schema, data, recordId }
   const [drawer, setDrawer] = useState(null);
-  const [drawerNotice, setDrawerNotice] = useState(null);
+  const [notice, setNotice] = useState(null);   // small status line over the report
 
   // Load snapshot metadata + rendered HTML in parallel
   useEffect(() => {
@@ -115,16 +115,65 @@ export default function ExtensionViewer({ snapshotId, onBack }) {
   }, [pages, user]);
 
   const openRecord = useCallback(async (pageId, recordId) => {
-    setDrawerNotice("Opening record…");
+    setNotice("Opening record…");
     try {
       const src = await loadRecordSource(pageId);
       if (!src.data.some((r) => r.id === recordId)) throw new Error("That record no longer exists in the table.");
       setDrawer({ ...src, recordId });
-      setDrawerNotice(null);
+      setNotice(null);
     } catch (err) {
-      setDrawerNotice(`Couldn't open record: ${err.message || err}`);
+      setNotice(`Couldn't open record: ${err.message || err}`);
     }
   }, [loadRecordSource]);
+
+  const postToFrame = useCallback((msg) => {
+    try { iframeRef.current?.contentWindow?.postMessage(msg, "*"); } catch { /* iframe gone */ }
+  }, []);
+
+  const errText = (err) => err?.data?._error || err?.message || String(err);
+
+  // The report changed on the server — pull the freshly rendered HTML back in.
+  const reloadReport = useCallback(async () => {
+    if (!extension?.slug || !snapshot?.slug) return;
+    setHtml(await fetchSnapshotHtml(extension.slug, snapshot.slug));
+  }, [extension, snapshot]);
+
+  // Report's Update button: bring tracker facts up to date. No AI, nothing to review.
+  const refreshFacts = useCallback(async () => {
+    setNotice("Updating facts from the tracker…");
+    try {
+      const r = await refreshSnapshotFacts(snapshotId);
+      await reloadReport();
+      setNotice(r?.changes ? `Updated: ${r.changes} change${r.changes === 1 ? "" : "s"} from the tracker.` : "Already up to date.");
+    } catch (err) {
+      setNotice(`Couldn't update: ${errText(err)}`);
+      postToFrame({ type: "wasabi:update-status", state: "error", message: errText(err) });
+    }
+  }, [snapshotId, reloadReport, postToFrame]);
+
+  // The report asks whether an update is waiting, and for its contents.
+  const sendDraft = useCallback(async () => {
+    try {
+      postToFrame({ type: "wasabi:draft", ...(await getSnapshotDraft(snapshotId)) });
+    } catch (err) {
+      postToFrame({ type: "wasabi:draft", error: errText(err) });
+    }
+  }, [snapshotId, postToFrame]);
+
+  // Approve / deny / edit per change, or discard the whole update.
+  const decideDraft = useCallback(async (body) => {
+    setNotice(body.action === "discard" ? "Discarding the update…" : "Saving your review…");
+    try {
+      const r = await decideSnapshotDraft(snapshotId, body);
+      await reloadReport();
+      setNotice(r?.discarded
+        ? "Update discarded."
+        : `Saved: ${r?.approved || 0} approved, ${r?.edited || 0} edited, ${r?.denied || 0} denied.`);
+    } catch (err) {
+      setNotice(`Couldn't save your review: ${errText(err)}`);
+      postToFrame({ type: "wasabi:update-status", state: "error", message: errText(err) });
+    }
+  }, [snapshotId, reloadReport, postToFrame]);
 
   // Only messages from this viewer's own iframe are honoured. The sandboxed
   // iframe has an opaque ("null") origin, so match on source, not origin.
@@ -133,13 +182,28 @@ export default function ExtensionViewer({ snapshotId, onBack }) {
       const frame = iframeRef.current;
       if (!frame || e.source !== frame.contentWindow) return;
       const msg = e.data;
-      if (!msg || msg.type !== "wasabi:open-record") return;
-      if (typeof msg.pageId !== "string" || typeof msg.recordId !== "string") return;
-      openRecord(msg.pageId, msg.recordId);
+      if (!msg) return;
+      switch (msg.type) {
+        case "wasabi:open-record":
+          if (typeof msg.pageId === "string" && typeof msg.recordId === "string") openRecord(msg.pageId, msg.recordId);
+          break;
+        case "wasabi:refresh-facts":
+          refreshFacts();
+          break;
+        case "wasabi:get-draft":
+          sendDraft();
+          break;
+        case "wasabi:decide":
+          if (msg.action === "discard") decideDraft({ action: "discard" });
+          else if (msg.decisions && typeof msg.decisions === "object") decideDraft({ decisions: msg.decisions });
+          break;
+        default:
+          break;
+      }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [openRecord]);
+  }, [openRecord, refreshFacts, sendDraft, decideDraft]);
 
   // Errors are left to throw so RecordDetail's own save alert reports them.
   const handleDrawerUpdate = useCallback(async (id, fieldName, payload) => {
@@ -326,10 +390,10 @@ export default function ExtensionViewer({ snapshotId, onBack }) {
           />
         )}
 
-        {drawerNotice && (
+        {notice && (
           <div
             role="status"
-            onClick={() => setDrawerNotice(null)}
+            onClick={() => setNotice(null)}
             style={{
               position: "absolute", left: "50%", bottom: 16, transform: "translateX(-50%)",
               background: C.surface, color: C.text, border: `1px solid ${C.border}`,
@@ -337,7 +401,7 @@ export default function ExtensionViewer({ snapshotId, onBack }) {
               boxShadow: "0 6px 20px rgba(0,0,0,0.2)", cursor: "pointer", maxWidth: "80%",
             }}
           >
-            {drawerNotice}
+            {notice}
           </div>
         )}
       </div>

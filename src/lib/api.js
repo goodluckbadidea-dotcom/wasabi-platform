@@ -1439,6 +1439,29 @@ export async function listSnapshotLinks(id) {
   return apiFetch(`/extensions/snapshots/${encodeURIComponent(id)}/links`);
 }
 
+// ─── Report update (reports whose ext_config.refresh is enabled) ───
+// Facts come from the source table on demand; the written parts are drafted in
+// Claude desktop (Wasabi MCP tool `wasabi_report_update`) and approved here.
+
+/** Bring tracker facts up to date. No AI; tiles whose facts moved are flagged. */
+export async function refreshSnapshotFacts(id) {
+  return apiFetch(`/extensions/snapshots/${encodeURIComponent(id)}/refresh`, { method: "POST", body: {} });
+}
+
+/** Read the update waiting for review. Approvers get the full draft. */
+export async function getSnapshotDraft(id) {
+  return apiFetch(`/extensions/snapshots/${encodeURIComponent(id)}/draft`);
+}
+
+/**
+ * Submit a review of the waiting update (approvers only).
+ * body: { decisions: { [proposalId]: "approve" | "deny" | { edit: {...} } } }
+ *    or { action: "discard" }
+ */
+export async function decideSnapshotDraft(id, body) {
+  return apiFetch(`/extensions/snapshots/${encodeURIComponent(id)}/draft/decide`, { method: "POST", body });
+}
+
 /**
  * Build the URL for a snapshot's rendered HTML. Useful for public-visibility
  * snapshots that can be opened in a new tab without authentication. For
